@@ -1892,6 +1892,45 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 
 Still open: sharing (§10), and the finer points listed there.
 
+### 8.6 A host's environment
+
+A host's server starts its shells and tools with its own environment —
+which, on a host reached over ssh, is the connection's that first
+started it (its bridge's): its SSH_AUTH_SOCK dies with that connection,
+and a proxy the host needs is set nowhere. So the server keeps:
+
+- **Variables**, in the host's preferences (the desk, so every Mac sees
+  and sets the same): a name, a value and a scope — `all`, `shells`
+  (terminals, notebooks, panels' commands) or `tools` (what the server
+  runs itself: indexers and their `npx` fetches, language servers, git,
+  Sapling, search). `SpawnEnvironment` holds them, refreshed when the
+  desk changes, and applies them as each child starts
+  (`shellAndEnvironment`, the panel's, the indexer's, and every
+  `Child` through `Child.environment`), not by `setenv` in a server whose
+  other threads read its environment. Set by the `environment`
+  proposal (one variable, set or unset), by `mani env`, which the server
+  answers itself (attached or not, unlike other `mani` commands), and in
+  the host's inspector, edited in place (`InspectorEditable`: the name in
+  the label column, the value, the scope a menu with Remove; Add
+  Variable… a new row to type in; the rows not rebuilt under one being
+  edited, and a row given focus only while the app is active — the panel
+  doesn't activate it, and would take another app's typing). Preferences from a client before them leave
+  them as they are (nil, not empty).
+- **The agent link**: a symlink, `agent.sock` in Manifold's folder (or the
+  home, if that path is too long to name a socket or has spaces),
+  given as SSH_AUTH_SOCK to everything — ssh follows a symlink, and the
+  limit on a socket's path is the link's, not its target's. It points at
+  the newest agent that answers, of: those bridges note as they start
+  (a file each in `agents/`, the bridge's pid in it, taken away as it
+  ends), sshd's for the user's logins (`/tmp/ssh-*/agent.*`, theirs), and
+  those `mani env agent` names. `AgentLinkKeeper` looks every 5 s, and a
+  bridge as it starts and ends; a link's target replaced by a rename,
+  so a shell never sees none. Pointed at a gone agent it's left so
+  until another comes. The status (where, from, live, keys by
+  `ssh-add -l`) is said to clients on hello and as it changes
+  (`agentLink`). A server not started by a bridge (`MANIFOLD_BRIDGED`
+  unset) whose own agent answers — a Mac's launchd one — keeps that.
+
 ## 9. From here to there
 
 *A record of the steps as they were taken, in the names of their time —

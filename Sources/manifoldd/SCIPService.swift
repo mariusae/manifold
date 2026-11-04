@@ -277,6 +277,8 @@ final class SCIPService {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: Self.loginShell)
             p.arguments = ["-l", "-c", command]
+            // The host's variables for its tools: a proxy for npx's fetch.
+            p.environment = SpawnEnvironment.environment(.tools)
             let pipe = Pipe()
             p.standardOutput = pipe
             p.standardError = pipe

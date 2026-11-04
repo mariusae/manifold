@@ -1698,6 +1698,30 @@ is migrated into logs on first run.
   here, and find out what that is from Ghostty's terminfo, which the
   server carries and writes into its own folder (`TERMINFO`): nothing is
   installed into the host's terminfo, or yours.
+- **A host's environment** (`mani env`, or the host's inspector ▸
+  Environment, edited in place — a name, a value, its scope from the
+  menu at the right, Remove there too; Add Variable… or Add Environment
+  Variable… in the host's menu for a new one): variables
+  its server sets in what it starts, kept on the host whichever Mac it's
+  reached from, each for everything, for its **shells** (terminals,
+  notebooks, panels' commands) or for its **tools** (what the server runs
+  itself: the code indexer and the packages `npx` fetches for it,
+  language servers, git, Sapling). A proxy only the indexer needs:
+  `mani env set --for tools HTTPS_PROXY=http://proxy:3128`. `mani env set
+  NAME` takes the value from the shell it's typed in; `mani env unset`
+  takes one away; `mani env` lists them (`--show` for what secrets hide).
+  New shells and tools get them; a shell already running takes them by
+  `eval "$(mani env export)"` (`mani env export | source` in fish).
+- **The ssh agent**: a host's shells and tools are given `SSH_AUTH_SOCK`
+  as a link (`~/.manifold/agent.sock`) to the newest agent forwarded to
+  it that answers — one forwarded to Manifold's own connection (when ssh
+  forwards it), to an ssh login of yours (sshd's `/tmp/ssh-*/agent.*`),
+  or one named by `mani env agent <socket>`. When the connection whose
+  agent it is ends, the link goes to the next, under shells already
+  running: no more refreshing a stale socket. The host's inspector and
+  `mani env` say where it points and how many keys it holds. A host with
+  an agent of its own that its server wasn't started over a connection
+  with (a Mac's, from launchd) keeps it.
   A space lives on a host too, among that host's spaces, which every Mac
   attached to the host sees: New Space (⌘T)
   makes it on the focused block's host, a host's row in the Spaces

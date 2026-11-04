@@ -129,6 +129,10 @@ final class OrgNode {
     /// What the row puts on the clipboard, a copy button beside it (the
     /// inspector's references, ids, paths).
     var copies: String?
+    /// In the inspector: a row edited in place (a host's variable), or a
+    /// row that, clicked, adds one so (its template).
+    var editable: InspectorEditable?
+    var adds: InspectorEditable?
     fileprivate var given: [OrgNode]
     var loadChildren: (() -> [OrgNode])?
     fileprivate var loaded = false

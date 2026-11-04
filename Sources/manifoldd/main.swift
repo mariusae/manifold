@@ -37,6 +37,9 @@ case "serve":
     signal(SIGHUP, SIG_IGN)
     ToolPath.extend()
     AgentSkill.refresh()
+    // What it runs for itself (git, sl, language servers, rg) with the
+    // host's variables for its tools (§8.6).
+    Child.environment = { SpawnEnvironment.environment(.tools) }
     var server: Server?
     do {
         Mux.log = { log($0) }

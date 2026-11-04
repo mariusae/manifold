@@ -1216,6 +1216,50 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(d.preferences.shell == nil)
 }
 
+@Test func aHostsEnvironmentIsKeptInItsPreferencesAndOlderOnesLeaveItUnsaid() throws {
+    // Preferences from before environments: not said (nil), not empty.
+    let old = try JSONDecoder().decode(HostPreferences.self, from: Data(#"{"shell":"fish"}"#.utf8))
+    #expect(old.environment == nil)
+    let p = HostPreferences(shell: nil, environment: [EnvironmentVariable(name: "HTTPS_PROXY", value: "http://p:3128", scope: .tools)])
+    let back = try JSONDecoder().decode(HostPreferences.self, from: JSONEncoder().encode(p))
+    #expect(back == p)
+    #expect(back.environment?.first?.scope == .tools)
+}
+
+@Test func environmentVariablesNamesScopesSecretsAndExports() {
+    #expect(EnvironmentVariable.isValidName("HTTPS_PROXY"))
+    #expect(EnvironmentVariable.isValidName("_x1"))
+    #expect(!EnvironmentVariable.isValidName("1BAD"))
+    #expect(!EnvironmentVariable.isValidName("A-B"))
+    #expect(!EnvironmentVariable.isValidName(""))
+    #expect(EnvironmentVariable.isReserved("MANIFOLD_BLOCK") && EnvironmentVariable.isReserved("HOME"))
+    #expect(!EnvironmentVariable.isReserved("SSH_AUTH_SOCK"))
+    // A scope covers its own kind and everything's.
+    #expect(EnvironmentScope.tools.covers(.tools) && EnvironmentScope.all.covers(.shells))
+    #expect(!EnvironmentScope.tools.covers(.shells) && !EnvironmentScope.shells.covers(.tools))
+    // A password in an address hidden, the user kept; a secret's name hides it all.
+    let proxy = EnvironmentVariable(name: "HTTPS_PROXY", value: "http://bob:hunter2@proxy:3128")
+    #expect(proxy.isSecret && proxy.shownValue == "http://bob:••••@proxy:3128")
+    #expect(EnvironmentVariable(name: "GITHUB_TOKEN", value: "abc").shownValue == "••••••")
+    #expect(EnvironmentVariable(name: "NO_PROXY", value: "localhost").shownValue == "localhost")
+    // Quoted for any shell: a quote closed, escaped, opened again.
+    #expect(EnvironmentVariable(name: "Q", value: "it's $HOME").exportLine == #"export Q='it'\''s $HOME'"#)
+}
+
+@Test func anAgentLinksSummarySaysWhereItPoints() {
+    var s = AgentLinkStatus(managed: true, link: "/h/.manifold/agent.sock")
+    #expect(s.summary == "none forwarded yet")
+    s.target = "/tmp/ssh-x/agent.1"
+    s.from = "forwarded to an ssh login"
+    s.live = true
+    s.keys = 2
+    s.others = 1
+    #expect(s.summary == "forwarded to an ssh login, 2 keys (1 other answers)")
+    s.live = false
+    #expect(s.summary.hasPrefix("gone"))
+    #expect(AgentLinkStatus(managed: false, link: "x", local: "/var/run/launchd/Listeners").summary == "the host's own (/var/run/launchd/Listeners)")
+}
+
 // MARK: Reaching hosts
 
 /// A destination that runs its commands here, with HOME a fresh folder:

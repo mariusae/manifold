@@ -164,6 +164,10 @@ public struct Child {
     /// Write the child's input here.
     public let input: Int32
 
+    /// The environment children are started with, if not ours: the
+    /// server's, its host's variables for its tools set in it (§8.6).
+    nonisolated(unsafe) public static var environment: (() -> [String: String])?
+
     /// Runs `argv` with pipes; the child's stderr is ours. Searches the PATH.
     /// The child has those and nothing else of ours: our pipes are closed
     /// to every other child (a language server started as git runs kept
@@ -198,7 +202,7 @@ public struct Child {
         var pid: pid_t = 0
         let cargs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
         defer { for p in cargs { free(p) } }
-        let env = ProcessInfo.processInfo.environment.map { "\($0.key)=\($0.value)" }
+        let env = (Child.environment?() ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
         let cenv: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
         defer { for p in cenv { free(p) } }
         #if canImport(Darwin)

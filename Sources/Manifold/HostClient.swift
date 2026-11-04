@@ -212,6 +212,10 @@ final class HostClient {
     private var pendingMachine: [Int: (MachineSample?) -> Void] = [:]
     /// What the host's server can do beyond its protocol (`welcome`).
     private(set) var features: Set<String> = []
+    /// How the host's ssh agent stands (§8.6), as it last said.
+    private(set) var agentLink: AgentLinkStatus?
+    /// Whether the host keeps variables for what it starts (§8.6).
+    var keepsEnvironment: Bool { features.contains("environment") }
     /// The machine's history, as the host has sent it (§7.5): five minutes
     /// of it, the latest last, and the last reading whole.
     private(set) var machineHistory: [MachinePoint] = []
@@ -1254,6 +1258,9 @@ final class HostClient {
                 machineLatest = kept
             }
             pendingMachine.removeValue(forKey: id)?(sample)
+        case let .agentLink(status):
+            agentLink = status
+            onChange?()
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
             onLanguageServer?(language, root, state)

@@ -283,12 +283,19 @@ enum DebugControl {
             return "ok"
         case "sheet":
             // Describes the sheet on the window, or types into it and presses
-            // a button: "sheet", "sheet type <text>", "sheet press <title>".
+            // a button: "sheet", "sheet type <text>", "sheet field <n> <text>", "sheet press <title>".
             guard let sheet = wc?.window?.attachedSheet else { return "no sheet" }
             let fields = allSubviews(sheet.contentView).compactMap { $0 as? NSTextField }.filter(\.isEditable)
             let buttons = allSubviews(sheet.contentView).compactMap { $0 as? NSButton }
             if arg.hasPrefix("type ") {
                 fields.first?.stringValue = String(arg.dropFirst(5))
+                return "ok"
+            }
+            if arg.hasPrefix("field ") {
+                // "sheet field <n> <text>": into its nth field, from 0.
+                let parts = arg.dropFirst(6).split(separator: " ", maxSplits: 1).map(String.init)
+                guard let n = parts.first.flatMap(Int.init), n < fields.count else { return "no such field" }
+                fields[n].stringValue = parts.count > 1 ? parts[1] : ""
                 return "ok"
             }
             if arg.hasPrefix("text ") {
@@ -1096,7 +1103,8 @@ enum DebugControl {
         case "tilesidebar":
             return wc?.debugTileSidebar(arg) ?? "no window"
         case "inspector":
-            // "inspector [toggle|rows|click <row>|fold <section>|host <name>|picture <png>]": the inspector's window.
+            // "inspector [toggle|rows|click <row>|fold <section>|host <name>|picture <png>]": the inspector's window;
+            // "inspector set <row> name=… value=… scope=…|remove=1|escape": a row edited in place, then left.
             return wc?.debugInspector(arg) ?? "no window"
         case "colordump":
             // "colordump <path>": every named colour and the terminal's config, written there.

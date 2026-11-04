@@ -74,6 +74,8 @@ final class Server {
     private let git: Git
     /// The machine's readings, kept as history (§7.5).
     private let machine = MachineSampler()
+    /// The host's ssh agent link (§8.6).
+    private let agentLink = AgentLinkKeeper()
     /// Gutter marks pending for text blocks, a moment after their last change.
     private var gutterWork: [BlockID: DispatchWorkItem] = [:]
     /// Each file's marks as last worked out, for a client that asks after
@@ -177,6 +179,14 @@ final class Server {
 
     func run() throws {
         load()
+        SpawnEnvironment.set(node.desk(host).preferences.environment ?? [])
+        agentLink.onChange = { [weak self] status in
+            self?.queue.async {
+                let frame = Frame.message(ServerMessage.agentLink(status))
+                for c in self?.clients ?? [] { c.send(frame) }
+            }
+        }
+        agentLink.start()
         settleFirstLineTitles()
         pruneHistory()
         machine.start()
@@ -286,6 +296,7 @@ final class Server {
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
                                                      attachment: attachments, home: NSHomeDirectory(), snapshots: snapshots,
                                                      features: serverFeatures, up: Date().timeIntervalSince(started), build: .current)))
+            if name != Mani.name { conn.send(.message(ServerMessage.agentLink(agentLink.status))) }
         case .attach(let req)?:
             attach(conn, req)
         case .backfill(let req)?:
@@ -363,6 +374,7 @@ final class Server {
         env["MANIFOLD_BLOCK"] = block.description
         env["MANIFOLD_HOST"] = block.host.raw
         env["MANI_EVENT"] = event
+        SpawnEnvironment.apply(to: &env, scope: .shells)
         if let data = event.data(using: .utf8), let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let v = o["value"] {
             env["MANI_VALUE"] = (v as? String) ?? (try? JSONSerialization.data(withJSONObject: v, options: .fragmentsAllowed)).map { String(decoding: $0, as: UTF8.self) } ?? ""
         }
@@ -400,6 +412,11 @@ final class Server {
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
         case let .command(id, request)?:
+            // `mani env`: the host's own, answered here, attached or not.
+            if request.verb == "env" || request.verb.hasPrefix("env ") {
+                environmentCommand(request) { conn.send(.message(ServerMessage.commandReply(id: id, $0))) }
+                return
+            }
             // `mani` asks; the app, if attached, does it and answers.
             guard let app = clients.first(where: { appClients.contains(ObjectIdentifier($0)) }) else {
                 conn.send(.message(ServerMessage.done(id: id, error: "Manifold isn't attached to this host")))
@@ -610,6 +627,7 @@ final class Server {
 
     /// Keeps the registry in step with a block's log, whoever appended.
     private func shardChanged(_ shard: ShardID, entries: [Entry] = []) {
+        if shard == .desk(host) { SpawnEnvironment.set(node.desk(host).preferences.environment ?? []) }
         guard let id = shard.block, let block = node.block(id) else { return }
         if block.kind == .text,
            entries.contains(where: { if case .edit = $0.event { return true }; if case .content = $0.event { return true }; return false }) {
@@ -874,6 +892,8 @@ final class Server {
             if s != node.desk(host).settings { append(.settings(s), to: .desk(host)) }
             done()
         case var .preferences(p):
+            // A client from before environments leaves them as they are.
+            if p.environment == nil { p.environment = node.desk(host).preferences.environment }
             p.shell = p.shell.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
             if let shell = p.shell, Session.resolveShell(shell) == nil {
                 return done("There's no shell \(shell) here that can be run.")
@@ -886,6 +906,8 @@ final class Server {
                 languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, p.lsp))
             }
             done()
+        case let .environment(name, value, scope):
+            done(setEnvironment(name, value: value, scope: scope))
         case .indexAgents:
             indexAgents()
             done()
@@ -2336,5 +2358,102 @@ final class Server {
             out += "\n"
         }
         return out
+    }
+}
+
+// MARK: Environment (§8.6)
+
+extension Server {
+    /// One of the host's variables set, or unset (no value): why not, if not.
+    fileprivate func setEnvironment(_ name: String, value: String?, scope: EnvironmentScope?) -> String? {
+        guard EnvironmentVariable.isValidName(name) else { return "\(name) isn't a variable's name" }
+        guard !EnvironmentVariable.isReserved(name) else { return "\(name) is Manifold's own to set" }
+        var p = node.desk(host).preferences
+        var vars = p.environment ?? []
+        if let value {
+            if let i = vars.firstIndex(where: { $0.name == name }) {
+                vars[i].value = value
+                if let scope { vars[i].scope = scope }
+            } else {
+                vars.append(EnvironmentVariable(name: name, value: value, scope: scope ?? .all))
+            }
+        } else {
+            guard vars.contains(where: { $0.name == name }) else { return "\(name) isn't set here" }
+            vars.removeAll { $0.name == name }
+        }
+        p.environment = vars
+        if p != node.desk(host).preferences { append(.preferences(p), to: .desk(host)) }
+        log("environment: \(name) \(value == nil ? "unset" : "set for " + (vars.first { $0.name == name }?.scope.rawValue ?? "all"))")
+        return nil
+    }
+
+    /// `mani env …`, answered by the host itself.
+    fileprivate func environmentCommand(_ r: ManiRequest, reply: @escaping (ManiReply) -> Void) {
+        func fail(_ message: String) { reply(ManiReply(err: "mani: \(message)\n", status: 1)) }
+        let scope = r.flags["for"].map { EnvironmentScope(rawValue: $0) }
+        if case .some(.none) = scope {
+            return fail("--for is one of \(EnvironmentScope.allCases.map(\.rawValue).joined(separator: ", "))")
+        }
+        let vars = node.desk(host).preferences.environment ?? []
+        switch r.verb {
+        case "env":
+            if r.flags["json"] != nil {
+                struct Listing: Encodable { var variables: [EnvironmentVariable]; var agent: AgentLinkStatus }
+                let enc = JSONEncoder()
+                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = (try? enc.encode(Listing(variables: vars, agent: agentLink.status))) ?? Data()
+                return reply(ManiReply(out: String(decoding: data, as: UTF8.self) + "\n", status: 0))
+            }
+            var out = ""
+            let shown = vars.filter { v in scope?.map { v.scope.covers($0) } ?? true }
+            let width = shown.map(\.name.count).max() ?? 0
+            for v in shown {
+                out += v.name.padding(toLength: width, withPad: " ", startingAt: 0) + "  " + v.scope.rawValue.padding(toLength: 6, withPad: " ", startingAt: 0)
+                    + "  " + (r.flags["show"] != nil ? v.value : v.shownValue) + "\n"
+            }
+            if shown.isEmpty { out += "no variables set here\n" }
+            out += "\nssh agent: \(agentLink.status.summary)\n"
+            if agentLink.status.managed, agentLink.status.target != nil {
+                out += "  SSH_AUTH_SOCK=\(agentLink.status.link)" + (agentLink.status.target.map { " -> \($0)" } ?? "") + "\n"
+            }
+            reply(ManiReply(out: out, status: 0))
+        case "env set":
+            for a in r.args {
+                guard let eq = a.firstIndex(of: "=") else { return fail("\(a) has no value: NAME=value (mani fills in one from its shell)") }
+                let name = String(a[..<eq]), value = String(a[a.index(after: eq)...])
+                if let why = setEnvironment(name, value: value, scope: scope ?? nil) { return fail(why) }
+            }
+            reply(ManiReply(status: 0))
+        case "env unset":
+            for name in r.args {
+                if let why = setEnvironment(name, value: nil, scope: nil) { return fail(why) }
+            }
+            reply(ManiReply(status: 0))
+        case "env export":
+            let kind = (scope ?? nil) ?? .shells
+            var lines = vars.filter { $0.scope.covers(kind) }.map(\.exportLine)
+            if let agent = SpawnEnvironment.current.agent {
+                lines.insert(EnvironmentVariable(name: "SSH_AUTH_SOCK", value: agent).exportLine, at: 0)
+            }
+            reply(ManiReply(out: lines.map { $0 + "\n" }.joined(), status: 0))
+        case "env agent":
+            if let socket = r.args.first, socket != AgentLink.path, socket != agentLink.status.local {
+                guard AgentLink.answers(socket) else { return fail("nothing answers at \(socket)") }
+                guard agentLink.status.managed else {
+                    return fail("this host's shells use its own agent (\(agentLink.status.local ?? "")), not a forwarded one")
+                }
+                AgentLink.note(socket, from: "named by mani env agent", pid: nil)
+                agentLink.lookNow { [weak self] in
+                    self?.queue.async {
+                        guard let self else { return }
+                        reply(ManiReply(out: "ssh agent: \(self.agentLink.status.summary)\n", status: 0))
+                    }
+                }
+            } else {
+                reply(ManiReply(out: "ssh agent: \(agentLink.status.summary)\n", status: 0))
+            }
+        default:
+            fail("\(r.verb) isn't known here")
+        }
     }
 }

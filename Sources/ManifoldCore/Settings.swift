@@ -186,19 +186,24 @@ public struct HostPreferences: Codable, Equatable, Sendable {
     /// a language, "root" a marker whose folder is every language's
     /// workspace root, "rust.root" one language's.
     public var lsp: [String: String] = [:]
+    /// Variables its server sets in what it starts (§8.6). Nil: not said
+    /// — a client from before them, whose preferences leave them as they are.
+    public var environment: [EnvironmentVariable]?
 
-    public init(shell: String? = nil, lsp: [String: String] = [:]) {
+    public init(shell: String? = nil, lsp: [String: String] = [:], environment: [EnvironmentVariable]? = nil) {
         self.shell = shell
         self.lsp = lsp
+        self.environment = environment
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         shell = try? c.decodeIfPresent(String.self, forKey: .shell)
         lsp = (try? c.decodeIfPresent([String: String].self, forKey: .lsp)) ?? [:]
+        environment = try? c.decodeIfPresent([EnvironmentVariable].self, forKey: .environment)
     }
 
-    enum CodingKeys: String, CodingKey { case shell, lsp }
+    enum CodingKeys: String, CodingKey { case shell, lsp, environment }
 }
 
 /// The fonts everything is set in, besides the interface's system font,

@@ -8,7 +8,7 @@ public let protocolVersion = 66
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
-public let serverFeatures = ["zstd", "machine"]
+public let serverFeatures = ["zstd", "machine", "environment"]
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -139,6 +139,9 @@ public enum Proposal: Codable, Sendable {
     /// The host's own preferences; refused (and not kept) when the host
     /// can't do as they say.
     case preferences(HostPreferences)
+    /// One of the host's environment variables set (§8.6), or, with no
+    /// value, unset; its scope as it was if not said.
+    case environment(name: String, value: String?, scope: EnvironmentScope?)
     /// Look again for the known agents on the host (it does so on its own
     /// when a client says hello, too).
     case indexAgents
@@ -578,6 +581,9 @@ public enum ServerMessage: Codable, Sendable {
     case scipResult(id: Int, SCIPResult)
     /// A language server's state: starting, ready, or gone, with a word.
     case languageServer(language: String, root: String, state: String)
+    /// How the host's ssh agent stands (§8.6): said on hello, and as it
+    /// changes.
+    case agentLink(AgentLinkStatus)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
     /// A file stream's last word: done (`path`, the file written, for a

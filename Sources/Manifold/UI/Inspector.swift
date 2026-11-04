@@ -155,16 +155,64 @@ final class InspectorList: NSView {
         rebuild()
     }
 
+    /// Rows were being edited when new ones came: shown once they're not.
+    private var pendingRebuild = false
+
+    /// A row being edited, or a new one not yet said: the rows aren't
+    /// replaced under it.
+    private var editing: Bool { stack.subviews.contains { ($0 as? InspectorEditRow)?.holds == true } }
+
     private func rebuild() {
+        if editing {
+            pendingRebuild = true
+            return
+        }
+        pendingRebuild = false
         stack.subviews.forEach { $0.removeFromSuperview() }
         for s in sections {
             // A lone row (nothing to inspect) is shown as it is.
             guard s.isGroup else { stack.addSubview(InspectorRow(s, onOpen: onOpen)); continue }
             let open = isOpen(s.id)
             stack.addSubview(InspectorHeading(s.title, open: open, count: s.children.count) { [weak self] in self?.toggle(s.id) })
-            if open { for r in s.children { stack.addSubview(InspectorRow(r, onOpen: onOpen)) } }
+            if open { for r in s.children { stack.addSubview(row(r)) } }
         }
         needsLayout = true
+    }
+
+    private func row(_ node: OrgNode) -> NSView {
+        if let e = node.editable { return editRow(e, isNew: false) }
+        if node.adds != nil { return InspectorRow(node) { [weak self] n in self?.add(n) } }
+        return InspectorRow(node, onOpen: onOpen)
+    }
+
+    private func editRow(_ e: InspectorEditable, isNew: Bool) -> InspectorEditRow {
+        let r = InspectorEditRow(e, isNew: isNew)
+        r.onDone = { [weak self] row in
+            guard let self else { return }
+            if row.isNew { row.removeFromSuperview() }
+            // What came while it was edited (its own change, as the host took it).
+            if self.pendingRebuild { DispatchQueue.main.async { self.rebuild() } } else { self.needsLayout = true }
+        }
+        return r
+    }
+
+    /// An add row clicked: a new row before it, its name to type.
+    private func add(_ node: OrgNode) {
+        guard let template = node.adds, let at = stack.subviews.firstIndex(where: { ($0 as? InspectorRow)?.node === node }) else { return }
+        // One new row at a time.
+        if let open = stack.subviews.first(where: { ($0 as? InspectorEditRow)?.isNew == true }) as? InspectorEditRow { return open.focus() }
+        let r = editRow(template, isNew: true)
+        stack.addSubview(r, positioned: .below, relativeTo: stack.subviews[at])
+        layout()
+        r.focus()
+    }
+
+    /// A section opened (if it's folded) and its add row clicked: what a
+    /// menu's "Add Environment Variable…" does.
+    func startAdding(in sectionID: String) {
+        if !isOpen(sectionID) { toggle(sectionID) }
+        guard let node = sections.first(where: { $0.id == sectionID })?.children.first(where: { $0.adds != nil }) else { return }
+        add(node)
     }
 
     override func layout() {
@@ -185,8 +233,17 @@ final class InspectorList: NSView {
     /// Each line as it reads: a heading's triangle, a row's label and value.
     var debugRows: String {
         stack.subviews.enumerated().map { i, v in
-            "\(i) " + ((v as? InspectorHeading)?.debugState ?? (v as? InspectorRow)?.debugState ?? "?")
+            "\(i) " + ((v as? InspectorHeading)?.debugState ?? (v as? InspectorRow)?.debugState ?? (v as? InspectorEditRow)?.debugState ?? "?")
         }.joined(separator: "\n")
+    }
+
+    /// "set <row> name=… value=… scope=…": an edited row's fields as if
+    /// typed, then left (said, as leaving it does); "set <row> escape".
+    func debugSet(_ arg: String) -> String {
+        let parts = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        guard let i = parts.first.flatMap(Int.init), stack.subviews.indices.contains(i),
+              let r = stack.subviews[i] as? InspectorEditRow else { return "no edited row there" }
+        return r.debugSet(parts.count > 1 ? parts[1] : "")
     }
 
     func debugClick(_ i: Int) -> String {
@@ -249,7 +306,7 @@ private final class InspectorHeading: NSView {
 /// A row: its label (what it is, the part before an em dash) right-aligned
 /// in its column, a colon, its value; a row with no label its value across.
 private final class InspectorRow: NSView {
-    private let node: OrgNode
+    let node: OrgNode
     private let onOpen: ((OrgNode) -> Void)?
     private let label: String
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
@@ -277,7 +334,7 @@ private final class InspectorRow: NSView {
 
     override var isFlipped: Bool { true }
 
-    private var acts: Bool { node.action != nil || node.block != nil || node.arrangement != nil }
+    private var acts: Bool { node.action != nil || node.block != nil || node.arrangement != nil || node.adds != nil }
 
     override func draw(_ dirtyRect: NSRect) {
         if hovering, acts {
@@ -286,7 +343,8 @@ private final class InspectorRow: NSView {
         }
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingMiddle
-        var x: CGFloat = 12
+        // An add row: in the values' column, under them.
+        var x: CGFloat = node.adds != nil ? 8 + InspectorList.labelWidth + 6 : 12
         if !label.isEmpty {
             let right = NSMutableParagraphStyle()
             right.alignment = .right
@@ -342,4 +400,263 @@ private final class InspectorRow: NSView {
     }
 
     var debugState: String { (label.isEmpty ? "" : label + ": ") + node.title + (node.copies == nil ? "" : " [copy]") }
+}
+
+/// A row the inspector edits in place (a host's variable, §8.6): what it
+/// holds, the choices at its right (a scope), and what's done with it —
+/// said by its owner, which hears it once the row's left (Return, Tab on,
+/// a click elsewhere) or its choice changes.
+final class InspectorEditable {
+    var name: String
+    var value: String
+    var choice: String
+    var choices: [String]
+    var namePlaceholder: String
+    var valuePlaceholder: String
+    /// The value as shown while it isn't edited (a secret's hidden).
+    var shown: (_ name: String, _ value: String) -> String = { $1 }
+    var commit: (_ name: String, _ value: String, _ choice: String) -> Void
+    var remove: (() -> Void)?
+    var help: String?
+
+    init(name: String = "", value: String = "", choice: String, choices: [String], namePlaceholder: String = "NAME",
+         valuePlaceholder: String = "value", commit: @escaping (String, String, String) -> Void) {
+        self.name = name
+        self.value = value
+        self.choice = choice
+        self.choices = choices
+        self.namePlaceholder = namePlaceholder
+        self.valuePlaceholder = valuePlaceholder
+        self.commit = commit
+    }
+}
+
+/// A field of an edited row: no bezel, its row's face; its whole value
+/// shown once it's being edited (a secret's hidden till then).
+private final class InspectorField: NSTextField {
+    var onFocus: (() -> Void)?
+
+    init(alignment: NSTextAlignment, secondary: Bool) {
+        super.init(frame: .zero)
+        isBezeled = false
+        isBordered = false
+        drawsBackground = false
+        focusRingType = .none
+        font = UIType.detail
+        textColor = secondary ? Theme.secondaryText : Theme.text
+        self.alignment = alignment
+        cell?.isScrollable = true
+        cell?.wraps = false
+        lineBreakMode = .byTruncatingTail
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func becomeFirstResponder() -> Bool {
+        onFocus?()
+        return super.becomeFirstResponder()
+    }
+
+    var isEditing: Bool { (window?.firstResponder as? NSTextView)?.delegate === self }
+}
+
+/// An edited row: its name in the label column, its value, both fields;
+/// its choice at the right, a menu (and Remove).
+private final class InspectorEditRow: NSView, NSTextFieldDelegate {
+    let spec: InspectorEditable
+    let isNew: Bool
+    var onDone: ((InspectorEditRow) -> Void)?
+    private let nameField = InspectorField(alignment: .right, secondary: true)
+    private let valueField = InspectorField(alignment: .left, secondary: false)
+    private var value: String
+    private var choice: String
+    private var cancelled = false
+    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+    private static let choiceWidth: CGFloat = 58
+
+    init(_ spec: InspectorEditable, isNew: Bool) {
+        self.spec = spec
+        self.isNew = isNew
+        value = spec.value
+        choice = spec.choice
+        super.init(frame: .zero)
+        nameField.stringValue = spec.name
+        nameField.placeholderString = spec.namePlaceholder
+        valueField.placeholderString = spec.valuePlaceholder
+        showValue(editing: false)
+        for f in [nameField, valueField] {
+            f.delegate = self
+            addSubview(f)
+        }
+        nameField.nextKeyView = valueField
+        valueField.onFocus = { [weak self] in self?.showValue(editing: true) }
+        toolTip = spec.help
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    /// Being edited, or new and not yet said.
+    var holds: Bool { isNew || nameField.isEditing || valueField.isEditing }
+
+    /// Its field to type in — only while Manifold is the app in front: the
+    /// panel doesn't activate it, so made key from behind (a menu of the
+    /// Dock's, a script) it would take what's typed into another app.
+    func focus() {
+        guard NSApp.isActive else { return }
+        window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(isNew && nameField.stringValue.isEmpty ? nameField : valueField)
+    }
+
+    private func showValue(editing: Bool) {
+        valueField.stringValue = editing ? value : spec.shown(nameField.stringValue, value)
+    }
+
+    private var choiceRect: NSRect { NSRect(x: bounds.width - 8 - Self.choiceWidth, y: 1, width: Self.choiceWidth, height: bounds.height - 2) }
+
+    override func layout() {
+        super.layout()
+        nameField.frame = NSRect(x: 8, y: 1, width: InspectorList.labelWidth, height: 16)
+        let x = 8 + InspectorList.labelWidth + 6
+        valueField.frame = NSRect(x: x, y: 1, width: max(0, choiceRect.minX - 4 - x), height: 16)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // The fields' ground: faint under the pointer, plain while edited.
+        if hovering || holds {
+            Flat.hovered.setFill()
+            NSBezierPath(roundedRect: nameField.frame.insetBy(dx: -3, dy: 0), xRadius: 3, yRadius: 3).fill()
+            NSBezierPath(roundedRect: valueField.frame.insetBy(dx: -3, dy: 0), xRadius: 3, yRadius: 3).fill()
+        }
+        let para = NSMutableParagraphStyle()
+        para.alignment = .right
+        let a: [NSAttributedString.Key: Any] = [.font: UIType.detail, .foregroundColor: hovering ? Theme.text : Theme.secondaryText, .paragraphStyle: para]
+        let r = choiceRect
+        (choice as NSString).draw(in: NSRect(x: r.minX, y: 2, width: r.width - 13, height: 15), withAttributes: a)
+        if let chevron = Theme.symbol("chevron.up.chevron.down", size: 8, weight: .medium, color: Theme.secondaryText) {
+            chevron.draw(in: chevron.centered(in: NSRect(x: r.maxX - 11, y: 2, width: 10, height: 14)), from: .zero, operation: .sourceOver,
+                         fraction: 1, respectFlipped: true, hints: nil)
+        }
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if choiceRect.contains(p) { return showChoices() }
+        super.mouseDown(with: event)
+    }
+
+    private func showChoices() {
+        let menu = NSMenu()
+        for c in spec.choices {
+            let item = ClosureMenuItem(c) { [weak self] in self?.choose(c) }
+            item.state = c == choice ? .on : .off
+            menu.addItem(item)
+        }
+        if !isNew, let remove = spec.remove {
+            menu.addItem(.separator())
+            menu.addItem(ClosureMenuItem("Remove", symbol: "trash") { remove() })
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: choiceRect.minX, y: choiceRect.maxY + 2), in: self)
+    }
+
+    private func choose(_ c: String) {
+        choice = c
+        needsDisplay = true
+        // A row there already: said at once; a new one, with the rest.
+        if !isNew { spec.commit(spec.name, spec.value, c) }
+    }
+
+    // MARK: Editing
+
+    func controlTextDidBeginEditing(_ obj: Notification) { needsDisplay = true }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        if (obj.object as? NSTextField) === valueField { value = valueField.stringValue }
+        // Tabbed to its other field: still being edited.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.nameField.isEditing, !self.valueField.isEditing else { return }
+            self.finish()
+        }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.cancelOperation(_:)):
+            cancelled = true
+            window?.makeFirstResponder(nil)
+            return true
+        case #selector(NSResponder.insertNewline(_:)):
+            if control === nameField, isNew { window?.makeFirstResponder(valueField) } else { window?.makeFirstResponder(nil) }
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A new row said or given up: it goes, and isn't said again.
+    private var over = false
+
+    private func finish() {
+        guard !over else { return }
+        defer {
+            cancelled = false
+            needsDisplay = true
+            if isNew {
+                over = true
+                // Its field let go before it goes (no editor left on a row gone).
+                if nameField.isEditing || valueField.isEditing { window?.makeFirstResponder(nil) }
+            }
+            onDone?(self)
+        }
+        let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
+        if cancelled || (isNew && name.isEmpty) || (!isNew && name.isEmpty) {
+            nameField.stringValue = spec.name
+            value = spec.value
+            showValue(editing: false)
+            return
+        }
+        showValue(editing: false)
+        guard isNew || name != spec.name || value != spec.value else { return }
+        spec.commit(name, value, choice)
+    }
+
+    // MARK: Debugging
+
+    var debugState: String {
+        (isNew ? "+ " : "✎ ") + (nameField.stringValue.isEmpty ? "(name)" : nameField.stringValue) + " = " + valueField.stringValue + " [\(choice)]"
+    }
+
+    func debugSet(_ arg: String) -> String {
+        if arg == "escape" {
+            cancelled = true
+            finish()
+            return "cancelled"
+        }
+        for pair in arg.split(separator: " ") {
+            let kv = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard kv.count == 2 else { continue }
+            switch kv[0] {
+            case "name": nameField.stringValue = kv[1]
+            case "value": value = kv[1]
+            case "scope":
+                if isNew { choice = kv[1] } else { choose(kv[1]); return "chose" }
+            case "remove":
+                spec.remove?()
+                return "removed"
+            default: break
+            }
+        }
+        finish()
+        return "said"
+    }
 }

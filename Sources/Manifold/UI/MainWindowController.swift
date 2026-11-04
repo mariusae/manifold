@@ -2584,6 +2584,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if hosts.client(host)?.isRemote == false {
             // This Mac's own (another host's are in its own menu).
             items.append(ClosureMenuItem("Preferences for \(label)…", symbol: "gearshape") { [weak self] in self?.editPreferences(host) })
+            if hosts.client(host)?.keepsEnvironment == true {
+                items.append(ClosureMenuItem("Add Environment Variable…", symbol: "dollarsign.square") { [weak self] in self?.addEnvironmentVariable(host) })
+            }
         }
         if ownRow {
             let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
@@ -4220,6 +4223,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let p = inspector else { return "never shown" }
         if arg == "rows" { return p.list.debugRows }
         if arg.hasPrefix("click "), let row = Int(arg.dropFirst(6)) { return p.list.debugClick(row) }
+        if arg.hasPrefix("set ") { return p.list.debugSet(String(arg.dropFirst(4))) }
         if arg.hasPrefix("fold ") { return p.list.debugToggle(String(arg.dropFirst(5))) }
         if arg.hasPrefix("picture ") { return p.debugPicture(to: String(arg.dropFirst(8))) }
         if arg.hasPrefix("host ") {
@@ -4376,6 +4380,45 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let rtt = c.pings.last?.rtt { server.append(row(HostDashboard.ms(rtt), "round trip", "stopwatch")) }
         if let last = c.drops.last { server.append(row("\(last.why), " + Age.ago(last.at), "last dropped", "bolt.horizontal")) }
         section("Server", "host-server", "server.rack", server)
+
+        // What its server sets in what it starts, and its ssh agent (§8.6).
+        if c.keepsEnvironment {
+            var env: [OrgNode] = []
+            // Each edited in place: its name, its value, its scope at the right.
+            let refused: (String?) -> Void = { [weak self] error in
+                guard let self, let error else { return }
+                self.toast.show(error, action: "OK", for: 6) {}
+            }
+            let scopes = EnvironmentScope.allCases.map(\.rawValue)
+            let help = "Given to all the host starts; its shells (terminals, notebooks, panels' commands); or its tools (the code indexer and its fetches, language servers, git)"
+            for v in c.desk.preferences.environment ?? [] {
+                let n = OrgNode(id: "insp/env/\(v.name)", title: v.name + "=" + v.shownValue, symbol: "dollarsign", detail: v.name)
+                let e = InspectorEditable(name: v.name, value: v.value, choice: v.scope.rawValue, choices: scopes) { name, value, choice in
+                    // Renamed: the old one taken away.
+                    if name != v.name { c.propose(.environment(name: v.name, value: nil, scope: nil)) }
+                    c.propose(.environment(name: name, value: value, scope: EnvironmentScope(rawValue: choice)), done: refused)
+                }
+                e.shown = { EnvironmentVariable(name: $0, value: $1).shownValue }
+                e.remove = { c.propose(.environment(name: v.name, value: nil, scope: nil), done: refused) }
+                e.help = help
+                n.editable = e
+                env.append(n)
+            }
+            let add = OrgNode(id: "insp/env/add", title: "Add Variable…", symbol: "plus", detail: "")
+            let template = InspectorEditable(choice: EnvironmentScope.all.rawValue, choices: scopes, valuePlaceholder: "value") { name, value, choice in
+                c.propose(.environment(name: name, value: value, scope: EnvironmentScope(rawValue: choice)), done: refused)
+            }
+            template.shown = { EnvironmentVariable(name: $0, value: $1).shownValue }
+            template.help = help
+            add.adds = template
+            env.append(add)
+            if let a = c.agentLink {
+                let n = row(a.summary, "ssh agent", "key", copies: a.managed ? a.link : a.local)
+                n.tooltip = a.managed ? "SSH_AUTH_SOCK=\(a.link)" + (a.target.map { " → \($0)" } ?? "") : "the host's own agent"
+                env.append(n)
+            }
+            section("Environment", "host-environment", "dollarsign.square", env)
+        }
 
         section("For Tools", "tools", "wrench.and.screwdriver", [row(c.host.raw, "host id", "number", copies: c.host.raw)])
         return sections
@@ -7389,6 +7432,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// A new variable for a host (§8.6): its inspector shown, a row in
+    /// its Environment to type it in.
+    func addEnvironmentVariable(_ host: HostID) {
+        inspect(.host(host.raw), open: true)
+        refreshInspector(now: true)
+        inspector?.list.startAdding(in: "insp:host-environment")
+    }
+
     private func preferencesRefused(_ host: HostID, _ why: String) {
         guard let window else { return }
         let failed = NSAlert()
@@ -10384,6 +10435,13 @@ extension MainWindowController: OrganizationViewDelegate {
             }
             preferences.isEnabled = c.link == .connected
             menu.addItem(preferences)
+            if c.keepsEnvironment {
+                let env = ClosureMenuItem("Add Environment Variable…", symbol: "dollarsign.square") { [weak self] in
+                    self?.addEnvironmentVariable(c.host)
+                }
+                env.isEnabled = c.link == .connected
+                menu.addItem(env)
+            }
             menu.addItem(.separator())
             for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
             menu.addItem(ClosureMenuItem("Detach from \(hosts.label(of: c.host))…", symbol: "xmark") { [weak self] in

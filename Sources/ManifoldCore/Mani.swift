@@ -357,6 +357,46 @@ public enum Mani {
         Verb(words: ["skill", "uninstall"], args: "[agent ...]", minArgs: 0, maxArgs: nil, flags: [],
              summary: "Take Manifold's hooks out of coding agents",
              details: "Takes out what `mani skill install` put in: of the agents found here, or those named."),
+        Verb(words: ["env"], args: "", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "for", value: "scope", help: "only those given to all, shells or tools"),
+                     Flag(name: "show", help: "secrets' values too"), json],
+             summary: "List the variables this host sets in what it starts, and its ssh agent",
+             details: """
+                 The host's server sets these in the environment of what it
+                 starts, each for a scope: all; shells (terminals, notebooks,
+                 panels' commands); or tools (what the server runs itself: the
+                 code indexer and its fetches, language servers, git). They're
+                 the host's, wherever it's reached from, and new shells and
+                 tools get them; a shell already running, by `mani env export`.
+                 Its shells' SSH_AUTH_SOCK is a link to the newest agent
+                 forwarded to the host that answers, so they keep signing as
+                 connections come and go (unless the host has its own agent).
+                 """, inApp: true),
+        Verb(words: ["env", "set"], args: "<NAME=value | NAME> ...", minArgs: 1, maxArgs: nil,
+             flags: [Flag(name: "for", value: "scope", help: "all (the default for a new one), shells or tools")],
+             summary: "Set variables this host gives what it starts",
+             details: """
+                 NAME alone takes its value from this shell. A variable set
+                 again keeps its scope unless --for says another. A proxy for
+                 the indexer's fetches only: mani env set --for tools
+                 HTTPS_PROXY=http://proxy:3128 NO_PROXY=localhost.
+                 """, inApp: true),
+        Verb(words: ["env", "unset"], args: "<NAME> ...", minArgs: 1, maxArgs: nil, flags: [],
+             summary: "Stop giving variables to what this host starts", details: "", inApp: true),
+        Verb(words: ["env", "export"], args: "", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "for", value: "scope", help: "the scope's (shells, unless said)")],
+             summary: "Print the variables as export lines, for a shell already running",
+             details: """
+                 With the agent's link: eval "$(mani env export)" in sh, bash or
+                 zsh; mani env export | source in fish.
+                 """, inApp: true),
+        Verb(words: ["env", "agent"], args: "[socket]", minArgs: 0, maxArgs: 1, flags: [],
+             summary: "Say how this host's ssh agent stands, or give its shells another",
+             details: """
+                 Agents forwarded to Manifold's connections and to ssh logins are
+                 found on their own. A socket named (this shell's SSH_AUTH_SOCK,
+                 if none is) is linked at once, if it's the newest.
+                 """, inApp: true),
         Verb(words: ["agent"], args: "<event> [json]", minArgs: 1, maxArgs: 2,
              flags: [Flag(name: "agent", value: "name", help: "the agent the hook is in (claude, codex, ...)"),
                      Flag(name: "no-input", help: "read nothing from the input")],
@@ -708,6 +748,18 @@ public enum Mani {
                     bringForward()
                     exit(0)
                 }
+            }
+            let env = ProcessInfo.processInfo.environment
+            if invocation.verb == "env set" {
+                // NAME alone: its value here.
+                request.args = invocation.args.map { a in
+                    guard !a.contains("=") else { return a }
+                    guard let v = env[a] else { fail("\(a) isn't set in this shell; give it a value: \(a)=…") }
+                    return a + "=" + v
+                }
+            }
+            if invocation.verb == "env agent", request.args.isEmpty, let s = env["SSH_AUTH_SOCK"], !s.isEmpty {
+                request.args = [s]
             }
             if verb(invocation.verb)?.readsInput == true, invocation.value("text") == nil {
                 request.input = readInput()

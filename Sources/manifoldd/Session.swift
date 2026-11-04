@@ -680,6 +680,8 @@ final class Session {
         }
         env["TERM_PROGRAM"] = "Manifold"
         env.removeValue(forKey: "TERM_PROGRAM_VERSION")
+        // The host's variables for its shells, and its agent's link (§8.6).
+        SpawnEnvironment.apply(to: &env, scope: .shells)
 
         env["MANIFOLD_BIN"] = toolDirectories.joined(separator: ":")
         // fish finds Ghostty's integration (working directory, titles, the

@@ -21,6 +21,13 @@ enum Bridge {
         if let name, !FileManager.default.fileExists(atPath: Paths.label.path) {
             try? Data(name.utf8).write(to: Paths.label)
         }
+        // The agent forwarded with this connection, the host's shells'
+        // while it's the newest (§8.6).
+        let agent = ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"].flatMap { $0.isEmpty ? nil : $0 }
+        if let agent {
+            AgentLink.note(agent, from: "forwarded to a Manifold connection", pid: getpid())
+            AgentLink.update()
+        }
         var fd = try? UnixSocket.connect(path: Paths.socket)
         if fd == nil {
             startServer()
@@ -41,6 +48,10 @@ enum Bridge {
         }
         up.start()
         pump(from: sock, to: 1, debug: debug, label: "out")
+        if agent != nil {
+            AgentLink.forget(pid: getpid())
+            AgentLink.update()
+        }
         exit(0)
     }
 
@@ -65,6 +76,8 @@ enum Bridge {
     private static func startServer() {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
         let path = exe.hasPrefix("/") ? exe : Paths.installedServer.path
+        // Its environment is this connection's, which will end (§8.6).
+        setenv(SpawnEnvironment.bridgedKey, "1", 1)
         _ = withCStrings([path, "serve"]) { argv in
             mf_spawn_detached(path, argv, Paths.log.path)
         }
