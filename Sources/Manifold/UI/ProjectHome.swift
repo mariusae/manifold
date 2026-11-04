@@ -397,9 +397,15 @@ final class HomeRow: NSView, NSDraggingSource {
     /// the row still what's clicked, chosen and dragged.
     private var card: SummaryCard?
 
+    /// Two of its lines, not a stack's three: the page lists several, and
+    /// two say what's at work.
+    static let cardLines = 2
+
     convenience init(card content: SummaryCardContent) {
         self.init(mark: nil, markColor: nil, title: content.summary.title, detail: nil, symbol: content.symbol)
-        let c = SummaryCard(content)
+        var shown = content
+        shown.summary.lines = Array(content.summary.lines.prefix(Self.cardLines))
+        let c = SummaryCard(shown)
         card = c
         addSubview(c)
     }

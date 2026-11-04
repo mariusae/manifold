@@ -1131,11 +1131,11 @@ enum DebugControl {
             let arrows: [String: (Int, UInt16)] = ["left": (NSLeftArrowFunctionKey, 123), "right": (NSRightArrowFunctionKey, 124),
                                                   "down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126)]
             if let (scalar, _) = arrows[last] { mods.insert([.function, .numericPad]); _ = scalar }
-            let key = last == "tab" ? "\t" : arrows[last].map { String(UnicodeScalar($0.0)!) } ?? last
+            let key = last == "tab" ? "\t" : last == "return" ? "\r" : arrows[last].map { String(UnicodeScalar($0.0)!) } ?? last
             // US layout key codes: the menu matches by them as well as by the characters.
             let codes: [String: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12,
                                            "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38,
-                                           "k": 40, "n": 45, "m": 46, ".": 47, "\t": 48, "`": 50, "'": 39, "\\": 42, "[": 33, "]": 30, "=": 24, "-": 27]
+                                           "k": 40, "n": 45, "m": 46, ".": 47, "\t": 48, "\r": 36, "`": 50, "'": 39, "\\": 42, "[": 33, "]": 30, "=": 24, "-": 27]
             guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                                windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
                                                isARepeat: false, keyCode: arrows[last]?.1 ?? codes[key] ?? 37) else { return "usage: keyequiv [mods+]<key>" }
