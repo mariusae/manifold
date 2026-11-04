@@ -349,7 +349,9 @@ public enum Mani {
                  its status, and each of its turns in the tile's outline. The hooks run `mani agent`, and do nothing outside
                  Manifold's terminals. And the guide (`mani skill show`), so they
                  know mani: Claude Code's as a skill, Codex's from AGENTS.md.
-                 Installing again replaces them.
+                 And Claude Code's /block: its last response (or what's named
+                 after it) shown beside its terminal, rendered. Installing again
+                 replaces them.
                  """),
         Verb(words: ["skill", "show"], args: "", minArgs: 0, maxArgs: 0, flags: [],
              summary: "Print the guide for agents: seeing and driving Manifold",

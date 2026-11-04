@@ -137,6 +137,25 @@ import Testing
     try Data("---\nname: manifold\n---\nold\n".utf8).write(to: skill)
     try AgentSkill.refreshSkillFile(at: skill)
     #expect(try String(contentsOf: skill, encoding: .utf8) == AgentSkill.skillFile)
+    // /block: put in beside the guide where that is, rewritten when it changes, taken out.
+    let block = dir.appendingPathComponent("skills/block/SKILL.md")
+    try AgentSkill.refreshBlockSkill(at: block)
+    #expect(try String(contentsOf: block, encoding: .utf8) == AgentSkill.blockSkillFile)
+    #expect(AgentSkill.blockSkillFile.contains("disable-model-invocation: true"))
+    #expect(AgentSkill.blockSkillFile.contains("mani new note --preview") && AgentSkill.blockSkillFile.contains("$ARGUMENTS"))
+    try Data("---\nname: block\n---\nold MANIFOLD_BLOCK_END\n".utf8).write(to: block)
+    try AgentSkill.refreshBlockSkill(at: block)
+    #expect(try String(contentsOf: block, encoding: .utf8) == AgentSkill.blockSkillFile)
+    try AgentSkill.uninstallBlockSkill(at: block)
+    #expect(!FileManager.default.fileExists(atPath: block.deletingLastPathComponent().path))
+    // A `block` skill of the user's own: left as it is.
+    let theirs = "---\nname: block\ndescription: mine\n---\nDo my thing.\n"
+    try FileManager.default.createDirectory(at: block.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data(theirs.utf8).write(to: block)
+    try AgentSkill.installBlockSkill(at: block)
+    try AgentSkill.refreshBlockSkill(at: block)
+    try AgentSkill.uninstallBlockSkill(at: block)
+    #expect(try String(contentsOf: block, encoding: .utf8) == theirs)
     try AgentSkill.uninstallSkillFile(at: skill)
     #expect(!FileManager.default.fileExists(atPath: skill.deletingLastPathComponent().path))
 }

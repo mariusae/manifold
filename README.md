@@ -1928,8 +1928,12 @@ is migrated into logs on first run.
     the hooks: Claude Code as a skill (`~/.claude/skills/manifold`,
     loaded when it's in a Manifold terminal and the user means what's on
     screen), Codex as a few lines in `~/.codex/AGENTS.md` that point to
-    it (the rest of the file kept). A newer Manifold's guide replaces
-    the old as it starts.
+    it (the rest of the file kept). Claude Code gets **`/block`** too
+    (`~/.claude/skills/block`): typed, the agent shows its last response
+    — or what's named after it, `/block the plan` — in a note beside its
+    terminal, rendered as Markdown; it runs only when typed, and a
+    `block` skill of your own is left as it is. A newer Manifold's guide
+    (and `/block`) replaces the old as it starts.
   - `mani diff`, `mani skill`, `mani agent` (what agents' hooks run) and
     `mani help` are done by `mani` itself; the
     rest are passed to the app through the host, so they work alike from

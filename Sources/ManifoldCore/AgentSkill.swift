@@ -93,6 +93,7 @@ public enum AgentSkill {
         let codex = codexHome.appendingPathComponent("hooks.json")
         let codexAgents = codexHome.appendingPathComponent("AGENTS.md")
         let claudeSkill = claude.deletingLastPathComponent().appendingPathComponent("skills/manifold/SKILL.md")
+        let blockSkill = claude.deletingLastPathComponent().appendingPathComponent("skills/block/SKILL.md")
         let museDir = env["MUSE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
             ?? (env["XDG_CONFIG_HOME"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".config")).appendingPathComponent("muse")
         let muse = museDir.appendingPathComponent("settings.json")
@@ -104,9 +105,10 @@ public enum AgentSkill {
         return [
             // MetaCode reads Claude Code's hooks too; `mani agent` tells them apart.
             Target(name: "claude", file: claude, present: here("claude", claude.deletingLastPathComponent()),
-                   install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents); try installSkillFile(at: claudeSkill) },
-                   uninstall: { try uninstallClaudeStyle(at: claude); try uninstallSkillFile(at: claudeSkill) },
-                   refresh: { try refreshClaudeStyle(at: claude); try refreshSkillFile(at: claudeSkill) }),
+                   install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents); try installSkillFile(at: claudeSkill)
+                       try installBlockSkill(at: blockSkill) },
+                   uninstall: { try uninstallClaudeStyle(at: claude); try uninstallSkillFile(at: claudeSkill); try uninstallBlockSkill(at: blockSkill) },
+                   refresh: { try refreshClaudeStyle(at: claude); try refreshSkillFile(at: claudeSkill); try refreshBlockSkill(at: blockSkill) }),
             Target(name: "codex", file: codex, present: here("codex", codexHome),
                    install: { try installClaudeStyle(at: codex, agent: "codex", events: codexEvents); try installAgentsNote(at: codexAgents) },
                    uninstall: { try uninstallClaudeStyle(at: codex); try uninstallAgentsNote(at: codexAgents) },
@@ -361,6 +363,66 @@ public enum AgentSkill {
 
         \(Mani.guide)
         """
+    }
+
+    /// Claude Code's `/block`: the agent's last response (or what's asked
+    /// after it) shown beside its terminal, rendered — run only when typed.
+    static var blockSkillFile: String {
+        """
+        ---
+        name: block
+        description: Show your last response (or what's named after /block) in a Manifold block beside this terminal, rendered as Markdown. Only when the user types /block.
+        argument-hint: "[what to show, else your last response]"
+        disable-model-invocation: true
+        ---
+
+        Show your previous response to the user — the last message you wrote before
+        this command, whole and as you wrote it (its Markdown: headings, lists, code,
+        tables) — in a Manifold note beside this terminal, rendered:
+
+        ```sh
+        mani new note --preview --title "<a few words saying what it is>" <<'\(blockEnd)'
+        <your previous response>
+        \(blockEnd)
+        ```
+
+        If the user said what to show — "$ARGUMENTS" — show that instead: a part of
+        your response (the plan, the table), or what they describe, written out in full.
+
+        Then say only that it's shown; mani prints the note's id. If this isn't one of
+        Manifold's terminals (MANIFOLD_BLOCK is unset, or mani says Manifold isn't
+        attached), say so, and write nothing anywhere else.
+        """
+    }
+
+    /// The end of `/block`'s here-document: also how the skill is known as
+    /// Manifold's (a `block` skill of the user's own is left alone).
+    static let blockEnd = "MANIFOLD_BLOCK_END"
+
+    static func isOurBlockSkill(_ text: String) -> Bool { text.hasPrefix("---\nname: block\n") && text.contains(blockEnd) }
+
+    static func installBlockSkill(at url: URL) throws {
+        if let old = try? String(contentsOf: url, encoding: .utf8), !isOurBlockSkill(old) { return }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(blockSkillFile.utf8).write(to: url, options: .atomic)
+    }
+
+    static func uninstallBlockSkill(at url: URL) throws {
+        guard let text = try? String(contentsOf: url, encoding: .utf8), isOurBlockSkill(text) else { return }
+        try FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    /// Rewritten when it's changed (a new Manifold); put in beside the
+    /// guide where that is and it isn't (installed before `/block` was).
+    static func refreshBlockSkill(at url: URL) throws {
+        let guide = url.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("manifold/SKILL.md")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+            if FileManager.default.fileExists(atPath: guide.path) { try installBlockSkill(at: url) }
+            return
+        }
+        guard isOurBlockSkill(text), text != blockSkillFile else { return }
+        try installBlockSkill(at: url)
     }
 
     static let agentsBegin = "<!-- manifold: put here by `mani skill install`; `mani skill uninstall` takes it out -->"
