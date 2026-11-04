@@ -9986,6 +9986,8 @@ extension MainWindowController: TerminalViewDelegate {
 
     func terminal(_ view: TerminalView, menuFor command: ShellCommand) -> NSMenu? {
         let menu = NSMenu()
+        // Its items enabled as they say (Run Again isn't, while one runs).
+        menu.autoenablesItems = false
         let linkItem = ClosureMenuItem("Copy Link to This \(hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true ? "Turn" : "Command")", symbol: "link") { [weak self] in
             self?.copyLink(to: view.block, fragment: self?.anchored("command=\(command.id)", in: view.block))
         }
@@ -9993,6 +9995,20 @@ extension MainWindowController: TerminalViewDelegate {
         if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {
             for item in turnItems(turn, of: view.block, beside: view.placement) { menu.addItem(item) }
         } else {
+            // The command sent to the shell again: run, or typed at the prompt
+            // to be changed first — not while one runs (it'd go to that program).
+            let busy = view.commands.last.map { $0.status == nil } ?? false
+            for (title, symbol, run) in [("Run Again", "arrow.clockwise", true), ("Type at Prompt", "text.cursor", false)] {
+                let item = ClosureMenuItem(title, symbol: symbol) { [weak self, weak view] in
+                    guard let self, let view else { return }
+                    self.hosts.propose(.input(block: view.block, text: command.text + (run ? "\r" : "")))
+                    self.focus(view.placement)
+                }
+                item.isEnabled = !busy
+                if busy { item.toolTip = "A command is running in this terminal" }
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Open as Block", symbol: "text.alignleft") { [weak view] in _ = view?.showOutput(ofCommand: command.id, beside: view?.placement) })
             menu.addItem(ClosureMenuItem("Copy Command", symbol: "doc.on.clipboard") {
                 NSPasteboard.general.clearContents()

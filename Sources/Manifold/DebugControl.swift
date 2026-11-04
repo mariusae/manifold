@@ -589,6 +589,20 @@ enum DebugControl {
             let a = arg.split(separator: " ").compactMap { Int($0) }
             guard a.count == 2, let wc else { return "usage: pushdown column row" }
             return wc.debugPushDown(column: a[0], row: a[1])
+        case "cmdmenu":
+            // "cmdmenu <n> [title]": the focused terminal's command menu for
+            // its outline's nth entry (from 0), each item and whether it's
+            // enabled; with a title, that item chosen.
+            let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard let t = wc?.debugFocusedTerminal, let n = words.first.flatMap(Int.init) else { return "usage: cmdmenu <n> [title]" }
+            guard let menu = t.outline?.menuFor?(n) else { return "no menu" }
+            if words.count > 1 {
+                guard let item = menu.items.first(where: { $0.title == words[1] }) as? ClosureMenuItem else { return "no item \(words[1])" }
+                guard item.isEnabled else { return "\(words[1]) is disabled" }
+                item.debugRun()
+                return "chose \(words[1])"
+            }
+            return menu.items.map { $0.isSeparatorItem ? "—" : $0.title + ($0.isEnabled ? "" : " (disabled)") }.joined(separator: "\n")
         case "termmenu":
             // The focused terminal's right-click menu, its items and submenus listed.
             guard let t = wc?.debugFocusedTerminal, let window = wc?.window else { return "no terminal focused" }

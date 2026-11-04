@@ -1181,7 +1181,11 @@ around it, and comes back with its history.
   what's typed, then leaves; ⇧⌘P again leaves. Either way the tile has
   the keyboard back, and a sidebar opened for it is put away again; the
   filter stands until cleared. (A tile with an outline but no sidebar
-  gets ⌘P.) A command's **output** (Open as Block in its ⋯,
+  gets ⌘P.) A command in a terminal's outline, right-clicked (its row,
+  its entry in the ticks' list): **Run Again** types it at the prompt
+  with a return, **Type at Prompt** types it to be changed first — the
+  tile focused, neither while a command is running (it'd go to that
+  program). A command's **output** (Open as Block in its ⋯,
   or on its dot) opens as a block of
   its own: the command line, how it ended and when, and what it printed
   as the terminal drew it — its colours, faces and carriage returns, in
