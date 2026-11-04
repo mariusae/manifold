@@ -1,7 +1,7 @@
 import Foundation
 
 /// The kinds of block you can make, one table for every way of making one
-/// (DESIGN §6.2): File ▸ New's items, the New Block picker (⌥⌘N), and
+/// (DESIGN §6.2): File ▸ New's items, the New Block picker (⌘N), and
 /// `mani new <kind> [what]` and its help are all made from it, so a kind
 /// is added in one place and can't be left out of one of them.
 public enum BlockKinds {
@@ -23,35 +23,39 @@ public enum BlockKinds {
         public var help: String
         /// Made from a menu or the picker, not only from a shell.
         public var interactive = true
+        /// Its letter: ⌥⌘ and it makes one below the focused tile, ⌥⇧⌘ in a
+        /// new column; typed alone in the picker, it's this kind.
+        public var key: String? = nil
     }
 
     public static let all: [Kind] = [
         Kind(name: "terminal", title: "Terminal", symbol: "manifold.terminal", what: "command",
-             help: "a terminal here, running the command if given"),
+             help: "a terminal here, running the command if given", key: "t"),
         Kind(name: "agent", title: "Agent", symbol: "sparkle", what: "command",
-             help: "a coding agent here: the one Settings name, else the command"),
+             help: "a coding agent here: the one Settings name, else the command", key: "a"),
         Kind(name: "note", title: "Note", symbol: "manifold.note", what: "text",
-             help: "a note, with the text if given"),
+             help: "a note, with the text if given", key: "n"),
         Kind(name: "web", aliases: ["page"], title: "Web Page", symbol: "globe", what: "address",
-             help: "a page at the address, or one to type it into"),
+             help: "a page at the address, or one to type it into", key: "w"),
         Kind(name: "search", title: "Search", symbol: "magnifyingglass", what: "words",
-             help: "a search of the files under here for the words"),
+             help: "a search of the files under here for the words", key: "s"),
         Kind(name: "folder", aliases: ["directory"], title: "Folder", symbol: "folder", what: "path",
-             help: "a folder's listing: the path's, else here"),
+             help: "a folder's listing: the path's, else here", key: "o"),
         Kind(name: "notebook", title: "Shell Notebook", symbol: "text.line.first.and.arrowtriangle.forward",
-             help: "a shell notebook here: cells run in one shell that lives on"),
+             help: "a shell notebook here: cells run in one shell that lives on", key: "b"),
         Kind(name: "git", aliases: ["source"], title: "Source Control", symbol: "arrow.triangle.branch",
-             help: "the repository's block (git or Sapling), for here"),
+             help: "the repository's block (git or Sapling), for here", key: "g"),
         Kind(name: "smartlog", title: "Smartlog", symbol: "arrow.triangle.pull",
-             help: "Sapling's interactive smartlog, for here"),
+             help: "Sapling's interactive smartlog, for here", key: "l"),
         Kind(name: "process", aliases: ["processes", "ps"], title: "Processes", symbol: "gauge.medium",
-             help: "the host's processes, as ps lists them"),
+             help: "the host's processes, as ps lists them", key: "p"),
     ]
 
-    /// A kind by its name, an alias, or (unless `exact`) the start of one.
+    /// A kind by its name, an alias, its letter, or (unless `exact`) the
+    /// start of one.
     public static func named(_ word: String, exact: Bool = true) -> Kind? {
         let w = word.lowercased()
-        if let k = all.first(where: { $0.name == w || $0.aliases.contains(w) }) { return k }
+        if let k = all.first(where: { $0.name == w || $0.aliases.contains(w) || $0.key == w }) { return k }
         guard !exact, !w.isEmpty else { return nil }
         let starting = all.filter { k in ([k.name, k.title.lowercased()] + k.aliases).contains { $0.hasPrefix(w) } }
         return starting.count == 1 ? starting[0] : nil
@@ -62,7 +66,10 @@ public enum BlockKinds {
     public static func matching(_ word: String) -> [Kind] {
         let w = word.lowercased()
         guard !w.isEmpty else { return all.filter(\.interactive) }
-        return all.filter { k in k.interactive && ([k.name, k.title.lowercased()] + k.aliases).contains { $0.hasPrefix(w) || $0.split(separator: " ").contains { $0.hasPrefix(w) } } }
+        let found = all.filter { k in k.interactive && ([k.name, k.title.lowercased()] + k.aliases).contains { $0.hasPrefix(w) || $0.split(separator: " ").contains { $0.hasPrefix(w) } } }
+        // A kind's letter: that kind first (s: Search, then the rest an s starts).
+        guard let keyed = all.first(where: { $0.interactive && $0.key == w }) else { return found }
+        return [keyed] + found.filter { $0 != keyed }
     }
 
     /// What's typed in the picker, read as `mani new` reads its words: a

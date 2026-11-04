@@ -835,7 +835,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         case #selector(NSResponder.moveUp(_:)): move(-1)
         case #selector(NSResponder.moveDown(_:)): move(1)
         // ↩ goes; ⌥↩ (which the field calls this) puts it over.
-        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)): openSelected()
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
+             #selector(NSResponder.insertLineBreak(_:)): openSelected()
         case #selector(NSResponder.cancelOperation(_:)): close()
         case #selector(NSResponder.insertTab(_:)) where outline == nil: completeKind()
         case #selector(NSResponder.insertTab(_:)) where otherOutline != nil: switchOutline()

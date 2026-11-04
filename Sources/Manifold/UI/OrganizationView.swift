@@ -301,7 +301,7 @@ protocol OrganizationViewDelegate: AnyObject {
 /// opens or closes the whole subtree.
 final class DeepOutlineView: NSOutlineView {
     /// Only while a ⇧-click is being handled: not for every expansion
-    /// made while ⇧ happens to be down (a ⇧-drag, ⇧⌘N), which on a tree
+    /// made while ⇧ happens to be down (a ⇧-drag, ⌥⇧⌘N), which on a tree
     /// whose children are made as they're reached (Links) would go on
     /// for ever.
     private var deep = false

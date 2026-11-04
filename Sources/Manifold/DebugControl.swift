@@ -611,6 +611,20 @@ enum DebugControl {
                 return "chose \(words[1])"
             }
             return menu.items.map { $0.isSeparatorItem ? "—" : $0.title + ($0.isEnabled ? "" : " (disabled)") }.joined(separator: "\n")
+        case "menuitem":
+            // "menuitem File ▸ New ▸ Terminal in a New Column": that main-menu
+            // item chosen, as a click on it sends it (to the window's
+            // controller, if it answers, the window not needing to be key).
+            let path = arg.components(separatedBy: " ▸ ")
+            var menu = NSApp.mainMenu
+            var found: NSMenuItem?
+            for (i, title) in path.enumerated() {
+                guard let item = menu?.items.first(where: { $0.title == title }) else { return "no item \(title)" }
+                if i == path.count - 1 { found = item } else { menu = item.submenu }
+            }
+            guard let item = found, let action = item.action else { return "nothing to choose" }
+            let target: Any? = item.target ?? (wc?.responds(to: action) == true ? wc : nil)
+            return NSApp.sendAction(action, to: target, from: item) ? "chose \(item.title)" : "nothing took it"
         case "termmenu":
             // The focused terminal's right-click menu, its items and submenus listed.
             guard let t = wc?.debugFocusedTerminal, let window = wc?.window else { return "no terminal focused" }

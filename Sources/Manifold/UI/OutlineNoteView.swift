@@ -2359,11 +2359,18 @@ final class NoteOutlineTextView: NSTextView {
 
     /// Markdown of more than a line comes in as rows: in place of an empty
     /// row, or after the rows it was pasted onto.
-    override func paste(_ sender: Any?) {
+    override func paste(_ sender: Any?) { paste(sender, plain: false) }
+
+    /// ⌥⇧⌘V, Paste and Match Style: the clipboard's text as text — a
+    /// picture on it not kept, an address over words not made their link;
+    /// its lines still rows.
+    override func pasteAsPlainText(_ sender: Any?) { paste(sender, plain: true) }
+
+    private func paste(_ sender: Any?, plain: Bool) {
         // A picture (a screenshot copied, Preview's, a browser's Copy
         // Image): kept for the note as an image block, and shown — in the
         // caret's row if it's empty, else a row of its own after it.
-        if pastePicture(from: .general) { return }
+        if !plain, pastePicture(from: .general) { return }
         if selectedRows == nil, let s = NSPasteboard.general.string(forType: .string) {
             let range = selectedRange()
             // In code: as it is, its lines the block's.
@@ -2372,11 +2379,13 @@ final class NoteOutlineTextView: NSTextView {
                 return insertText(t.replacingOccurrences(of: "\n", with: NoteOutlineText.lineSeparator), replacementRange: range)
             }
             // An address pasted over words: a link to it, with those words.
-            if range.length > 0, pasteLink(s, over: range) { return }
+            if !plain, range.length > 0, pasteLink(s, over: range) { return }
         }
-        guard let s = NSPasteboard.general.string(forType: .string), s.contains("\n") else { return super.paste(sender) }
+        guard let s = NSPasteboard.general.string(forType: .string), s.contains("\n") else {
+            return plain ? super.pasteAsPlainText(sender) : super.paste(sender)
+        }
         let pasted = NoteOutlineMarkdown.parse(s).rows
-        guard !pasted.isEmpty else { return super.paste(sender) }
+        guard !pasted.isEmpty else { return plain ? super.pasteAsPlainText(sender) : super.paste(sender) }
         var all = rows
         let before = all
         let target = targetRows

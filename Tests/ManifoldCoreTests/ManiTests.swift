@@ -169,7 +169,18 @@ import Testing
     #expect(BlockKinds.named("ps")?.name == "process")
     #expect(BlockKinds.named("page")?.name == "web")
     #expect(BlockKinds.named("term", exact: false)?.name == "terminal")
-    #expect(BlockKinds.named("s", exact: false) == nil)  // search, smartlog, shell notebook, source control
+    #expect(BlockKinds.named("se", exact: false)?.name == "search")
+    #expect(BlockKinds.named("sm", exact: false)?.name == "smartlog")
+    // A kind's letter (⌥⌘ and it): that kind, ahead of those it starts.
+    #expect(BlockKinds.named("s")?.name == "search")
+    #expect(BlockKinds.named("l")?.name == "smartlog")
+    #expect(BlockKinds.named("b")?.name == "notebook")
+    #expect(BlockKinds.parse("t make test") == ("t", "make test"))
+    #expect(BlockKinds.matching("n").first?.name == "note")
+    #expect(BlockKinds.matching("s").first?.name == "search" && BlockKinds.matching("s").map(\.name).contains("smartlog"))
+    // Every kind made from a menu has a letter, none twice.
+    let letters = BlockKinds.all.filter(\.interactive).compactMap(\.key)
+    #expect(letters.count == BlockKinds.all.filter(\.interactive).count && Set(letters).count == letters.count)
     #expect(BlockKinds.matching("").count == BlockKinds.all.count)
     #expect(BlockKinds.matching("s").map(\.name).contains("smartlog"))
     #expect(BlockKinds.matching("notebook").map(\.name) == ["notebook"])

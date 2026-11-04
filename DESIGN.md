@@ -915,7 +915,7 @@ show it among their links on the bar: the other block's face, a chevron
 in it for the direction, its summary card on a rest, clicked as any link is;
 its menu's Remove Link ends the edge (`unlink`), in both readings at
 once. A note made
-with a block focused (⇧⌘N) is the same edge, from the block to the
+with a block focused (⌥⌘N) is the same edge, from the block to the
 note, as if the block had been ⇧-dragged into it. Into a note the
 block also lands as a Markdown link, `[title](manifold:host/ulid)`,
 hence a `mention` edge too; the editor draws such a link as a capsule
@@ -1209,8 +1209,10 @@ indexes of every host it is attached to, so backlinks cross hosts.
 
 **Making** is one table too (`BlockKinds`): each kind of block, its
 symbol, what it takes after its name (a command, an address, words, a
-path) and a line on it. File ▸ New's items, the New Block picker (⌥⌘N,
-the kind's name then what it takes, placed by the one rule's keys) and
+path) and a line on it. File ▸ New's items (⌥⌘ and the kind's letter, below the focused
+tile; ⌥⇧⌘, in a new column — the same action, its `show` told once), the
+New Block picker (⌘N, the kind's letter or name then what it takes,
+placed by the one rule's keys, ⇧↩ a new column) and
 `mani new <kind> [what]` with its help are all made from it, and all go
 through one maker in the controller (`makeBlock`), so a kind is added in
 one place. Finding and making stay apart: Open Quickly finds what

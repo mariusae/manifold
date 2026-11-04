@@ -524,6 +524,28 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return true
     }
 
+    /// ⌘↑ (⌘↓): the view scrolled so the command before the top row shown
+    /// (after it) is at the top — its prompt, as Terminal.app's marks go;
+    /// past the last, to the bottom. A full-screen program's (the
+    /// alternate screen) keys are its own, so false there.
+    func goToCommand(_ direction: Int) -> Bool {
+        guard let surface else { return false }
+        var info = ghostty_manifold_info_s()
+        ghostty_surface_manifold_info(surface, &info)
+        guard info.flags & 1 == 0 else { return false }
+        locate()
+        let top = scrollbar.offset
+        let rows = Set(located.values).sorted()
+        if let row = direction < 0 ? rows.last(where: { $0 < top }) : rows.first(where: { $0 > top }) {
+            perform("scroll_to_row:\(row)")
+        } else if direction > 0 {
+            perform("scroll_to_bottom")
+        } else {
+            perform("scroll_to_top")
+        }
+        return true
+    }
+
     /// A command's output as a block of its own (§3.8), beside a placement.
     @discardableResult
     func showOutput(ofCommand id: Int, beside: PlacementID?) -> Bool {
@@ -1743,6 +1765,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             keyDown(with: event)
             return true
         }
+        // ⌘↑ ⌘↓: to the command before or after, as Terminal.app's marks.
+        if flags == [.command], let k = event.charactersIgnoringModifiers?.unicodeScalars.first?.value,
+           k == UInt32(NSUpArrowFunctionKey) || k == UInt32(NSDownArrowFunctionKey) {
+            return goToCommand(k == UInt32(NSUpArrowFunctionKey) ? -1 : 1)
+        }
         guard flags.contains(.control), !flags.contains(.command) else { return false }
         switch event.charactersIgnoringModifiers {
         case "\r", "/", "-", "_":
@@ -1964,6 +1991,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     @objc func paste(_ sender: Any?) { perform("paste_from_clipboard") }
     @objc override func selectAll(_ sender: Any?) { perform("select_all") }
     @objc func clearScreen(_ sender: Any?) { perform("clear_screen") }
+    /// ⌘K (Edit ▸ Clear Screen, a note's Link… there).
+    @objc func clearOrLink(_ sender: Any?) { clearScreen(sender) }
     @objc func increaseFontSize(_ sender: Any?) { perform("increase_font_size:1") }
     @objc func decreaseFontSize(_ sender: Any?) { perform("decrease_font_size:1") }
     @objc func resetFontSize(_ sender: Any?) { perform("reset_font_size") }
@@ -1971,6 +2000,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     @objc func scrollToBottom(_ sender: Any?) { perform("scroll_to_bottom") }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(clearOrLink(_:)) { item.title = "Clear Screen" }
         if item.action == #selector(copy(_:)) {
             return surface.map { ghostty_surface_has_selection($0) } ?? false
         }

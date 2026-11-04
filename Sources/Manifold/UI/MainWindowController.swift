@@ -1835,9 +1835,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return id
     }
 
-    /// A new web page beside the focused tile, its address to be typed.
+    /// A new web page below the focused tile, its address to be typed.
     @objc func newWebPage(_ sender: Any?) {
-        show(host.newWeb(url: "https://duckduckgo.com"), lens: .web, .beside)
+        show(host.newWeb(url: "https://duckduckgo.com"), lens: .web, .here)
     }
 
     /// ⌘T (and the first thing at launch): a new terminal in a new
@@ -1860,9 +1860,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return a
     }
 
-    /// ⌘N: a new terminal beside the focused block, in a new column
-    /// (§3.1), where the focused block is.
-    /// ⌘N: a new terminal in the active column, as acme and apex place a
+    /// ⌥⌘T: a new terminal in the active column, as acme and apex place a
     /// window — below the column's biggest tile, taking its lower half.
     @objc func newTerminalBeside(_ sender: Any?) {
         guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
@@ -1870,12 +1868,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(t, lens: .terminal, .here)
     }
 
-    /// ⌥⌘N: a new terminal in a new column beside the focused one.
-    @objc func newTerminalInNewColumn(_ sender: Any?) {
-        guard let a = arrangement, !a.isEmpty else { return newTerminal(nil) }
-        let t = hosts.newTerminal(on: focusedHost, cwd: focusedCwd)
-        show(t, lens: .terminal, .beside)
+    /// ⌥⇧⌘ and a kind's letter (File ▸ New's items with ⇧ held): the kind
+    /// made as ⌥⌘ makes it, in a new column to the right of the focused
+    /// one instead of below it.
+    @objc func newInNewColumn(_ sender: Any?) {
+        guard let name = (sender as? NSMenuItem)?.representedObject as? String, let action = Self.newActions[name] else { return }
+        inNewColumn = true
+        defer { inNewColumn = false }
+        _ = perform(action, with: sender)
     }
+
+    /// Set while one of ⌥⇧⌘'s makes its kind: where it's shown is a new
+    /// column (`show`, `showWhenMade` read it as they're called).
+    private var inNewColumn = false
 
     /// Moves a whole column to another index.
     private func reorderColumn(from: Int, to: Int) {
@@ -1883,9 +1888,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         appendToSelected([.moveColumn(from: from, to: to)])
     }
 
-    /// ⇧⌘N: a new note beside the focused block.
-    /// ⇧⌘N: a note on the focused block's host, at home in its folder.
-    /// ⇧⌘N: a note — about the focused block (§3.5): the block linked to
+    /// ⌥⌘N: a new note beside the focused block.
+    /// ⌥⌘N: a note on the focused block's host, at home in its folder.
+    /// ⌥⌘N: a note — about the focused block (§3.5): the block linked to
     /// the note, as if ⇧-dragged into it, so the block wears it and the
     /// note knows its subject.
     /// A shell notebook (§7.7) on the focused block's host, its shell
@@ -2411,8 +2416,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// File ▸ New's items, by kind: each the action it always had, so a
-    /// menu's New Note is ⇧⌘N's note (linked from the focused block), a
+    /// File ▸ New's items, by kind (⌥⌘ and its letter): each the action it
+    /// always had, so a menu's New Note is linked from the focused block, a
     /// search Find in Files', a repository's block as Source Control finds it.
     static let newActions: [String: Selector] = [
         "terminal": #selector(newTerminalBeside(_:)), "agent": #selector(newAgent(_:)), "note": #selector(newNote(_:)),
@@ -2421,37 +2426,47 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         "process": #selector(showProcesses(_:)),
     ]
 
-    /// ⌥⌘N: the New Block picker — the kinds, narrowed as a kind's name is
-    /// typed, then what it takes after a space ("web example.com", "search
-    /// TODO", "terminal make test"), as `mani new` reads its words; ↩ makes
-    /// it in the active column, ⌘↩ beside the focused tile, ⌥↩ over it.
+    /// ⌘N: the New Block picker — the kinds, each with its letter
+    /// (⌥⌘ and it makes one without the picker), narrowed as its letter or
+    /// name is typed, then what it takes after a space ("w example.com",
+    /// "search TODO", "t make test"), as `mani new` reads its words: ↩
+    /// makes the first, so ⌘N ↩ is a terminal and ⌘N N ↩ a note. ↩ makes it
+    /// below the focused tile, ⇧↩ in a new column (as ⇧ with ⌥⌘ does),
+    /// ⌘↩ below it and linked, ⌥↩ over it.
     @objc func newBlockPicker(_ sender: Any?) {
         let provider: (String) -> [FinderItem] = { [weak self] query in
             let (word, what) = BlockKinds.parse(query)
             return BlockKinds.matching(word).map { k in
                 let with = k.what == nil ? nil : what
+                let key = k.key.map { "⌥⌘" + $0.uppercased() } ?? ""
+                let then = k.what.map { with == nil ? "then: \($0)" : "" } ?? ""
                 return FinderItem(symbol: k.symbol, title: "New " + k.title + (with.map { " — " + $0 } ?? ""), detail: k.help,
-                                  note: k.what.map { with == nil ? "then: \($0)" : "" } ?? "",
+                                  note: [key, then].filter { !$0.isEmpty }.joined(separator: " · "),
                                   run: { [weak self] in self?.makeFromPicker(k, with) })
             }
         }
         finder.showOutline(Finder.OutlineScope(provider: provider, start: nil,
-                                               placeholder: "New block: a kind, then what it takes — web example.com",
-                                               hint: "Make a block", keys: "↩ Here    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"),
+                                               placeholder: "New block: its letter or name, then what it takes — w example.com",
+                                               hint: "Make a block", keys: "↩ Here    ⇧↩ New Column    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"),
                            over: window)
     }
 
     private func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?) {
         let f = arrangement?.focused
-        let place: Where = switch Self.disposition ?? .goTo {
+        // ⇧↩ alone: a new column, as ⇧ with ⌥⌘ and a kind's letter.
+        let event = NSApp.currentEvent
+        let newColumn = event?.type == .keyDown && (event?.keyCode == 36 || event?.keyCode == 76)
+            && event?.modifierFlags.intersection([.command, .option, .control, .shift]) == .shift
+        var place: Where = switch Self.disposition ?? .goTo {
         case .beside: f.map { .besideOpener($0) } ?? .here
         case .over: f.map { .over($0) } ?? .here
         default: .here
         }
+        if newColumn { place = .beside }
         do {
             let from = focusedShown?.block
             let made = try makeBlock(kind, what: what, cwd: focusedCwd, on: focusedHost)
-            // A note is about what was focused, as ⇧⌘N's is.
+            // A note is about what was focused, as ⌥⌘N's is.
             if kind.name == "note", let b = from, b.kind != .arrangement { hosts.link(from: b.id, to: made.block, kind: .linked, context: "new note") }
             if made.later { showWhenMade(made.block, lens: made.lens, place: place, what: "the " + kind.title.lowercased()) }
             else { show(made.block, lens: made.lens, place, context: "new " + kind.name) }
@@ -5144,7 +5159,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var neighborhoodView: NeighborhoodView?
 
-    /// ⌥⌘N: the neighborhood map, around the focused block.
+    /// ⌥⌘M: the neighborhood map, around the focused block.
     @objc func showNeighborhood(_ sender: Any?) { showNeighborhood(around: nil) }
 
     /// The neighborhood map: a block's neighborhood to distance 2 as a
@@ -6310,6 +6325,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func show(_ block: BlockID, lens: Lens, _ place: Where, kind: LinkKind = .opened, context: String? = nil, in arrangement: BlockID? = nil,
               exact: Bool = false) {
         hideStateView()
+        // ⌥⇧⌘ and a kind's letter: a new column, wherever its kind goes.
+        let place = inNewColumn ? Where.beside : place
+        inNewColumn = false
         let id = arrangement ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
         let fresh = { ULID.make() }
@@ -6519,7 +6537,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(block, lens: .git, .here)
     }
 
-    /// Interactive Smartlog (⌥⌘S): Sapling's, for the repository the focused
+    /// Interactive Smartlog (⌥⌘L): Sapling's, for the repository the focused
     /// block is in, as a block of its own (§7.6) — the one there is, else
     /// a new one; if there's no Sapling there, its tile says why.
     @objc func showSmartlog(_ sender: Any?) {
@@ -10070,6 +10088,8 @@ extension MainWindowController: TerminalViewDelegate {
     /// A block the host is making, shown as soon as it exists here.
     /// `context`: the link the host made for it, said again (see showTurnWhenMade).
     func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
+        let place = inNewColumn ? Where.beside : place
+        inNewColumn = false
         whenMade(id, what: what, made: { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
             self?.show(id, lens: lens, place, kind: .opened, context: context)
         }

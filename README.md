@@ -288,12 +288,12 @@ parts from the Mac's conventions on purpose.
   (one rule for every click: below); a definition (⌘-click a symbol)
   opens there too, and a drag onto the grid brings it where it lands (a
   drop between two tiles lands there). A preview going page to page and
-  a listing going into a folder change in place, ⌘[ coming back. New things (⌘N a terminal, ⇧⌘N a note, a search, an agent)
-  are brought here, into the active column; ⌥⇧⌘N opens a terminal in a
-  new column, ⌘T a new space with one (Space ▸ New Space). A note is at home in the
+  a listing going into a folder change in place, ⌘[ coming back. New things (⌥⌘T a terminal, ⌥⌘N a note, a search, an agent)
+  are brought here, into the active column; with ⇧ too (⌥⇧⌘T), in a
+  new column; ⌘T a new space with a terminal (Space ▸ New Space). A note is at home in the
   folder of the block it was made from: it is found there, and saved
-  there by default. Open Folder… (⌥⌘O) browses a folder you choose
-  beside the focused block; Browse This Folder (⌃⌘O) its own (a
+  there by default. Open Folder… (File, from the menu) browses a folder you choose
+  beside the focused block; a folder (⌥⌘O) its own (a
   terminal's working directory, a file's folder, the folder a search looks under).
   The **block navigation stack**: **Go ▸ Back** and **Go ▸
   Forward** (⌃- and ⌃⇧-, as in VS Code — except in a terminal, where
@@ -373,7 +373,7 @@ parts from the Mac's conventions on purpose.
   in front. A click opens a link by the one rule (⌘ beside, ⌥ over,
   ⇧⌘ the system's app); ⌃-click or right-click for its menu — Go To,
   Show Beside, Show Over, Remove Link (both ways at once), the
-  Neighborhood Map. A note made with a block focused (⇧⌘N) is linked
+  Neighborhood Map. A note made with a block focused (⌥⌘N) is linked
   the same way, from the block to the note, as if the block had been
   ⇧-dragged into it. Dropped into a note (or any Markdown text) the
   block also lands in the text, `[title](manifold:…)`, shown as a
@@ -539,15 +539,29 @@ Every block has a log: its edits, where it was placed, what it was named.
 Whatever the graph still reaches can be found, by name or by what's
 around it, and comes back with its history.
 
-- **Making a block**, of any kind, three ways that agree: **File ▸
-  New ▸** lists every kind (terminal ⌘N, note ⇧⌘N, agent ⌥⌘A, web page,
-  search, folder, shell notebook ⌃⇧⌘N, source control, smartlog,
-  processes); **New Block…** (**⌥⌘N**) takes it typed — a kind's name
-  (or its start), then what it takes: `web example.com`, `search TODO`,
-  `terminal make test`, `note buy milk` — ↩ making it in the active
-  column, ⌘↩ beside the focused tile, ⌥↩ over it; and `mani new <kind>
-  [what]` reads the same words in a shell. One table of kinds makes all
-  three, so none is missing from one of them.
+- **Making a block**, of any kind, three ways that agree, in one
+  language: **⌥⌘ and the kind's letter** makes one below the focused
+  tile, **⌥⇧⌘** and the letter in a new column — terminal **T**, agent
+  **A**, note **N**, web page **W**, search **S** (⇧⌘F too, as editors
+  have it), folder **O** (⌥⌘F stays Find and Replace, as on every Mac), shell notebook **B**, source control **G**,
+  smartlog **L**, processes **P** (File ▸ New ▸ lists them, the ⇧ ones
+  with ⇧ held). **New Block…** (**⌘N**) takes it typed — the kind's
+  letter or name (or its start), then what it takes: `w example.com`,
+  `search TODO`, `t make test`, `note buy milk` — each row showing its
+  letter; ↩ makes the first (⌘N ↩ a terminal, ⌘N N ↩ a note) below the
+  focused tile, ⇧↩ in a new column, ⌘↩ below it and linked, ⌥↩ over it;
+  and `mani new <kind> [what]` reads the same words in a shell. One
+  table of kinds makes all three, so none is missing from one of them.
+- **The Mac's own keys** mean what they do in every Mac app, beside
+  Manifold's: ⌘K is a terminal's Clear Screen and, in a note, Link… (as
+  in Notes, Pages and Mail; one item, named for what's focused); ⌥⎋ (or
+  F5) completes in an editor, as ⌃Space does; Edit ▸ Spelling and
+  Grammar (⌘; the next misspelling, ⌘: the panel); ⇧⌘U checks a row
+  done, as Notes' Mark as Checked; Paste and Match Style (⌥⇧⌘V) pastes
+  the clipboard's text as text — in a note, no picture kept, no link
+  made of an address over words; and in a terminal ⌘↑ and ⌘↓ go to the
+  command before or after, as Terminal.app's marks do (past the last,
+  to the bottom; a full-screen program keeps them).
 - **The menus** go by what a command is about: **File** makes things
   (New ▸, New Block…, a terminal in a new column or space, a note from
   the selection) and holds Source Control (the project's, its smartlog,
@@ -827,7 +841,7 @@ around it, and comes back with its history.
   block of every use, beside, as a search's hits are shown — this file's
   first, each line previewed), Show Documentation
   (⌃⌘H), Rename Symbol… (⌃⌘R; other files change through their blocks, or
-  on disk when they aren't open), Format Document (⌥⇧⌘F). Manifold ▸
+  on disk when they aren't open), Format Document (⌃⌥⌘F). Manifold ▸
   Settings ▸ Language Servers is the table: the languages by extension, the command
   (sourcekit-lsp, gopls, rust-analyzer, pyright, typescript-language-server,
   clangd and zls by default), the files that mark a project root, on or
@@ -1220,7 +1234,7 @@ around it, and comes back with its history.
   is the outline's, above.) It shows as macOS shows its scroll bars: while you scroll,
   while the pointer rests on it, and a moment after, fading otherwise
   (and staying, if your scroll bars are set to always show).
-- **Shell notebooks** (File ▸ New Shell Notebook, ⌃⇧⌘N) are Jupyter's notebooks for a shell: a column of cells,
+- **Shell notebooks** (File ▸ New ▸ Shell Notebook, ⌥⌘B) are Jupyter's notebooks for a shell: a column of cells,
   each a command (as many lines as you like) with what its last run
   printed beneath it, all run in one shell that lives on — your zsh or
   bash, with your rc files, on the notebook's host, `TERM=dumb` — so a
@@ -1297,7 +1311,7 @@ around it, and comes back with its history.
   gutter shows how its lines stand against HEAD: a green bar for added
   lines, blue for changed, a red wedge where lines were taken out. Diff
   blocks keep the texts they compared in their logs, so they're records.
-- **Interactive Smartlog** (File ▸ Source Control, ⌥⌘S): Sapling's
+- **Interactive Smartlog** (File ▸ New ▸ Smartlog, ⌥⌘L): Sapling's
   own smartlog for the repository the focused block is in — its commits
   and stacks, to commit, amend, rebase and split by hand — as a block of
   its own, beside, like any other: the host runs `sl web` (or finds the one

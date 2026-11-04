@@ -134,7 +134,7 @@ public enum Mani {
              summary: "Make a block (" + BlockKinds.all.map(\.name).joined(separator: ", ") + ") or a space",
              details: """
                  Makes a block and shows it, printing its id (and it's @last) —
-                 the kinds File ▸ New lists, and the New Block picker (⌥⌘N) reads
+                 the kinds File ▸ New lists, and the New Block picker (⌘N) reads
                  as typed, the same way:
                  \(BlockKinds.help)
                    space [--title name]  a space with a terminal in --cwd; it prints

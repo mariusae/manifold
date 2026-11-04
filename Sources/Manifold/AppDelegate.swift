@@ -238,26 +238,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(withTitle: "Quit Manifold", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = submenu(main, "File")
+        // ⌘N: any kind, by typing — its letter, or its name, then what it takes.
+        item(file, "New Block…", #selector(MainWindowController.newBlockPicker(_:)), "n")
         // New ▸: every kind of block (BlockKinds, the one table `mani new`
-        // and the picker are made from too), the commonest on their keys.
+        // and the picker are made from too), each on ⌥⌘ and its letter,
+        // below the focused tile; ⇧ too (the item shown with ⇧ held), in a
+        // new column.
         let new = NSMenu(title: "New")
-        let keys: [String: (String, NSEvent.ModifierFlags)] = [
-            "terminal": ("n", [.command]), "note": ("n", [.command, .shift]), "agent": ("a", [.command, .option]),
-            "notebook": ("n", [.command, .control, .shift]),
-        ]
         for kind in BlockKinds.all where kind.interactive {
             guard let action = MainWindowController.newActions[kind.name] else { continue }
-            let key = keys[kind.name]
-            let it = item(new, kind.title, action, key?.0 ?? "", key?.1 ?? [.command])
+            let it = item(new, kind.title, action, kind.key ?? "", [.command, .option])
             it.image = Theme.symbol(kind.symbol, size: 13)
+            let column = item(new, kind.title + " in a New Column", #selector(MainWindowController.newInNewColumn(_:)), kind.key ?? "",
+                              [.command, .option, .shift])
+            column.representedObject = kind.name
+            column.image = it.image
+            column.isAlternate = true
         }
         let newItem = NSMenuItem(title: "New", action: nil, keyEquivalent: "")
         newItem.submenu = new
         file.addItem(newItem)
-        // Any kind, by typing: its name, then what it takes.
-        item(file, "New Block…", #selector(MainWindowController.newBlockPicker(_:)), "n", [.command, .option])
         file.addItem(.separator())
-        item(file, "New Terminal in a New Column", #selector(MainWindowController.newTerminalInNewColumn(_:)), "n", [.command, .option, .shift])
         item(file, "New Note from Selection", #selector(MainWindowController.newNoteFromSelection(_:)), "")
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")
         let agents = NSMenu(title: "Launch Agent Here")
@@ -267,13 +268,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         agentsItem.submenu = agents
         file.addItem(agentsItem)
         file.addItem(.separator())
-        item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "o", [.command, .option])
-        item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "o", [.command, .control])
+        // ⌥⌘O is New ▸ Folder (this one); Open Quickly (⌘O) finds any.
+        item(file, "Open Folder…", #selector(MainWindowController.openFolder(_:)), "")
+        // New ▸ Folder's (⌥⌘F), where Open Folder… is.
+        item(file, "Browse This Folder", #selector(MainWindowController.browseFocusedFolder(_:)), "")
         // Source control in one place: the project's, its smartlog, the
         // file against its last commit, the file's history.
         let source = NSMenu(title: "Source Control")
-        item(source, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "g", [.command, .option])
-        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "s", [.command, .option])
+        // New ▸ Source Control's and Smartlog's (⌥⌘G, ⌥⌘L), here too.
+        item(source, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "")
+        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "")
         item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
         item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
         let sourceItem = NSMenuItem(title: "Source Control", action: nil, keyEquivalent: "")
@@ -298,6 +302,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The focused block's content as text, whatever it is (§3.5).
         item(edit, "Copy Contents", #selector(MainWindowController.copyContents(_:)), "c", [.command, .shift])
         item(edit, "Paste", #selector(TerminalView.paste(_:)), "v")
+        // As every Mac app has it: the clipboard's text as text — in a note,
+        // a picture on it not kept, an address over words not made a link.
+        item(edit, "Paste and Match Style", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift])
         item(edit, "Select All", #selector(NSResponder.selectAll(_:)), "a")
         // A terminal's (an agent's): a path from where its shell is, typed at the cursor.
         item(edit, "Insert Path…", #selector(TerminalView.insertPath(_:)), "i", [.command, .control])
@@ -339,7 +346,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
         code.addItem(.separator())
         item(code, "Rename Symbol…", #selector(EditorView.renameSymbol(_:)), "r", [.command, .control])
-        item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .option, .shift])
+        // ⌃⌥⌘F: ⌥⇧⌘F is a folder in a new column.
+        item(code, "Format Document", #selector(EditorView.formatDocument(_:)), "f", [.command, .option, .control])
         let codeItem = NSMenuItem(title: "Code", action: nil, keyEquivalent: "")
         codeItem.submenu = code
         edit.addItem(codeItem)
@@ -388,7 +396,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         outline.addItem(.separator())
         item(outline, "Checklist Item", #selector(NoteOutlineTextView.cycleChecklist(_:)), "")
         item(outline, "Task", #selector(NoteOutlineTextView.cycleTask(_:)), "")
-        item(outline, "Toggle Done", #selector(NoteOutlineTextView.toggleDone(_:)), "")
+        // ⇧⌘U: Notes' Mark as Checked.
+        item(outline, "Toggle Done", #selector(NoteOutlineTextView.toggleDone(_:)), "u", [.command, .shift])
         item(outline, "Move Done to Bottom", #selector(NoteOutlineTextView.moveDoneToBottom(_:)), "d", [.command, .control, .shift])
         outline.addItem(.separator())
         item(outline, "Bullet", #selector(NoteOutlineTextView.toggleBullet(_:)), "8", [.command, .shift])
@@ -414,7 +423,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let outlineItem = NSMenuItem(title: "Outline", action: nil, keyEquivalent: "")
         outlineItem.submenu = outline
         edit.addItem(outlineItem)
-        item(edit, "Clear Screen", #selector(TerminalView.clearScreen(_:)), "k")
+        // ⌘K: a terminal's Clear Screen, a note's Link… (as Notes, Pages and
+        // Mail have it) — one item, named by what's focused: a key on two
+        // items is the first's, even where it can't be chosen.
+        item(edit, "Clear Screen", #selector(TerminalView.clearOrLink(_:)), "k")
+        edit.addItem(.separator())
+        // Spelling and Grammar, as every Mac app has it (a note's text is checked as it's typed).
+        let spelling = NSMenu(title: "Spelling and Grammar")
+        item(spelling, "Show Spelling and Grammar", #selector(NSText.showGuessPanel(_:)), ":")
+        item(spelling, "Check Document Now", #selector(NSText.checkSpelling(_:)), ";")
+        spelling.addItem(.separator())
+        item(spelling, "Check Spelling While Typing", #selector(NSTextView.toggleContinuousSpellChecking(_:)), "")
+        item(spelling, "Check Grammar With Spelling", #selector(NSTextView.toggleGrammarChecking(_:)), "")
+        item(spelling, "Correct Spelling Automatically", #selector(NSTextView.toggleAutomaticSpellingCorrection(_:)), "")
+        let spellingItem = NSMenuItem(title: "Spelling and Grammar", action: nil, keyEquivalent: "")
+        spellingItem.submenu = spelling
+        edit.addItem(spellingItem)
 
         let view = submenu(main, "View")
         // ⌘/ the tile's sidebar (its outline), ⇧⌘/ the window's: ⇧ the

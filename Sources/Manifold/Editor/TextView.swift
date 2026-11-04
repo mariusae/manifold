@@ -1656,6 +1656,8 @@ final class TextView: NSView, NSTextInputClient {
         case #selector(cancelOperation(_:)):
             if selections.count > 1 { setSelections([primarySelection]) } else if !primarySelection.isCaret { setSelections([Selection(at: primarySelection.head)]) } else { nextResponder?.tryToPerform(selector, with: nil) }
         case #selector(transpose(_:)): transposeCharacters()
+        // ⌥⎋ (and F5), the Mac's Complete: the language server's, as ⌃Space.
+        case #selector(complete(_:)): nextResponder?.tryToPerform(#selector(EditorView.completeSymbol(_:)), with: self)
         case #selector(centerSelectionInVisibleArea(_:)): scrollToCaret()
         default:
             nextResponder?.tryToPerform(selector, with: nil)
@@ -2715,17 +2717,18 @@ final class TextView: NSView, NSTextInputClient {
     @objc func paste(_ sender: Any?) { paste(from: NSPasteboard.general) }
 
     /// What a paste does with a pasteboard: an image kept as an image block
-    /// and shown (in Markdown), else its text in.
-    func paste(from pb: NSPasteboard) {
+    /// and shown (in Markdown), else its text in. `plain` (Paste and Match
+    /// Style): its text, as it is — no image, no link made.
+    func paste(from pb: NSPasteboard, plain: Bool = false) {
         // An image (a screenshot copied, a picture from Preview, a browser's
         // or a chat's Copy Image): kept, and shown.
-        if isEditable, let onImage, Self.prefersImage(pb) {
+        if !plain, isEditable, let onImage, Self.prefersImage(pb) {
             let images = Self.images(on: pb)
             if !images.isEmpty { images.forEach(onImage); return }
         }
         guard isEditable, let s = pb.string(forType: .string) else { return }
         // In Markdown, an address pasted over words links them: [words](address).
-        if acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
+        if !plain, acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
             let address = s.trimmingCharacters(in: .whitespacesAndNewlines)
             var reps: [(TextRange, String)] = []
             var after: [Selection] = []
@@ -2751,7 +2754,7 @@ final class TextView: NSView, NSTextInputClient {
 
     @objc override func selectAll(_ sender: Any?) { setSelections([Selection(0, text.count)], scroll: false) }
 
-    @objc func pasteAsPlainText(_ sender: Any?) { paste(sender) }
+    @objc func pasteAsPlainText(_ sender: Any?) { paste(from: NSPasteboard.general, plain: true) }
 
     /// Whether a paste is of the image a pasteboard holds rather than its
     /// text: there's no text, or files; or the text only says where the

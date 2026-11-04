@@ -500,6 +500,9 @@ extension NoteOutlineTextView {
 
     /// ⌥⌘K: a link — the one at the caret given another address (or
     /// none: its words alone), or the words selected made one.
+    /// ⌘K (Edit ▸ Link… here, a terminal's Clear Screen).
+    @objc func clearOrLink(_ sender: Any?) { editLink(sender) }
+
     @objc func editLink(_ sender: Any?) {
         guard isEditable, selectedRows == nil, let window else { return NSSound.beep() }
         let range = selectedRange()
@@ -631,6 +634,10 @@ extension NoteOutlineTextView {
                                      #selector(formatHighlight(_:)), #selector(editLink(_:))]
         if structural.contains(action) { return isEditable }
         if inline.contains(action) { return isEditable && selectedRows == nil }
+        if action == #selector(clearOrLink(_:)) {
+            (item as? NSMenuItem)?.title = "Link…"
+            return isEditable && selectedRows == nil
+        }
         if action == #selector(focusOut(_:)) || action == #selector(unfocus(_:)) { return focus != nil }
         return nil
     }
