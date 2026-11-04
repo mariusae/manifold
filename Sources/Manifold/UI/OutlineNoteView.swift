@@ -85,7 +85,17 @@ final class OutlineNoteView: NSView, PaneContent {
         text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         text.textContainerInset = NSSize(width: 14, height: 14)
         text.onRowsChanged = { [weak self] in self?.rowsChanged() }
+        text.onFocusChange = { [weak self] in
+            self?.showPath()
+            self?.markCurrent()
+        }
+        path.onStep = { [weak self] index in
+            guard let self else { return }
+            if let index { self.text.focusOn(fullRow: index) } else { self.text.unfocus(nil) }
+            self.window?.makeFirstResponder(self.text)
+        }
         addSubview(scroll)
+        addSubview(path)
         headings.onPick = { [weak self] i in self?.goToHeading(i) }
         // An entry's place: its line in the Markdown, as the editor's are.
         headings.block = block
@@ -105,8 +115,26 @@ final class OutlineNoteView: NSView, PaneContent {
 
     override func layout() {
         super.layout()
-        scroll.frame = bounds
+        // The path to the row focused on, or why it can't be edited, over the rows.
+        let barShown = text.focus != nil || !text.isEditable
+        path.isHidden = !barShown
+        let bar: CGFloat = barShown ? NoteOutlinePath.height : 0
+        path.frame = NSRect(x: 14, y: bounds.height - bar - 4, width: max(0, bounds.width - 28), height: bar)
+        scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - (barShown ? bar + 4 : 0))
         text.frame.size.width = scroll.contentSize.width
+    }
+
+    private let path = NoteOutlinePath()
+
+    /// The focus's path shown (or the note's being read only), over the rows.
+    private func showPath() {
+        let name = source()?.displayTitle ?? "Note"
+        if let focus = text.focus {
+            path.show(note: name, ancestors: focus.ancestors, fontSize: text.metrics.fontSize)
+        } else if !text.isEditable {
+            path.showReadOnly()
+        }
+        needsLayout = true
     }
 
     static func metrics(_ theme: FontTheme) -> NoteOutlineMetrics {
@@ -122,18 +150,33 @@ final class OutlineNoteView: NSView, PaneContent {
         guard markdown != written else { return text.refreshCards() }
         let first = written == nil
         var outline = NoteOutlineMarkdown.parse(markdown)
-        let rows = outline.rows
+        var rows = outline.rows
         outline.rows = []
         shell = outline
         written = markdown
+        // What was folded, and focused on, as it was (by place and words).
+        let caret = text.caretPosition
+        let folds = NoteOutlineFolds.marks(text.fullRows)
+        let focused = text.focus.map { f in (f.before.count, text.fullRows[f.before.count].text) }
+        if !first { NoteOutlineFolds.apply(folds, to: &rows) }
+        text.focus = nil
         text.load(rows, keepingCaret: !first)
+        if let focused, let at = NoteOutlineFolds.nearest(focused.1, to: focused.0, in: text.rows) {
+            text.focusOn(fullRow: at)
+            text.restoreCaret(caret)
+        }
+        // A note whose Markdown the outline can't write back as it was is
+        // shown, not edited: its first edit would rewrite what it didn't touch.
+        let writable = NoteOutlineMarkdown.roundTrips(markdown)
+        if text.isEditable != writable { text.isEditable = writable; needsLayout = true }
         updateHeadings()
+        showPath()
     }
 
     /// The rows changed here: written back, only what changed.
     private func rowsChanged() {
         var outline = shell
-        outline.rows = text.rows
+        outline.rows = text.fullRows
         let markdown = NoteOutlineMarkdown.serialize(outline)
         updateHeadings()
         guard markdown != written, let old = source()?.text?.text.string else { return }
@@ -164,7 +207,7 @@ final class OutlineNoteView: NSView, PaneContent {
     /// (`NoteOutlineMarkdown.items`): the tile's ticks, its sidebar, ⌘P.
     private func updateHeadings() {
         var outline = shell
-        outline.rows = text.rows
+        outline.rows = text.fullRows
         let items = NoteOutlineMarkdown.items(of: outline)
         itemRows = items.map(\.row)
         itemLines = items.map(\.line)
@@ -177,7 +220,13 @@ final class OutlineNoteView: NSView, PaneContent {
 
     private func goToHeading(_ i: Int) {
         guard itemRows.indices.contains(i) else { return }
-        text.goTo(row: itemRows[i])
+        // (Among all the note's rows: out of a focus it isn't in.)
+        var row = itemRows[i] - (text.focus?.before.count ?? 0)
+        if text.focus != nil, !text.rows.indices.contains(row) {
+            text.unfocus(nil)
+            row = itemRows[i]
+        }
+        text.goTo(row: row)
         window?.makeFirstResponder(text)
     }
 
@@ -187,7 +236,7 @@ final class OutlineNoteView: NSView, PaneContent {
         guard let layout = text.layoutManager, let container = text.textContainer, !itemRows.isEmpty else { return headings.current = nil }
         let top = NSPoint(x: 0, y: scroll.contentView.bounds.minY - text.textContainerOrigin.y + 4)
         let glyph = layout.glyphIndex(for: top, in: container)
-        let row = text.rowIndex(at: layout.characterIndexForGlyph(at: glyph))
+        let row = text.fullIndex(of: text.rowIndex(at: layout.characterIndexForGlyph(at: glyph)))
         headings.current = itemRows.lastIndex { $0 <= row } ?? 0
     }
 
@@ -271,14 +320,64 @@ final class OutlineNoteView: NSView, PaneContent {
             let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
             if n.count == 3 { text.moveRows(NoteOutlineEditing.block(text.rows, n[0]..<(n[0] + 1)), from: text, to: .init(index: n[1], depth: n[2])) }
         case "type": if words.count > 1 { for ch in words[1] { text.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) } }
+        case "do":
+            // "do <action>": a menu's command (its selector, less the colon), as chosen.
+            guard words.count > 1 else { return "usage: do <selector>" }
+            let action = Selector(words[1] + ":")
+            guard text.validateUserInterfaceItem(NSMenuItem(title: "", action: action, keyEquivalent: "")) else { return "disabled: \(words[1])" }
+            guard NSApp.sendAction(action, to: text, from: nil) else { return "not taken: \(words[1])" }
+        case "menu":
+            // "menu <row>": that row's menu, as right-clicking it shows it; "menu <row> <title>": that item chosen.
+            let n = (words.count > 1 ? words[1] : "").split(separator: " ", maxSplits: 1).map(String.init)
+            guard let i = Int(n.first ?? "") else { return "usage: menu <row> [title]" }
+            text.restoreCaret(.init(row: i, offset: 0))
+            let items = text.rowMenuItems(for: i)
+            if n.count > 1 {
+                let all = items + items.compactMap(\.submenu).flatMap(\.items)
+                guard let item = all.first(where: { $0.title == n[1] }), let action = item.action else { return "no item \(n[1])" }
+                NSApp.sendAction(action, to: item.target, from: item)
+            } else {
+                return items.map { $0.title + ($0.submenu.map { " ▸ " + $0.items.map { ($0.state == .on ? "✓" : "") + $0.title }.joined(separator: ", ") } ?? "") }.joined(separator: "\n")
+            }
+        case "hover":
+            // "hover <row>": the pointer over that row (its ghost bullet shown); "hover" alone, off it.
+            text.hoveredRow = words.count > 1 ? Int(words[1]) : nil
+            return "hovered \(text.hoveredRow.map(String.init) ?? "none")"
+        case "click":
+            // "click <row>": that row's handle clicked; "click <row> option": ⌥-clicked.
+            let n = (words.count > 1 ? words[1] : "").split(separator: " ").map(String.init)
+            guard let i = Int(n.first ?? "") else { return "usage: click <row>" }
+            if n.count > 1, n[1] == "option" { text.focusOn(fullRow: text.fullIndex(of: i)) } else { text.clickHandle(ofRow: i) }
+        case "pill":
+            // "pill <row>": that folded row's pill clicked (where it's drawn, as a click there finds it).
+            guard let layout = text.layoutManager as? NoteOutlineLayoutManager, let i = Int(words.count > 1 ? words[1] : ""), text.paragraphRanges.indices.contains(i),
+                  let r = layout.foldPill(for: text.paragraphRanges[i], origin: text.textContainerOrigin) else { return "no pill" }
+            guard layout.foldPillHit(at: NSPoint(x: r.midX, y: r.midY), origin: text.textContainerOrigin) == i else { return "pill not hit" }
+            text.perform("Expand", on: i..<(i + 1), followingCaret: false) { rows, s in NoteOutlineEditing.unfold(&rows, at: s.lowerBound); return s }
+        case "paste":
+            // "paste <text>": pasted, as from the pasteboard (the general one, put back after).
+            let pb = NSPasteboard.general
+            let was = pb.string(forType: .string)
+            pb.clearContents()
+            pb.setString((words.count > 1 ? words[1] : "").replacingOccurrences(of: "\\n", with: "\n"), forType: .string)
+            text.paste(nil)
+            pb.clearContents()
+            if let was { pb.setString(was, forType: .string) }
+        case "select":
+            // "select <from> <length>": characters selected (from the text's start).
+            let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
+            if n.count == 2 { text.setSelectedRange(NSRange(location: n[0], length: n[1])) }
+        case "markdown":
+            return source()?.text?.text.string ?? "no text"
         case "caret":
             let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
             if n.count == 2 { text.restoreCaret(.init(row: n[0], offset: n[1])) }
         default: break
         }
         let c = text.caretPosition
-        let selected = text.selectedRows.map { " rows \($0.lowerBound)…\($0.upperBound - 1)" } ?? ""
-        return "caret \(c.row):\(c.offset)\(selected)\n" + debugRows
+        let selected = text.selectedRows.map { " rows \($0.lowerBound)…\($0.upperBound - 1)" } ?? (text.selectedRange().length > 0 ? " text “\((text.string as NSString).substring(with: text.selectedRange()))”" : "")
+        let focus = text.focus.map { "\nfocus after \($0.before.count) rows, \($0.after.count) after, path: " + path.debugState } ?? ""
+        return "caret \(c.row):\(c.offset)\(selected)\(text.isEditable ? "" : " read only")\(focus)\n" + debugRows
     }
 }
 
@@ -630,15 +729,46 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
 final class NoteOutlineLayoutManager: NSLayoutManager {
     weak var view: NoteOutlineTextView?
 
-    enum Handle { case none, bullet(folded: Bool), task(done: Bool, round: Bool), number(String) }
+    enum Handle { case none, ghost, bullet, task(done: Bool, round: Bool), number(String) }
 
+    /// A row's handle — a fold is told by the pill after its words, as
+    /// Prism has it, not on the handle.
     static func handle(for row: NoteRow) -> Handle {
         if let task = row.task, row.kind.isListItem { return .task(done: task.isDone, round: row.marker == "+") }
         switch row.kind {
-        case .bullet: return .bullet(folded: row.isFolded)
+        case .bullet: return .bullet
         case .ordered: return .number("\(row.number)\(row.marker)")
-        default: return row.isFolded ? .bullet(folded: true) : .none
+        default: return .none
         }
+    }
+
+    /// A row's handle as shown: one with none, the pointer over it, a ghost
+    /// of a bullet (not a rule: nothing to fold, nothing to pick up by).
+    func shownHandle(for row: NoteRow, at index: Int) -> Handle {
+        let h = Self.handle(for: row)
+        if case .none = h, index == view?.hoveredRow, row.kind != .rule { return .ghost }
+        return h
+    }
+
+    /// How many of the checkboxes under each row are checked, of how many
+    /// (what's folded in it counted too): a ring round its bullet.
+    static func progress(_ rows: [NoteRow]) -> [(done: Int, total: Int)] {
+        var under = [(done: Int, total: Int)](repeating: (done: 0, total: 0), count: rows.count)
+        var open: [Int] = []
+        for (index, row) in rows.enumerated() {
+            while let last = open.last, rows[last].depth >= row.depth { open.removeLast() }
+            let inside = NoteRow.unfold(row.folded).filter { $0.task != nil }
+            let own = (done: inside.filter { $0.task?.isDone == true }.count, total: inside.count)
+            let box: (done: Int, total: Int) = row.task.map { (done: $0.isDone ? 1 : 0, total: 1) } ?? (done: 0, total: 0)
+            under[index].done += own.done
+            under[index].total += own.total
+            for ancestor in open {
+                under[ancestor].done += own.done + box.done
+                under[ancestor].total += own.total + box.total
+            }
+            open.append(index)
+        }
+        return under
     }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
@@ -664,14 +794,28 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
                 NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
             }
         }
-        for paragraph in view.paragraphRanges where NSIntersectionRange(paragraph, covered).length > 0 || paragraph.location == covered.location {
-            let row = NoteOutlineText.style(storage, at: paragraph.location).row
+        let paragraphs = view.paragraphRanges
+        let styles = paragraphs.map { NoteOutlineText.style(storage, at: $0.location).row }
+        let progress = styles.contains { $0.task != nil || $0.isFolded } ? Self.progress(styles) : []
+        for (index, paragraph) in paragraphs.enumerated() where NSIntersectionRange(paragraph, covered).length > 0 || paragraph.location == covered.location {
+            let row = styles[index]
             guard let frame = frame(of: paragraph, origin: origin) else { continue }
             let indent = origin.x + metrics.textIndent(for: row)
             switch row.kind {
             case .code:
                 NSColor.quaternaryLabelColor.withAlphaComponent(0.12).setFill()
-                NSBezierPath(roundedRect: NSRect(x: indent - 6, y: frame.minY - 2, width: origin.x + width - indent + 6, height: frame.height + 4), xRadius: 5, yRadius: 5).fill()
+                let ground = NSRect(x: indent - 6, y: frame.minY - 2, width: origin.x + width - indent + 6, height: frame.height + 4)
+                NSBezierPath(roundedRect: ground, xRadius: 5, yRadius: 5).fill()
+                // Its language, in the corner.
+                let text = storage.string as NSString
+                let first = text.substring(with: paragraph).components(separatedBy: NoteOutlineText.lineSeparator)[0]
+                let language = first.trimmingCharacters(in: .whitespaces).drop { $0 == "`" || $0 == "~" }.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !language.isEmpty {
+                    let label = NSAttributedString(string: language, attributes: [.font: NSFont.systemFont(ofSize: round(metrics.code.pointSize * 0.85)),
+                                                                                  .foregroundColor: Theme.tertiaryText])
+                    let size = label.size()
+                    label.draw(at: NSPoint(x: ground.maxX - size.width - 8, y: ground.minY + 4))
+                }
             case .quote:
                 Theme.tertiaryText.setFill()
                 NSBezierPath(roundedRect: NSRect(x: indent - metrics.indent / 2 - 1.5, y: frame.minY, width: 3, height: frame.height), xRadius: 1.5, yRadius: 1.5).fill()
@@ -680,7 +824,9 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
                 NSRect(x: indent, y: frame.midY.rounded(), width: origin.x + width - indent, height: 1).fill()
             default: break
             }
-            drawHandle(Self.handle(for: row), row: row, paragraph: paragraph, origin: origin, indent: indent)
+            drawHandle(shownHandle(for: row, at: index), row: row, paragraph: paragraph, origin: origin, indent: indent,
+                       progress: progress.indices.contains(index) ? progress[index] : nil)
+            if row.isFolded, let pill = foldPill(for: paragraph, origin: origin) { Self.drawFoldPill(in: pill) }
             if let card = storage.attribute(.noteCard, at: paragraph.location, effectiveRange: nil) as? NoteCard {
                 let r = NSRect(x: indent, y: frame.maxY + 4, width: min(460, origin.x + width - indent), height: card.height)
                 let painter = NoteCard.painter
@@ -721,22 +867,37 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         return NSPoint(x: origin.x + view.metrics.textIndent(for: row) - view.metrics.indent / 2, y: baseline - font.xHeight / 2)
     }
 
-    private func drawHandle(_ handle: Handle, row: NoteRow, paragraph: NSRange, origin: NSPoint, indent: CGFloat) {
+    private func drawHandle(_ handle: Handle, row: NoteRow, paragraph: NSRange, origin: NSPoint, indent: CGFloat, progress: (done: Int, total: Int)?) {
         guard let view, let center = handleCenter(of: paragraph, row: row, origin: origin) else { return }
         let font = view.metrics.font(for: row)
         switch handle {
         case .none: break
-        case let .bullet(folded):
+        case .ghost:
+            // Hollow and faint: a hint of a row's handle, not a bullet.
+            let dot = max(5, (view.metrics.fontSize * 0.38).rounded())
+            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - dot / 2, y: center.y - dot / 2, width: dot, height: dot))
+            ring.lineWidth = 1
+            Theme.tertiaryText.setStroke()
+            ring.stroke()
+        case .bullet:
             let dot = max(4, (font.pointSize * 0.34).rounded())
             Theme.secondaryText.setFill()
             NSBezierPath(ovalIn: NSRect(x: center.x - dot / 2, y: center.y - dot / 2, width: dot, height: dot)).fill()
-            if folded {
-                // Folded: a ring round it, its children inside.
-                let ring = dot + 7
-                let path = NSBezierPath(ovalIn: NSRect(x: center.x - ring / 2, y: center.y - ring / 2, width: ring, height: ring))
-                path.lineWidth = 1
-                Theme.tertiaryText.setStroke()
-                path.stroke()
+            // Checkboxes under it: how far along they are, round it.
+            if let progress, progress.total > 0 {
+                let r = (font.pointSize * 0.95).rounded() / 2
+                let track = NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
+                track.lineWidth = 1.6
+                Theme.tertiaryText.withAlphaComponent(0.35).setStroke()
+                track.stroke()
+                let arc = NSBezierPath()
+                let share = CGFloat(progress.done) / CGFloat(progress.total)
+                // From the top, clockwise (the view is flipped).
+                arc.appendArc(withCenter: center, radius: r, startAngle: -90, endAngle: -90 + 360 * share, clockwise: false)
+                arc.lineWidth = 1.6
+                arc.lineCapStyle = .round
+                Theme.accent.setStroke()
+                if share > 0 { arc.stroke() }
             }
         case let .task(done, round):
             let name = round ? (done ? "checkmark.circle.fill" : "circle") : (done ? "checkmark.square.fill" : "square")
@@ -769,17 +930,59 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
     }
 
     /// The row whose handle is at a point in the view, if any (of those
-    /// among some characters: the ones shown).
+    /// among some characters: the ones shown): the whole step before its
+    /// text, as tall as its first line.
     func handleHit(at point: NSPoint, origin: NSPoint, among characters: NSRange? = nil) -> Int? {
         guard let view, let storage = textStorage else { return nil }
         for (index, paragraph) in view.paragraphRanges.enumerated() {
             if let characters, NSMaxRange(paragraph) < characters.location { continue }
             if let characters, paragraph.location > NSMaxRange(characters) { break }
             let row = NoteOutlineText.style(storage, at: paragraph.location).row
-            if case .none = Self.handle(for: row) { continue }
-            guard let c = handleCenter(of: paragraph, row: row, origin: origin) else { continue }
-            let r = view.metrics.indent / 2 + 2
-            if abs(point.x - c.x) <= r, abs(point.y - c.y) <= r { return index }
+            if case .none = Self.handle(for: row), index != view.hoveredRow || row.kind == .rule { continue }
+            let glyph = glyphIndexForCharacter(at: paragraph.location)
+            guard glyph < numberOfGlyphs else { break }
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).offsetBy(dx: origin.x, dy: origin.y)
+            if line.minY > point.y { break }
+            let indent = origin.x + view.metrics.textIndent(for: row)
+            if NSRect(x: indent - view.metrics.indent, y: line.minY, width: view.metrics.indent, height: line.height).contains(point) { return index }
+        }
+        return nil
+    }
+
+    /// Where a folded row's pill is: after the words of its last line, on
+    /// the middle of their capitals.
+    func foldPill(for paragraph: NSRange, origin: NSPoint) -> NSRect? {
+        guard let storage = textStorage, paragraph.length > 0 else { return nil }
+        let last = glyphIndexForCharacter(at: NSMaxRange(paragraph) - 1)
+        guard last < numberOfGlyphs else { return nil }
+        let used = lineFragmentUsedRect(forGlyphAt: last, effectiveRange: nil)
+        let font = storage.attribute(.font, at: paragraph.location, effectiveRange: nil) as? NSFont ?? .systemFont(ofSize: 14)
+        let baseline = used.maxY + font.descender
+        let height = (font.capHeight + 8).rounded()
+        let width = (height * 1.7).rounded()
+        let middle = baseline - font.capHeight / 2
+        return NSRect(x: used.maxX + 6 + origin.x, y: (middle - height / 2).rounded() + origin.y, width: width, height: height)
+    }
+
+    /// A pill with three dots in it: what's folded away.
+    static func drawFoldPill(in rect: NSRect) {
+        NSColor.labelColor.withAlphaComponent(0.07).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+        Theme.secondaryText.setFill()
+        let dot = max(2.5, (rect.height * 0.17).rounded(.toNearestOrEven))
+        let gap = dot * 1.1
+        let total = 3 * dot + 2 * gap
+        for i in 0..<3 {
+            let x = rect.midX - total / 2 + CGFloat(i) * (dot + gap)
+            NSBezierPath(ovalIn: NSRect(x: x, y: rect.midY - dot / 2, width: dot, height: dot)).fill()
+        }
+    }
+
+    /// The folded row whose pill is at a point.
+    func foldPillHit(at point: NSPoint, origin: NSPoint) -> Int? {
+        guard let view, let storage = textStorage else { return nil }
+        for (index, paragraph) in view.paragraphRanges.enumerated() where NoteOutlineText.style(storage, at: paragraph.location).row.isFolded {
+            if let pill = foldPill(for: paragraph, origin: origin), pill.insetBy(dx: -4, dy: -4).contains(point) { return index }
         }
         return nil
     }
@@ -826,7 +1029,7 @@ final class NoteOutlineTextView: NSTextView {
     /// Told when the rows changed, by typing or a command.
     var onRowsChanged: (() -> Void)?
     /// Set while the view changes its own text.
-    private var adjusting = false
+    var adjusting = false
     private var loading = false
     /// Its own: ⌘Z in an outline undoes the outline's edits, not the
     /// desk's (whose undo the window's chain reaches first).
@@ -876,6 +1079,17 @@ final class NoteOutlineTextView: NSTextView {
     }
     /// A block dropped in by its link (or reference, card): linked from the note.
     var onLinked: ((BlockID) -> Void)?
+    /// The row focused on (Focus In), the rest of the note set aside.
+    var focus: NoteOutlineFocus?
+    /// Told when the focus changed (its path shown over the rows).
+    var onFocusChange: (() -> Void)?
+    /// The row the pointer is over: a ghost of a bullet before a row with
+    /// none, to click (a heading's folds its section) or drag by.
+    var hoveredRow: Int? { didSet { if hoveredRow != oldValue { needsDisplay = true } } }
+    /// Expand Selection's steps, to go back along (Contract Selection), and
+    /// the selection the last one made.
+    var expansions: [OutlineSelection] = []
+    var expanded: OutlineSelection?
 
     init(metrics: NoteOutlineMetrics) {
         self.metrics = metrics
@@ -896,6 +1110,8 @@ final class NoteOutlineTextView: NSTextView {
         importsGraphics = false
         allowsUndo = true
         usesFindBar = true
+        isIncrementalSearchingEnabled = true
+        isContinuousSpellCheckingEnabled = true
         drawsBackground = false
         isAutomaticLinkDetectionEnabled = false
         isAutomaticQuoteSubstitutionEnabled = false
@@ -938,6 +1154,7 @@ final class NoteOutlineTextView: NSTextView {
     @objc func redo(_ sender: Any?) { if undo.canRedo { undo.redo() } else { NSSound.beep() } }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if let ok = validateOutline(item) { return ok }
         if item.action == #selector(undo(_:)) { return undo.canUndo }
         if item.action == #selector(redo(_:)) { return undo.canRedo }
         return super.validateUserInterfaceItem(item)
@@ -966,7 +1183,7 @@ final class NoteOutlineTextView: NSTextView {
     func row(at index: Int) -> NoteRow { NoteOutlineText.style(textStorage!, at: paragraphRanges[index].location).row }
 
     /// The last place a caret can be: before the last line break.
-    private var lastLocation: Int { max(0, textStorage!.length - 1) }
+    var lastLocation: Int { max(0, textStorage!.length - 1) }
 
     override func didChangeText() {
         paragraphCache = nil
@@ -1154,7 +1371,7 @@ final class NoteOutlineTextView: NSTextView {
         scrollRangeToVisible(selectedRange())
     }
 
-    private func scrollRowToVisible(_ index: Int) {
+    func scrollRowToVisible(_ index: Int) {
         guard paragraphRanges.indices.contains(index) else { return }
         scrollRangeToVisible(paragraphRanges[index])
     }
@@ -1449,7 +1666,21 @@ final class NoteOutlineTextView: NSTextView {
         var all = rows
         let before = all
         let row = all[index]
-        if row.kind == .code { return insertText(NoteOutlineText.lineSeparator, replacementRange: selectedRange()) }
+        if row.kind == .code {
+            // On the closing fence, or on an empty line just before it: out
+            // of the block (that line gone), into a row after it.
+            let lines = row.text.components(separatedBy: "\n")
+            let line = ((row.text as NSString).substring(to: min(location - paragraph.location, (row.text as NSString).length))).components(separatedBy: "\n").count - 1
+            let onEmptyLast = line == lines.count - 2 && line > 0 && lines[line].trimmingCharacters(in: .whitespaces).isEmpty
+            if Self.closes(row.text), line == lines.count - 1 || onEmptyLast {
+                if onEmptyLast { all[index].text = (lines[..<line] + lines[(line + 1)...]).joined(separator: "\n") }
+                all.insert(NoteRow(kind: .bullet, depth: row.depth, gap: []), at: index + 1)
+                NoteOutlineEditing.normalize(&all)
+                replace(before, with: all, actionName: "New Row")
+                return restoreCaret(CaretPosition(row: index + 1, offset: 0))
+            }
+            return insertText(NoteOutlineText.lineSeparator, replacementRange: selectedRange())
+        }
         // An empty item: out a level, as lists do; at the top, a plain row.
         if row.text.isEmpty, row.kind.isListItem, !row.isFolded {
             if row.depth > 0 { return outdentRows(nil) }
@@ -1502,8 +1733,8 @@ final class NoteOutlineTextView: NSTextView {
     }
 
     /// Markdown typed at a row's start, then a space, sets its kind: `#`s a
-    /// heading, `>` a quote, `[ ]` or `[x]` a checkbox, `-` `*` `+` a
-    /// bullet, `1.` a numbered item.
+    /// heading, `>` a quote, `[ ]` or `[x]` a checkbox, `+` a task, `-` `*`
+    /// a bullet, `1.` a numbered item, `---` a line across.
     func applySmartRowType() -> Bool {
         let location = selectedRange().location
         let index = rowIndex(at: location)
@@ -1515,6 +1746,15 @@ final class NoteOutlineTextView: NSTextView {
         switch prefix {
         case _ where prefix.allSatisfy({ $0 == "#" }): row.kind = .heading(prefix.count)
         case ">": row.kind = .quote
+        case "---", "***", "___" where rest.trimmingCharacters(in: .whitespaces).isEmpty:
+            // A line across, a row after it to write in.
+            makeRule(at: index)
+            return true
+        case "+":
+            // A task: round, open.
+            row.kind = .bullet
+            row.marker = "+"
+            row.task = .open
         case "[]", "[ ]", "[x]", "[X]", "-[]", "-[ ]":
             row.kind = .bullet
             row.marker = row.marker == "*" ? "*" : "-"
@@ -1537,7 +1777,7 @@ final class NoteOutlineTextView: NSTextView {
         return true
     }
 
-    private func makeCode(at index: Int, opening: String, closing: String) {
+    func makeCode(at index: Int, opening: String, closing: String) {
         var all = rows
         let before = all
         all[index] = NoteRow(kind: .code, depth: all[index].depth, text: opening + "\n\n" + closing, gap: all[index].gap)
@@ -1547,7 +1787,7 @@ final class NoteOutlineTextView: NSTextView {
     }
 
     /// Where a row's text ends (before its line break).
-    private func rowEnd(_ index: Int) -> Int {
+    func rowEnd(_ index: Int) -> Int {
         let p = paragraphRanges[index]
         let text = textStorage!.string as NSString
         return NSMaxRange(p) > p.location && text.character(at: NSMaxRange(p) - 1) == 0x0A ? NSMaxRange(p) - 1 : NSMaxRange(p)
@@ -1561,7 +1801,7 @@ final class NoteOutlineTextView: NSTextView {
         return last.count >= opening.count && last.allSatisfy { $0 == opening.first }
     }
 
-    private func makeRule(at index: Int) {
+    func makeRule(at index: Int) {
         var all = rows
         let before = all
         all[index] = NoteRow(kind: .rule, depth: all[index].depth, text: "---", gap: all[index].gap)
@@ -1615,7 +1855,7 @@ final class NoteOutlineTextView: NSTextView {
     /// Each targeted row with children folded or unfolded, the selection
     /// kept on its rows; `change` says how many rows came on screen, less
     /// how many left it.
-    private func fold(name: String, selection: Range<Int>? = nil, _ change: (inout [NoteRow], Int) -> Int) {
+    func fold(name: String, selection: Range<Int>? = nil, _ change: (inout [NoteRow], Int) -> Int) {
         perform(name, on: selection, followingCaret: selection == nil) { rows, selection in
             var changed = false
             var upper = selection.upperBound
@@ -1633,7 +1873,8 @@ final class NoteOutlineTextView: NSTextView {
         }
     }
 
-    /// A checkbox checks; a bullet with children folds them, or unfolds.
+    /// A checkbox checks; a bullet with children folds them, or unfolds
+    /// (a heading's ghost, its section); one with none, its row selected.
     func clickHandle(ofRow index: Int) {
         let all = rows
         guard all.indices.contains(index) else { return }
@@ -1645,6 +1886,8 @@ final class NoteOutlineTextView: NSTextView {
             perform("Expand", on: one, followingCaret: false) { rows, s in NoteOutlineEditing.unfold(&rows, at: s.lowerBound); return s }
         } else if NoteOutlineEditing.hasChildren(all, index) {
             perform("Collapse", on: one, followingCaret: false) { rows, s in NoteOutlineEditing.fold(&rows, at: s.lowerBound); return s }
+        } else {
+            selectRows(anchor: index, head: index)
         }
     }
 
@@ -1656,8 +1899,16 @@ final class NoteOutlineTextView: NSTextView {
             onOpen?(card.target)
             return
         }
+        // A fold's pill: what's in it shown.
+        if let index = (layoutManager as? NoteOutlineLayoutManager)?.foldPillHit(at: point, origin: textContainerOrigin) {
+            window?.makeFirstResponder(self)
+            perform("Expand", on: index..<(index + 1), followingCaret: false) { rows, s in NoteOutlineEditing.unfold(&rows, at: s.lowerBound); return s }
+            return
+        }
         if let index = (layoutManager as? NoteOutlineLayoutManager)?.handleHit(at: point, origin: textContainerOrigin) {
             window?.makeFirstResponder(self)
+            // ⌥-click: that row focused on.
+            if event.modifierFlags.contains(.option) { return focusOn(fullRow: fullIndex(of: index)) }
             // Clicked, a handle does what it does; moved, it carries its row.
             let start = event.locationInWindow
             while let next = window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
@@ -1803,13 +2054,41 @@ final class NoteOutlineTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         let shown = layout.characterRange(forGlyphRange: layout.glyphRange(forBoundingRect: visibleRect, in: container), actualGlyphRange: nil)
         return layout.handleHit(at: point, origin: textContainerOrigin, among: shown) != nil
+            || layout.foldPillHit(at: point, origin: textContainerOrigin) != nil
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
+        hoveredRow = row(under: convert(event.locationInWindow, from: nil))
         if overHandle(event) { NSCursor.arrow.set() }
         // A link to a block that's gone says so as the pointer comes onto it.
         ReferenceTip.hover(linkTarget(at: convert(event.locationInWindow, from: nil)), in: self)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hoveredRow = nil
+    }
+
+    /// Its own, for the pointer leaving it (the ghost bullet goes).
+    private var hoverArea: NSTrackingArea?
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    /// The row whose lines (and the step before them) a point is on.
+    func row(under point: NSPoint) -> Int? {
+        guard let layout = layoutManager, let container = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let p = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        guard p.y >= 0, p.y <= layout.usedRect(for: container).maxY else { return nil }
+        let glyph = min(layout.glyphIndex(for: p, in: container), max(layout.numberOfGlyphs - 1, 0))
+        let fragment = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        guard fragment.minY <= p.y, p.y <= fragment.maxY + 2 else { return nil }
+        return rowIndex(at: layout.characterIndexForGlyph(at: glyph))
     }
 
     /// The target of the link under a point, if it's on its letters.
@@ -1838,7 +2117,7 @@ final class NoteOutlineTextView: NSTextView {
         return sender.draggingSource is NoteOutlineTextView ? .move : .copy
     }
 
-    private func showDropLine(_ drop: RowDrop) {
+    func showDropLine(_ drop: RowDrop) {
         let ranges = paragraphRanges
         let y: CGFloat
         if drop.index < ranges.count { y = rowsFrame(drop.index..<(drop.index + 1)).minY }
@@ -1984,6 +2263,16 @@ final class NoteOutlineTextView: NSTextView {
     /// Markdown of more than a line comes in as rows: in place of an empty
     /// row, or after the rows it was pasted onto.
     override func paste(_ sender: Any?) {
+        if selectedRows == nil, let s = NSPasteboard.general.string(forType: .string) {
+            let range = selectedRange()
+            // In code: as it is, its lines the block's.
+            if case .code = row(at: rowIndex(at: range.location)).kind {
+                let t = s.hasSuffix("\n") ? String(s.dropLast()) : s
+                return insertText(t.replacingOccurrences(of: "\n", with: NoteOutlineText.lineSeparator), replacementRange: range)
+            }
+            // An address pasted over words: a link to it, with those words.
+            if range.length > 0, pasteLink(s, over: range) { return }
+        }
         guard let s = NSPasteboard.general.string(forType: .string), s.contains("\n") else { return super.paste(sender) }
         let pasted = NoteOutlineMarkdown.parse(s).rows
         guard !pasted.isEmpty else { return super.paste(sender) }

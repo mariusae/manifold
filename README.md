@@ -691,9 +691,19 @@ around it, and comes back with its history.
   code, strikethrough and links styled, their markup hidden (the caret
   steps over it, the file keeps it), a link clicked opened; checklists,
   headings, numbered lists, quotes, code and rules each drawn as they
-  are. What's on screen is the Markdown: each change is written back as
+  are. Prism's other actions are on Edit ▸ Outline and a row's menu
+  (right-click it): a task (`+ `, round), Move Done to Bottom (⌃⇧⌘D),
+  Duplicate and Delete (⇧⌘D, ⇧⌘K), Indent and Outdent (⌃⌘→ ⌃⌘←), Bullet
+  (⇧⌘8), Horizontal Line (⌥⌘-, or `--- `), Code Block (⇧⌥⌘C), Turn
+  Into, Select Branch (⇧⌘B), Expand Selection (⌃⌥⌘↑), Format's bold,
+  highlight (⇧⌘H) and Link… (⌥⌘K), an address pasted over words a link;
+  **Focus In** (⌃⌥⌘→, or ⌥-click a bullet) shows a row alone, its path
+  above to go back by. A fold shows as a pill after the row (click it to
+  unfold), a bullet over checkboxes as a ring of how many are done, a
+  heading a faint bullet to fold its section by. What's on screen is the Markdown: each change is written back as
   it reads (unedited, byte for byte), and a change made anywhere else
-  shows at once. In any lens, a note's outline (its ticks, its sidebar,
+  shows at once, its folds kept; a note the outline couldn't write back
+  as it is (tab indents, say) is shown read only. In any lens, a note's outline (its ticks, its sidebar,
   ⌘P) is its headings and its top-level items. The **editor** lens is Manifold's own
   text view (the bar's menu switches a tile between the fixed-width
   and variable-width font, kept per tile): the file's text laid out

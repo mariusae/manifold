@@ -1601,7 +1601,37 @@ can't see, Delete takes what's shown and not a hidden `*`, and a link
 clicked opens where it points. Each change is written back as the Markdown
 the rows say — only the bytes between what's unchanged at either end, one
 edit to the block's log — and a change from anywhere else (its editor,
-another Mac, `mani write`) is read in again, the caret kept on its row.
+another Mac, `mani write`) is read in again, the caret kept on its row,
+its folds and its focus on the rows they were on (`NoteOutlineFolds`: by
+place and words). A note whose Markdown doesn't come back the same
+(`roundTrips`: tabs for indents, mixed line endings) is shown, not edited,
+a line over it saying so — its first edit would rewrite what it didn't
+touch.
+
+Its actions are Prism's (`OutlineNoteCommands`), on Edit ▸ Outline and
+a row's own menu, the keys Manifold's where Prism's are taken: rows
+duplicated, deleted and moved by the editor's line keys (⇧⌘D, ⇧⌘K,
+⌃⌘↑ ⌃⌘↓), in and out by ⌃⌘→ ⌃⌘←; a task (`+ [ ]`, round, and `+ ` typed)
+beside a checklist item, Toggle Done, Move Done to Bottom (⌃⇧⌘D); Bullet
+(⇧⌘8), Horizontal Line (⌥⌘-, or `---` typed), Code Block (⇧⌥⌘C: the rows
+one block, or a block rows again), Turn Into; Select Row Text (⇧⌘L),
+Select Branch (⇧⌘B), Expand and Contract Selection (⌃⌥⌘↑ ⌃⌥⌘↓: word,
+sentence, text, row, branch, the branch it's in, every row); Format's
+bold, italic, strikethrough, code, highlight (⇧⌘H) and Link… (⌥⌘K), and
+an address pasted over words making them its link. **Focus** (⌃⌥⌘→, or
+⌥-click a bullet; ⌃⌥⌘← out a step; Unfocus) shows a row and what's under
+it as if it were the note, the rest set aside (`NoteOutlineFocus`) and
+written round it, the path to it over the rows, each step a way back.
+The lens is Prism's too: a fold told by a pill of three dots after the
+row's words (clicked, unfolded), not on its bullet; a hollow ghost of a
+bullet before the row under the pointer that has none — a heading's
+clicked folds its section; a bullet with checkboxes under it ringed with
+how many are done; a code block's language in its corner. A bullet with
+nothing under it clicked selects its row. Return on a code block's
+closing fence, or on the empty line before it, leaves the block. Where it
+still differs: Return on an empty item deeper in brings it out a level
+(Prism makes another), pictures show as their Markdown, and there's no
+`[[` completion — a note links to blocks by dropping them.
 
 A note's outline — what its tile shows as ticks and in its sidebar, and
 ⌘P finds — is the same in every lens (`NoteOutlineMarkdown.items`): its

@@ -371,9 +371,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(format, "Italic", #selector(TextView.formatItalic(_:)), "i")
         item(format, "Strikethrough", #selector(TextView.formatStrikethrough(_:)), "x", [.command, .shift])
         item(format, "Code", #selector(TextView.formatCode(_:)), "c", [.command, .option])
+        item(format, "Highlight", #selector(TextView.formatHighlight(_:)), "h", [.command, .shift])
+        item(format, "Link…", #selector(NoteOutlineTextView.editLink(_:)), "k", [.command, .option])
         let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
         formatItem.submenu = format
         edit.addItem(formatItem)
+        // An outline's own (§7.9), as Prism's: its rows, their kinds, the
+        // selection a step at a time, a row focused on. (⌘↩ checks a row,
+        // ⌃⌘↑ ⌃⌘↓ move rows, ⇧⌘D ⇧⌘K duplicate and delete them: the
+        // editor's keys for lines.)
+        let outline = NSMenu(title: "Outline")
+        item(outline, "New Row", #selector(NoteOutlineTextView.newRow(_:)), "")
+        outline.addItem(.separator())
+        item(outline, "Indent", #selector(NoteOutlineTextView.indentRows(_:)), right, [.command, .control])
+        item(outline, "Outdent", #selector(NoteOutlineTextView.outdentRows(_:)), left, [.command, .control])
+        outline.addItem(.separator())
+        item(outline, "Checklist Item", #selector(NoteOutlineTextView.cycleChecklist(_:)), "")
+        item(outline, "Task", #selector(NoteOutlineTextView.cycleTask(_:)), "")
+        item(outline, "Toggle Done", #selector(NoteOutlineTextView.toggleDone(_:)), "")
+        item(outline, "Move Done to Bottom", #selector(NoteOutlineTextView.moveDoneToBottom(_:)), "d", [.command, .control, .shift])
+        outline.addItem(.separator())
+        item(outline, "Bullet", #selector(NoteOutlineTextView.toggleBullet(_:)), "8", [.command, .shift])
+        item(outline, "Horizontal Line", #selector(NoteOutlineTextView.insertHorizontalLine(_:)), "-", [.command, .option])
+        item(outline, "Code Block", #selector(NoteOutlineTextView.toggleCodeBlock(_:)), "c", [.command, .option, .shift])
+        let turn = NSMenu(title: "Turn Into")
+        for (i, type) in NoteOutlineTextView.RowType.allCases.enumerated() {
+            item(turn, type.title, #selector(NoteOutlineTextView.turnInto(_:)), "").tag = i
+        }
+        let turnItem = NSMenuItem(title: "Turn Into", action: nil, keyEquivalent: "")
+        turnItem.submenu = turn
+        outline.addItem(turnItem)
+        outline.addItem(.separator())
+        item(outline, "Select Row Text", #selector(NoteOutlineTextView.selectRowText(_:)), "l", [.command, .shift])
+        item(outline, "Select Branch", #selector(NoteOutlineTextView.selectBranch(_:)), "b", [.command, .shift])
+        // ⌃⌥⌘ and an arrow, Prism's ⌥⌘ (here the tile that way).
+        item(outline, "Expand Selection", #selector(NoteOutlineTextView.expandSelection(_:)), up, [.command, .option, .control])
+        item(outline, "Contract Selection", #selector(NoteOutlineTextView.contractSelection(_:)), down, [.command, .option, .control])
+        outline.addItem(.separator())
+        item(outline, "Focus In", #selector(NoteOutlineTextView.focusIn(_:)), right, [.command, .option, .control])
+        item(outline, "Focus Out", #selector(NoteOutlineTextView.focusOut(_:)), left, [.command, .option, .control])
+        item(outline, "Unfocus", #selector(NoteOutlineTextView.unfocus(_:)), "")
+        let outlineItem = NSMenuItem(title: "Outline", action: nil, keyEquivalent: "")
+        outlineItem.submenu = outline
+        edit.addItem(outlineItem)
         item(edit, "Clear Screen", #selector(TerminalView.clearScreen(_:)), "k")
 
         let view = submenu(main, "View")
@@ -428,6 +468,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Expand", #selector(NoteOutlineTextView.expand(_:)), "0", [.command, .control])
         item(view, "Collapse All", #selector(NoteOutlineTextView.collapseAll(_:)), "9", [.command, .option])
         item(view, "Expand All", #selector(NoteOutlineTextView.expandAll(_:)), "0", [.command, .option])
+        item(view, "Collapse Completely", #selector(NoteOutlineTextView.collapseCompletely(_:)), "")
+        item(view, "Expand Completely", #selector(NoteOutlineTextView.expandCompletely(_:)), "")
         view.addItem(.separator())
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 

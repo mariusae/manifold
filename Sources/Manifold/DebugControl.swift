@@ -1120,14 +1120,17 @@ enum DebugControl {
             for m in parts.dropLast() {
                 switch m { case "cmd": mods.insert(.command); case "ctrl": mods.insert(.control); case "shift": mods.insert(.shift); case "opt": mods.insert(.option); default: break }
             }
-            let key = last == "tab" ? "\t" : last
+            let arrows: [String: (Int, UInt16)] = ["left": (NSLeftArrowFunctionKey, 123), "right": (NSRightArrowFunctionKey, 124),
+                                                  "down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126)]
+            if let (scalar, _) = arrows[last] { mods.insert([.function, .numericPad]); _ = scalar }
+            let key = last == "tab" ? "\t" : arrows[last].map { String(UnicodeScalar($0.0)!) } ?? last
             // US layout key codes: the menu matches by them as well as by the characters.
             let codes: [String: UInt16] = ["a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12,
                                            "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38,
                                            "k": 40, "n": 45, "m": 46, ".": 47, "\t": 48, "`": 50, "'": 39, "\\": 42, "[": 33, "]": 30, "=": 24, "-": 27]
             guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                                windowNumber: window.windowNumber, context: nil, characters: key, charactersIgnoringModifiers: key,
-                                               isARepeat: false, keyCode: codes[key] ?? 37) else { return "usage: keyequiv [mods+]<key>" }
+                                               isARepeat: false, keyCode: arrows[last]?.1 ?? codes[key] ?? 37) else { return "usage: keyequiv [mods+]<key>" }
             if window.performKeyEquivalent(with: event) { return "a view took it" }
             guard let menu = NSApp.mainMenu else { return "no menu" }
             // Which item: the one whose key and modifiers match.
@@ -1135,12 +1138,24 @@ enum DebugControl {
                 for item in m.items {
                     if let sub = item.submenu, let found = find(sub) { return found }
                     let itemMods = item.keyEquivalentModifierMask.intersection(.deviceIndependentFlagsMask)
-                    if item.keyEquivalent == key, itemMods == mods.intersection(.deviceIndependentFlagsMask) { return item }
+                    if item.keyEquivalent == key, itemMods == mods.intersection(.deviceIndependentFlagsMask).subtracting([.function, .numericPad]) { return item }
                 }
                 return nil
             }
             let item = find(menu)
-            return menu.performKeyEquivalent(with: event) ? "the menu took it" + (item.map { ": \($0.title)" } ?? "") : "nothing took it"
+            // No window key (the app inactive): the command sent along the
+            // window's responder chain, as it would go were it key.
+            if NSApp.keyWindow == nil, let item, let action = item.action, item.target == nil, let first = window.firstResponder {
+                var target: NSResponder? = first
+                while let r = target, !r.responds(to: action) { target = r.nextResponder }
+                let enabled = (target as? NSUserInterfaceValidations)?.validateUserInterfaceItem(item) ?? true
+                guard enabled, let target else { return "the menu's \(item.title): disabled (no key window)" }
+                NSApp.sendAction(action, to: target, from: item)
+                return "the menu took it: \(item.title) → \(type(of: target)) (no key window: sent along the window's chain)"
+            }
+            // Where its action goes: the app inactive, no window is key, and a menu's command reaches no view.
+            let target = item?.action.flatMap { NSApp.target(forAction: $0, to: item?.target, from: item) }.map { " → \(type(of: $0))" } ?? ""
+            return menu.performKeyEquivalent(with: event) ? "the menu took it" + (item.map { ": \($0.title)" } ?? "") + target + (NSApp.keyWindow == nil ? " (no key window)" : "") : "nothing took it"
         case "pillstyle":
             // "pillstyle <a line of Markdown>": the titles its block links'
             // pills would show, a block's own name standing as BLOCKNAME.

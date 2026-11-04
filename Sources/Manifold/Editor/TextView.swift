@@ -2260,6 +2260,7 @@ final class TextView: NSView, NSTextInputClient {
     @objc func formatItalic(_ sender: Any?) { toggleWrap("_") }
     @objc func formatStrikethrough(_ sender: Any?) { toggleWrap("~~") }
     @objc func formatCode(_ sender: Any?) { toggleWrap("`") }
+    @objc func formatHighlight(_ sender: Any?) { toggleWrap("==") }
 
     private func deleteLines() {
         let lines = selectedLines()
