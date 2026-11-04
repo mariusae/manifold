@@ -34,7 +34,7 @@ index f9d861b..6b49c77 100644
      // up here just so that they are more self-documenting.
      const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 40ff55c..5911133 100644
+index 40ff55c..5198750 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
 @@ -450,6 +450,12 @@ typedef struct {
@@ -85,7 +85,7 @@ index 40ff55c..5911133 100644
 +  uint16_t y;
 +  uint16_t x0;
 +  uint16_t x1;
-+  uint16_t _pad;
++  uint16_t link;
 +} ghostty_manifold_run_s;
 +void ghostty_surface_manifold_links(ghostty_surface_t, const ghostty_manifold_run_s*, uintptr_t, uint32_t, int32_t, uint32_t);
 +uintptr_t ghostty_surface_manifold_row(ghostty_surface_t, uint16_t, uint32_t*, uintptr_t);
@@ -175,7 +175,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..2ff6e68 100644
+index 0d5a4f8..5cd5e56 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -399,8 +399,8 @@ index 0d5a4f8..2ff6e68 100644
 +    }
 +
 +    /// Manifold: links shown over the screen (⌘ held) until taken away (n
-+    /// 0) or replaced: runs of viewport cells in `fg` (0xRRGGBB), the run
-+    /// `hovered` (if not negative) on `hover_bg` — never in the terminal
++    /// 0) or replaced: runs of viewport cells in `fg` (0xRRGGBB), the runs
++    /// of link `hovered` (if not negative) on `hover_bg` — never in the terminal
 +    /// (renderer/manifold_links.zig).
 +    export fn ghostty_surface_manifold_links(
 +        surface: *Surface,
@@ -423,7 +423,7 @@ index 0d5a4f8..2ff6e68 100644
 +                l.len = count;
 +                l.fg = .{ .r = @truncate(fg >> 16), .g = @truncate(fg >> 8), .b = @truncate(fg) };
 +                l.hover_bg = .{ .r = @truncate(hover_bg >> 16), .g = @truncate(hover_bg >> 8), .b = @truncate(hover_bg) };
-+                if (hovered >= 0 and @as(usize, @intCast(hovered)) < count) l.hovered = @intCast(hovered);
++                if (hovered >= 0 and hovered <= std.math.maxInt(u16)) l.hovered = @intCast(hovered);
 +                core.renderer_state.manifold_links = l;
 +            }
 +            // The frame's copy of the screen made whole again: rows that
@@ -847,10 +847,10 @@ index 0000000..1dbac95
 +    return bytes.ptr;
 +}
 diff --git a/src/renderer/State.zig b/src/renderer/State.zig
-index e882ddc..a8b2176 100644
+index e882ddc..8233903 100644
 --- a/src/renderer/State.zig
 +++ b/src/renderer/State.zig
-@@ -30,6 +30,53 @@ preedit: ?Preedit = null,
+@@ -30,6 +30,55 @@ preedit: ?Preedit = null,
  /// need about the mouse.
  mouse: Mouse = .{},
  
@@ -886,18 +886,20 @@ index e882ddc..a8b2176 100644
 +
 +pub const ManifoldLinks = struct {
 +    pub const max = 512;
-+    /// Cells of a viewport row, from x0 to before x1.
++    /// Cells of a viewport row, from x0 to before x1, of link `link` (a
++    /// link the terminal wrapped is a run on each of its rows).
 +    pub const Run = extern struct {
 +        y: u16,
 +        x0: u16,
 +        x1: u16,
-+        _pad: u16 = 0,
++        link: u16 = 0,
 +    };
 +
 +    runs: [max]Run = undefined,
 +    len: usize = 0,
 +    fg: terminalpkg.color.RGB = .{},
-+    hovered: ?usize = null,
++    /// The link under the pointer: each of its runs on `hover_bg`.
++    hovered: ?u16 = null,
 +    hover_bg: terminalpkg.color.RGB = .{},
 +};
 +
@@ -1362,7 +1364,7 @@ index 0000000..8a853dc
 +}
 diff --git a/src/renderer/manifold_links.zig b/src/renderer/manifold_links.zig
 new file mode 100644
-index 0000000..2d307b9
+index 0000000..afdac9f
 --- /dev/null
 +++ b/src/renderer/manifold_links.zig
 @@ -0,0 +1,32 @@
@@ -1378,7 +1380,7 @@ index 0000000..2d307b9
 +    const rows = rs.row_data.slice();
 +    const row_cells = rows.items(.cells);
 +    const row_dirty = rows.items(.dirty);
-+    for (l.runs[0..l.len], 0..) |run, i| {
++    for (l.runs[0..l.len]) |run| {
 +        if (run.y >= rs.rows) continue;
 +        const cells = row_cells[run.y].slice();
 +        const raws = cells.items(.raw);
@@ -1388,7 +1390,7 @@ index 0000000..2d307b9
 +        while (x < end) : (x += 1) {
 +            var style = if (raws[x].style_id != 0) styles[x] else terminal.Style{};
 +            style.fg_color = .{ .rgb = l.fg };
-+            if (l.hovered == i) style.bg_color = .{ .rgb = l.hover_bg };
++            if (l.hovered == run.link) style.bg_color = .{ .rgb = l.hover_bg };
 +            // The id only says it has one; the renderer takes the style
 +            // from the copy.
 +            raws[x].style_id = 1;

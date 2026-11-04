@@ -877,7 +877,10 @@ around it, and comes back with its history.
   `~/a`, a name with an extension); a bare name, to be there. A name is
   from where the command that printed it ran: after `ls` and `cd sub`,
   the names `ls` listed are still the folder's it listed, and open as
-  that folder's files. **Hold ⌘** over a terminal and what can be clicked
+  that folder's files. A link the terminal wrapped onto the next row
+  (it ran out of columns) is one link, whichever row is clicked; a path
+  a program broke over two lines itself (the next maybe indented) is
+  joined when a file is there by the joined name. **Hold ⌘** over a terminal and what can be clicked
   shows, its text in the link color an editor shows ⌘'s links in, with
   the same glow around its letters, the one under the pointer on the
   same soft band. On another host the files are looked for there as ⌘

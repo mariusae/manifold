@@ -853,8 +853,16 @@ still links the names `ls` printed, to the folder it listed, here and on
 another host alike; a link's target is made absolute from that
 directory before it is opened.
 
-The terminal finds its links by reading the viewport's rows with ⌘ held
-(`TerminalLinks`), and a file's link is only as sure as its path can be
+The terminal finds its links by reading the viewport's lines with ⌘ held
+(`TerminalLinks`): a line as its program wrote it, the rows the terminal
+wrapped it over joined — ghostty marks a row it wrapped, and its text
+read across the end of one has no newline — so a link it wrapped is one,
+drawn as a run on each row (the runs carry their link's number, and the
+hovered link's are all on the band). A line a program broke itself
+can't be told from two: only a path is joined across it, the last word
+of one line and the first of the next (past its indent), when the
+joined path has a slash and is there (looked at, or looked up on another
+host as any path is). A file's link is only as sure as its path can be
 looked at. On this Mac each is looked at as the rows are read, so every
 link is `sure`. On another host it can't be, in the time a pointer
 moves, so a link is `likely` (it looks like a path: `/x`, `./x`, `a/b.md`,

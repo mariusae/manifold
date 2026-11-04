@@ -328,7 +328,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let grew = total != scrollbar.total
         scrollbar = (total, offset, len)
         layoutScroller()
-        if markedRuns != nil { markLinks() }
+        if markedLinks != nil { markLinks() }
         markCurrentCommand()
         if grew { scheduleLocate() }
     }
@@ -795,9 +795,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         case "rowlinks":
             // "scrub rowlinks <r>": a viewport row's text and every link in it.
             guard let r = Int(arg), let surface else { return "usage: scrub rowlinks <row>" }
-            let cols = Int(ghostty_surface_size(surface).columns)
+            let size = ghostty_surface_size(surface)
+            let cols = Int(size.columns)
             let text = viewportRow(r, cols: cols)?.text ?? "?"
-            return text.debugDescription + "\n" + links(inRow: r, cols: cols, possible: true).map { "\($0.from)-\($0.to) \($0.link.target) \($0.link.standing)" }.joined(separator: "\n")
+            // Those on it, each with its runs (a link wrapped has one a row).
+            return text.debugDescription + "\n" + screenLinks(cols: cols, rows: Int(size.rows), possible: true).filter { $0.runs.contains { $0.row == r } }
+                .map { l in l.runs.map { "\($0.row):\($0.from)-\($0.to)" }.joined(separator: ",") + " \(l.link.target) \(l.link.standing)" }.joined(separator: "\n")
         case "bases":
             // "scrub bases": each command's row and where it ran, then each
             // row of the viewport's directory.
@@ -1085,7 +1088,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let ready = awaiting.filter { $0.paths.isDisjoint(with: asking) }
         awaiting.removeAll { $0.paths.isDisjoint(with: asking) }
         ready.forEach { $0.done() }
-        if markedRuns != nil { markLinks() }
+        if markedLinks != nil { markLinks() }
     }
 
     /// A link ⌘-clicked: opened — a file not looked for yet once it's
@@ -1110,7 +1113,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         unknown = []
-        for r in 0..<Int(info.rows) { _ = links(inRow: r, cols: Int(info.cols)) }
+        _ = screenLinks(cols: Int(info.cols), rows: Int(info.rows))
         if !unknown.isEmpty { ask(unknown) }
     }
 
@@ -1137,17 +1140,130 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         return (text, columns)
     }
 
-    /// The links in a row of the viewport, as runs of its cells, their
-    /// files named from where the command they're from ran. `possible`:
-    /// names not looked for yet too (`TerminalLinks.Standing`).
-    private func links(inRow r: Int, cols: Int, possible: Bool = false) -> [(link: TerminalLinks.Link, from: Int, to: Int)] {
-        guard let (text, columns) = viewportRow(r, cols: cols), !columns.isEmpty else { return [] }
-        let scalars = Array(text.unicodeScalars)
-        let base = base(ofRow: r)
-        return TerminalLinks.links(in: text, exists: exists(from: base), possible: possible).map { l in
-            let last = l.range.upperBound - 1
-            return (l.from(base), columns[l.range.lowerBound], columns[last] + max(1, Self.width(scalars[last])))
+    /// A line of the viewport as its program wrote it: the rows the
+    /// terminal wrapped it over, joined — and each character's cell.
+    private struct ScreenLine {
+        var rows: ClosedRange<Int>
+        var text: String
+        var cells: [(row: Int, col: Int, width: Int)]
+    }
+
+    /// A link on the viewport: what it opens, and its cells, a run on each
+    /// row it's on.
+    private struct ScreenLink {
+        var link: TerminalLinks.Link
+        var runs: [(row: Int, from: Int, to: Int)]
+
+        func contains(row: Int, col: Int) -> Bool { runs.contains { $0.row == row && $0.from <= col && col < $0.to } }
+        func overlaps(_ other: ScreenLink) -> Bool {
+            runs.contains { a in other.runs.contains { b in a.row == b.row && a.from < b.to && b.from < a.to } }
         }
+    }
+
+    /// Whether a row goes on in the next because the terminal wrapped it
+    /// (it ran out of columns), not because the program went to a new
+    /// line: ghostty marks such a row, and its text read across the end
+    /// of it has no newline.
+    private func wraps(_ r: Int, cols: Int) -> Bool {
+        guard let surface else { return false }
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(r))
+        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(r + 1))
+        sel.rectangle = false
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &out) else { return false }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text, out.text_len > 0 else { return false }
+        return !UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)).contains(0x0A)
+    }
+
+    /// The viewport's lines, top to bottom (`ScreenLine`). A row is read
+    /// across only when it's filled to its end (a wide character that
+    /// didn't fit leaves the last cell empty), as a wrapped one is.
+    private func screenLines(cols: Int, rows: Int) -> [ScreenLine] {
+        var out: [ScreenLine] = []
+        var r = 0
+        while r < rows {
+            var line = ScreenLine(rows: r...r, text: "", cells: [])
+            var row = r
+            while let (text, columns) = viewportRow(row, cols: cols) {
+                var end = 0
+                for (u, col) in zip(text.unicodeScalars, columns) {
+                    line.cells.append((row, col, Self.width(u)))
+                    end = col + max(1, Self.width(u))
+                }
+                line.text.unicodeScalars.append(contentsOf: text.unicodeScalars)
+                line.rows = r...row
+                guard row + 1 < rows, end >= cols - 1, wraps(row, cols: cols) else { break }
+                row += 1
+            }
+            out.append(line)
+            r = row + 1
+        }
+        return out
+    }
+
+    /// Characters `range` of a line as runs of cells, one a row.
+    private static func runs(_ line: ScreenLine, _ range: Range<Int>) -> [(row: Int, from: Int, to: Int)] {
+        var runs: [(row: Int, from: Int, to: Int)] = []
+        for i in range where line.cells.indices.contains(i) {
+            let c = line.cells[i]
+            if let last = runs.last, last.row == c.row {
+                runs[runs.count - 1].to = max(last.to, c.col + max(1, c.width))
+            } else {
+                runs.append((c.row, c.col, c.col + max(1, c.width)))
+            }
+        }
+        return runs
+    }
+
+    /// The viewport's links, their files named from where the command
+    /// they're from ran: in each line as its program wrote it (a link the
+    /// terminal wrapped is one, over its rows); and a path a program broke
+    /// over two lines itself, joined, if a file is there by the joined
+    /// name — and has a slash in it, a path long enough to have been
+    /// broken. `possible`: names not looked for yet too
+    /// (`TerminalLinks.Standing`).
+    private func screenLinks(cols: Int, rows: Int, possible: Bool = false) -> [ScreenLink] {
+        let lines = screenLines(cols: cols, rows: rows)
+        var out: [ScreenLink] = []
+        for line in lines {
+            let base = base(ofRow: line.rows.lowerBound)
+            for l in TerminalLinks.links(in: line.text, exists: exists(from: base), possible: possible) {
+                out.append(ScreenLink(link: l.from(base), runs: Self.runs(line, l.range)))
+            }
+        }
+        for (a, b) in zip(lines, lines.dropFirst()) {
+            guard let joined = joined(a, b) else { continue }
+            out.removeAll { $0.overlaps(joined) }
+            out.append(joined)
+        }
+        return out
+    }
+
+    /// The path broken at the end of one line and going on at the start of
+    /// the next (past its indent), as one link, if it's there.
+    private func joined(_ a: ScreenLine, _ b: ScreenLine) -> ScreenLink? {
+        let at = Array(a.text.unicodeScalars), bt = Array(b.text.unicodeScalars)
+        let space = CharacterSet.whitespaces
+        guard let last = at.last, !space.contains(last) else { return nil }
+        var tail = at.count
+        while tail > 0, !space.contains(at[tail - 1]) { tail -= 1 }
+        var head = 0
+        while head < bt.count, space.contains(bt[head]) { head += 1 }
+        var headEnd = head
+        while headEnd < bt.count, !space.contains(bt[headEnd]) { headEnd += 1 }
+        guard headEnd > head else { return nil }
+        var word = String.UnicodeScalarView(at[tail...])
+        word.append(contentsOf: bt[head..<headEnd])
+        let candidate = String(word), split = at.count - tail
+        guard candidate.contains("/") else { return nil }
+        let base = base(ofRow: a.rows.lowerBound)
+        guard let l = TerminalLinks.links(in: candidate, exists: exists(from: base)).first(where: {
+            $0.range.lowerBound < split && $0.range.upperBound > split
+        }), l.path != nil, l.standing == .sure else { return nil }
+        return ScreenLink(link: l.from(base),
+                          runs: Self.runs(a, (tail + l.range.lowerBound)..<at.count) + Self.runs(b, head..<(head + l.range.upperBound - split)))
     }
 
     /// The cell under a point of the view: its column and viewport row.
@@ -1166,7 +1282,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         guard let (col, row) = cell(at: p, info) else { return nil }
-        return links(inRow: row, cols: Int(info.cols), possible: true).first { $0.from <= col && col < $0.to }?.link
+        return screenLinks(cols: Int(info.cols), rows: Int(info.rows), possible: true).first { $0.contains(row: row, col: col) }?.link
     }
 
     /// ⌘ held with the pointer over the terminal marks the links on its
@@ -1176,7 +1292,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
         linkMonitor = nil
         guard window != nil else {
-            markedRuns = nil
+            markedLinks = nil
             return clearLinks()
         }
         linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
@@ -1187,8 +1303,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             if event.type == .keyDown {
                 self.pendingMark?.cancel()
                 self.pendingMark = nil
-                if event.modifierFlags.contains(.command), self.markedRuns != nil {
-                    self.markedRuns = nil
+                if event.modifierFlags.contains(.command), self.markedLinks != nil {
+                    self.markedLinks = nil
                     self.clearLinks()
                     self.cursor.set()
                 }
@@ -1196,7 +1312,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             }
             let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer && allowed
             if down {
-                if event.type == .flagsChanged, self.markedRuns == nil {
+                if event.type == .flagsChanged, self.markedLinks == nil {
                     // The screen read a moment after ⌘ goes down, if no key
                     // follows — or the links would flash at every shortcut;
                     // another host's files looked up meanwhile.
@@ -1210,7 +1326,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                     }
                     self.pendingMark = work
                     DispatchQueue.main.asyncAfter(deadline: .now() + CommandLinks.delay, execute: work)
-                } else if self.markedRuns != nil {
+                } else if self.markedLinks != nil {
                     // The pointer moving moves the band; ⌘ again, read again.
                     self.markLinks(reading: event.type == .flagsChanged)
                 } else if event.type == .mouseMoved, self.pendingMark == nil {
@@ -1220,8 +1336,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             } else {
                 self.pendingMark?.cancel()
                 self.pendingMark = nil
-                if self.markedRuns != nil {
-                    self.markedRuns = nil
+                if self.markedLinks != nil {
+                    self.markedLinks = nil
                     self.clearLinks()
                     self.cursor.set()
                 }
@@ -1233,9 +1349,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The links' reading, put off a moment after ⌘ goes down.
     private var pendingMark: DispatchWorkItem?
 
-    /// The links marked while ⌘ is held, as last read from the screen;
-    /// `sure`, those that glow.
-    private var markedRuns: [(row: Int, from: Int, to: Int, sure: Bool)]?
+    /// The links marked while ⌘ is held, as last read from the screen.
+    private var markedLinks: [ScreenLink]?
 
     /// Marks the screen's links (read again, or as last read), the one
     /// under the pointer underlined. Those sure of glow; a file on another
@@ -1247,21 +1362,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         ghostty_surface_manifold_info(surface, &info)
         let cols = Int(info.cols)
         guard cols > 0 else { return }
-        var runs = reading ? [] : markedRuns ?? []
+        var links = reading ? [] : markedLinks ?? []
         if reading {
             unknown = []
-            for r in 0..<Int(info.rows) {
-                for l in links(inRow: r, cols: cols) { runs.append((r, l.from, l.to, l.link.standing == .sure)) }
-            }
-            markedRuns = runs
-            glow.showLinks(linkGlyphs(runs.filter { $0.sure }.map { ($0.row, $0.from, $0.to) }, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+            links = screenLinks(cols: cols, rows: Int(info.rows))
+            markedLinks = links
+            glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
             if !unknown.isEmpty { ask(unknown) }
         }
         let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
-        let hovered = under.flatMap { u in runs.firstIndex { $0.row == u.row && $0.from <= u.col && u.col < $0.to } }
-        showLinks(runs.map { ($0.row, $0.from, $0.to) }, hovered: hovered)
+        let hovered = under.flatMap { u in links.firstIndex { $0.contains(row: u.row, col: u.col) } }
+        showLinks(links, hovered: hovered)
         // A reference under it that leads nowhere says so.
-        ReferenceTip.hover(hovered.flatMap { _ in link(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))?.target }, in: self)
+        ReferenceTip.hover(hovered.map { links[$0].link.target }, in: self)
         (hovered != nil ? NSCursor.pointingHand : cursor).set()
     }
 
@@ -1271,18 +1384,21 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// The links drawn by ghostty, over its copy of the screen: their text
     /// in the link color an editor's ⌘ links have, the one under the
-    /// pointer on a band a step lighter (darker, in the light) than the
-    /// background — a lightness, not a hue (`TextView.linkHover`).
-    private func showLinks(_ runs: [(row: Int, from: Int, to: Int)], hovered: Int?) {
+    /// pointer (each of its rows) on a band a step lighter (darker, in the
+    /// light) than the background — a lightness, not a hue
+    /// (`TextView.linkHover`).
+    private func showLinks(_ links: [ScreenLink], hovered: Int?) {
         guard let surface else { return }
-        guard !runs.isEmpty else { return clearLinks() }
+        guard !links.isEmpty else { return clearLinks() }
         var fg: UInt32 = 0, bg: UInt32 = 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let paper = TerminalPalette.current(for: self).background
             fg = Self.rgb(TextView.linkColor)
             bg = Self.rgb(Self.over(paper, TextView.linkHover))
         }
-        let c = runs.map { ghostty_manifold_run_s(y: UInt16($0.row), x0: UInt16($0.from), x1: UInt16($0.to), _pad: 0) }
+        let c = links.enumerated().flatMap { i, l in
+            l.runs.map { ghostty_manifold_run_s(y: UInt16($0.row), x0: UInt16($0.from), x1: UInt16($0.to), link: UInt16(i)) }
+        }
         c.withUnsafeBufferPointer { ghostty_surface_manifold_links(surface, $0.baseAddress, UInt($0.count), fg, Int32(hovered ?? -1), bg) }
     }
 
@@ -1348,30 +1464,29 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         var info = ghostty_manifold_info_s()
         ghostty_surface_manifold_info(surface, &info)
         let cols = Int(info.cols)
-        var runs: [(row: Int, from: Int, to: Int)] = []
-        var sure: [(row: Int, from: Int, to: Int)] = []
         var targets: [String] = []
         unknown = []
-        for r in 0..<Int(info.rows) {
-            for l in links(inRow: r, cols: cols) {
-                runs.append((r, l.from, l.to))
-                if l.link.standing == .sure { sure.append((r, l.from, l.to)) }
-                // Its middle in the window's coordinates from the top left (as `cmdclick` takes them).
-                let p = convert(NSPoint(x: info.pad_left + (Double(l.from + l.to) / 2) * info.cell_width,
-                                        y: Double(bounds.height) - info.pad_top - (Double(r) + 0.5) * info.cell_height), to: nil)
+        let links = screenLinks(cols: cols, rows: Int(info.rows))
+        for l in links {
+            // Each run, and its middle in the window's coordinates from the
+            // top left (as `cmdclick` takes them).
+            let at = l.runs.map { r -> String in
+                let p = convert(NSPoint(x: info.pad_left + (Double(r.from + r.to) / 2) * info.cell_width,
+                                        y: Double(bounds.height) - info.pad_top - (Double(r.row) + 0.5) * info.cell_height), to: nil)
                 let top = (window?.contentView?.bounds.height ?? 0) - p.y
-                targets.append("\(r):\(l.from)-\(l.to) \(l.link.target) \(l.link.standing) at \(Int(p.x)) \(Int(top))")
+                return "\(r.row):\(r.from)-\(r.to) at \(Int(p.x)) \(Int(top))"
             }
+            targets.append(at.joined(separator: " + ") + " \(l.link.target) \(l.link.standing)")
         }
         if !unknown.isEmpty { ask(unknown) }
-        let hovered = hoverRow.flatMap { hr in runs.firstIndex { $0.row == hr && $0.from <= (col ?? 0) && (col ?? 0) < $0.to } }
-        showLinks(runs, hovered: hovered)
-        glow.showLinks(linkGlyphs(sure, info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+        let hovered = hoverRow.flatMap { hr in links.firstIndex { $0.contains(row: hr, col: col ?? 0) } }
+        showLinks(links, hovered: hovered)
+        glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
         return (targets + [glow.debugLinkGlow]).joined(separator: "\n")
     }
 
     func debugUnmarkLinks() {
-        markedRuns = nil
+        markedLinks = nil
         clearLinks()
     }
 
