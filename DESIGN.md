@@ -341,7 +341,9 @@ docs/ of generated pages, megabytes each, had made a Rust project 86%
 HTML. They're drawn as shares (`LanguageShare`, a language's colour as code
 hosts colour it), and its Here Now the client's own reading of the
 host's blocks (`Presence`): terminals and agents whose directory is in
-it, notes linked to a file of it. A project's root's other spelling is
+it, notes linked to a file of it — each as its card, as a stack has it
+(`SummaryCard`), those placed in the space shown first and the rest
+under Other spaces. A project's root's other spelling is
 the file system's (`realpath`: /private/tmp), not Foundation's, which
 gives /tmp back — a terminal's directory says the former.
 

@@ -9179,13 +9179,15 @@ extension MainWindowController: DirectoryViewDelegate {
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence] {
         guard let client = hosts.client(view.block.host) else { return [] }
         var out: [Presence] = []
+        let shownHere = Set(arrangement?.placements.map(\.block) ?? [])
         // Terminals and agents with a shell there, what each is doing.
         for b in client.node.blocks where b.kind == .terminal || b.kind == .agent {
             guard let t = b.terminal, t.pid != nil || t.dormantSince == nil, let cwd = t.cwd, project.holds(cwd) else { continue }
             let where_ = project.relative(cwd)
             let doing = b.statusRecord?.msg ?? t.commands?.last(where: { $0.isRunning })?.text
             out.append(Presence(block: b.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
-                                detail: [b.agent?.name, doing, where_.isEmpty ? nil : where_ + "/"].compactMap { $0 }.joined(separator: " · ")))
+                                detail: [b.agent?.name, doing, where_.isEmpty ? nil : where_ + "/"].compactMap { $0 }.joined(separator: " · "),
+                                here: shownHere.contains(b.id), card: cardContent(for: b.id)))
         }
         // Notes about its files: linked to one of them.
         do {
@@ -9200,10 +9202,12 @@ extension MainWindowController: DirectoryViewDelegate {
             }
             for (id, about) in notes.sorted(by: { $0.value < $1.value }) {
                 guard let n = client.node.block(id) else { continue }
-                out.append(Presence(block: id, title: n.displayTitle, symbol: Theme.symbolName(for: n), detail: "about " + about))
+                out.append(Presence(block: id, title: n.displayTitle, symbol: Theme.symbolName(for: n), detail: "about " + about,
+                                    here: shownHere.contains(id), card: cardContent(for: id)))
             }
         }
-        return out
+        // Those in the workspace shown first, each kind as it was.
+        return out.filter(\.here) + out.filter { !$0.here }
     }
 
     func directoryView(_ view: DirectoryView, popOut search: BlockID) {

@@ -77,6 +77,15 @@ struct Presence: Equatable {
     var title: String
     var symbol: String
     var detail: String
+    /// Placed in the workspace shown: listed first.
+    var here = false
+    /// Its card, as a tile has it in a stack.
+    var card: SummaryCardContent?
+
+    static func == (a: Presence, b: Presence) -> Bool {
+        a.block == b.block && a.title == b.title && a.symbol == b.symbol && a.detail == b.detail && a.here == b.here
+            && a.card?.summary == b.card?.summary && a.card?.mark == b.card?.mark && a.card?.symbol == b.card?.symbol
+    }
 }
 
 /// The line under a project's header (§2.6): its branch, how far from
@@ -212,11 +221,13 @@ final class ProjectSidebar: NSView {
             add(SectionLabel("Languages"))
             add(LanguageBar(f.languages))
         }
-        // What's at work in it now.
-        if !f.presence.isEmpty {
-            add(SectionLabel("Here now"))
-            for p in f.presence.prefix(8) {
-                let row = HomeRow(mark: nil, markColor: nil, title: p.title, detail: p.detail, symbol: p.symbol)
+        // What's at work in it now, each as its card: in the workspace
+        // shown first, then those in others under their own heading.
+        let here = f.presence.filter(\.here), elsewhere = f.presence.filter { !$0.here }
+        for (title, list) in [("Here now", here), ("Other spaces", elsewhere)] where !list.isEmpty {
+            add(SectionLabel(title))
+            for p in list.prefix(8) {
+                let row = p.card.map { HomeRow(card: $0) } ?? HomeRow(mark: nil, markColor: nil, title: p.title, detail: p.detail, symbol: p.symbol)
                 row.onClick = { [weak self] in self?.onAction?(.go(p.block)) }
                 // The block at work, dragged: itself, as a tile's bar ⇧-dragged is.
                 row.drag = { Drags.block?(p.block, [.shift]) }
@@ -373,7 +384,7 @@ final class HomeRow: NSView, NSDraggingSource {
     /// What dragging it carries: it, with the others chosen.
     var dragItems: ((HomeRow) -> [NSPasteboardWriting])?
     /// Chosen, to be dragged with others.
-    var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
+    var chosen = false { didSet { if chosen != oldValue { needsDisplay = true; card?.chosen = chosen } } }
     private let mark: String?
     private let markColor: NSColor?
     private let symbol: String?
@@ -381,7 +392,27 @@ final class HomeRow: NSView, NSDraggingSource {
     private let detail: String?
     private let quiet: Bool
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
-    var height: CGFloat { detail == nil ? 24 : 40 }
+    var height: CGFloat { card.map { SummaryCard.height(for: $0.content) + 8 } ?? (detail == nil ? 24 : 40) }
+    /// Shown as a card (what's at work in the project): the card drawn,
+    /// the row still what's clicked, chosen and dragged.
+    private var card: SummaryCard?
+
+    convenience init(card content: SummaryCardContent) {
+        self.init(mark: nil, markColor: nil, title: content.summary.title, detail: nil, symbol: content.symbol)
+        let c = SummaryCard(content)
+        card = c
+        addSubview(c)
+    }
+
+    override func layout() {
+        super.layout()
+        card?.frame = bounds.insetBy(dx: 8, dy: 4)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard card != nil else { return super.hitTest(point) }
+        return frame.contains(point) ? self : nil
+    }
 
     init(mark: String?, markColor: NSColor?, title: String, detail: String?, quiet: Bool = false, symbol: String? = nil) {
         self.mark = mark
@@ -455,6 +486,8 @@ final class HomeRow: NSView, NSDraggingSource {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func draw(_ dirtyRect: NSRect) {
+        // A card draws itself (ringed, chosen).
+        guard card == nil else { return }
         if chosen {
             Flat.chosen(emphasized: false).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control).fill()
@@ -483,7 +516,7 @@ final class HomeRow: NSView, NSDraggingSource {
         }
     }
 
-    var debugState: String { (mark.map { $0 + " " } ?? "") + title + (detail.map { " — " + $0 } ?? "") }
+    var debugState: String { (card != nil ? "[card] " : "") + (mark.map { $0 + " " } ?? "") + title + (detail.map { " — " + $0 } ?? "") }
 }
 
 /// A project's languages as one thin bar, each its share wide in its
