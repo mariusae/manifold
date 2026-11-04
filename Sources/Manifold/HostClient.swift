@@ -384,6 +384,14 @@ final class HostClient {
     func append(_ events: [Event], to shard: ShardID) {
         guard !events.isEmpty else { return }
         guard !fenced.contains(shard) else { return onRefused?(shard) ?? () }
+        // A workspace's focus moved here: its pen taken first (§8.2), so
+        // what's appended isn't refused for another holding it — taken
+        // after, at the render, the move was refused and this client
+        // fenced by an attachment that only held the pen.
+        if events.contains(where: { if case .focus = $0 { return true }; return false }) {
+            focusedHere = Date()
+            if !watching, node.leader(of: shard) == .client { conn?.send(.message(ClientMessage.own(shard: shard))) }
+        }
         var entries: [Entry] = []
         for e in events {
             if let entry = node.append(e, to: shard, at: clock.now()) { entries.append(entry) }
@@ -393,6 +401,10 @@ final class HostClient {
 
     func append(_ event: Event, to shard: ShardID) { append([event], to: shard) }
 
+    /// When this client last moved a workspace's focus itself — not as
+    /// another attachment's move came in from the host.
+    private(set) var focusedHere: Date?
+
     /// Takes the pen for a shard this client may lead (§8.2): on focusing
     /// its block. The host fences whoever held it. Not while watching:
     /// only `takeOver` takes back.
@@ -401,17 +413,21 @@ final class HostClient {
         conn?.send(.message(ClientMessage.own(shard: shard)))
     }
 
-    /// The user takes the host back: every shard taken from this client,
-    /// and `also` (what's focused here), its pen again; whoever held them
-    /// is fenced in turn, and asked in turn.
+    /// The user takes the host back: every shard there this client may
+    /// lead, its pen — not only those taken from it and what's focused:
+    /// what the other attachment wrote to while it led stayed its own, and
+    /// this client's first write to one was refused (it seemed to take
+    /// over again, untouched). Whoever held them is fenced in turn, and
+    /// asked in turn.
     func takeOver(also: [ShardID] = []) {
-        let shards = fenced.union(also.filter { node.leader(of: $0) == .client })
+        let refused = fenced.union(also.filter { node.leader(of: $0) == .client })
+        let all = refused.union(node.shards.keys.filter { node.leader(of: $0) == .client })
         fenced = []
         fencedBy = nil
-        for s in shards.sorted(by: { $0.description < $1.description }) {
+        for s in all.sorted(by: { $0.description < $1.description }) {
             conn?.send(.message(ClientMessage.own(shard: s)))
             // What was refused meanwhile: the host's copy is the truth.
-            conn?.send(.message(ClientMessage.resync(shard: s)))
+            if refused.contains(s) { conn?.send(.message(ClientMessage.resync(shard: s))) }
         }
     }
 

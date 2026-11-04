@@ -5213,6 +5213,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         lastFocusPlace = place
         noteNavFocus()
         if walk == nil, tileWalk == nil { settleHere() }
+        // Only a move made here: another attachment's, come in from the
+        // host (it's the workspace's focus too), took the pens back from it
+        // — two clients on one workspace trading them at every move.
+        guard hosts.focusMovedHere else { return }
         if let b = focusedShown?.placement.block { hosts.own(b) }
         if let w = selected { hosts.own(w) }
     }

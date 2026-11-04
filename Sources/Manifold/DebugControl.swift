@@ -28,7 +28,8 @@ enum DebugControl {
 
     static func start(controller: @escaping () -> MainWindowController?) {
         guard ProcessInfo.processInfo.environment["MANIFOLD_DEBUG"] != nil else { return }
-        let path = Paths.directory.appendingPathComponent("app-debug.sock").path
+        // MANIFOLD_DEBUG_SOCKET: another, for a second app on the same server.
+        let path = ProcessInfo.processInfo.environment["MANIFOLD_DEBUG_SOCKET"] ?? Paths.directory.appendingPathComponent("app-debug.sock").path
         guard let fd = try? UnixSocket.listen(path: path) else { return }
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
@@ -1208,6 +1209,8 @@ enum DebugControl {
             return wc?.debugToast ?? "none"
         case "fencing":
             // Each host: watching or not, who took over, what's fenced.
+            // "fencing takeover": Take Over on every host watched.
+            if arg == "takeover", let wc { for c in wc.hosts.all where c.watching { wc.takeOver(c) } }
             return wc?.debugFencing ?? "no window"
         case "attend":
             // As focusing the block with the window key does: dismisses

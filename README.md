@@ -1690,11 +1690,13 @@ is migrated into logs on first run.
   makes it on the focused block's host, a host's row in the Spaces
   sidebar has New Space on *host* in its menu. What a Mac shows and settles on is its own.
   Two Macs on one host take turns at what they edit — a space, a note,
-  a page: the one that last focused it holds it, and the other is told,
+  a page: the one that last focused it holds it (focused on that Mac —
+  the other Mac's focus following along takes nothing), and the other is told,
   in a toast naming the Mac that took it, that what it does there won't
   take, with **Take Over**. From then on it's watching: it doesn't take
   anything back by being clicked in, only by Take Over (in the toast, or
-  the host's menu; its row wears an eye, and its card says who took it), however long, and through
+  the host's menu; its row wears an eye, and its card says who took it),
+  which takes everything of that host's back, however long, and through
   the link going and coming back. Terminals take typing from both.
   With more than one host, the sidebar's rows are under each one's
   heading; scrolled past its heading, the host's stays at the top of the

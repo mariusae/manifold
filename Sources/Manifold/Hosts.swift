@@ -118,7 +118,19 @@ final class Hosts {
     /// desk has it.
     func select(_ workspace: BlockID?) {
         if let workspace { client(of: workspace)?.adoptWorkspace(workspace) }
+        selectedHere = Date()
         change { $0.selected = workspace }
+    }
+
+    /// When this client last chose a workspace.
+    private var selectedHere: Date?
+
+    /// Whether the focus moved here just now — a tile focused or a
+    /// workspace chosen in this client, not another attachment's move come
+    /// in from a host (nor a launch's focus, as it was): what takes pens.
+    var focusMovedHere: Bool {
+        let latest = all.compactMap(\.focusedHere) + [selectedHere].compactMap { $0 }
+        return latest.contains { Date().timeIntervalSince($0) < 1 }
     }
 
     /// Workspaces as the trail has them (§3.5), the one gone to most
