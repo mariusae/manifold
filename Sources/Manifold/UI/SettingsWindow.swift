@@ -391,12 +391,20 @@ final class ColorThemePicker: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
+    /// Three to a row at most, the rows as even as they can be (four: two
+    /// and two).
+    private static var rows: Int { (Palette.all.count + 2) / 3 }
+    private static var columns: Int { (Palette.all.count + rows - 1) / rows }
+
     override var intrinsicContentSize: NSSize {
-        NSSize(width: CGFloat(Palette.all.count) * (Self.card.width + Self.spacing) - Self.spacing + 6, height: Self.card.height + Self.label + 6)
+        NSSize(width: CGFloat(Self.columns) * (Self.card.width + Self.spacing) - Self.spacing + 6,
+               height: CGFloat(Self.rows) * (Self.card.height + Self.label + Self.spacing) - Self.spacing + 6)
     }
 
     private func rect(_ i: Int) -> NSRect {
-        NSRect(origin: NSPoint(x: 3 + CGFloat(i) * (Self.card.width + Self.spacing), y: 3), size: Self.card)
+        let column = i % Self.columns, row = i / Self.columns
+        return NSRect(origin: NSPoint(x: 3 + CGFloat(column) * (Self.card.width + Self.spacing),
+                                      y: 3 + CGFloat(row) * (Self.card.height + Self.label + Self.spacing)), size: Self.card)
     }
 
     override func draw(_ dirtyRect: NSRect) {

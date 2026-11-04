@@ -1633,7 +1633,8 @@ Every color is a **theme**'s — the chrome, the texts, the tints, the
 colors that say something, a terminal's palette in light and dark (all
 256 colors: the sixteen, the 6×6×6 cube, the greys), the
 preview's page, and the backdrop under the tiles (Paper's pastel wash,
-Newsprint's off-whites, Classic's pale blue into cream) — so a theme
+Newsprint's off-whites, Classic's pale blue into cream, the Financial
+Times' pink into its paper) — so a theme
 recolors all of it at once. Settings ▸
 Appearance ▸ Theme shows each as a small Manifold window in its own
 colors — a sidebar with a block chosen and their states, a file being
@@ -1644,8 +1645,11 @@ blue, plum, teal), and by night the same paper unlit; and **Classic**,
 apex's: acme's cream paper with its tags a pale blue and a yellow
 selection, in go.dev's colors (its ink, Go blue), by night go.dev's own
 dark, and as apex has it for a colour-blind reader, blue for what's
-added or passed and orange for what's removed or failed. A theme has its own
-accent (Paper's blue, Newsprint's red, Classic's Go blue), which the Theme accent follows —
+added or passed and orange for what's removed or failed; and **Financial
+Times**, github.com/mariusae/financial-times-theme's: the FT's paper and
+ink, wheat selections, teal links, its terminal palette, and by night its
+inverse on slate. A theme has its own
+accent (Paper's blue, Newsprint's red, Classic's Go blue, the FT's teal), which the Theme accent follows —
 a terminal's caret and selection then the theme's (Newsprint's red caret
 on a grey selection); any other accent is set over the theme's
 everywhere, terminals too, in the theme's own shade of it. Newsprint's

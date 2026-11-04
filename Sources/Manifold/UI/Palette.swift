@@ -290,7 +290,7 @@ extension Palette {
     private(set) static var current: Palette = .paper
 
     /// Every theme there is.
-    static let all: [Palette] = [.paper, .newsprint, .classic]
+    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes]
 
     /// The theme by its id; Paper for one there isn't.
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? .paper }
@@ -786,5 +786,164 @@ extension Palette {
                             pool: (0.45, 0.33), tintPool: (0.65, 0.42)),
                 // go.dev's slate.
                 tileShadow: (Theme.hex(0x2B4650), 0.09)))
+    }()
+}
+
+// MARK: Financial Times
+
+extension Palette {
+    /// The Financial Times' (github.com/mariusae/financial-times-theme, from
+    /// FT Origami's palette): its paper (#fff1e5) and body ink (#33302e),
+    /// wheat (#f2dfce) for what's selected, teal (#0d7680) for links and the
+    /// accent, an ink caret; its jade, mandarin and crimson for what passed,
+    /// wants attention and failed; and by night its inverse, slate
+    /// (#262a33) with white ink, black-70 (#4d4845) selected, the inks lifted
+    /// to read on it. The terminal's sixteen are the theme's own Ghostty
+    /// palette (Origami's colours eased to 5.5:1 on the paper), the rest
+    /// made from them. FT's muted grey (#807973) reads at 3.9:1, so the
+    /// secondary text is the step darker, black-60; jade and mandarin are
+    /// deepened where they're read as text.
+    static let financialTimes: Palette = {
+        let light = (bg: "#fff1e5", fg: "#33302e", ansi: [
+            "#262a33", "#990f3d", "#146f41", "#855330", "#0f5499", "#593380", "#136c74", "#66605c",
+            "#4d4845", "#c40202", "#56672c", "#665f29", "#1a6886", "#855060", "#27686d", "#5c5958"])
+        let dark = (bg: "#262a33", fg: "#ffffff", ansi: [
+            "#a8aaad", "#d193a8", "#caeada", "#ff8833", "#87aacc", "#ac99c0", "#6eadb3", "#fff1e5",
+            "#a6a4a2", "#e88c8c", "#d5eba9", "#ffec1a", "#26aee2", "#ff7faa", "#14bdcc", "#ffffff"])
+        let teal = Shade.hex(0x0D7680, 0x14BDCC), oxford = Shade.hex(0x0F5499, 0x87AACC)
+        let jade = Shade.hex(0x007A3D, 0x66CC99), mandarin = Shade.hex(0xA35214, 0xFF8833), crimson = Shade.hex(0xCC0000, 0xFF6666)
+        let claret = Shade.hex(0x990F3D, 0xD193A8), velvet = Shade.hex(0x593380, 0xAC99C0)
+        let wheat = Shade.hex(0xF2DFCE, 0x4D4845)
+        // FT's warm greys (black-5 to black-30) by day; slate lightened by night.
+        return Palette(
+            id: "financial-times",
+            title: "Financial Times",
+            chrome: Chrome(
+                hover: .wash(0.05, 0.07),
+                selected: Shade(Theme.hex(0xFFFCFA), NSColor(white: 1, alpha: 0.12)),
+                pressed: .wash(0.1, 0.14),
+                divider: .hex(0xE6D9CE, 0x3D414A),
+                panel: .hex(0xFFF7EF, 0x2D313A),
+                panelBorder: .hex(0xE6D9CE, 0x3D414A),
+                scrim: Shade(NSColor(srgbRed: 0.95, green: 0.88, blue: 0.81, alpha: 0.35), NSColor(white: 0, alpha: 0.3)),
+                cardBorder: .wash(0.08, 0.1),
+                handle: .hex(0xCCC1B7, 0x4D515A),
+                scrubberKnob: .hex(0xCCC1B7, 0x4D515A),
+                sheetEdge: .wash(0.2, 0.16),
+                sheetEdgeHovered: .wash(0.34, 0.34),
+                // Wheat, deeper further down; by night slate, lighter nearer the top.
+                sheet: { level in Shade(NSColor(srgbRed: 0.95 - CGFloat(level) * 0.045, green: 0.875 - CGFloat(level) * 0.045, blue: 0.81 - CGFloat(level) * 0.04, alpha: 1),
+                                        NSColor(srgbRed: 0.27 - CGFloat(level) * 0.04, green: 0.29 - CGFloat(level) * 0.04, blue: 0.33 - CGFloat(level) * 0.045, alpha: 1)) },
+                groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
+                stack: .hex(0xFFF7EF, 0x2A2E37),
+                dragPill: .hex(0xFFFCFA, 0x4D515A),
+                linkBehind: { depth in Shade(NSColor(srgbRed: 0.97 - CGFloat(depth) * 0.03, green: 0.91 - CGFloat(depth) * 0.03, blue: 0.86 - CGFloat(depth) * 0.03, alpha: 1),
+                                            NSColor(srgbRed: 0.18 - CGFloat(depth) * 0.015, green: 0.19 - CGFloat(depth) * 0.015, blue: 0.23 - CGFloat(depth) * 0.015, alpha: 1)) },
+                well: .wash(0.06, 0.09),
+                pill: .wash(0.07, 0.1),
+                // Sky into FT pink; by night Oxford's deep blue into claret's.
+                historyWash: (from: .hex(0xE6EEF5, 0x1E2E44), to: .hex(0xFCE0CC, 0x3A2230))),
+            text: Text(
+                primary: .hex(0x33302E, 0xE9EAEB),
+                body: .hex(0x33302E, 0xE9EAEB),
+                strong: .hex(0x1A1817, 0xFFFFFF),
+                // At least 4.5:1 on a panel, in either appearance.
+                secondary: .hex(0x66605C, 0xA8AAAD),
+                tertiary: .hex(0x6F6964, 0x9A9CA0),
+                readingBody: .hex(0x33302E, 0xE9EAEB),
+                readingStrong: .hex(0x1A1817, 0xFFFFFF)),
+            status: StatusColors(done: jade, attention: mandarin, failed: crimson),
+            // Teal, as FT's links and buttons; an ink caret on wheat, as its terminal's.
+            accent: TintColors(accent: teal, caret: .hex(0x33302E, 0xFFFFFF), textSelection: wheat),
+            tints: Palette.paper.tints,
+            code: Code(
+                page: .hex(0xFFF1E5, 0x262A33),
+                text: .hex(0x33302E, 0xF2F2F2),
+                lineNumber: .hex(0x999189, 0x7D8088),
+                lineHighlight: .hex(0xF7E7DA, 0x2D313A),
+                gutterText: .hex(0x999189, 0x6E717A),
+                use: .wash(0.075, 0.1),
+                match: Shade(NSColor(srgbRed: 1, green: 0.88, blue: 0.4, alpha: 0.6), NSColor(srgbRed: 0.6, green: 0.5, blue: 0.1, alpha: 0.7)),
+                link: teal,
+                linkHover: .wash(0.08, 0.13),
+                added: Shade.hex(0x00994D, 0x66CC99),
+                modified: Shade.hex(0xFF8833, 0xFF8833),
+                deleted: crimson,
+                pins: [
+                    Shade(NSColor(srgbRed: 0.05, green: 0.46, blue: 0.50, alpha: 0.24), NSColor(srgbRed: 0.08, green: 0.74, blue: 0.80, alpha: 0.3)),
+                    Shade(NSColor(srgbRed: 1, green: 0.53, blue: 0.2, alpha: 0.3), NSColor(srgbRed: 1, green: 0.53, blue: 0.2, alpha: 0.33)),
+                    Shade(NSColor(srgbRed: 0.35, green: 0.2, blue: 0.5, alpha: 0.24), NSColor(srgbRed: 0.67, green: 0.6, blue: 0.75, alpha: 0.33)),
+                    Shade(NSColor(srgbRed: 1, green: 0.5, blue: 0.67, alpha: 0.3), NSColor(srgbRed: 1, green: 0.5, blue: 0.67, alpha: 0.33)),
+                ],
+                error: crimson,
+                warning: Shade.hex(0xFF8833, 0xFF8833),
+                hint: Shade(Theme.hex(0x0D7680).withAlphaComponent(0.6), Theme.hex(0x14BDCC).withAlphaComponent(0.6)),
+                changedOnDisk: .hex(0xF2DFCE, 0x3A3633),
+                highlighter: Shade(NSColor(srgbRed: 1, green: 0.93, blue: 0.1, alpha: 0.45), NSColor(srgbRed: 0.7, green: 0.62, blue: 0.1, alpha: 0.45))),
+            diff: Diff(
+                // FT's success background; crimson at a wash, on its paper.
+                added: .hex(0xD7F0D1, 0x1E3D33),
+                removed: .hex(0xFADBD0, 0x46262C),
+                hunk: .hex(0xE6EEF5, 0x2D3646),
+                found: .hex(0xFFF0A8, 0x4A4527),
+                current: .hex(0xFFE066, 0x6E6326)),
+            found: Found(
+                current: Shade(NSColor(srgbRed: 1, green: 0.53, blue: 0.2, alpha: 0.45), NSColor(srgbRed: 1, green: 0.53, blue: 0.2, alpha: 0.5)),
+                currentRing: .hex(0xFF8833, 0xFF8833),
+                pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
+                pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
+            chart: Chart(
+                one: oxford,
+                two: Shade.hex(0xFF8833, 0xFF8833),
+                three: teal,
+                track: .wash(0.07, 0.09),
+                surface: .wash(0.025, 0.035),
+                grid: .wash(0.07, 0.08)),
+            kinds: Kinds(
+                git: mandarin, swift: mandarin, shell: jade, pdf: crimson, image: velvet,
+                data: Shade.hex(0x665F29, 0xFFEC1A), patch: jade, archive: .hex(0x66605C, 0xA8AAAD), media: claret, code: oxford,
+                linked: velvet, embeds: teal),
+            terminal: (
+                light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: light.fg, cursorText: light.bg,
+                                       selectionBackground: "#f2dfce", selectionForeground: light.fg, ansi: light.ansi,
+                                       extended: TerminalPalette.generated(background: light.bg, foreground: light.fg, ansi: light.ansi)),
+                dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: dark.fg, cursorText: dark.bg,
+                                      selectionBackground: "#4d4845", selectionForeground: dark.fg, ansi: dark.ansi,
+                                      extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
+            // As ft.com sets an article: on its paper, teal links.
+            page: Page(
+                background: .hex(0xFFF1E5, 0x262A33),
+                text: .hex(0x33302E, 0xE9EAEB),
+                strong: .hex(0x1A1817, 0xFFFFFF),
+                link: teal,
+                code: .hex(0xF2E5DA, 0x2D313A),
+                codeText: .hex(0x33302E, 0xF2F2F2),
+                copy: .hex(0xFFF7EF, 0x333740),
+                copyEdge: .hex(0xE6D9CE, 0x4A4E57),
+                copyText: .hex(0x66605C, 0xA8AAAD),
+                copyHoverEdge: .hex(0xCCC1B7, 0x5A5E67),
+                copyHoverText: .hex(0x33302E, 0xF2F2F2),
+                copyDone: jade,
+                quote: .hex(0x4D4845, 0xA8AAAD),
+                quoteRule: .hex(0xCCC1B7, 0x4A4E57),
+                rule: .hex(0xE6D9CE, 0x3D414A),
+                tableHead: .hex(0xF2E5DA, 0x2D313A),
+                tableStripe: .hex(0xFAECE0, 0x21252D),
+                struck: .hex(0x807973, 0x8B8D91),
+                missing: crimson,
+                diagramError: crimson,
+                selection: wheat,
+                failed: crimson,
+                running: teal,
+                attention: mandarin),
+            // FT pink into its paper and wheat; by night slate, a claret
+            // dusk in it. The tint's pool, teal.
+            backdrop: Backdrop(
+                light: .init(stops: [(0.07, 0.24, 0.99), (0.08, 0.11, 1.0), (0.08, 0.17, 0.95), (0.075, 0.07, 0.99)],
+                             pool: (0.2, 1), tintPool: (0.35, 1)),
+                dark: .init(stops: [(0.61, 0.32, 0.24), (0.60, 0.42, 0.22), (0.93, 0.35, 0.20), (0.61, 0.22, 0.14)],
+                            pool: (0.4, 0.3), tintPool: (0.6, 0.4)),
+                // A warm ink, as FT's black-80: the paper deepened, not greyed.
+                tileShadow: (Theme.hex(0x4D3A2A), 0.09)))
     }()
 }

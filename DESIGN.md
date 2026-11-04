@@ -2259,13 +2259,27 @@ removed and warnings, the fenced fuchsia #CE3262 for errors and what
 failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
 past them). Two of apex's are a step darker here, to read as text on a
 panel at 4.5:1: the faint grey (#737577 for #8A8C8E) and stale's ochre
-(#8F6B00 for #C79A00). The backdrop is a theme's too, so the window is of
+(#8F6B00 for #C79A00). **Financial Times** is
+github.com/mariusae/financial-times-theme's, from FT Origami's palette:
+paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected, teal #0D7680
+the accent and links, an ink caret (as its Ghostty theme's); jade,
+mandarin and crimson for what passed, wants attention and failed; FT's
+warm greys (black-5 to black-30) for the chrome. By night its inverse:
+slate #262A33, ink #E9EAEB (white for strong), black-70 #4D4845
+selected, teal-80 #14BDCC, the inks lifted (#66CC99, #FF8833,
+#FF6666). The terminal's sixteen are the theme's own Ghostty palette
+(Origami's colours eased to 5.5:1 on the paper), the rest made from
+them. FT's muted grey #807973 reads at 3.9:1, so secondary text is
+black-60 #66605C; jade and mandarin are deepened where read as text
+(#007A3D, #A35214). The backdrop is a theme's too, so the window is of
 a piece: its wash's four stops and how its pools are lit, in each
 appearance (`Palette.Backdrop`) — Paper's lavender, rose, peach and
 cream (by night indigo, plum, umber, near-black), Newsprint's off-whites
 a shade warmer or cooler than its paper with a faint blush of its red
 (by night its paper unlit), Classic's acme pale blue into its cream and
-yellow (by night go.dev's slate into acme's dark yellow) — still turned
+yellow (by night go.dev's slate into acme's dark yellow), Financial
+Times' FT pink into its paper and wheat (by night slate with a claret
+dusk) — still turned
 by the day, lit by the hour, its first pool the tint's; the Settings
 picker draws each card on its wash. What isn't a theme's: a language's colour in
 a project's bar (the code hosts'); masks and shadows (black or white at
