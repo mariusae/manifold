@@ -1677,6 +1677,10 @@ is migrated into logs on first run.
   the pipe and the host's own server (started if need be). Blocks are
   `host/ulid`, so a remote terminal, file or folder is placed, linked and
   found like a local one; its terminals attach through the same provider.
+  Their shells are told they're in Ghostty (`TERM=xterm-ghostty`), as
+  here, and find out what that is from Ghostty's terminfo, which the
+  server carries and writes into its own folder (`TERMINFO`): nothing is
+  installed into the host's terminfo, or yours.
   A space lives on a host too, among that host's spaces, which every Mac
   attached to the host sees: New Space (⌘T)
   makes it on the focused block's host, a host's row in the Spaces

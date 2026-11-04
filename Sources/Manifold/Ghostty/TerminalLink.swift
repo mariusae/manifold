@@ -454,7 +454,9 @@ final class TerminalLink {
 
     /// What a shell started for a terminal here is told about it, as
     /// Ghostty would tell a shell it started: its type, its terminfo and
-    /// shell integration (the server carries them over), the locale.
+    /// shell integration (folders on this Mac: the server gives the
+    /// terminfo it carries instead, for a host that hasn't these), the
+    /// locale.
     static let environment: [String: String] = {
         var env: [String: String] = [
             "TERM": "xterm-ghostty",

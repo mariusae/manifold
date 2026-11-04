@@ -666,6 +666,18 @@ final class Session {
         for (k, v) in clientEnv where allowedClientEnv.contains(k) {
             env[k] = v
         }
+        // A Ghostty terminal is described by the terminfo this server
+        // carries, not by the folder the terminal names: that's on the
+        // terminal's Mac, and this may be another host. Where it can't be
+        // written, a type every host has, rather than one none can look up.
+        if let term = env["TERM"], GhosttyTerminfo.names.contains(term) {
+            if let dir = terminfoDirectory() {
+                env["TERMINFO"] = dir
+            } else {
+                env["TERM"] = "xterm-256color"
+                env.removeValue(forKey: "TERMINFO")
+            }
+        }
         env["TERM_PROGRAM"] = "Manifold"
         env.removeValue(forKey: "TERM_PROGRAM_VERSION")
 
@@ -868,23 +880,28 @@ final class Session {
     }
 
     /// The terminal's environment for a shell started with no terminal
-    /// attached (`mani run`), as the app's would give it: Ghostty's
-    /// resources and terminfo from the app bundle this server is in, if
-    /// it is in one.
+    /// attached (`mani run`), as the app's would give it: Ghostty, its
+    /// terminfo the server's own (`shellAndEnvironment`), its resources
+    /// from the app bundle this server is in, if it is in one.
     static var unattachedEnvironment: [String: String] {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let contents = exe.deletingLastPathComponent().deletingLastPathComponent()
         let resources = contents.appendingPathComponent("Resources")
-        var env = ["TERM": "xterm-256color", "COLORTERM": "truecolor"]
+        var env = ["TERM": "xterm-ghostty", "COLORTERM": "truecolor"]
         if FileManager.default.fileExists(atPath: resources.appendingPathComponent("ghostty").path) {
             env["GHOSTTY_RESOURCES_DIR"] = resources.appendingPathComponent("ghostty").path
             env["GHOSTTY_BIN_DIR"] = contents.appendingPathComponent("MacOS").path
         }
-        if FileManager.default.fileExists(atPath: resources.appendingPathComponent("terminfo").path) {
-            env["TERM"] = "xterm-ghostty"
-            env["TERMINFO"] = resources.appendingPathComponent("terminfo").path
-        }
         return env
+    }
+
+    /// The terminfo folder for shells here, in the data folder, with
+    /// Ghostty's entry written fresh from this server's copy
+    /// (`GhosttyTerminfo`); nil if it couldn't be. Manifold's own folder:
+    /// the host's terminfo, and yours, are left alone.
+    static func terminfoDirectory() -> String? {
+        let dir = Paths.directory.appendingPathComponent("terminfo")
+        return GhosttyTerminfo.install(in: dir) ? dir.path : nil
     }
 
     /// `mani open --wait`, as a shell's `$EDITOR`: one program — `mani-edit`,
