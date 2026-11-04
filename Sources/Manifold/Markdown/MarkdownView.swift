@@ -522,7 +522,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     /// source the page can load; anything else as its card, a link. And a
     /// reference written bare, a link by its block's name.
     private func resolvingImages(_ html: String) -> String {
-        let html = linkingReferences(html)
+        let html = linkingReferences(sizingPictures(html))
         guard html.contains("src=\"manifold:") else { cardsShown = [:]; return html }
         let ns = html as NSString
         var out = "", at = 0
@@ -541,6 +541,28 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
             }
         }
         cardsShown = cards
+        return out + ns.substring(from: at)
+    }
+
+    private static let sized = try! NSRegularExpression(pattern: #"<img ([^>]*?)\s*/?>\s*<!--\s*(\{[^{}<>]*\})\s*-->"#)
+
+    /// A picture's size noted after it (`<!-- {"width":320} -->`, as the
+    /// outline's grip writes one, and Prism's editor reads): its size here.
+    private func sizingPictures(_ html: String) -> String {
+        guard html.contains("<!--") else { return html }
+        let ns = html as NSString
+        var out = "", at = 0
+        for m in Self.sized.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            guard let data = ns.substring(with: m.range(at: 2)).data(using: .utf8),
+                  let size = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+            let width = (size["width"] as? NSNumber)?.doubleValue, height = (size["height"] as? NSNumber)?.doubleValue
+            guard width != nil || height != nil else { continue }
+            out += ns.substring(with: NSRange(location: at, length: m.range.location - at))
+            at = NSMaxRange(m.range)
+            var style = width.map { "width:\(Int($0))px;" } ?? ""
+            style += width != nil && height == nil ? "height:auto;" : height.map { "height:\(Int($0))px;" } ?? ""
+            out += "<img \(ns.substring(with: m.range(at: 1))) style=\"\(style)\">"
+        }
         return out + ns.substring(from: at)
     }
 

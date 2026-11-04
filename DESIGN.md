@@ -1594,7 +1594,7 @@ dragged (past a few points; a click still folds) carries its row and the
 rows under it, a line showing where they'll go and how deep, from where
 the pointer is across; ⌥⌘9 ⌥⌘0 fold and unfold every row (as Prism does,
 a heading's section folds under it). Inline Markdown — emphasis, code,
-strikethrough, links, pictures as their text (`InlineMarkup`,
+strikethrough, links (`InlineMarkup`,
 `InlineEditing`, Prism's) — is styled, its markup laid out as zero-width
 glyphs, so the bytes stay the note's: the caret steps over markup it
 can't see, Delete takes what's shown and not a hidden `*`, and a link
@@ -1622,6 +1622,23 @@ an address pasted over words making them its link. **Focus** (⌃⌥⌘→, or
 ⌥-click a bullet; ⌃⌥⌘← out a step; Unfocus) shows a row and what's under
 it as if it were the note, the rest set aside (`NoteOutlineFocus`) and
 written round it, the path to it over the rows, each step a way back.
+**Pictures** are drawn, Prism's way (`OutlineNotePictures`): a picture's
+`![…](…)` hidden whole, one thing to the caret and to Delete, the picture
+under its line's words — in place of them on a line with nothing else —
+at its own size (no taller than 420 points, given none) or the size noted
+after it (`<!-- {"width":320} -->`, as Prism's editor writes one), never
+wider than its column. Where from: an image block (`manifold:…`, this
+Mac's file read, another host's fetched), a file beside the note's own
+(or a path), a picture on the web — fetched once, kept for the session,
+the outlines told when it comes; one that isn't there or isn't a picture
+stays its Markdown, greyed. Under the pointer a picture shows a grip in
+its corner: dragged, the picture made larger or smaller in its own shape
+(60 points to its column), the width written after its Markdown when it's
+let go, one edit to undo; twice clicked, that taken away. The size is the
+note's, not this Mac's (Prism keeps it per Mac), so the Markdown view
+draws it so too. A picture selected is ringed; a picture pasted (a
+screenshot copied, Copy Image) is kept as an image block, as one dropped
+is, and goes in the caret's row if it's empty, else a row after it.
 The lens is Prism's too: a fold told by a pill of three dots after the
 row's words (clicked, unfolded), not on its bullet; a hollow ghost of a
 bullet before the row under the pointer that has none — a heading's
@@ -1630,7 +1647,7 @@ how many are done; a code block's language in its corner. A bullet with
 nothing under it clicked selects its row. Return on a code block's
 closing fence, or on the empty line before it, leaves the block. Where it
 still differs: Return on an empty item deeper in brings it out a level
-(Prism makes another), pictures show as their Markdown, and there's no
+(Prism makes another), pictures aren't dragged by themselves, and there's no
 `[[` completion — a note links to blocks by dropping them.
 
 A note's outline — what its tile shows as ticks and in its sidebar, and

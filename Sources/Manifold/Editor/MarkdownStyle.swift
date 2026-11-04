@@ -57,6 +57,9 @@ enum MarkdownStyle {
     /// A link: `[words](address)` — or, to a block, no words (an image's
     /// `![](manifold:…)`), its pill naming it.
     private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]*)(\]\()([^)\s]+)(\))"#)
+    /// A picture's size noted after it (`<!-- {"width":320} -->`, as the
+    /// outline's grip writes one): markup, out of sight with the picture.
+    private static let sizeNote = try! NSRegularExpression(pattern: #"\G<!--\s*\{[^{}\n]*\}\s*-->"#)
     /// A block's reference written bare (`manifold:host/id#place`, as an
     /// agent writes one): its pill too.
     private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'/\w])"# + BlockID.referencePattern)
@@ -133,6 +136,11 @@ enum MarkdownStyle {
         // its pill (on the caret's line, a chip of the words as written).
         for m in link.matches(in: a.string, range: all) where !inCode(m.range) {
             let words = m.range(at: 2), address = s.substring(with: m.range(at: 4))
+            // A picture's size after it: markup.
+            if m.range.location > 0, s.character(at: m.range.location - 1) == 0x21,
+               let note = sizeNote.firstMatch(in: a.string, options: .anchored, range: NSRange(location: NSMaxRange(m.range), length: all.length - NSMaxRange(m.range))) {
+                mark(note.range)
+            }
             // No words, and no block to name it: left as written.
             if words.length == 0, !address.hasPrefix("manifold:") { continue }
             a.addAttribute(target, value: address, range: m.range)

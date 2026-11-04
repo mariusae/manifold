@@ -38,6 +38,14 @@ final class OutlineNoteView: NSView, PaneContent {
         get { text.cardFor }
         set { text.cardFor = newValue }
     }
+    /// A picture by its source (a note's own relative to its file), when
+    /// it's here; nil sends for it, `picturesArrived` after.
+    var pictureFor: ((String) -> NSImage?)? {
+        get { text.styler.pictureFor }
+        set { text.styler.pictureFor = newValue }
+    }
+    /// Pictures sent for came: shown.
+    func picturesArrived() { text.picturesArrived() }
     var theme: FontTheme { didSet { if theme != oldValue { text.metrics = Self.metrics(theme) } } }
 
     private let scroll = NSScrollView()
@@ -369,6 +377,59 @@ final class OutlineNoteView: NSView, PaneContent {
             if n.count == 2 { text.setSelectedRange(NSRange(location: n[0], length: n[1])) }
         case "markdown":
             return source()?.text?.text.string ?? "no text"
+        case "pasteimage":
+            // "pasteimage <path>": a PNG's bytes pasted, as a screenshot copied
+            // is (from a pasteboard of its own: the general one untouched).
+            guard words.count > 1, let data = FileManager.default.contents(atPath: words[1]) else { return "usage: pasteimage <png>" }
+            let pb = NSPasteboard(name: NSPasteboard.Name("com.manifold.debug-outline-image"))
+            pb.clearContents()
+            pb.setData(data, forType: .png)
+            return text.pastePicture(from: pb) ? "pasted" : "not taken"
+        case "pictures":
+            // Each picture shown, where it's drawn.
+            return text.debugPictures
+        case "picture":
+            // "picture <n> hover|grip <dx> <dy>|own": the nth picture under
+            // the pointer (its grip drawn), its grip dragged so far and let
+            // go, or its grip twice clicked.
+            let n = (words.count > 1 ? words[1] : "").split(separator: " ").map(String.init)
+            guard let layout = text.pictureLayout, let storage = text.textStorage, let i = Int(n.first ?? ""),
+                  case let all = layout.pictureFrames(in: NSRange(location: 0, length: storage.length), origin: text.textContainerOrigin),
+                  all.indices.contains(i) else { return "no picture" }
+            let (picture, frame, location) = all[i]
+            switch n.count > 1 ? n[1] : "hover" {
+            case "hover":
+                text.hoverPicture(at: NSPoint(x: frame.midX, y: frame.midY))
+                let grip = NoteOutlineTextView.grip(in: frame)
+                return "hovered \(text.hoveredPicture.map(String.init) ?? "none") · grip hit \(text.onPictureGrip(NSPoint(x: grip.midX, y: grip.midY)))"
+            case "grip":
+                let dx = n.count > 2 ? Double(n[2]) ?? 0 : 0, dy = n.count > 3 ? Double(n[3]) ?? 0 : 0
+                let width = text.resizePicture(picture, at: location, from: frame, by: CGSize(width: dx, height: dy))
+                text.setPictureWidth(width, at: location)
+            case "drag", "twice":
+                // As the mouse does it: down on the grip, dragged, up (posted events).
+                guard let window else { return "no window" }
+                let grip = NoteOutlineTextView.grip(in: frame)
+                let at = text.convert(NSPoint(x: grip.midX, y: grip.midY), to: nil)
+                let dx = n.count > 2 ? Double(n[2]) ?? 0 : 0, dy = n.count > 3 ? Double(n[3]) ?? 0 : 0
+                let count = n[1] == "twice" ? 2 : 1
+                func mouse(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent {
+                    NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                       context: nil, eventNumber: 0, clickCount: count, pressure: 1)!
+                }
+                let to = NSPoint(x: at.x + dx, y: at.y - dy)
+                if count == 1 {
+                    NSApp.postEvent(mouse(.leftMouseDragged, NSPoint(x: at.x + dx / 2, y: at.y - dy / 2)), atStart: false)
+                    NSApp.postEvent(mouse(.leftMouseDragged, to), atStart: false)
+                    NSApp.postEvent(mouse(.leftMouseUp, to), atStart: false)
+                }
+                text.hoverPicture(at: NSPoint(x: frame.midX, y: frame.midY))
+                text.mouseDown(with: mouse(.leftMouseDown, at))
+            case "own":
+                text.setPictureWidth(nil, at: location)
+            default: return "usage: picture <n> hover|grip <dx> <dy>|drag <dx> <dy>|twice|own"
+            }
+            return text.debugPictures + "\n" + (source()?.text?.text.string ?? "")
         case "caret":
             let n = (words.count > 1 ? words[1] : "").split(separator: " ").compactMap { Int($0) }
             if n.count == 2 { text.restoreCaret(.init(row: n[0], offset: n[1])) }
@@ -458,12 +519,13 @@ enum NoteOutlineText {
         return text.attribute(.noteRow, at: min(location, text.length - 1), effectiveRange: nil) as? NoteRowStyle ?? NoteRowStyle(.blank)
     }
 
-    /// A row's inline spans (`InlineMarkup`), a picture as its Markdown
-    /// (pictures aren't drawn here: nothing of it hidden).
-    static func spans(in text: NSString, range: NSRange) -> [InlineSpan] {
+    /// A row's inline spans (`InlineMarkup`): a picture that's `shown` one
+    /// thing, hidden whole, drawn under its line; one not (not here, not a
+    /// picture) its Markdown.
+    static func spans(in text: NSString, range: NSRange, shown: (ImageReference) -> Bool = { _ in false }) -> [InlineSpan] {
         let range = NSIntersectionRange(range, NSRange(location: 0, length: text.length))
         return InlineMarkup.spans(in: text, range: range).map { span in
-            guard span.isImage else { return span }
+            guard case let .image(picture) = span.kind, !shown(picture) else { return span }
             var shown = span
             // A block's embed: its name, a link to it, its card drawn under the row.
             if case let .image(reference) = span.kind, reference.source.hasPrefix("manifold:") {
@@ -548,15 +610,22 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
 
     /// A block's card (a place's in it), for a row that's only its embed.
     var cardFor: ((BlockID, String?) -> SummaryCardContent?)?
+    /// A picture by its source, when it's here (nil: not yet, sent for —
+    /// or not a picture).
+    var pictureFor: ((String) -> NSImage?)?
 
     init(metrics: NoteOutlineMetrics) { self.metrics = metrics }
 
-    /// The card a row's text embeds, if it's only that.
+    /// Whether a picture is shown as one, not its Markdown.
+    func shows(_ picture: ImageReference) -> Bool { pictureFor?(picture.source) != nil }
+
+    /// The card a row's text embeds, if it's only that (and not a picture,
+    /// shown as one).
     func card(for text: String) -> NoteCard? {
         guard text.contains("](manifold:"), let cardFor,
               let m = NoteCard.line.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
         let target = (text as NSString).substring(with: m.range(at: 1))
-        guard let (id, place) = BlockID.link(target), let content = cardFor(id, place) else { return nil }
+        guard pictureFor?(target) == nil, let (id, place) = BlockID.link(target), let content = cardFor(id, place) else { return nil }
         return NoteCard(block: id, place: place, target: target, content: content)
     }
 
@@ -626,14 +695,15 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
     /// The row's inline Markdown as it reads (Prism's, after Bike): bold,
     /// italic, struck through, highlighted, code in the code face, links in
     /// the accent (followed by the one rule), tags — the markup around each
-    /// kept but laid out as nothing; a picture's Markdown greyed (pictures
-    /// aren't drawn here), a comment hidden whole.
+    /// kept but laid out as nothing; a picture drawn under its line, its
+    /// Markdown hidden whole (greyed when it can't be shown), a comment
+    /// hidden whole.
     private func styleInline(_ storage: NSTextStorage, in paragraph: NSRange, row: NoteRow) {
         let text = storage.string as NSString
         let body = NSRange(location: paragraph.location, length: max(0, paragraph.length - 1))
         let base = metrics.font(for: row)
         func font(at location: Int) -> NSFont { storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont ?? base }
-        for span in NoteOutlineText.spans(in: text, range: body) {
+        for span in NoteOutlineText.spans(in: text, range: body, shown: shows) {
             let content = span.content
             switch span.kind {
             case .strong:
@@ -661,7 +731,12 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
                 storage.addAttribute(.foregroundColor, value: Theme.accent, range: content)
             case .imageText:
                 storage.addAttribute(.foregroundColor, value: Theme.secondaryText, range: span.range)
-            case .image, .comment:
+            case let .image(reference):
+                if let image = pictureFor?(reference.source) {
+                    storage.addAttribute(.notePicture, value: NotePicture(reference: reference, image: image),
+                                         range: NSRange(location: span.range.location, length: 1))
+                }
+            case .comment:
                 break
             }
             for run in span.markup { storage.addAttribute(.noteHidden, value: true, range: run) }
@@ -827,6 +902,7 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
             drawHandle(shownHandle(for: row, at: index), row: row, paragraph: paragraph, origin: origin, indent: indent,
                        progress: progress.indices.contains(index) ? progress[index] : nil)
             if row.isFolded, let pill = foldPill(for: paragraph, origin: origin) { Self.drawFoldPill(in: pill) }
+            drawPictures(in: paragraph, origin: origin)
             if let card = storage.attribute(.noteCard, at: paragraph.location, effectiveRange: nil) as? NoteCard {
                 let r = NSRect(x: indent, y: frame.maxY + 4, width: min(460, origin.x + width - indent), height: card.height)
                 let painter = NoteCard.painter
@@ -861,9 +937,9 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         guard glyph < numberOfGlyphs else { return nil }
         // The baseline from the line's used room and the row's font, not
         // its first glyph's: an empty row's is its line break, set lower.
-        let used = lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
         let font = view.metrics.font(for: row)
-        let baseline = origin.y + used.maxY + font.descender
+        guard let line = baseline(atGlyph: glyph, font: font) else { return nil }
+        let baseline = origin.y + line
         return NSPoint(x: origin.x + view.metrics.textIndent(for: row) - view.metrics.indent / 2, y: baseline - font.xHeight / 2)
     }
 
@@ -955,9 +1031,10 @@ final class NoteOutlineLayoutManager: NSLayoutManager {
         guard let storage = textStorage, paragraph.length > 0 else { return nil }
         let last = glyphIndexForCharacter(at: NSMaxRange(paragraph) - 1)
         guard last < numberOfGlyphs else { return nil }
-        let used = lineFragmentUsedRect(forGlyphAt: last, effectiveRange: nil)
         let font = storage.attribute(.font, at: paragraph.location, effectiveRange: nil) as? NSFont ?? .systemFont(ofSize: 14)
-        let baseline = used.maxY + font.descender
+        guard let baseline = baseline(atGlyph: last, font: font) else { return nil }
+        // After the words (the used room's width is theirs, pictures under them or not).
+        let used = lineFragmentUsedRect(forGlyphAt: last, effectiveRange: nil)
         let height = (font.capHeight + 8).rounded()
         let width = (height * 1.7).rounded()
         let middle = baseline - font.capHeight / 2
@@ -1086,6 +1163,8 @@ final class NoteOutlineTextView: NSTextView {
     /// The row the pointer is over: a ghost of a bullet before a row with
     /// none, to click (a heading's folds its section) or drag by.
     var hoveredRow: Int? { didSet { if hoveredRow != oldValue { needsDisplay = true } } }
+    /// Where the picture under the pointer starts, its grip shown.
+    var hoveredPicture: Int?
     /// Expand Selection's steps, to go back along (Contract Selection), and
     /// the selection the last one made.
     var expansions: [OutlineSelection] = []
@@ -1333,7 +1412,10 @@ final class NoteOutlineTextView: NSTextView {
             }
             if selectedRows != nil { leaveRowSelection() }
         }
+        let was = selectedRange()
         super.setSelectedRanges([NSValue(range: range)], affinity: affinity, stillSelecting: stillSelecting)
+        // A picture selected, or no longer, is ringed or not: drawn again.
+        if was != range, let storage = textStorage, [was, range].contains(where: { Self.hasPicture(storage, in: $0) }) { needsDisplay = true }
         typingAttributes = storage.attributes(at: min(paragraphRanges[rowIndex(at: range.location)].location, storage.length - 1), effectiveRange: nil)
             .filter { $0.key != .noteHidden && $0.key != .link }
     }
@@ -1441,7 +1523,7 @@ final class NoteOutlineTextView: NSTextView {
     func spans(atRowOf location: Int) -> [InlineSpan] {
         guard let storage = textStorage, storage.length > 0 else { return [] }
         if case .code = row(at: rowIndex(at: location)).kind { return [] }
-        return NoteOutlineText.spans(in: storage.string as NSString, range: textRange(ofRowAt: location))
+        return NoteOutlineText.spans(in: storage.string as NSString, range: textRange(ofRowAt: location), shown: styler.shows)
     }
 
     private func snap(_ location: Int, forward: Bool) -> Int {
@@ -1491,6 +1573,15 @@ final class NoteOutlineTextView: NSTextView {
         return true
     }
 
+    /// Misspellings marked in what's shown, not in hidden markup (a
+    /// picture's path, a link's address, a block's id).
+    override func setSpellingState(_ value: Int, range: NSRange) {
+        guard value != 0, let storage = textStorage, NSMaxRange(range) <= storage.length else { return super.setSpellingState(value, range: range) }
+        storage.enumerateAttribute(.noteHidden, in: range) { hidden, piece, _ in
+            if hidden == nil { super.setSpellingState(value, range: piece) }
+        }
+    }
+
     /// An edit that would take some of a span's markup but not all of it
     /// leaves that markup be, so the span's text keeps its style.
     override func shouldChangeText(inRanges ranges: [NSValue], replacementStrings strings: [String]?) -> Bool {
@@ -1500,7 +1591,7 @@ final class NoteOutlineTextView: NSTextView {
         let range = ranges[0].rangeValue
         guard range.length > 0, NSMaxRange(range) <= storage.length else { return super.shouldChangeText(inRanges: ranges, replacementStrings: strings) }
         let text = storage.string as NSString
-        let spans = NoteOutlineText.spans(in: text, range: text.paragraphRange(for: range))
+        let spans = NoteOutlineText.spans(in: text, range: text.paragraphRange(for: range), shown: styler.shows)
         let pieces = InlineEditing.deletablePieces(of: range, spans: spans)
         guard pieces != [range] else { return super.shouldChangeText(inRanges: ranges, replacementStrings: strings) }
         var kept = ""
@@ -1893,6 +1984,8 @@ final class NoteOutlineTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A picture's grip: it made larger or smaller.
+        if onPictureGrip(point) { return dragPictureGrip(event) }
         // A block's card clicked: followed, as its link is.
         if let layout = layoutManager as? NoteOutlineLayoutManager,
            let card = paragraphRanges.lazy.compactMap({ layout.cardRect(of: $0, origin: self.textContainerOrigin) }).first(where: { $0.1.contains(point) })?.0 {
@@ -2060,7 +2153,9 @@ final class NoteOutlineTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         hoveredRow = row(under: convert(event.locationInWindow, from: nil))
-        if overHandle(event) { NSCursor.arrow.set() }
+        hoverPicture(at: convert(event.locationInWindow, from: nil))
+        if onPictureGrip(convert(event.locationInWindow, from: nil)) { Self.gripCursor.set() }
+        else if overHandle(event) { NSCursor.arrow.set() }
         // A link to a block that's gone says so as the pointer comes onto it.
         ReferenceTip.hover(linkTarget(at: convert(event.locationInWindow, from: nil)), in: self)
     }
@@ -2068,6 +2163,7 @@ final class NoteOutlineTextView: NSTextView {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         hoveredRow = nil
+        hoverPicture(at: nil)
     }
 
     /// Its own, for the pointer leaving it (the ghost bullet goes).
@@ -2105,7 +2201,8 @@ final class NoteOutlineTextView: NSTextView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        if overHandle(event) { NSCursor.arrow.set() } else { super.cursorUpdate(with: event) }
+        if onPictureGrip(convert(event.locationInWindow, from: nil)) { Self.gripCursor.set() }
+        else if overHandle(event) { NSCursor.arrow.set() } else { super.cursorUpdate(with: event) }
     }
 
     /// A line where rows dragged over would go.
@@ -2263,6 +2360,10 @@ final class NoteOutlineTextView: NSTextView {
     /// Markdown of more than a line comes in as rows: in place of an empty
     /// row, or after the rows it was pasted onto.
     override func paste(_ sender: Any?) {
+        // A picture (a screenshot copied, Preview's, a browser's Copy
+        // Image): kept for the note as an image block, and shown — in the
+        // caret's row if it's empty, else a row of its own after it.
+        if pastePicture(from: .general) { return }
         if selectedRows == nil, let s = NSPasteboard.general.string(forType: .string) {
             let range = selectedRange()
             // In code: as it is, its lines the block's.
@@ -2294,6 +2395,51 @@ final class NoteOutlineTextView: NSTextView {
         NoteOutlineEditing.normalize(&all)
         replace(before, with: all, actionName: "Paste")
         restoreCaret(CaretPosition(row: at + incoming.count - 1, offset: Int.max))
+    }
+}
+
+extension NoteOutlineTextView {
+    /// The picture a pasteboard holds, if a paste is of it, kept and put in.
+    func pastePicture(from pb: NSPasteboard) -> Bool {
+        guard isEditable, let keepImage, TextView.prefersImage(pb) else { return false }
+        let images = TextView.images(on: pb)
+        guard !images.isEmpty else { return false }
+        for (data, kind) in images { keepImage(data, kind) { [weak self] markdown in self?.putPicture(markdown) } }
+        return true
+    }
+
+    /// The pictures in a row scrolled into view, all of them, once laid out.
+    func showPicture(inRowAt location: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let storage = self.textStorage, location < storage.length else { return }
+            let row = self.paragraphRanges[self.rowIndex(at: location)]
+            let frames = self.pictureLayout?.pictureFrames(in: row, origin: self.textContainerOrigin).map(\.frame) ?? []
+            if let all = frames.reduce(nil, { (u: NSRect?, f) in u?.union(f) ?? f }) { self.scrollToVisible(all.insetBy(dx: 0, dy: -8)) }
+        }
+    }
+
+    /// A picture's Markdown put in where the caret is: the caret's row,
+    /// when it's empty, else a row after it (and what's under it), as deep.
+    func putPicture(_ markdown: String) {
+        guard isEditable, textStorage!.length > 0 else { return }
+        if selectedRows != nil { leaveRowSelection() }
+        let index = rowIndex(at: selectedRange().location)
+        let all = rows
+        guard all.indices.contains(index) else { return }
+        defer { showPicture(inRowAt: selectedRange().location) }
+        if all[index].text.isEmpty, !all[index].isFolded {
+            let r = textRange(ofRowAt: paragraphRanges[index].location)
+            setSelectedRange(NSRange(location: r.location, length: 0))
+            insertText(markdown, replacementRange: NSRange(location: r.location, length: 0))
+            return
+        }
+        let at = NoteOutlineEditing.block(all, index..<(index + 1)).upperBound
+        var row = all[index]
+        row.text = markdown
+        row.folded = []
+        if row.kind == .ordered || row.kind.isListItem { row.task = nil } else { row.kind = .paragraph }
+        insertRows([row], at: RowDrop(index: at, depth: all[index].depth))
+        restoreCaret(CaretPosition(row: at, offset: Int.max))
     }
 }
 

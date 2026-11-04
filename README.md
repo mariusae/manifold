@@ -398,8 +398,11 @@ parts from the Mac's conventions on purpose.
   image block on the text's host — beside a Markdown file, named so any
   Markdown reader finds it (`![](image-2026-10-21-225841.png)`), or for
   a note in Manifold's own folder (`![](manifold:…)`) — and shown where
-  the caret was: in the preview as the picture, in the editor as its
-  link. The text *embeds* it, a strong link: the image is kept while a
+  the caret was: in the preview and the outline as the picture, in the
+  editor as its link. In the outline a picture shows a grip in its
+  corner while the pointer is over it: drag it to make the picture larger
+  or smaller (the width goes into the note, so every Mac and the preview
+  show it so); double-click it for the picture's own size. The text *embeds* it, a strong link: the image is kept while a
   text shows it, and once none does it's collected like anything else
   nothing keeps (a note's own copy with it).
 - **Notes are Markdown, shown richly** as you write, the markers out

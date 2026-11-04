@@ -788,6 +788,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             o.onLinked = { [weak self] b in self?.link(b, to: p.block) }
             o.keepImage = { [weak self] data, kind, insert in self?.keepImage(data, kind: kind, for: p.block, insert: insert) }
             o.cardFor = { [weak self] id, place in self?.cardContent(for: id, at: place) }
+            o.pictureFor = { [weak self] source in self?.picture(source, in: p.block) }
             o.documentChanged()
             v = o
         default:
@@ -913,6 +914,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var trails: [PlacementID: (back: [BlockID], forward: [BlockID])] = [:]
     /// Other hosts' images shown in notes, as data the page can load.
     private var remoteImages: [BlockID: String] = [:]
+    /// Pictures notes' outlines show, by host and path or address; those
+    /// that aren't pictures (or can't be read), so they're asked once.
+    private let pictures = NSCache<NSString, NSImage>()
+    private var notPictures: Set<String> = []
+    private var fetchingPictures: Set<String> = []
     private var fetchingImages: Set<BlockID> = []
     /// Images kept this second, so two get names of their own.
     private var imageCount = 0 { didSet { if imageCount == 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in self?.imageCount = 0 } } } }
@@ -8736,6 +8742,78 @@ extension MainWindowController: EditorViewDelegate {
             let type = UTType(filenameExtension: path.pathExtension)?.preferredMIMEType ?? "image/png"
             self.remoteImages[id] = "data:\(type);base64," + data.base64EncodedString()
             for case let m as MarkdownView in self.views.values { m.imagesArrived() }
+        }
+        return nil
+    }
+
+    /// A picture a note's outline shows, when it's here: an image block
+    /// (`manifold:…`), a file beside the note's own (or a path), a picture
+    /// on the web. This Mac's small files read at once; the rest — another
+    /// host's, the web's, a large file — sent for, the outlines told when
+    /// it comes.
+    func picture(_ source: String, in note: BlockID) -> NSImage? {
+        if source.hasPrefix("manifold:") {
+            guard let (id, _) = BlockID.link(source), let b = hosts.block(id), b.kind == .image, let path = b.path else { return nil }
+            return picture(file: path, on: id.host)
+        }
+        if let url = URL(string: source), let scheme = url.scheme?.lowercased() {
+            if scheme == "http" || scheme == "https" { return picture(web: url) }
+            if scheme == "file" { return picture(file: url.path, on: host.host) }
+            if scheme == "data" { return picture(key: source) { done in done(try? Data(contentsOf: url)) } }
+            if scheme.count > 1 { return nil }
+        }
+        let path = (source.removingPercentEncoding ?? source).expandingTildeInPath
+        if path.hasPrefix("/") { return picture(file: path, on: note.host) }
+        guard let folder = hosts.block(note)?.path?.deletingLastPathComponent, !folder.isEmpty else { return nil }
+        return picture(file: folder.appendingPathComponent(path), on: note.host)
+    }
+
+    private func picture(file path: String, on host: HostID) -> NSImage? {
+        let key = "\(host)|\(path)"
+        if let image = pictures.object(forKey: key as NSString) { return image }
+        if notPictures.contains(key) { return nil }
+        if host == self.host.host {
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? nil
+            guard let size, size <= 40 << 20 else { notPictures.insert(key); return nil }
+            if size <= 2 << 20 {
+                guard let image = NSImage(contentsOfFile: path), image.isValid else { notPictures.insert(key); return nil }
+                pictures.setObject(image, forKey: key as NSString)
+                return image
+            }
+            return picture(key: key) { done in
+                Task.detached(priority: .userInitiated) {
+                    let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+                    await MainActor.run { done(data) }
+                }
+            }
+        }
+        guard let c = hosts.client(host) else { return nil }
+        return picture(key: key) { done in c.readBytes(path: path, limit: 40 << 20) { data in Task { @MainActor in done(data) } } }
+    }
+
+    private func picture(web url: URL) -> NSImage? {
+        picture(key: url.absoluteString) { done in
+            Task.detached(priority: .utility) {
+                var bytes: Data?
+                if let (data, response) = try? await URLSession.shared.data(from: url),
+                   (200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 200) { bytes = data }
+                let got = bytes
+                await MainActor.run { done(got) }
+            }
+        }
+    }
+
+    /// A picture sent for once: kept when it comes (remembered as none when
+    /// it's not one), the outlines styled again.
+    private func picture(key: String, fetch: (@escaping (Data?) -> Void) -> Void) -> NSImage? {
+        if let image = pictures.object(forKey: key as NSString) { return image }
+        guard !notPictures.contains(key), fetchingPictures.insert(key).inserted else { return nil }
+        fetch { [weak self] data in
+            guard let self else { return }
+            self.fetchingPictures.remove(key)
+            guard let data, let image = NSImage(data: data), image.isValid else { self.notPictures.insert(key); return }
+            self.pictures.setObject(image, forKey: key as NSString)
+            for case let o as OutlineNoteView in self.views.values { o.picturesArrived() }
         }
         return nil
     }
