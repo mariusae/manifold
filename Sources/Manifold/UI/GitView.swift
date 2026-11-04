@@ -32,7 +32,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let table = NSTableView()
 
     private enum Row {
-        case section(String)
+        /// A section's heading: what it says, and which (`changes`,
+        /// `history`) — clicked, folded or unfolded.
+        case section(String, key: String)
         case change(GitStatusEntry)
         case commit(GitCommit)
         case note(String)
@@ -57,6 +59,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private var paneSubject: DiffSubject?
     private var paneWork: DispatchWorkItem?
     private var splitPlaced = false
+    /// The sections folded (by key), kept with the tile.
+    private var foldedSections: Set<String> = []
     /// Shorter than this, no pane: the list alone.
     static let paneFrom: CGFloat = 320
 
@@ -178,6 +182,10 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private func restoreState() {
         guard !keeper.restored, !rows.isEmpty else { return }
         keeper.restored = true
+        if let folded = keeper.value("folded"), !folded.isEmpty {
+            foldedSections = Set(folded.split(separator: ",").map(String.init))
+            refill()
+        }
         if let key = keeper.value("selected"), let i = rows.firstIndex(where: { rowKey($0) == key }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
@@ -198,6 +206,14 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             if tall { placeSplit() }
         }
         if !splitPlaced, tall, split.frame.height > 0 { placeSplit() }
+        layoutBoxes()
+    }
+
+    /// What's in the list's half and the pane's, to their size: at the
+    /// tile's layout, and as the divider between them moves (which lays
+    /// out the halves, not the tile — the list was left at its old
+    /// height, pinned to its half's foot, over the pane or short of the top).
+    private func layoutBoxes() {
         scroll.frame = listBox.bounds
         note.frame = scroll.frame
         table.tableColumns[0].width = scroll.contentSize.width
@@ -219,6 +235,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
+        layoutBoxes()
         guard splitPlaced, !paneBox.isHidden, NSApp.currentEvent?.type == .leftMouseDragged else { return }
         keeper.note(["split": "\(listBox.frame.height)"])
     }
@@ -258,13 +275,25 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
                 self.branchLabel.stringValue = branch + (words.isEmpty ? "" : "   " + words)
             }
         })
+        refill(refreshed: true)
+        restoreState()
+    }
+
+    /// The rows, from the repository as last read: each section's under
+    /// its heading, unless it's folded. Read again (`refreshed`), a row
+    /// chosen that's gone leaves the one in its place chosen; folded away,
+    /// none.
+    private func refill(refreshed: Bool = false) {
+        guard let g = source()?.git else { return }
         var out: [Row] = []
         if let e = g.error { out.append(.note(e)) }
-        out.append(.section(g.status.isEmpty ? "No changes" : "\(g.status.count) change\(g.status.count == 1 ? "" : "s")"))
-        if !g.status.isEmpty { out.append(.allChanges) }
-        for s in g.status { out.append(.change(s)) }
-        out.append(.section("History"))
-        for c in g.log { out.append(.commit(c)) }
+        out.append(.section(g.status.isEmpty ? "No changes" : "\(g.status.count) change\(g.status.count == 1 ? "" : "s")", key: "changes"))
+        if !foldedSections.contains("changes") {
+            if !g.status.isEmpty { out.append(.allChanges) }
+            for s in g.status { out.append(.change(s)) }
+        }
+        out.append(.section("History", key: "history"))
+        if !foldedSections.contains("history") { for c in g.log { out.append(.commit(c)) } }
         // The rows chosen stay chosen, by what they are, as it's read again.
         let old = rows
         let chosen = Set(table.selectedRowIndexes.compactMap { old.indices.contains($0) ? rowKey(old[$0]) : nil })
@@ -272,9 +301,22 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         rows = out
         table.reloadData()
         var again = IndexSet(rows.indices.filter { rowKey(rows[$0]).map(chosen.contains) == true })
-        if again.isEmpty, last >= 0, last < rows.count { again = [last] }
+        if again.isEmpty, refreshed, last >= 0, last < rows.count, selectable(last) { again = [last] }
         if !again.isEmpty { table.selectRowIndexes(again, byExtendingSelection: false) }
-        restoreState()
+    }
+
+    /// A section's heading clicked: folded, or unfolded.
+    @objc private func sectionClicked(_ g: NSClickGestureRecognizer) {
+        guard let cell = g.view else { return }
+        let r = table.row(for: cell)
+        guard rows.indices.contains(r), case let .section(_, key) = rows[r] else { return }
+        toggleSection(key)
+    }
+
+    func toggleSection(_ key: String) {
+        if foldedSections.remove(key) == nil { foldedSections.insert(key) }
+        keeper.note(["folded": foldedSections.sorted().joined(separator: ",")])
+        refill()
     }
 
     @objc private func refreshClicked() { delegate?.gitViewRefresh(self) }
@@ -387,6 +429,15 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     /// what the pane shows.
     func debug(_ arg: String) -> String {
         let words = arg.split(separator: " ")
+        if words.first == "fold", words.count > 1 { toggleSection(String(words[1])) }
+        if words.first == "message" { return pane?.debugFoldMessage() ?? "no pane" }
+        // "split <y>": the divider moved there, as a drag moves it; whether
+        // the list and the pane fill their halves after.
+        if words.first == "split", words.count > 1, let y = Double(words[1]) {
+            split.setPosition(y, ofDividerAt: 0)
+            return "list half \(Int(listBox.frame.height)), list \(Int(scroll.frame.minY))+\(Int(scroll.frame.height)); "
+                + "pane half \(Int(paneBox.frame.height)), pane \(pane.map { "\(Int($0.frame.minY))+\(Int($0.frame.height))" } ?? "none")"
+        }
         if words.first == "select", words.count > 1 {
             table.selectRowIndexes(IndexSet(words.dropFirst().compactMap { Int($0) }.filter(selectable)), byExtendingSelection: false)
         }
@@ -403,13 +454,14 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         var lines = rows.enumerated().map { i, r -> String in
             let mark = table.selectedRowIndexes.contains(i) ? "*" : " "
             switch r {
-            case let .section(t): return "\(mark)\(i) — \(t)"
+            case let .section(t, key): return "\(mark)\(i) \(foldedSections.contains(key) ? "▸" : "▾") \(t)"
             case let .change(s): return "\(mark)\(i) change \(s.path)"
             case let .commit(c): return "\(mark)\(i) commit \(c.short) \(c.summary)"
             case let .note(t): return "\(mark)\(i) note \(t)"
             case .allChanges: return "\(mark)\(i) all changes"
             }
         }
+        lines.append("branch " + branchLabel.stringValue)
         lines.append("pane " + (paneBox.isHidden ? "hidden" : pane.map { "\($0.block) \(Int(paneBox.frame.height)) high" } ?? "empty"))
         return lines.joined(separator: "\n")
     }
@@ -467,6 +519,39 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         return 22
     }
 
+    /// A section's heading: a chevron (folded, pointing on; open, down),
+    /// then what it says. Clicked, folded or unfolded.
+    private func sectionCell(_ tableView: NSTableView, title: String, folded: Bool) -> NSView {
+        let cell = tableView.makeView(withIdentifier: .init("section"), owner: nil) as? NSTableCellView ?? {
+            let c = NSTableCellView()
+            c.identifier = .init("section")
+            let chevron = NSImageView()
+            let f = NSTextField(labelWithString: "")
+            f.lineBreakMode = .byTruncatingTail
+            for v in [chevron, f] as [NSView] {
+                v.translatesAutoresizingMaskIntoConstraints = false
+                c.addSubview(v)
+            }
+            c.imageView = chevron
+            c.textField = f
+            // (Not the table's action: a heading isn't a row to choose.)
+            c.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(sectionClicked(_:))))
+            NSLayoutConstraint.activate([
+                chevron.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 10),
+                chevron.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+                chevron.widthAnchor.constraint(equalToConstant: 10),
+                f.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 5),
+                f.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8),
+                f.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+            ])
+            return c
+        }()
+        cell.imageView?.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 8, weight: .bold, color: Theme.secondaryText)
+        cell.textField?.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
+        cell.setAccessibilityLabel(title + (folded ? ", folded" : ""))
+        return cell
+    }
+
     static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
@@ -474,6 +559,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }()
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if case let .section(title, key) = rows[row] { return sectionCell(tableView, title: title, folded: foldedSections.contains(key)) }
         let cell = tableView.makeView(withIdentifier: .init("row"), owner: nil) as? NSTableCellView ?? {
             let c = NSTableCellView()
             c.identifier = .init("row")
@@ -493,8 +579,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         guard let f = cell.textField else { return cell }
         let mono = FontTheme.code(11.5)
         switch rows[row] {
-        case let .section(title):
-            f.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
+        case .section: break
         case let .note(text):
             f.attributedStringValue = NSMutableAttributedString(string: text, attributes: [.font: UIType.body, .foregroundColor: Status.failed]).truncatingTail()
         case let .change(s):
@@ -510,7 +595,10 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             f.attributedStringValue = a.truncatingTail()
         case let .commit(c):
             let a = NSMutableAttributedString(string: c.short + "  ", attributes: [.font: mono, .foregroundColor: Theme.secondaryText])
-            a.append(NSAttributedString(string: c.summary, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
+            // What's said about the code, in the technical face, beside its sha.
+            let technical = FontTheme.current.technicalFont(size: 12)
+            a.append(NSAttributedString(string: c.summary, attributes: [.font: technical, .foregroundColor: Theme.text,
+                                                                         .kern: FontTheme.current.technicalTracking(technical)]))
             let when = Self.relative.localizedString(for: Date(timeIntervalSince1970: c.date), relativeTo: Date())
             a.append(NSAttributedString(string: "   \(c.author), \(when)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = a.truncatingTail()

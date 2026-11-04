@@ -165,7 +165,11 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
                 if let h = CommitHeaderView.Heading(head.components(separatedBy: "\n")) {
                     rows.removeFirst(first)
                     let v = commitHeader ?? CommitHeaderView()
-                    if commitHeader == nil { addSubview(v); commitHeader = v }
+                    if commitHeader == nil {
+                        addSubview(v)
+                        commitHeader = v
+                        v.onFold = { [weak self] _ in self?.needsLayout = true }
+                    }
                     v.show(h, theme: theme)
                     needsLayout = true
                 }
@@ -248,6 +252,15 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         }
         changesOutline.set(entries)
         markCurrent()
+    }
+
+    /// Debugging: a commit's message folded or unfolded, as its chevron
+    /// does; its heading's height after.
+    func debugFoldMessage() -> String {
+        guard let commitHeader else { return "no commit" }
+        commitHeader.foldClicked()
+        layoutSubtreeIfNeeded()
+        return "message \(commitHeader.folded ? "folded" : "whole"), heading \(Int(commitHeader.frame.height)) high"
     }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
@@ -590,6 +603,19 @@ final class ReadingTextView: NSTextView {
 
 final class CommitHeaderView: NSView {
     private let meta = NSTextField(labelWithString: "")
+    /// The message folded to its subject, or whole.
+    private let fold = IconButton(symbol: "chevron.down", size: 9, weight: .semibold, target: nil, action: nil)
+    private(set) var folded = CommitHeaderView.foldsMessages
+    /// Folded or unfolded by its chevron (or a click on the line above the message).
+    var onFold: ((Bool) -> Void)?
+    /// Whether commits' messages show folded: as one was last left, in
+    /// every diff (a git tile's pane shows the next commit so too).
+    static var foldsMessages: Bool {
+        get { UserDefaults.standard.bool(forKey: "CommitMessagesFolded") }
+        set { UserDefaults.standard.set(newValue, forKey: "CommitMessagesFolded") }
+    }
+    private var heading: Heading?
+    private var theme: FontTheme = .current
     private let scroll = ClippingScrollView()
     private let text = ReadingTextView()
     private let rule = NSView()
@@ -651,7 +677,37 @@ final class CommitHeaderView: NSView {
         scroll.drawsBackground = false
         rule.wantsLayer = true
         rule.themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
-        for v in [meta, scroll, rule] { addSubview(v) }
+        fold.target = self
+        fold.action = #selector(foldClicked)
+        for v in [meta, scroll, rule, fold] { addSubview(v) }
+        updateFold()
+    }
+
+    @objc func foldClicked() {
+        setFolded(!folded)
+        Self.foldsMessages = folded
+        onFold?(folded)
+    }
+
+    /// The message folded to its subject line, or shown whole.
+    func setFolded(_ on: Bool) {
+        guard on != folded else { return }
+        folded = on
+        updateFold()
+        if let heading { show(heading, theme: theme) }
+    }
+
+    private func updateFold() {
+        fold.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
+        fold.toolTip = folded ? "Show the whole message" : "Fold the message to its subject"
+        fold.setAccessibilityLabel(folded ? "Show Message" : "Fold Message")
+    }
+
+    /// A click on the line above the message folds or unfolds it, as its chevron does.
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if p.y >= meta.frame.minY - 2 { return foldClicked() }
+        super.mouseDown(with: event)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -659,17 +715,29 @@ final class CommitHeaderView: NSView {
     private static let inset: CGFloat = 12
 
     func show(_ h: Heading, theme: FontTheme) {
+        heading = h
+        self.theme = theme
         meta.stringValue = [String(h.sha.prefix(12)), h.author, h.date].filter { !$0.isEmpty }.joined(separator: " · ")
-        let body = theme.readingFont(size: 15), code = theme.font(.monospaced, size: 12.5)
+        // In the technical face — what's said about code, as its comments
+        // are — beside the code's own.
+        let body = theme.technicalFont(size: 13), code = theme.font(.monospaced, size: 12)
         // The message as written, its subject a paragraph like the rest:
         // the line above names the commit already, and a subject is often
-        // a sentence, not a heading.
-        // Set as the Markdown preview sets its text: its colours, lines
-        // and spacing (a pane's size, not a page's).
-        text.textStorage?.setAttributedString(MarkdownText.attributed(
-            h.message.trimmingCharacters(in: .newlines), font: body, code: code, color: MarkdownText.readingBody,
-            strong: MarkdownText.readingStrong, lineHeight: theme.readingLineHeight(body), tracking: theme.readingTracking(body)))
+        // a sentence, not a heading. Folded: its subject (its first
+        // paragraph's first line) alone, cut short.
+        var message = h.message.trimmingCharacters(in: .newlines)
+        if folded { message = message.components(separatedBy: "\n").first ?? message }
+        let shown = NSMutableAttributedString(attributedString: MarkdownText.attributed(
+            message, font: body, code: code, color: Theme.text, strong: Theme.text,
+            lineHeight: 1.3, tracking: theme.technicalTracking(body)))
+        if folded {
+            let p = NSMutableParagraphStyle()
+            p.lineBreakMode = .byTruncatingTail
+            shown.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: shown.length))
+        }
+        text.textStorage?.setAttributedString(shown)
         needsLayout = true
+        superview?.needsLayout = true
     }
 
     /// Its height at a width: the message whole, at most `limit`.
@@ -679,13 +747,14 @@ final class CommitHeaderView: NSView {
         text.textContainer?.containerSize = NSSize(width: w, height: .greatestFiniteMagnitude)
         text.layoutManager?.ensureLayout(for: text.textContainer!)
         let used = text.layoutManager?.usedRect(for: text.textContainer!).height ?? 0
-        return min(ceil(used) + 18 + 10 + 12, limit)
+        return min(ceil(used) + 18 + 10 + 12, folded ? .greatestFiniteMagnitude : limit)
     }
 
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height, inset = Self.inset
-        meta.frame = NSRect(x: inset, y: h - 8 - 16, width: w - 2 * inset, height: 16)
+        fold.frame = NSRect(x: inset - 4, y: h - 8 - 18, width: 18, height: 20)
+        meta.frame = NSRect(x: inset + 14, y: h - 8 - 16, width: w - 2 * inset - 14, height: 16)
         scroll.frame = NSRect(x: inset, y: 12, width: w - 2 * inset, height: max(0, h - 12 - 28))
         text.frame.size.width = scroll.contentSize.width
         rule.frame = NSRect(x: 0, y: 0, width: w, height: 1)

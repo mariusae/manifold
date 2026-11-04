@@ -1440,13 +1440,22 @@ pages, as a Markdown text has its headings (a tile's own sidebar, at its
 left, the bar's button showing it, kept with the tile); a
 side-by-side and inline diff; git status, log and blame as lists that open
 diffs and files — the row chosen shown in a pane under the list, as a mail
-reader shows a message, a commit's message rendered as Markdown, its
-subject line a paragraph like any other, not set as a title, and set
-as the preview sets its text — its colours (the body a step down from
-white in the dark, bold and headings brighter), its lines and letter
-spacing, and without the system's font smoothing, as WebKit's
-`antialiased` draws, so it's no heavier than the page beside it
-(`ReadingTextView`; `CommitHeaderView`, `MarkdownText`: native text, not the preview's page); search results grouped by file with context, live while
+reader shows a message (each half's contents laid out as the divider
+between them moves, not only with the tile). Its sections — the changes,
+the history — fold by their headings, kept with the tile. A commit's
+message is what's said about code, so it's set in the technical face,
+the code's companion (as comments are), in the history's rows and over a
+commit's diff: there rendered as Markdown, its subject line a paragraph
+like any other, not set as a title, without the system's font
+smoothing, as WebKit's `antialiased` draws (`ReadingTextView`;
+`CommitHeaderView`, `MarkdownText`: native text, not the preview's page);
+its chevron folds it to its subject, as every commit's then shows until
+it's unfolded. How far the branch is ahead of its upstream, or behind
+(↑ ↓ by the branch), follows a push or a fetch from anywhere — a
+terminal, another app: the server watches what they move (the
+upstream's ref, its reflog, `packed-refs`, `FETCH_HEAD`), not the index
+alone, which neither touches. Another Mac's push to the remote reaches
+no file here; it shows with the next fetch. Search results grouped by file with context, live while
 running; a process list (sort, filter, select many, signal); an agent's transcript with
 its tool calls folded.
 
@@ -1809,7 +1818,8 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   `grep` on the host, read in batches; the search lens.
 - Git and diff blocks (§7.5): `Git` on the host runs git or Sapling by
   the nearest `.sl` or `.git` (`VCS` in the core: the commands and their
-  parsing; status, log, `show`/`cat`),
+  parsing; status, log, `show`/`cat`), a repository watched whenever a
+  git block refreshes (its index, and for git its upstream's refs),
   `LineDiff` (Myers) and `DiffRows` in the core, shared by the diff lens
   and the editor's gutter (marks sent like diagnostics); the git lens.
 - The graph (§3.5): `Graph` in the core, kept in step by `Node` with every

@@ -81,6 +81,9 @@ final class Server {
     private var gutters: [BlockID: [GutterMark]] = [:]
     /// Repositories watched (their index) for git blocks and gutters.
     private var repoWatchers: [String: FileWatcher] = [:]
+    /// What a push or a fetch moves in each repository, watched: its
+    /// branch's upstream (and the branch it was found for).
+    private var upstreamWatches: [String: (branch: String?, upstream: String, watchers: [FileWatcher])] = [:]
     /// When each repository's git blocks last refreshed for a change
     /// under it, and a refresh waiting its turn.
     private var gitRefreshedAt: [String: Date] = [:]
@@ -1258,6 +1261,9 @@ final class Server {
     private func refreshGit(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
         let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
+        // Watched, whenever it's looked at: a tile already made asks only
+        // for refreshes, so a server started since watched nothing for it.
+        watchRepo(root, vcs)
         report(block, .working, msg: "Refreshing")
         // The repository's changes in one diff, if open, looked at with it.
         for d in node.blocks where d.kind == .diff {
@@ -1288,6 +1294,8 @@ final class Server {
             // repository as it was is not history.
             let was = self.node.block(block)?.git
             let same = was.map { $0.branch == branch && $0.status == status && $0.log == log && $0.ahead == ahead && $0.behind == behind && $0.error == error } ?? false
+            // Another branch: its upstream watched instead.
+            if vcs == .git, let w = self.upstreamWatches[root], w.branch != branch { self.watchUpstream(root, branch: branch) }
             if !same {
                 self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
             }
@@ -1391,6 +1399,53 @@ final class Server {
             guard now != last else { return }
             last = now
             self?.gitChanged(under: index)
+        }
+        if vcs == .git { watchUpstream(root, branch: nil) }
+    }
+
+    /// A git repository's push and fetch, watched: neither touches the
+    /// index or the working tree, so how far the branch is ahead of its
+    /// upstream (or behind it) went unsaid until something else changed.
+    /// What they move: the upstream's ref (`refs/remotes/origin/main`,
+    /// written beside its siblings and renamed into place, or packed into
+    /// `packed-refs`), its reflog (appended), and `FETCH_HEAD` — in the
+    /// repository's common folder (a worktree's too). Looked up again when
+    /// the branch changes. Other hosts' pushes reach no file here: those
+    /// come with a fetch.
+    private func watchUpstream(_ root: String, branch: String?) {
+        let commands = [["rev-parse", "--path-format=absolute", "--git-common-dir"], ["rev-parse", "--symbolic-full-name", "@{u}"]]
+        git.run(.git, commands, in: root) { [weak self] results in
+            guard let self, case .success(let c) = results[0] else { return }
+            let common = c.trimmingCharacters(in: .whitespacesAndNewlines)
+            let upstream = ((try? results[1].get()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let was = self.upstreamWatches[root], was.upstream == upstream {
+                self.upstreamWatches[root]?.branch = branch
+                return
+            }
+            let remote = upstream.hasPrefix("refs/remotes/") ? upstream : ""
+            let files = [common.appendingPathComponent("packed-refs"), common.appendingPathComponent("FETCH_HEAD")]
+                + (remote.isEmpty ? [] : [common.appendingPathComponent(remote), common.appendingPathComponent("logs/" + remote)])
+            func stamp() -> [Double] {
+                files.flatMap { f -> [Double] in
+                    guard let a = try? FileManager.default.attributesOfItem(atPath: f) else { return [0, 0, 0] }
+                    return [(a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0, (a[.size] as? NSNumber)?.doubleValue ?? 0,
+                            (a[.systemFileNumber] as? NSNumber)?.doubleValue ?? 0]
+                }
+            }
+            var last = stamp()
+            // The folders things are renamed into, and the reflog appended to:
+            // each event looked at, only a change to what's listed taken.
+            let watched = [common] + (remote.isEmpty ? [] : [common.appendingPathComponent(remote.deletingLastPathComponent),
+                                                            common.appendingPathComponent("logs/" + remote)])
+            let watchers = watched.filter { FileManager.default.fileExists(atPath: $0) }.map { path in
+                FileWatcher(path: path, queue: self.queue) { [weak self] in
+                    let now = stamp()
+                    guard now != last else { return }
+                    last = now
+                    self?.gitChanged(under: root)
+                }
+            }
+            self.upstreamWatches[root] = (branch, upstream, watchers)
         }
     }
 
