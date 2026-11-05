@@ -2315,21 +2315,56 @@ final class GridView: NSView, NSDraggingSource {
         return true
     }
 
-    /// ⌃⇥'s cards put away at once, unseen or still unfolding: control let
-    /// go before they were in place — a tap, as far as anyone can tell, the
-    /// tile it steps to coming up as it would have (no folding back seen
-    /// first). False once they're in place.
-    func abandonStackSwitcher() -> Bool {
-        if discardUnseenStackSwitcher() { return true }
+    /// ⌃⇥'s cards put away, control let go before they were in place — a
+    /// tap, as far as anyone can tell: unseen, at once; unfolding, folded
+    /// back the way they came, four times as fast, so what was coming out
+    /// is seen going back (no jump to where they'd have been); then `done`
+    /// (the tile it steps to brought up). False once they're in place.
+    func abandonStackSwitcher(then done: @escaping () -> Void) -> Bool {
+        if discardUnseenStackSwitcher() { done(); return true }
         guard let s = switcher, !s.isClosing, !s.cardsShown else { return false }
         if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
         switcherMonitor = nil
-        // The flights gone, the tiles under them seen again.
-        land()
-        s.removeFromSuperview()
         switcher = nil
-        needsLayout = true
+        // These flights and the tiles they hid, theirs alone now (a ⌃⇥ again
+        // meanwhile has its own).
+        let flights = flying, hidden = unseen
+        flying = []
+        unseen = []
+        Self.foldBack(flights, began: unfoldBegan, fading: s) { [weak self] in
+            hidden.forEach { $0.alphaValue = 1 }
+            self?.needsLayout = true
+            done()
+        }
         return true
+    }
+
+    /// When the cards last began unfolding (media time).
+    private var unfoldBegan: CFTimeInterval?
+
+    /// Flights sent back the way they came, `speed` times as fast, from
+    /// where they've got to; `view` fading out meanwhile. Then they're put
+    /// away, `view` taken out, and `done`.
+    static func foldBack(_ flights: [CALayer], began: CFTimeInterval?, fading view: NSView, speed: Double = 4, done: @escaping () -> Void) {
+        let now = CACurrentMediaTime()
+        var back: TimeInterval = 0
+        for l in flights {
+            let t = l.convertTime(now, from: nil)
+            if let began { back = max(back, (t - began) / speed) }
+            l.timeOffset = t
+            l.beginTime = now
+            l.speed = Float(-speed)
+        }
+        back = min(max(back, 0), 0.12)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = back
+            view.animator().alphaValue = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + back) {
+            flights.forEach { $0.removeFromSuperlayer() }
+            view.removeFromSuperview()
+            done()
+        }
     }
 
     /// Whether ⌃⇥'s cards would need their tile to grow first (a stack too
@@ -2368,6 +2403,7 @@ final class GridView: NSView, NSDraggingSource {
             guard !items.isEmpty else { return }
             s.cardsShown = false
             self.debugUnfoldStarted = Date()
+            self.unfoldBegan = CACurrentMediaTime()
             let d = within.map { max($0 - staggered, 0.05) * Motion.slowdown } ?? Motion.spatial * 1.5
             self.flying += Self.morph(items, in: host, over: d) { [weak self, weak s] in
                 s?.cardsShown = true
@@ -2383,7 +2419,7 @@ final class GridView: NSView, NSDraggingSource {
     var debugUnfoldAsked: Date?
 
     /// The cards unfolding, hurried: ⇥ again while they're on their way —
-    /// what's wanted is plain, the rest of the way gone faster.
+    /// what's wanted is plain, the rest of the way gone four times as fast.
     func hurryUnfold() {
         guard switcher?.cardsShown == false else { return }
         Self.hurry(flying)
@@ -2396,7 +2432,7 @@ final class GridView: NSView, NSDraggingSource {
         for l in layers where l.speed == 1 {
             l.timeOffset = l.convertTime(now, from: nil)
             l.beginTime = now
-            l.speed = 2.5
+            l.speed = 4
         }
     }
 

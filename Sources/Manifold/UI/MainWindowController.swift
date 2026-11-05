@@ -3109,6 +3109,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌥⇥'s cards made out of sight: what shows them, unfolding to be in
     /// place by the time it's given.
     private var tileUnseen: ((Date) -> Void)?
+    /// When they last began unfolding (media time).
+    private var tileUnfoldBegan: CFTimeInterval?
 
     private func watchTileWalk() {
         tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -3145,12 +3147,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         // Let go before the cards were in place (unseen, or unfolding): a
         // tap — put away at once, gone to the tile stepped to.
-        if tileUnseen != nil || !column.cardsShown {
+        if tileUnseen != nil {
             tileUnseen = nil
             tileSwitcher = nil
             landTiles()
             frame.removeFromSuperview()
             if let target { go(to: target) }
+            return
+        }
+        // Unfolding: folded back the way they came, then gone there.
+        if !column.cardsShown {
+            tileSwitcher = nil
+            let flights = tileFlights
+            tileFlights = []
+            GridView.foldBack(flights, began: tileUnfoldBegan, fading: frame) { [weak self] in
+                if let target { self?.go(to: target) }
+            }
             return
         }
         tileSwitcher = nil
@@ -3336,6 +3348,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // (A frame allowed for its many flights to be put on screen.)
             let d = max(settledBy.timeIntervalSinceNow - staggered - 1.0 / 60, 0.05) * Motion.slowdown
             self.debugTilesShown = Date()
+            self.tileUnfoldBegan = CACurrentMediaTime()
             self.tileFlights += GridView.morph(items, in: host, over: d) { [weak self, weak column] in
                 column?.cardsShown = true
                 self?.debugTilesSettled = Date()
@@ -3475,10 +3488,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // away (unseen, or as they are), the tile stepped to brought up.
         if let m = madeAhead {
             madeAhead = nil
-            if content.abandonStackSwitcher() {
-                if settling { quickStep(m.top, steps: m.steps) }
-                return
-            }
+            if content.abandonStackSwitcher(then: { [weak self] in if settling { self?.quickStep(m.top, steps: m.steps) } }) { return }
         }
         // Let go before the cards showed: the tile stepped to comes up.
         if let q = quickWalk {
@@ -3495,14 +3505,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem, at: Date)?
     /// ⌃⇥ pressed, its cards made out of sight: the tile and the step.
     private var madeAhead: (top: PlacementID, steps: Int)?
-    /// ⌃⇥ held, its cards are in place this long after it's pressed — as
-    /// GNOME's and niri's switchers wait 150 ms to appear, but settled by
-    /// then, not starting.
-    static let switcherSettled: TimeInterval = 0.15
-    /// How long it's held before they start: long enough for a tap
-    /// (control let go at once) to switch with nothing shown; they're made
-    /// (some 20 ms) and unfold in the rest.
-    static let switcherDelay: TimeInterval = 0.06
+    /// ⌃⇥ (⌥⇥) held, its cards are in place this long after it's pressed:
+    /// settled by then, not starting — but long enough that they're seen
+    /// coming out of where they are, which says what they are.
+    static let switcherSettled: TimeInterval = 0.2
+    /// When they start: as soon as they're made (some 25 ms); a tap let go
+    /// before, nothing's seen; after, they fold back as they came.
+    static let switcherDelay: TimeInterval = 0.03
     /// ⇥ pressed again before they showed: no quick switch wanted — they
     /// come at once, in place this long after.
     static let switcherHurried: TimeInterval = 0.06
