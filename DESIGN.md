@@ -583,7 +583,9 @@ destination:
    at the field's end: the reaches as words, the one it's at on the
    accent's pill (a click goes to another). The space's is its tiles
    (stashed ones too), its pins, what was closed from it, its agents'
-   turns, and the files of every project its tiles are in; all spaces is
+   turns, the files of every project its tiles are in, and the desk's
+   other spaces themselves — places to go, found by name only (whole,
+   its start, a word's), not what they hold; all spaces is
    everything kept, a row in another space saying which, the other
    spaces' projects' files listed only once it's widened. Nothing found
    as far as it looks, one row says how much a step wider finds, and ↩

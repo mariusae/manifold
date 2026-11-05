@@ -65,6 +65,9 @@ struct FinderCandidate: Sendable {
     var inSpace = false
     /// The host a file is on.
     var host: HostID?
+    /// Found only by its name — whole, its start, a word's start, in it —
+    /// not by its letters in order, nor what's around it (a space).
+    var byNameOnly = false
 
     init(symbol: String, title: String, detail: String, note: String, age: String? = nil, name: String, aliases: [String] = [], around: String, summary: String = "",
          distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil, kinds: [String] = []) {
@@ -171,7 +174,7 @@ enum FinderRanking {
             guard Self.hasInOrder(letters, c.name) || Self.hasInOrder(letters, c.around) || c.aliases.contains(where: { Self.hasInOrder(letters, $0) })
                     || Self.hasInOrder(letters, c.summary) else { continue }
             let m = Self.match(q, qWords, ascii, c)
-            guard m > 0 else { continue }
+            guard m > 0, !c.byNameOnly || m >= 400 else { continue }
             for k in c.kinds { counts[k, default: 0] += 1 }
             guard wanted(c) else { continue }
             if m >= 500 { strong += 1 }

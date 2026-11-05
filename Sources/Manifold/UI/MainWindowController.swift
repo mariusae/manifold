@@ -6162,7 +6162,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 distance = min(distance, 3)
             }
             // In another space: which.
-            if !ofSpace.contains(block.id), let space = elsewhere[block.id], note.isEmpty || note == "linked" || note == "near" { note = "in \(space)" }
+            if block.kind != .arrangement, !ofSpace.contains(block.id), let space = elsewhere[block.id], note.isEmpty || note == "linked" || note == "near" { note = "in \(space)" }
             // How long since it was seen, in a pill — none for just now.
             let seen = Age.short(entry.lastSeen)
             let age = seen == "now" ? nil : seen
@@ -6180,7 +6180,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                             summary: summary,
                                             distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id,
                                             kinds: FindKinds.of(block.kind, path: block.path, agent: agent != nil))
-            candidate.inSpace = ofSpace.contains(block.id)
+            // The desk's other spaces, as places to go, are found from here
+            // too (what they hold isn't); this one isn't listed in itself.
+            candidate.inSpace = block.kind == .arrangement ? block.id != selected && allWorkspaces.contains(block.id) : ofSpace.contains(block.id)
+            // A space by what it's called, not by its letters scattered
+            // through a long name (a folder's path).
+            candidate.byNameOnly = block.kind == .arrangement
             corpus.append(candidate)
             actions.append { [weak self] in self?.recall(id) }
         }

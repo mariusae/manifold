@@ -576,7 +576,10 @@ around it, and comes back with its history.
 - **Open Quickly** (⌘O) finds what's in the space shown — its tiles,
   its pins, what was closed from it, its agents' turns, and the files on
   disk of every project its tiles are in, as their hosts list them
-  (remote too), marked *in* the project; **⌘O again** looks in all
+  (remote too), marked *in* the project — and the other spaces, by
+  name, to go to (what they hold isn't found from here; this space's
+  tiles come before them, with nothing typed and among matches as good);
+  **⌘O again** looks in all
   spaces: every block and space the hosts keep, a row elsewhere saying
   which space, and every project's files on the desk (⌘O a third time,
   back to the space). Where it's looking is always shown at the field's
