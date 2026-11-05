@@ -8314,10 +8314,6 @@ extension MainWindowController: GridDelegate {
         guard let heir = others.last(where: { $0.offset < i })?.element ?? others.first?.element else { return NSSound.beep() }
         appendToSelected(a.stashing(f) + [.focus(heir.id)])
     }
-    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool {
-        guard let a = arrangement else { return false }
-        return !showingSome([], in: a, placement: top, .fan).isEmpty
-    }
 
     /// ⇧⌘↩: the focused tile over the whole arrangement, or back.
     @objc func toggleMaximize(_ sender: Any?) {
