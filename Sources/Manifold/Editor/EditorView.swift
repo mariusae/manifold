@@ -101,7 +101,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         self.theme = theme
         super.init(frame: .zero)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = ($0.viewing ? Theme.codePage : Theme.windowBackground).cgColor }
+        themed {
+            let page = $0.viewing ? Theme.codePage : Theme.windowBackground
+            $0.layer?.backgroundColor = page.cgColor
+            $0.pinned.background = page
+        }
 
         scroll.drawsBackground = false
         // No room kept for the (hidden) title bar.
@@ -119,6 +123,19 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         addSubview(scrubber)
         addSubview(note)
+        // The definitions the top of the text is in, pinned over it.
+        pinned.textView = textView
+        pinned.isHidden = true
+        pinned.onPick = { [weak self] line in
+            guard let self else { return }
+            NavJumps.willJump?(self)
+            let at = self.textView.text.offset(ofLine: line)
+            let body = self.textView.text.lineText(line).prefix { $0 == " " || $0 == "\t" }.utf8.count
+            self.scroll(toY: self.textView.top(ofLine: line) - 8)
+            self.textView.setSelections([Selection(at: at + body)], scroll: false)
+            self.window?.makeFirstResponder(self.textView)
+        }
+        addSubview(pinned)
         // A heading chosen in the outline: the text there, the caret at it.
         headingsOutline.onPick = { [weak self] i in
             guard let self, self.headingLines.indices.contains(i) else { return }
@@ -341,6 +358,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
         note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
+        updatePinned()
         scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
         updateScrubber()
         finder.layout(in: bounds)
@@ -375,6 +393,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     @objc private func scrolled() {
         updateScrubber()
         markCurrentHeading()
+        updatePinned()
+    }
+
+    /// The definitions pinned over the text's top (§7.1).
+    let pinned = PinnedDefinitions()
+
+    private func updatePinned() {
+        guard textView.showsStructure else { pinned.isHidden = true; return }
+        let h = pinned.update(visible: scroll.contentView.bounds)
+        pinned.frame = NSRect(x: scroll.frame.minX, y: scroll.frame.maxY - h, width: scroll.frame.width, height: h)
     }
 
     // MARK: The outline (§7.5)
@@ -582,6 +610,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (viewing ? Theme.codePage : Theme.windowBackground).cgColor
             }
+            pinned.background = viewing ? Theme.codePage : Theme.windowBackground
             // The outline fades into the page as it is now.
             sidebar?.shadeGround()
             documentChanged()
@@ -708,6 +737,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scheduleStateSave()
         scheduleMatchRefresh()
         completionTextChanged()
+        updatePinned()
     }
 
     /// The find pill's matches found again after an edit — a moment after
@@ -747,6 +777,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         let doc = theme.technicalFont(size: f.pointSize)
         textView.syntaxLanguage = SyntaxLanguage.forPath(path)
         textView.docFont = font == .monospaced ? doc : nil
+        // Its structure without colour: names bold, comments fainter,
+        // hairlines, the caret's definition barred, those it's in pinned.
+        textView.showsStructure = font == .monospaced && textView.syntaxLanguage != nil
+        updatePinned()
         // Code (a file of a language the table has) shows its caret's symbol's uses.
         textView.showsSymbolUses = CodeLanguage.forPath(path)?.kind == .language
         // Notes about its places in the technical font beside code, else the text's.

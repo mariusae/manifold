@@ -1297,7 +1297,29 @@ What it is to use, modelled on Panic's Nova, without syntax highlighting:
   font beside it (proportional; Xcode's way), its leader, delimiters
   and the stars down a block's left kept in the code's face, so where a
   comment starts and what it's lined up with stay on the code's grid;
-  other comments are code's, monospaced. What a doc comment is is the
+  other comments are code's, monospaced. A doc comment's fenced block
+  (``` or ~~~, as Markdown's, to its close in the same comment: a
+  diagram, a table, an example) stays monospaced, its columns lined up
+  — `SyntaxTree.isDocCode`; a comment is a run of one-line comments
+  (`///`, `//!`, Go's), or one over lines of its own (`/** */`), a fence
+  left open closing with it.
+- Code's structure is shown without colour (`TextView.Structure`, code
+  set fixed-width with a grammar): each definition's name in the face's
+  bold (its strokes thickened where it has none as wide, so the grid
+  holds); plain comments, leaders and all, in the text's ink at 62%
+  (doc comments keep theirs, in the technical face); a hairline
+  between the definitions of the top two levels — a file's, and its
+  types' members — where either of the two spans lines, above the
+  second's doc comment and attributes, in the blank line before it if
+  there's one, from its indent, not above the first among its siblings;
+  a bar beside the definition the caret's in, if it spans lines; and
+  the definitions the top of the view is inside of, three at most,
+  pinned over it, each its first line as the text has it (and its
+  number), while that line's out of view (`PinnedDefinitions`) — a
+  click goes to it. The definitions are the declarations query's, found
+  once per parse and moved by edits until the next (a pass over the
+  tree: 27 ms in 10,000 lines), found again too a moment after typing
+  stops. What a doc comment is is the
   language's, asked of its tree-sitter grammar's tree (`ManifoldSyntax`:
   a grammar per language, and a query of its doc comments): one written so (`///`, `/** */` — not `////`, `/**/` —
   Doxygen's `//!` and `/*!` in C and C++), one the grammar says is

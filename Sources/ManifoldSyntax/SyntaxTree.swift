@@ -88,7 +88,7 @@ public final class SyntaxTree {
     public let language: SyntaxLanguage
     /// The text the tree is of (edited to, if not yet parsed again).
     public private(set) var text: Rope
-    private var tree: OpaquePointer? { didSet { texts = [:] } }
+    private var tree: OpaquePointer? { didSet { texts = [:]; docOpen = [:] } }
     /// Nodes' texts, for predicates, while the tree's the same.
     private var texts: [TextRange: String] = [:]
     private let cursor: OpaquePointer
@@ -149,6 +149,7 @@ public final class SyntaxTree {
         if let tree { ts_tree_edit(tree, &edit) }
         text = new
         texts = [:]
+        docOpen = [:]
         guard !gaveUp else { return [] }
         let edited = [TextRange(start, newEnd)]
         if !background { return edited + adopt(parser.parse(text, old: tree)) }
@@ -324,9 +325,91 @@ public final class SyntaxTree {
         language.commentQuery.map { words(of: $0, in: range) } ?? []
     }
 
+    /// The comments in `range` (a line's) that aren't doc comments, whole
+    /// — their leaders and delimiters with them — cut to the range.
+    public func plainComments(in range: TextRange) -> [TextRange] {
+        guard !range.isEmpty, let query = language.commentQuery else { return [] }
+        let docs = language.docQuery.map { captures($0, in: range).map(\.range) } ?? []
+        var out: [TextRange] = []
+        for c in captures(query, in: range) {
+            let lo = max(c.range.start, range.start), hi = min(c.range.end, range.end)
+            guard lo < hi, !docs.contains(where: { $0.start < c.range.end && $0.end > c.range.start }) else { continue }
+            // Comments within comments once.
+            if let last = out.last, last.end > lo { continue }
+            out.append(TextRange(lo, hi))
+        }
+        return out
+    }
+
+    /// Whether a comment (doc or not) is at `offset`.
+    public func isComment(at offset: Int) -> Bool {
+        guard let query = language.commentQuery, offset < text.count else { return false }
+        return captures(query, in: TextRange(offset, offset + 1)).contains { $0.range.contains(offset) }
+    }
+
     /// The words of the doc comments (and docstrings) in `range`.
     public func docWords(in range: TextRange) -> [TextRange] {
         language.docQuery.map { words(of: $0, in: range) } ?? []
+    }
+
+    /// Whether line `n`'s doc comment words are code, as Markdown has it: a
+    /// fence (``` or ~~~) or between one and its close in the same doc
+    /// comment (the run of its lines above, blank ones within it counted) —
+    /// a diagram, an example, set as code rather than prose.
+    public func isDocCode(line n: Int) -> Bool {
+        guard n < text.lineCount, let first = docWords(in: text.lineRange(n)).first else { return false }
+        return isFence(first) || (n > 0 && joined(n - 1, n) && docOpen(after: n - 1) == 1)
+    }
+
+    /// After each line read: whether its doc comment's code is open (1) or
+    /// not (0), or it's no doc comment's (-1). Kept while the tree and text
+    /// are the same, so a comment's lines are read once, not each its run.
+    private var docOpen: [Int: Int8] = [:]
+
+    private func docOpen(after k: Int) -> Int8 {
+        if let v = docOpen[k] { return v }
+        guard docSpans(k) != nil else {
+            docOpen[k] = -1
+            return -1
+        }
+        // Up the comment to its start, or to a line already read.
+        var lines = [k]
+        var open: Int8 = 0
+        while let j = lines.last.map({ $0 - 1 }), j >= 0, joined(j, j + 1) {
+            if let v = docOpen[j] { open = max(v, 0); break }
+            lines.append(j)
+        }
+        for l in lines.reversed() {
+            if let w = docWords(in: text.lineRange(l)).first, isFence(w) { open ^= 1 }
+            docOpen[l] = open
+        }
+        return open
+    }
+
+    /// The doc comments on line `n`, nil if none.
+    private func docSpans(_ n: Int) -> [TextRange]? {
+        guard let query = language.docQuery else { return nil }
+        let r = text.lineRange(n)
+        let spans = r.isEmpty ? [] : captures(query, in: r).map(\.range).filter { $0.start < r.end && $0.end > r.start }
+        return spans.isEmpty ? nil : spans
+    }
+
+    /// Lines `a` and `a + 1` are of the same doc comment: one comment over
+    /// both, or a run of comments each on its line (`///`, `//!`, Go's) — a
+    /// comment over lines of its own (`/** … */`) is its own.
+    private func joined(_ a: Int, _ b: Int) -> Bool {
+        guard let above = docSpans(a), let below = docSpans(b) else { return false }
+        let ra = text.lineRange(a), rb = text.lineRange(b)
+        if below.contains(where: { $0.start < rb.start }) { return true }
+        // (Rust's line comments end past their line break.)
+        let oneLine = { (spans: [TextRange], r: TextRange) in spans.allSatisfy { $0.start >= r.start && $0.end <= r.end + 1 } }
+        return oneLine(above, ra) && oneLine(below, rb)
+    }
+
+    private func isFence(_ words: TextRange) -> Bool {
+        guard words.length >= 3 else { return false }
+        let b = text.bytes(in: TextRange(words.start, words.start + 3))
+        return b == Array("```".utf8) || b == Array("~~~".utf8)
     }
 
     private func words(of query: SyntaxQuery, in range: TextRange) -> [TextRange] {

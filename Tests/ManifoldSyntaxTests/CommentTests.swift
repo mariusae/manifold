@@ -172,3 +172,42 @@ private func documented(_ path: String, _ text: String) -> [[String]] {
 @Test func everyLanguagesDocQueryCompiles() {
     for l in SyntaxLanguage.all where l.docSource != nil { #expect(l.docQuery != nil, "\(l.name)") }
 }
+
+private func docCode(_ path: String, _ text: String) -> [Bool] {
+    let rope = Rope(text)
+    let tree = SyntaxTree(SyntaxLanguage.forPath(path)!, text: rope, background: false)
+    return (0..<rope.lineCount).map { tree.isDocCode(line: $0) }
+}
+
+@Test func aDocCommentsFencedBlockIsCode() {
+    let rust = """
+        //! Each proc gets a directory:
+        //!
+        //! ```text
+        //! <dir>/vm-XXXX/
+        //! ├── v.sock
+        //!
+        //! └── v.sock_P
+        //! ```
+        //!
+        //! The guarantees are in [`super::reachability`].
+        /// ~~~
+        /// let a = 1;
+        fn f() {}
+        // ```
+        // not a doc comment's
+        """
+    #expect(docCode("a.rs", rust) == [false, false, true, true, true, false, true, true, false, false, true, true, false, false, false])
+    // A block comment's, its leaders read past; a fence left open ends with the comment.
+    let java = "/**\n * Use:\n * ```\n * new A();\n * ```\n * Done.\n */\nclass A {}\n/** ```\n */\n/** x */"
+    #expect(docCode("a.java", java) == [false, false, true, true, true, false, false, false, true, false, false])
+}
+
+@Test func plainCommentsAreWholeAndLeaveDocCommentsOut() {
+    let text = "/// Doc.\nlet a = 1 // after\n/* block */ let b = 2\n//! inner\n"
+    let rope = Rope(text)
+    let tree = SyntaxTree(SyntaxLanguage.forPath("a.rs")!, text: rope, background: false)
+    let plain = (0..<rope.lineCount).map { n in tree.plainComments(in: rope.lineRange(n)).map { rope[$0].trimmingCharacters(in: .newlines) } }
+    #expect(plain == [[], ["// after"], ["/* block */"], [], []])
+    #expect(tree.isComment(at: 0) && tree.isComment(at: rope.offset(ofLine: 1) + 10) && !tree.isComment(at: rope.offset(ofLine: 1)))
+}

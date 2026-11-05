@@ -139,6 +139,18 @@ final class TextView: NSView, NSTextInputClient {
     /// in the text's own. Nil: not set apart.
     var docFont: NSFont? { didSet { if docFont != oldValue, syntax != nil { invalidateAll() } } }
     var docTracking: CGFloat = 0 { didSet { if docTracking != oldValue, syntax != nil { invalidateAll() } } }
+    /// Code's structure shown without colour (§7.1): definitions' names
+    /// bold, plain comments in a fainter ink, a hairline between
+    /// definitions, a bar beside the one the caret's in.
+    var showsStructure = false { didSet { if showsStructure != oldValue { structureCache = nil; invalidateAll() } } }
+    /// What the structure's drawn from, found once per text (and tree).
+    private var structureCache: Structure?
+    /// The definitions as they were, moved by the edits since: used until
+    /// the tree's parsed again (finding them is a pass over the whole tree).
+    private var movedDeclarations: [Declaration]?
+    private var structureWork: DispatchWorkItem?
+    /// The text's face in bold, for definitions' names; nil if it has none.
+    private var boldFont: NSFont?
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
     private var pillPhase: Double { Date.timeIntervalSinceReferenceDate }
     private var pillTimer: Timer?
@@ -280,7 +292,14 @@ final class TextView: NSView, NSTextInputClient {
     private func syntaxEdited(_ edits: [TextEdit] = []) {
         // One edit: where it was, said (the tree's text the one it was made to).
         let one = edits.count == 1 ? edits.first.map { (start: $0.start, oldEnd: $0.end, newEnd: $0.start + $0.text.utf8.count) } : nil
-        if let changed = syntax?.update(to: text, edited: one) { syntaxChanged(changed) }
+        if let e = one, let decls = movedDeclarations ?? structureCache?.declarations {
+            movedDeclarations = decls.map { $0.moved(start: e.start, oldEnd: e.oldEnd, newEnd: e.newEnd) }
+        } else {
+            movedDeclarations = nil
+        }
+        structureCache = nil
+        if showsStructure { scheduleStructure() }
+        if let changed = syntax?.update(to: text, edited: one) { syntaxChanged(changed, edited: true) }
     }
 
     /// The syntax of these ranges changed (a block comment opened above
@@ -290,14 +309,32 @@ final class TextView: NSView, NSTextInputClient {
     /// that opens folded).
     var foldWhenParsed = false
 
-    private func syntaxChanged(_ changed: [TextRange]) {
+    /// The definitions found again a moment after typing stops: those moved
+    /// by edits can be off (a name typed at its end, one taken apart).
+    private func scheduleStructure() {
+        structureWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.movedDeclarations != nil else { return }
+            self.movedDeclarations = nil
+            self.structureCache = nil
+            self.layouts = [:]
+            self.needsDisplay = true
+        }
+        structureWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    /// `edited`: what an edit of ours changed, said as it's made (the tree
+    /// not yet parsed again).
+    private func syntaxChanged(_ changed: [TextRange], edited: Bool = false) {
         if foldWhenParsed, syntax?.isParsed == true, !text.isEmpty {
             foldWhenParsed = false
             let keep = selections
             collapseAll(nil)
             if folds.isEmpty { setSelections(keep, scroll: false) }
         }
-        guard docFont != nil, !changed.isEmpty else { return }
+        if !changed.isEmpty, !edited { structureCache = nil; movedDeclarations = nil }
+        guard docFont != nil || showsStructure, !changed.isEmpty else { return }
         for r in changed {
             let first = text.line(at: r.start), last = text.line(at: r.end)
             for k in layouts.keys where k >= first && k <= last { layouts.removeValue(forKey: k) }
@@ -393,6 +430,8 @@ final class TextView: NSView, NSTextInputClient {
 
     private func invalidateAll() {
         layouts = [:]
+        structureCache = nil
+        movedDeclarations = nil
         pillLines = [:]
         fenceLines = nil
         rowCounts = estimatedRowCounts()
@@ -426,6 +465,7 @@ final class TextView: NSView, NSTextInputClient {
     private var averageAdvance: CGFloat = 8
 
     private func fontChanged() {
+        boldFont = Self.bold(of: font)
         let a = CTFontGetAscent(font), d = CTFontGetDescent(font), l = CTFontGetLeading(font)
         lineHeight = ceil((a + d + l) * lineHeightMultiple)
         averageAdvance = ("abcdefghijklmnopqrstuvwxyz " as NSString).size(withAttributes: [.font: font]).width / 27
@@ -522,13 +562,34 @@ final class TextView: NSView, NSTextInputClient {
             if drawn.isEmpty { pillLines.removeValue(forKey: n) } else { pillLines[n] = drawn }
             updatePillTimer()
         }
-        // Its doc comments' words in the technical font (not Markdown's).
-        if !markdown, !string.isEmpty, let syntax, let docFont {
+        // Its doc comments' words in the technical font (not Markdown's);
+        // their code (a fenced block: a diagram, an example) left as code.
+        if !markdown, !string.isEmpty, let syntax, let docFont, !syntax.isDocCode(line: n) {
             let start = text.offset(ofLine: n)
             for r in syntax.docWords(in: TextRange(start, start + string.utf8.count)) {
                 let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
                 guard b > a else { continue }
                 attributed.addAttributes([.font: docFont, .kern: docTracking], range: NSRange(location: a, length: b - a))
+            }
+        }
+        // Its definitions' names bold, its plain comments fainter.
+        if !markdown, !string.isEmpty, showsStructure, let syntax {
+            let start = text.offset(ofLine: n), end = start + string.utf8.count
+            let faint = textColor.withAlphaComponent(Self.commentInk)
+            for r in syntax.plainComments(in: TextRange(start, end)) {
+                let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
+                if b > a { attributed.addAttribute(.foregroundColor, value: faint, range: NSRange(location: a, length: b - a)) }
+            }
+            for r in structure.names[n] ?? [] {
+                let a = utf16Index(in: string, byteOffset: max(r.start, start) - start)
+                let b = utf16Index(in: string, byteOffset: min(r.end, end) - start)
+                guard b > a else { continue }
+                if let bold = boldFont {
+                    attributed.addAttribute(.font, value: bold, range: NSRange(location: a, length: b - a))
+                } else {
+                    // No bold of the face: its strokes thickened, the advance kept.
+                    attributed.addAttribute(.strokeWidth, value: -3.0, range: NSRange(location: a, length: b - a))
+                }
             }
         }
         // The names ⌘ shows as links, on this line.
@@ -664,7 +725,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     /// The logical line at a y.
-    private func line(atY y: CGFloat) -> Int {
+    func line(atY y: CGFloat) -> Int {
         ensureRowStarts(through: 0)
         let row = Int((y - Self.insets.top) / lineHeight)
         guard row >= 0 else { return 0 }
@@ -1124,6 +1185,7 @@ final class TextView: NSView, NSTextInputClient {
         for s in selections where !s.isCaret {
             drawSelection(s.range, from: first, to: last)
         }
+        drawStructure(from: first, to: last)
         // The link under the pointer (⌘ held), on its band.
         if let h = hoveredLink, !h.isEmpty {
             Self.linkHover.setFill()
@@ -1510,7 +1572,12 @@ final class TextView: NSView, NSTextInputClient {
             fenceLines = nil
         } else if let e = edits.first {
             let n = text.line(at: e.start)
-            layouts.removeValue(forKey: n)
+            let was = layouts.removeValue(forKey: n)?.text
+            if !markdown, docFont != nil, syntax != nil, [was ?? "", text.lineText(n)].contains(where: { $0.contains("```") || $0.contains("~~~") }) {
+                // A doc comment's fence came or went, maybe: the lines after
+                // it in or out of its code.
+                for k in layouts.keys where k > n { layouts.removeValue(forKey: k) }
+            }
             if markdown, let f = fenceLines, (Self.countBelow(n + 1, in: f) != Self.countBelow(n, in: f)) != MarkdownStyle.isFence(text.lineText(n)) {
                 // A fence came or went: every line after it is in or out of a block.
                 for k in layouts.keys where k > n { layouts.removeValue(forKey: k) }
@@ -2973,3 +3040,157 @@ extension TextView: DropTaking {
         }
     }
 }
+
+// MARK: Structure (§7.1)
+
+extension TextView {
+    /// What code's structure is drawn from: its definitions, their names by
+    /// line, and where hairlines go between them.
+    struct Structure {
+        var declarations: [Declaration] = []
+        var names: [Int: [TextRange]] = [:]
+        /// A hairline above `line` (its definition's first, or its doc
+        /// comment's or attributes'), from the definition's indent; in the
+        /// blank line above it if there's one.
+        var rules: [(line: Int, from: Int, inBlank: Bool)] = []
+    }
+
+    /// The ink of plain comments: the text's, fainter.
+    static let commentInk: CGFloat = 0.62
+
+    /// The face's bold, if it has one as wide (a monospaced face's grid kept).
+    static func bold(of font: NSFont) -> NSFont? {
+        let bold = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+        guard bold.fontName != font.fontName, NSFontManager.shared.traits(of: bold).contains(.boldFontMask) else { return nil }
+        let w = { (f: NSFont) in ("mi" as NSString).size(withAttributes: [.font: f]).width }
+        return font.isFixedPitch && abs(w(bold) - w(font)) > 0.5 ? nil : bold
+    }
+
+    var structure: Structure {
+        if let s = structureCache { return s }
+        let s = showsStructure ? findStructure() : Structure()
+        structureCache = s
+        return s
+    }
+
+    private func findStructure() -> Structure {
+        guard let syntax else { return Structure() }
+        let text = self.text
+        var out = Structure()
+        let decls = movedDeclarations ?? syntax.declarations()
+        out.declarations = decls
+        for d in decls {
+            let a = text.line(at: d.nameRange.start), b = text.line(at: max(d.nameRange.end - 1, d.nameRange.start))
+            for n in a...b { out.names[n, default: []].append(d.nameRange) }
+        }
+        // Each one's parent and depth.
+        var parent: [Int] = [], depth: [Int] = [], open: [Int] = []
+        for (i, d) in decls.enumerated() {
+            while let l = open.last, decls[l].range.end <= d.range.start { open.removeLast() }
+            parent.append(open.last ?? -1)
+            depth.append(open.count)
+            open.append(i)
+        }
+        func first(_ i: Int) -> Int { text.line(at: decls[i].range.start) }
+        func last(_ i: Int) -> Int { text.line(at: max(decls[i].range.end - 1, decls[i].range.start)) }
+        // Between the definitions of the top two levels (a file's, and its
+        // types' members), where one of the two spans lines: not between
+        // one-line ones, nor above the first among its siblings.
+        var previous: [Int: Int] = [:]
+        for i in decls.indices where depth[i] <= 1 {
+            defer { previous[parent[i]] = i }
+            guard let p = previous[parent[i]], last(i) > first(i) || last(p) > first(p) else { continue }
+            let above = last(p)
+            var lead = first(i)
+            // Up over its doc comment and attributes.
+            while lead - 1 > above, isLead(lead - 1, syntax) { lead -= 1 }
+            guard lead > above else { continue }
+            let blank = lead - 1 > above && text.lineText(lead - 1).allSatisfy { $0 == " " || $0 == "\t" }
+            let indent = text.lineText(first(i)).prefix { $0 == " " || $0 == "\t" }.utf8.count
+            out.rules.append((lead, indent, blank))
+        }
+        return out
+    }
+
+    /// A line that goes with the definition below it: a comment, an
+    /// attribute (`#[…]`) or a decorator (`@…`).
+    private func isLead(_ n: Int, _ syntax: SyntaxTree) -> Bool {
+        let line = text.lineText(n)
+        let body = line.drop { $0 == " " || $0 == "\t" }
+        guard !body.isEmpty else { return false }
+        if body.hasPrefix("#[") || body.hasPrefix("@") { return true }
+        let at = text.offset(ofLine: n) + (line.utf8.count - body.utf8.count)
+        return syntax.isComment(at: at)
+    }
+
+    /// The hairlines and the caret's definition's bar, for lines `first`
+    /// through `last`.
+    func drawStructure(from first: Int, to last: Int) {
+        guard showsStructure, !markdown else { return }
+        let s = structure
+        guard !s.declarations.isEmpty else { return }
+        let px = 1 / max(window?.backingScaleFactor ?? 2, 1)
+        textColor.withAlphaComponent(0.14).setFill()
+        for r in s.rules where r.line >= first && r.line <= last + 1 && r.line < text.lineCount && !hiddenLines.contains(r.line) {
+            let l = layout(line: r.line)
+            let x = textLeft + (l.rows.first.map { CTLineGetOffsetForStringIndex($0, utf16Index(in: l.text, byteOffset: min(r.from, l.text.utf8.count)), nil) } ?? 0)
+            var y = top(ofLine: r.line)
+            if r.inBlank, !hiddenLines.contains(r.line - 1) { y = (top(ofLine: r.line - 1) + y) / 2 }
+            NSRect(x: x, y: (y - px / 2).rounded(.down), width: max(bounds.width - Self.insets.right - x, 0), height: px).fill()
+        }
+        // The innermost definition the caret's in, if it spans lines.
+        let head = primarySelection.head
+        if let d = s.declarations.last(where: { $0.range.start <= head && head <= $0.range.end }) {
+            let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
+            if b > a, b >= first, a <= last {
+                let y0 = top(ofLine: a), y1 = top(ofLine: b) + CGFloat(layout(line: b).rows.count) * lineHeight
+                textColor.withAlphaComponent(0.2).setFill()
+                NSRect(x: textLeft - 6, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
+            }
+        }
+    }
+
+    var rowHeight: CGFloat { lineHeight }
+
+    /// Line `n`'s first row, and its number, drawn with its top at `top`
+    /// in a flipped context, moved across by `dx` (what's pinned).
+    func drawFirstRow(ofLine n: Int, at top: CGFloat, dx: CGFloat, in ctx: CGContext) {
+        let l = layout(line: n)
+        if showsLineNumbers {
+            let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78)), .foregroundColor: gutterColor])
+            s.draw(at: NSPoint(x: Self.insets.left + 2 + dx, y: top + (lineHeight - s.size().height) / 2))
+        }
+        guard let row = l.rows.first, !l.text.isEmpty else { return }
+        ctx.saveGState()
+        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        ctx.textPosition = CGPoint(x: textLeft + dx, y: top + ascent)
+        CTLineDraw(row, ctx)
+        ctx.restoreGState()
+    }
+
+    /// The definitions a line is inside of (not on their first line), outermost
+    /// first: what's pinned at the top while it's the first in view.
+    func enclosing(line n: Int) -> [Declaration] {
+        guard showsStructure, !markdown else { return [] }
+        return structure.declarations.filter {
+            let a = text.line(at: $0.range.start), b = text.line(at: max($0.range.end - 1, $0.range.start))
+            return a < n && n <= b
+        }
+    }
+}
+
+extension Declaration {
+    /// Where it is after an edit of `start..<oldEnd` to `start..<newEnd`.
+    func moved(start: Int, oldEnd: Int, newEnd: Int) -> Declaration {
+        // A start before what's inserted there stays; an end after it, moves.
+        func move(_ x: Int, end: Bool) -> Int {
+            if end ? x < start : x <= start { return x }
+            return x >= oldEnd ? x + newEnd - oldEnd : newEnd
+        }
+        var d = self
+        d.range = TextRange(move(range.start, end: false), move(range.end, end: true))
+        d.nameRange = TextRange(move(nameRange.start, end: false), move(nameRange.end, end: true))
+        return d
+    }
+}
+
