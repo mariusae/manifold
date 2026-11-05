@@ -2662,7 +2662,13 @@ final class TextView: NSView, NSTextInputClient {
         return item
     }
 
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
+    /// The text, the I-beam; the gutter (line numbers, marks), the arrow —
+    /// nothing there to type into.
+    override func resetCursorRects() {
+        let (gutter, rest) = bounds.divided(atDistance: min(textLeft, bounds.width), from: .minXEdge)
+        if gutterWidth > 0 { addCursorRect(gutter, cursor: .arrow) }
+        addCursorRect(gutterWidth > 0 ? rest : bounds, cursor: .iBeam)
+    }
 
     /// The pointer over a link, or a name ⌘ shows as one: the pointing hand.
     override func updateTrackingAreas() {
@@ -2690,7 +2696,8 @@ final class TextView: NSView, NSTextInputClient {
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
         let over = target != nil
-        let chip = foldChips.values.contains { $0.rect.contains(convert(event.locationInWindow, from: nil)) }
+        let at = convert(event.locationInWindow, from: nil)
+        let chip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
         if over != overLink || chip != overChip {
             overLink = over
             overChip = chip
@@ -2698,10 +2705,14 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
 
-    override func cursorUpdate(with event: NSEvent) { updateCursor() }
+    override func cursorUpdate(with event: NSEvent) {
+        let at = convert(event.locationInWindow, from: nil)
+        overChip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
+        updateCursor()
+    }
 
     private var overLink = false
-    /// Over a fold's ⋯, a button: the arrow.
+    /// Over a fold's ⋯ (a button) or the gutter: the arrow.
     private var overChip = false
 
     private func updateCursor() {
