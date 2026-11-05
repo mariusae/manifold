@@ -1835,9 +1835,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return id
     }
 
-    /// A new web page below the focused tile, its address to be typed.
+    /// A new web page below the focused tile, its address to be typed;
+    /// where the focused block is — on another host, loaded through it
+    /// (§7.6), as a new terminal is made there.
     @objc func newWebPage(_ sender: Any?) {
-        show(host.newWeb(url: "https://duckduckgo.com"), lens: .web, .here)
+        let c = hosts.client(focusedHost) ?? host
+        show(c.newWeb(url: "https://duckduckgo.com", viaHost: c.isRemote), lens: .web, .here)
     }
 
     /// ⌘T (and the first thing at launch): a new terminal in a new
@@ -2414,7 +2417,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return (client.newNote(home: cwd, text: what ?? ""), .editor, false)
         case "web":
             let address = what.map { if case let .page(u) = WebAddress.parse($0) { return u } else { return $0 } } ?? "https://duckduckgo.com"
-            return (host.newWeb(url: address), .web, false)
+            // Where the focused block is: another host's, loaded through it (§7.6).
+            return (client.newWeb(url: address, viaHost: client.isRemote), .web, false)
         case "search":
             return (client.newSearch(SearchQuery(text: what ?? "", root: here)), .search, false)
         case "folder":
@@ -2619,6 +2623,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 open.submenu = stop
                 items.append(open)
             }
+            items.append(ClosureMenuItem("Clear Website Data for \(label)…", symbol: "trash") { [weak self] in self?.clearWebsiteData(host) })
             items.append(ClosureMenuItem("Reset Server on \(label)…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.resetServer(host) })
         }
         if hosts.client(host)?.isRemote == false {
@@ -2627,6 +2632,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if hosts.client(host)?.keepsEnvironment == true {
                 items.append(ClosureMenuItem("Add Environment Variable…", symbol: "dollarsign.square") { [weak self] in self?.addEnvironmentVariable(host) })
             }
+            items.append(ClosureMenuItem("Clear Website Data for \(label)…", symbol: "trash") { [weak self] in self?.clearWebsiteData(host) })
         }
         if ownRow {
             let graph = ClosureMenuItem("Reset Graph on \(label)…", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.resetGraph(host) }
@@ -2698,6 +2704,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.resetGraph(on: host) { [weak self] error in
             if let error { NSLog("reset graph on %@: %@", host.raw, error) }
             self?.refreshOrganization(now: true)
+        }
+    }
+
+    /// What pages loaded through a host keep (cookies and sign-ins, what
+    /// sites store, caches), or this Mac's pages, forgotten once asked —
+    /// it can't be undone — and those pages loaded again, signed out.
+    func clearWebsiteData(_ host: HostID) {
+        let label = hosts.label(of: host)
+        let through = hosts.client(host)?.isRemote == true ? host : nil
+        let alert = NSAlert()
+        alert.messageText = "Clear website data for \(label)?"
+        alert.informativeText = (through == nil
+            ? "Pages loaded from This Mac forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded through other hosts keep theirs."
+            : "Pages loaded through \(label) forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded from This Mac keep theirs.")
+            + " This can't be undone."
+        alert.addButton(withTitle: "Clear")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        WebStores.clear(through: through) { [weak self] in
+            guard let self else { return }
+            for case let w as WebView in self.views.values where w.through == through { w.reloadPage(nil) }
+            self.toast.show("Website data cleared for \(label)", action: "", for: 4) {}
         }
     }
 
@@ -6465,12 +6493,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         allWorkspaces.contains { hosts.arrangement($0)?.placements(of: block).isEmpty == false }
     }
 
-    /// A web block a tile shows at the address, in any space.
-    func placedPage(_ url: URL) -> BlockID? {
+    /// A web block a tile shows at the address, in any space: one of this
+    /// Mac's, or of another host's loaded through it or not as asked.
+    func placedPage(_ url: URL, on h: HostID? = nil, viaHost: Bool = false) -> BlockID? {
+        let h = h ?? host.host
         for arr in allWorkspaces {
             guard let a = hosts.arrangement(arr) else { continue }
-            for t in a.placements where t.block.host == host.host {
-                if hosts.block(t.block)?.web?.url == url.absoluteString { return t.block }
+            for t in a.placements where t.block.host == h {
+                if let w = hosts.block(t.block)?.web, w.url == url.absoluteString, w.viaHost == viaHost { return t.block }
             }
         }
         return nil
@@ -7232,6 +7262,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// a file of this Mac to what opens it; else a beep.
     func openInSystem(_ id: BlockID) {
         guard let b = hosts.block(id) else { return NSSound.beep() }
+        // A page of another host's own localhost, loaded through it: there
+        // at its port forwarded here.
+        if b.web?.viaHost == true, id.host != host.host, let address = b.web?.url,
+           let url = URL(string: address), let h = url.host, WebAddress.isLoopback(h) {
+            forward(url.port ?? (url.scheme == "https" ? 443 : 80), on: id.host) { local in
+                guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+                parts.host = "localhost"
+                parts.port = local
+                if let here = parts.url { NSWorkspace.shared.open(here) }
+            }
+            return
+        }
         if let address = b.web?.url, let url = URL(string: address) { NSWorkspace.shared.open(url); return }
         if let path = b.path, id.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: path)); return }
         NSSound.beep()
@@ -7268,26 +7310,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if let url = URL(string: target), let scheme = url.scheme, scheme.count > 1, scheme != "file",
            target.contains("://") || Self.schemesWithoutSlashes.contains(scheme.lowercased()) {
             let inWeb = here ?? (d != .system)
+            // A page named on another host (a remote terminal's dev server,
+            // its own localhost; a site on a network only it is on) is a
+            // web block of that host's, loaded through it (§7.6) — unless
+            // it's from a page of the host's loaded from here, as that is.
+            let from = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
+            let remote = from != host.host && (scheme == "http" || scheme == "https")
+            let viaHost = remote && placement.flatMap { shown($0)?.block?.web?.viaHost } != false
             // Plain: to a page already showing the address, in any space.
-            if inWeb, d == .goTo, let page = placedPage(url) {
+            if inWeb, d == .goTo, let page = placedPage(url, on: from, viaHost: viaHost) {
                 linkFollowed(from: placement, to: page)
                 return goTo(page, near: placement)
             }
-            // A server on another host's own localhost (one a remote
-            // terminal names): its port forwarded here, then the address
-            // opened at the port here.
-            let from = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
-            if from != host.host, scheme == "http" || scheme == "https", let h = url.host, Self.loopbackNames.contains(h) {
+            // To the system's browser, a server on the host's own localhost
+            // at its port forwarded here.
+            if remote, !inWeb, let h = url.host, WebAddress.isLoopback(h) {
                 let port = url.port ?? (scheme == "https" ? 443 : 80)
-                forward(port, on: from) { [weak self] local in
+                forward(port, on: from) { local in
                     guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
                     parts.host = "localhost"
                     parts.port = local
-                    if let here = parts.url { self?.openWeb(here, place: place, here: inWeb, context: target) }
+                    if let here = parts.url { NSWorkspace.shared.open(here) }
                 }
                 return
             }
-            openWeb(url, place: place, here: inWeb, context: target)
+            openWeb(url, place: place, here: inWeb, context: target, on: remote ? from : nil, viaHost: viaHost)
             return
         }
         let base = placement.flatMap { shown($0)?.block }.flatMap { $0.terminal?.cwd ?? $0.place }
@@ -7364,8 +7411,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var opensKnown: [String: (Bool, Date)] = [:]
 
-    static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]
-
     /// An address typed (in a page's bar) opened in a web tile:
     /// an attached host's name, with a port (`anotherone:8080`) or in a whole
     /// address (`http://anotherone:8080/`), is that host's own localhost — the
@@ -7404,10 +7449,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return hosts.all.first { !$0.transport.isLocal && hosts.label(of: $0.host).lowercased().replacingOccurrences(of: " ", with: "-") == n }?.host
     }
 
-    /// An address: in the web lens (where `here` says), else the system's browser.
-    func openWeb(_ url: URL, place: Where, here: Bool, context: String? = nil) {
+    /// An address: in the web lens (where `here` says), else the system's
+    /// browser. A web block of this Mac's, or of the host given, loaded
+    /// through it if `viaHost` (§7.6).
+    func openWeb(_ url: URL, place: Where, here: Bool, context: String? = nil, on h: HostID? = nil, viaHost: Bool = false) {
         if (url.scheme == "http" || url.scheme == "https") && here {
-            show(host.newWeb(url: url.absoluteString), lens: .web, place, context: context ?? url.absoluteString)
+            let client = h.flatMap { hosts.client($0) } ?? host
+            show(client.newWeb(url: url.absoluteString, viaHost: viaHost && client.isRemote), lens: .web, place, context: context ?? url.absoluteString)
         } else {
             NSWorkspace.shared.open(url)
         }
@@ -9365,10 +9413,41 @@ extension MainWindowController: WebViewDelegate {
         forward(port, on: host, done: done)
     }
 
+    func webView(_ view: WebView, remoteHost host: HostID) -> (label: String, connected: Bool)? {
+        guard let c = hosts.client(host), c.isRemote else { return nil }
+        return (hosts.label(of: host), c.link == .connected)
+    }
+
+    func webView(_ view: WebView, storeThrough host: HostID, done: @escaping (WKWebsiteDataStore?) -> Void) {
+        guard let c = hosts.client(host), c.isRemote else { return done(nil) }
+        WebStores.store(through: c, done)
+    }
+
+    /// Not listed with the forwards asked for, nor toasted: the page's.
+    func webView(_ view: WebView, forwardForPage port: Int, on host: HostID, done: @escaping (Int?) -> Void) {
+        guard let c = hosts.client(host) else { return done(nil) }
+        c.forwards.forward(port, hidden: true, done: done)
+    }
+
+    func webView(_ view: WebView, forwardedFrom port: Int) -> (host: HostID, port: Int)? {
+        for c in hosts.all where c.isRemote {
+            if let f = c.forwards.forwards.values.first(where: { $0.local == port }) { return (c.host, f.remote) }
+        }
+        return nil
+    }
+
+    func webView(_ view: WebView, refusalOf name: String, port: Int, through host: HostID) -> HostProxy.Refusal? {
+        hosts.client(host)?.proxy.refusal(host: name, port: port)
+    }
+
+    func webView(_ view: WebView, open url: URL, asPageOf host: HostID) {
+        openWeb(url, place: .besideOpener(view.placement), here: true, on: host, viaHost: true)
+    }
+
     /// A page on this Mac's localhost at a port forwarded from a host: by
     /// that host and its port, as it's typed.
     func webView(_ view: WebView, addressOf url: URL) -> String {
-        guard let h = url.host, Self.loopbackNames.contains(h), let port = url.port else { return url.absoluteString }
+        guard let h = url.host, WebAddress.isLoopback(h), let port = url.port else { return url.absoluteString }
         for (name, c) in addressHosts {
             if let f = c.forwards.forwards.values.first(where: { $0.local == port }) {
                 var rest = url.path.isEmpty ? "/" : url.path

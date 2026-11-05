@@ -57,6 +57,7 @@ enum DebugControl {
     }
 
     private static var languagesSaid = "nothing asked"
+    private static var webdataSaid = "nothing asked"
 
     private static func run(_ line: String, _ wc: MainWindowController?) -> String {
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
@@ -334,6 +335,25 @@ enum DebugControl {
             for t in n.after { lines.append("after \(t.block) ×\(t.count)") }
             lines.append("hosts: " + wc.hosts.all.map { $0.host.raw }.joined(separator: ", "))
             return lines.joined(separator: "\n")
+        case "webroute":
+            // "webroute [here|host]": how the focused web tile loads its
+            // page (§7.6), or that switched, as its bar's button does.
+            guard let web = wc?.debugFocusedView as? WebView else { return "no web tile focused" }
+            if arg == "here" || arg == "host" { web.loadThroughHost(arg == "host") }
+            return web.debugRoute
+        case "webdata":
+            // "webdata <host|here> [clear]": the sites that pages loaded
+            // through a host, or from here, keep anything of — first emptied,
+            // as Clear Website Data does once asked. "webdata" alone: what the
+            // last one said. (Answered on the main queue, which this runs on:
+            // asked, then read.)
+            let words = arg.split(separator: " ").map(String.init)
+            guard let which = words.first else { return Self.webdataSaid }
+            let through = which == "here" ? nil : HostID(which)
+            Self.webdataSaid = "looking…"
+            let list = { WebStores.sites(through: through) { Self.webdataSaid = $0.isEmpty ? "none" : $0.joined(separator: "\n") } }
+            if words.contains("clear") { WebStores.clear(through: through) { list() } } else { list() }
+            return "asked"
         case "js":
             // "js <code>": runs it in the focused preview's or web block's page.
             guard let wc, let web = wc.debugFocusedWebView else { return "no page focused" }

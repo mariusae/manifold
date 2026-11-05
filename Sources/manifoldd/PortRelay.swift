@@ -13,7 +13,8 @@ private func relayConnect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>, _ len: s
 
 /// One forwarded connection, on the host (§8): a socket to a port on the
 /// host's own loopback — IPv4, else IPv6, as servers bind one or the
-/// other — its bytes handed up as they come, and written as they're sent.
+/// other — or one made for a page loaded through the host (§7.6), its
+/// bytes handed up as they come, and written as they're sent.
 /// Its stream says when to stop reading (`pause`) and go on (`resume`):
 /// a fast server and a slow link fill nothing but the socket.
 final class PortRelay {
@@ -28,8 +29,13 @@ final class PortRelay {
     /// Bytes from the client written on to the socket (on the queue).
     var onWritten: ((Int) -> Void)?
 
-    init?(port: Int, queue: DispatchQueue) {
+    convenience init?(port: Int, queue: DispatchQueue) {
         guard let fd = Self.open(port) else { return nil }
+        self.init(fd: fd, queue: queue)
+    }
+
+    /// Over a socket connected already (blocking), which it closes.
+    init(fd: Int32, queue: DispatchQueue) {
         self.fd = fd
         self.queue = queue
         source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)

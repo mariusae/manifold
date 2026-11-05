@@ -17,3 +17,12 @@ import Testing
     #expect(WebAddress.plain("https://www.example.com/") == "example.com")
     #expect(WebAddress.plain("http://localhost:3000/a/") == "localhost:3000/a/")
 }
+
+@Test func theMachinesOwnAddressesAreToldApart() {
+    for h in ["localhost", "LocalHost", "127.0.0.1", "127.1.2.3", "::1", "[::1]", "0.0.0.0"] {
+        #expect(WebAddress.isLoopback(h), "\(h)")
+    }
+    for h in ["app.localhost", "localhost.example.com", "128.0.0.1", "127.0.0", "127.0.0.256", "10.0.0.5", "wiki.corp", "::2", ""] {
+        #expect(!WebAddress.isLoopback(h), "\(h)")
+    }
+}

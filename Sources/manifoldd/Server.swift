@@ -15,6 +15,7 @@ enum ServerError: Error {
 
 private func sysAccept(_ fd: Int32) -> Int32 { accept(fd, nil, nil) }
 private func sysExit(_ code: Int32) -> Never { exit(code) }
+private func sysClose(_ fd: Int32) { _ = close(fd) }
 
 /// A host: every shard's log, the registry and links, the shells, the files.
 /// The app attaches and mirrors; it leads the shards it edits (arrangements,
@@ -306,6 +307,9 @@ final class Server {
         case let .tunnel(port)?:
             guard let stream = conn as? MuxStream else { return conn.close() }
             tunnel(stream, to: port)
+        case let .connect(host, port)?:
+            guard let stream = conn as? MuxStream else { return conn.close() }
+            connect(stream, to: host, port: port)
         // Files, each on a stream of its own (§8): read and written off the
         // queue, paced to the link.
         case let .readFile(path, offset, length, limit)?:
@@ -1717,6 +1721,36 @@ final class Server {
     /// slowness piles up anywhere but in itself.
     private func tunnel(_ stream: MuxStream, to port: Int) {
         guard let relay = PortRelay(port: port, queue: queue) else { return stream.close() }
+        join(stream, relay)
+    }
+
+    /// A page's connection, for a web block loaded through this host
+    /// (§7.6): `host` looked up and connected to off the queue — a name
+    /// can take seconds to find, an address longer to answer — the stream
+    /// told how it went, then its bytes relayed as a tunnel's are. Nothing
+    /// comes up the stream before the answer; one closed meanwhile (the
+    /// page gone) gives up the wait. Each waits on a thread of its own,
+    /// not one of the pool's, whose other work it would hold up.
+    private func connect(_ stream: MuxStream, to host: String, port: Int) {
+        stream.onFrame = { _ in }
+        Thread.detachNewThread { [weak self, queue] in
+            let made = TCPConnect.open(host: host, port: port, cancelled: { stream.isClosed })
+            queue.async {
+                switch made {
+                case let .success(fd):
+                    guard let self, !stream.isClosed else { return sysClose(fd) }
+                    stream.send(.message(ConnectReply.connected))
+                    self.join(stream, PortRelay(fd: fd, queue: queue))
+                case let .failure(why):
+                    stream.send(.message(ConnectReply.failed(why)))
+                    stream.close()
+                }
+            }
+        }
+    }
+
+    /// A stream and a socket joined, each way paced by the other.
+    private func join(_ stream: MuxStream, _ relay: PortRelay) {
         stream.manualCredit = true
         relay.onData = { [weak relay, weak stream] data in
             guard let stream else { return }

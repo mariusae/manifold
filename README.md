@@ -1046,13 +1046,15 @@ around it, and comes back with its history.
   brings it out. A drop of many things is one row. (How copies are paced: DESIGN.md §11.)
 - **Another host's ports come here**: open a `localhost` address from
   its tiles — ⌘-click `http://localhost:3000` in a remote terminal, a
-  dev server's banner — and the port is forwarded through the host's
-  own link to this Mac's localhost (the same port when it's free here,
-  else another, which the toast says) and the address opened there: no
+  dev server's banner — and it opens as the host's own page (below),
+  its port forwarded through the host's own link to this Mac's
+  localhost (the same port when it's free here, else another): no
   `ssh -L`. **Forward a Port from *host*…** in the host's menu asks for
-  one; each forward is listed there, to open or stop. A forward keeps
-  listening while the host is away, and its connections go again when
-  it's back. (How: DESIGN.md §11.)
+  one, for any app here (⇧⌘-click forwards one for the system's
+  browser, the toast saying where); each forward asked for is listed
+  there, to open or stop. A forward keeps listening while the host is
+  away, and its connections go again when it's back. (How: DESIGN.md
+  §11.)
 - **A block's address**, `manifold:host/id`, opens it from any app on
   the Mac — pasted in Slack, a note in Notes, a commit message, or
   `open manifold:…` in a shell — going there as a link in a note does
@@ -1504,6 +1506,25 @@ around it, and comes back with its history.
   beside, linked from the page; a page's alerts, confirmations and
   questions are sheets over the window, and a file input opens the
   Open panel.
+- **Another host's pages load through it**: a web page made from one
+  of its blocks — a URL ⌘-clicked in its terminal, a link opened from
+  one of its pages, File ▸ New Web Page or the New Block picker's `web`
+  with one of its tiles focused, `mani new web` in its shell — is that
+  host's, and loads as it would in a browser there. The host makes its
+  connections and looks up its names, so a site on a network only the
+  host is on (an office's, behind a VPN the host is on) opens here, and
+  `localhost:3000` is the host's own (its port forwarded here, the bar
+  showing the address as the host has it; another host's `name:port`
+  typed there opens as that host's own page, beside). The button
+  before back says how it's loaded (a server: through the host; a
+  laptop: from this Mac) and, clicked, loads it the other way; the
+  tile's menu has **Load Through *host*** too. Its cookies and sign-ins
+  are the host's own, kept from launch to launch apart from what's
+  loaded here; **Clear Website Data for *host*…** in the host's menu
+  forgets them (This Mac's, what's loaded here). A page the host can't
+  reach says why (the name unknown there, refused, no way there), and
+  one that failed for the host being away loads again once it's back.
+  (How: DESIGN.md §7.6, §11.)
 - **Images and PDFs** open in their own lenses, their bytes from the
   file's host: images fit the view and zoom (⌘+/−, a pinch; double-click
   for actual size). PDFs show as Preview shows them: along the top the
