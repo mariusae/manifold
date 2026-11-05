@@ -2252,6 +2252,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         closeTile(placement, in: id)
     }
 
+    /// A tile's × clicked: closed, and the pointer onto the × of the tile
+    /// that takes its place — the one behind it, else below, else above,
+    /// else the next column's, as the arrangement hands the focus on — so
+    /// clicking again closes that one, and a column empties a click at a
+    /// time.
+    func gridCloseClicked(_ placement: PlacementID) {
+        guard let id = selected, var after = arrangement else { return }
+        // Who'd have the focus, were it this tile's.
+        after.apply(.focus(placement))
+        after.apply(.remove(placement))
+        let heir = after.focused
+        closeTile(placement, in: id)
+        guard let heir, let window else { return }
+        render()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.arrangement?.placement(heir) != nil, let p = self.content.closeButtonInWindow(heir) else { return }
+            Pointer.warp(to: window.convertPoint(toScreen: p))
+        }
+    }
+
     /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
     /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
     /// collected said, with Restore, if it had edits or a job running.

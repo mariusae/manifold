@@ -1044,6 +1044,14 @@ enum DebugControl {
             s.collectAfterMinutes = m
             wc.hosts.local.setSettings(s)
             return "ok"
+        case "xclick", "xof":
+            // "xclick <title>": that tile's × clicked; "xof <title>": where
+            // its × is (window coordinates from the top-left, as lastwarp's).
+            guard let wc, let a = wc.arrangement, let window = wc.window,
+                  let t = a.placements.first(where: { wc.hosts.block($0.block)?.displayTitle == arg }) else { return "no tile \(arg)" }
+            if cmd == "xclick" { wc.gridCloseClicked(t.id); return "clicked" }
+            guard let p = wc.content.closeButtonInWindow(t.id) else { return "no ×" }
+            return "\(Int(p.x)) \(Int(window.contentView!.bounds.height - p.y))"
         case "lastwarp":
             guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
             let w = window.convertPoint(fromScreen: p)

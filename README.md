@@ -438,7 +438,10 @@ parts from the Mac's conventions on purpose.
   after the focused one (or the first), in whatever space holds it,
   the pointer warped to its tile and the block marked read — a block
   that needs you stays until it's answered; with nothing in it, a beep.
-- **⌘W** closes the focused tile. **Spaces stay** until you remove
+- **⌘W** closes the focused tile; a tile's **×** closes it and moves the
+  pointer onto the × of the tile that takes its place (the one behind
+  it, else below, else above), so clicking again closes that one — a
+  column emptied a click at a time. **Spaces stay** until you remove
   one (**⇧⌘W**, Space ▸ Remove Space, or its row's menu): named or
   not, emptied or not, nothing removes one for you. With none at all,
   the window says what a space is and offers New Terminal, Open

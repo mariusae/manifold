@@ -72,6 +72,9 @@ protocol GridDelegate: AnyObject {
     func gridToggleFull(_ placement: PlacementID)
     /// The bar's ×: the tile taken off (as ⌘W does).
     func gridClose(_ placement: PlacementID)
+    /// A tile's × clicked: closed, the pointer onto the × of the tile that
+    /// takes its place, to close the next with another click.
+    func gridCloseClicked(_ placement: PlacementID)
     /// The bar's dirty dot clicked (the dot given, to put a menu by).
     /// The links' badge asks for the map around the tile's block.
     func gridShowMap(for placement: PlacementID)
@@ -294,7 +297,7 @@ final class GridView: NSView, NSDraggingSource {
                     view.toggleSidebar()
                     pill?.sidebar = view.sidebarShown
                 }
-                pill.onClose = { [weak self] in self?.delegate?.gridClose(id) }
+                pill.onClose = { [weak self] in self?.delegate?.gridCloseClicked(id) }
                 // The bar clicked grows the tile, ⌘-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
                 // A bar peeking out above its stack, clicked, comes to the
@@ -2367,6 +2370,15 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
+    /// Where a tile's × is, in the window's terms (laid out as it ends, not
+    /// as it moves there); nil if it has none showing.
+    func closeButtonInWindow(_ id: PlacementID) -> NSPoint? {
+        layoutSubtreeIfNeeded()
+        guard let pill = pills[id], !pill.isHidden, let r = pill.closeButtonFrame else { return nil }
+        let f = pill.convert(r, to: nil)
+        return NSPoint(x: f.midX, y: f.midY)
+    }
+
     /// Whether ⌃⇥'s cards would need their tile to grow first (a stack too
     /// short to fan out).
     func stackSwitcherNeedsRoom(_ top: PlacementID) -> Bool { delegate?.gridNeedsRoomForFan(top) == true }
@@ -3181,6 +3193,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     @objc private func closeClicked() { onClose?() }
+    /// Its × (in its own terms), if it shows one.
+    var closeButtonFrame: NSRect? { close.isHidden ? nil : close.frame }
     @objc private func fanClicked() { onFan?() }
 
     /// Laid out at its new width, shown sliding there from `width` as its
