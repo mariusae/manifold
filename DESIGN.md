@@ -574,6 +574,22 @@ destination:
    are over the graph's edges, strong and weak alike. What was closed
    and not yet collected comes last, marked *recent*: choosing it brings
    it back.
+   **The openers have one ladder of reach**: the tile, the space, all
+   spaces. Each begins at its nearest — ⌘P (places) at the focused tile,
+   ⌘O (names) and ⇧⌘O (what blocks say) at the space shown — and its own
+   key pressed again goes a step wider, from the widest back to the
+   nearest, as JetBrains' Go to File takes in what's outside the project
+   pressed twice; ⌘P stops at the space. Where it looks is always shown,
+   at the field's end: the reaches as words, the one it's at on the
+   accent's pill (a click goes to another). The space's is its tiles
+   (stashed ones too), its pins, what was closed from it, its agents'
+   turns, and the files of every project its tiles are in; all spaces is
+   everything kept, a row in another space saying which, the other
+   spaces' projects' files listed only once it's widened. Nothing found
+   as far as it looks, one row says how much a step wider finds, and ↩
+   on it goes there (the query kept). What choosing does is the one rule
+   (§3.7): ↩ goes to a block where a tile shows it, in any space, ⌘↩
+   brings it beside here.
 5. **Summaries** are how a node renders small: a few lines saying what's
    worth knowing of it at a glance — a terminal its last command and how
    it ended, a note its first lines, a diff its files and lines changed
@@ -1245,8 +1261,9 @@ verbs are the menus'. It ranks as §3.5 says, and shows each result's
 state, host, and where it is. A block an agent works in answers to the
 agent's names (its command, its product name, from the block's command,
 its status hooks, or a command running in it) as surely as to its
-title. ⌘P is its sibling over the focused tile's outline, ⇥ widening
-it to the space's.
+title. ⌘P is its sibling over the focused tile's outline, ⌘P again (or
+⇥) widening it to the space's. Each shows its reach at the field's end
+(§3.5).
 
 ⌘P looks nothing over as it's typed: each space keeps an index of its
 tiles' outlines (`OutlineIndex`), every row's text cut into trigrams,
@@ -2378,8 +2395,8 @@ purpose — set down so a later audit reads them as choices, not slips.
   over what's in them; Open Folder… is
   ⌥⌘O, and file contents are Find in Files (⇧⌘F), after Xcode and VS
   Code. There's no ⌘T.
-- **⌘P is the outline, not Print.** Scoped to the focused tile, ⇥ widens
-  it to the space; ⇧⌘P filters the tile's own outline and doesn't forget
+- **⌘P is the outline, not Print.** Scoped to the focused tile, ⌘P again
+  (or ⇥) widens it to the space; ⇧⌘P filters the tile's own outline and doesn't forget
   its filter, and pressed again leaves it. Print stays in the File menu,
   keyless: rare in a tiling tool.
 - **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is

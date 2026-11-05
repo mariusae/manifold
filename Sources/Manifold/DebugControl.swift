@@ -1552,6 +1552,8 @@ enum DebugControl {
                 wc?.debugFinderChoose()
                 return "ok"
             }
+            // "picker reach": where it looks (the one it's at bracketed).
+            if arg == "reach" { return wc?.debugFinderReach ?? "no window" }
             if arg.hasPrefix("picture ") { return wc?.debugFinderPicture(String(arg.dropFirst(8))) ?? "no window" }
             if arg.hasPrefix("bench ") {
                 let words = arg.dropFirst(6).split(separator: " ").map(String.init)

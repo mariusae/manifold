@@ -573,10 +573,17 @@ around it, and comes back with its history.
   maximize, shrink, stash, its stack, its pin); **Space**, the space
   (name, overview, remove); **Window**, the window and Agents. **Help ▸
   Search** finds any menu command by name, as in every Mac app.
-- **Open Quickly** (⌘O) finds every block and space the host keeps —
-  and, from a block in a project, the project's files on disk, as its
-  host lists them (remote too), marked *in* it; other files are found by
-  Find in Files (⇧⌘F), a search block of their own. In a project, its
+- **Open Quickly** (⌘O) finds what's in the space shown — its tiles,
+  its pins, what was closed from it, its agents' turns, and the files on
+  disk of every project its tiles are in, as their hosts list them
+  (remote too), marked *in* the project; **⌘O again** looks in all
+  spaces: every block and space the hosts keep, a row elsewhere saying
+  which space, and every project's files on the desk (⌘O a third time,
+  back to the space). Where it's looking is always shown at the field's
+  end — *Space* or *All Spaces*, a click switching — and when the space
+  has nothing for the query, one row says how many all spaces have, ↩
+  going there. Other files are found by Find in Files (⇧⌘F), a search
+  block of their own. In a project, its
   blocks and files come first among equals: the space's of it before the
   rest of the space's, then its others before what's elsewhere — and in
   ⌘P's whole-space outline, its tiles' places before others named as
@@ -606,10 +613,11 @@ around it, and comes back with its history.
   Choosing a block opens it by the one rule (below) — ↩ goes to it,
   ⌘↩ beside, ⌥↩ over; choosing a space shows it. **Find in Blocks** (⇧⌘O) is the same panel
   over what blocks say rather than what they're called (⌘O and ⇧⌘O
-  switch between them while it's open, the query kept). First it looks
-  through every outline (as ⌘P shows one, below): each command every
+  switch between them while it's open, the query kept), and the same
+  reach: the space's blocks first, ⇧⌘O again every space's. First it
+  looks through every outline (as ⌘P shows one, below): each command a
   terminal ran (a command run again, once, its latest), each heading of
-  every note and Markdown file — shown or not, in any space — and what
+  a note or Markdown file — shown or not — and what
   only a tile knows, a source file's symbols from its language server, a
   PDF's contents, a page's headings, in the tiles on the desk. A row is
   the place, its block and where it is beside it, how a command ended
@@ -633,8 +641,9 @@ around it, and comes back with its history.
   or chosen, the panel's foot counts what each kind found — a symbol and
   a number — and a click on one narrows to it, or no longer.
 - **⌘P goes through an outline**, as Prism's Move to Heading does —
-  first the focused tile's own, where you are in it; **⇥** widens it to
-  the whole space's (and back): its tiles by column, and under each its
+  first the focused tile's own, where you are in it; **⌘P again** (or
+  ⇥) widens it to the whole space's (and back), *Tile* or *Space* shown
+  at the field's end: its tiles by column, and under each its
   outline, set in by level — a Markdown tile's headings, and whatever else has one
   (§7.5): a terminal's commands (how each ended beside it), an agent's
   turns, a source file's symbols from its language server, a PDF's

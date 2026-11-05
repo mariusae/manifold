@@ -26,6 +26,8 @@ struct FinderItem {
     var block: BlockID? = nil
     /// What kinds it's found as (FindKinds): a chip narrows to them.
     var kinds: [String] = []
+    /// Chosen, the finder stays open (it widened, say).
+    var keepsOpen = false
 }
 
 /// Something to be found (§3.5): taken when the finder opens, and ranked
@@ -58,6 +60,11 @@ struct FinderCandidate: Sendable {
     var block: BlockID?
     /// What kinds it's found as (FindKinds).
     var kinds: [String]
+    /// It belongs to the space shown (its tile, its project's file, what
+    /// was closed from it): found at the finder's narrower reach.
+    var inSpace = false
+    /// The host a file is on.
+    var host: HostID?
 
     init(symbol: String, title: String, detail: String, note: String, age: String? = nil, name: String, aliases: [String] = [], around: String, summary: String = "",
          distance: Int, recency: Int64, action: Int, path: String? = nil, block: BlockID? = nil, kinds: [String] = []) {
@@ -82,11 +89,14 @@ struct FinderCandidate: Sendable {
     /// A file under the folder: below the blocks, the system's scratch
     /// folders lower still — or as near as `distance` says (a project's
     /// files, §2.6), and said to be where `note` says.
-    static func file(_ path: String, distance: Int? = nil, note: String = "file") -> FinderCandidate {
+    static func file(_ path: String, distance: Int? = nil, note: String = "file", inSpace: Bool = false, host: HostID? = nil) -> FinderCandidate {
         let name = path.lastPathComponent
         let scratch = path.hasPrefix("/tmp/") || path.hasPrefix("/private/tmp/") || path.hasPrefix("/private/var/folders/")
-        return FinderCandidate(symbol: Finder.symbol(forFile: name), title: name, detail: path.deletingLastPathComponent.abbreviatingHome,
-                               note: note, name: name, around: path, distance: distance ?? (scratch ? 80 : 70), recency: 0, action: -1, path: path, kinds: ["file"])
+        var c = FinderCandidate(symbol: Finder.symbol(forFile: name), title: name, detail: path.deletingLastPathComponent.abbreviatingHome,
+                                note: note, name: name, around: path, distance: distance ?? (scratch ? 80 : 70), recency: 0, action: -1, path: path, kinds: ["file"])
+        c.inSpace = inSpace
+        c.host = host
+        return c
     }
 }
 
@@ -95,6 +105,11 @@ struct FinderCandidate: Sendable {
 /// `distance`, said to be where `note` says.
 struct FinderFiles {
     var root: String
+    /// Its host (where a file chosen opens).
+    var host: HostID? = nil
+    /// A project of the space shown's: listed as the finder opens; else
+    /// only once it's widened to every space.
+    var inSpace = true
     /// What the listing is kept by: its host and root.
     var key: String
     /// The files, relative to the root.
@@ -253,18 +268,54 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         case names, blocks
     }
 
+    /// How far a finder looks (§3.5): in the focused tile (⌘P's outline),
+    /// the space shown, or every space. Each opener begins at its nearest
+    /// and its own key pressed again widens it, round to the nearest again;
+    /// where it is is always shown, beside the field.
+    enum Reach: Int, CaseIterable {
+        case tile, space, all
+        var title: String {
+            switch self {
+            case .tile: "Tile"
+            case .space: "Space"
+            case .all: "All Spaces"
+            }
+        }
+        /// Said of nothing found: where it looked.
+        var phrase: String {
+            switch self {
+            case .tile: "this tile"
+            case .space: "this space"
+            case .all: "any space"
+            }
+        }
+    }
+
+    /// The finder open: which, by its key (⌘O, ⇧⌘O, ⌘P).
+    enum Opener { case names, blocks, outline }
+    var opener: Opener? {
+        guard isShowing else { return nil }
+        return outline != nil ? .outline : scope == .names ? .names : .blocks
+    }
+    /// How far it looks now, and the reaches its key goes round.
+    private(set) var reach: Reach = .space
+    private var reaches: [Reach] = [.space, .all]
+    private let reachMarker = ReachMarker()
+    /// The files of the projects not the space's, listed once it's widened.
+    private var widerFiles: [FinderFiles] = []
+
     /// Items for a query in the other scope (In Blocks), as the
-    /// controller finds them.
-    var search: ((String, Scope) -> [FinderItem])?
+    /// controller finds them, as far as the reach.
+    var search: ((String, Scope, Reach) -> [FinderItem])?
     /// A row before the rest for a query, if it calls for one (a web address).
     var special: ((String) -> FinderItem?)?
-    /// Opens a file chosen.
-    var openFile: ((String) -> Void)?
+    /// Opens a file chosen, on its host.
+    var openFile: ((String, HostID?) -> Void)?
     /// What can be found by name, taken when shown, and what each runs.
-    private var corpus: [FinderCandidate] = [] { didSet { joined = nil } }
+    private var corpus: [FinderCandidate] = [] { didSet { joined = nil; spaceJoined = nil } }
     private var actions: [() -> Void] = []
     /// The files under the folder, as candidates, once listed.
-    private var fileCandidates: [FinderCandidate] = [] { didSet { joined = nil } }
+    private var fileCandidates: [FinderCandidate] = [] { didSet { joined = nil; spaceJoined = nil } }
     /// Both, joined once while they're as they are — not copied at every key.
     private var joined: [FinderCandidate]?
     private var all: [FinderCandidate] {
@@ -273,6 +324,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         joined = j
         return j
     }
+    /// Those as far as the reach: the space's, or all.
+    private var reached: [FinderCandidate] { reach == .all ? all : inSpace }
+    private var inSpace: [FinderCandidate] {
+        if let spaceJoined { return spaceJoined }
+        let j = all.filter(\.inSpace)
+        spaceJoined = j
+        return j
+    }
+    private var spaceJoined: [FinderCandidate]?
     private var withFiles = false
     /// Paths that are blocks already, found as blocks rather than files.
     private var knownPaths: Set<String> = []
@@ -392,6 +452,50 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         background.addSubview(hint)
         background.addSubview(chipRow)
         background.addSubview(countRow)
+        background.addSubview(reachMarker)
+        reachMarker.onPick = { [weak self] r in self?.setReach(r) }
+    }
+
+    // MARK: Reach
+
+    /// It has more than one reach to go round.
+    var widens: Bool { reaches.count > 1 }
+
+    /// Its key pressed again: a step wider, from the widest back to the
+    /// nearest.
+    func widen() {
+        guard let i = reaches.firstIndex(of: reach) else { return }
+        setReach(reaches[(i + 1) % reaches.count])
+    }
+
+    private func setReach(_ r: Reach) {
+        guard r != reach, reaches.contains(r) else { return }
+        if outline != nil { return switchOutline() }
+        reach = r
+        if r == .all { listWiderFiles() }
+        reachMarker.set(reaches, current: reach)
+        shown = []
+        table.reloadData()
+        if scope == .blocks { onQueryChanged?(field.stringValue.trimmingCharacters(in: .whitespaces), scope) }
+        refresh()
+    }
+
+    /// The other spaces' projects' files, listed the first time they're wanted.
+    private func listWiderFiles() {
+        let wanted = widerFiles
+        widerFiles = []
+        for f in wanted { list(f) }
+    }
+
+    /// A row saying nothing was found as far as it looks, and how much a
+    /// step wider finds: chosen (or its key again), widened.
+    private func widerRow(_ found: Int) -> FinderItem? {
+        guard let i = reaches.firstIndex(of: reach), i + 1 < reaches.count else { return nil }
+        let wider = reaches[i + 1]
+        let key = switch opener { case .outline: "⌘P"; case .blocks: "⇧⌘O"; default: "⌘O" }
+        return FinderItem(symbol: "arrow.up.left.and.arrow.down.right", title: "Nothing in \(reach.phrase)",
+                          detail: found == 0 ? "Nothing in \(wider.phrase) either" : "\(found) in \(wider == .all ? "all spaces" : wider.phrase) — \(key) or ↩ to look there",
+                          note: "", run: { [weak self] in self?.setReach(wider) }, keepsOpen: true)
     }
 
     // MARK: Kinds
@@ -525,15 +629,20 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// running its action), and with `files`, the files under that
     /// folder too — from the last listing at once, listed afresh behind.
     /// Shown already, in the other scope: the query and its chips kept.
-    func show(corpus: [FinderCandidate], actions: [() -> Void], files: FinderFiles?, knownPaths: Set<String> = [], scope: Scope = .names, placeholder: String, over window: NSWindow?) {
+    func show(corpus: [FinderCandidate], actions: [() -> Void], files: [FinderFiles], knownPaths: Set<String> = [], scope: Scope = .names,
+              reach: Reach = .space, placeholder: String, over window: NSWindow?) {
         let switching = panel.isVisible && outline == nil && scope != self.scope
         self.corpus = corpus
         self.actions = actions
-        self.root = files?.root ?? ""
+        self.root = files.first?.root ?? ""
         self.knownPaths = knownPaths
-        withFiles = files != nil
+        withFiles = !files.isEmpty
         outline = nil
         self.scope = scope
+        // At its nearest, unless there's no space to look in.
+        reaches = [.space, .all]
+        self.reach = reach
+        reachMarker.set(reaches, current: self.reach)
         field.placeholderString = placeholder
         if !switching {
             field.stringValue = ""
@@ -548,24 +657,12 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         // rows thinning as you type, never move it.
         tallest = Self.visibleRows
         listing += 1
+        filesByKey = [:]
         fileCandidates = []
-        if let files {
-            // What was listed last time at once, the host's answer when it comes.
-            if let cached = Self.listings[files.key] { fileCandidates = cached.files.filter { !knownPaths.contains($0.path ?? "") } }
-            let token = listing
-            files.list { rels in
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    let found = rels.map { FinderCandidate.file(files.root.appendingPathComponent($0), distance: files.distance, note: files.note) }
-                    DispatchQueue.main.async {
-                        Self.listings[files.key] = (Date(), found)
-                        if Self.listings.count > 12, let oldest = Self.listings.min(by: { $0.value.at < $1.value.at })?.key { Self.listings.removeValue(forKey: oldest) }
-                        guard let self, self.listing == token else { return }
-                        self.fileCandidates = found.filter { !self.knownPaths.contains($0.path ?? "") }
-                        self.refresh()
-                    }
-                }
-            }
-        }
+        // The space's projects' files now; the rest once it's widened.
+        widerFiles = files.filter { !$0.inSpace }
+        for f in files where f.inSpace { list(f) }
+        if self.reach == .all { listWiderFiles() }
         if let window, !switching {
             let frame = window.frame
             panel.setFrameOrigin(NSPoint(x: frame.midX - Self.width / 2, y: frame.maxY - frame.height * 0.18 - panel.frame.height))
@@ -575,6 +672,34 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+    }
+
+    /// Each project's files, by its listing's key.
+    private var filesByKey: [String: [FinderCandidate]] = [:]
+
+    /// A project's files listed: what was listed last time at once, the
+    /// host's answer when it comes.
+    private func list(_ files: FinderFiles) {
+        let knownPaths = self.knownPaths
+        func take(_ found: [FinderCandidate]) {
+            filesByKey[files.key] = found.filter { !knownPaths.contains($0.path ?? "") }
+            fileCandidates = filesByKey.keys.sorted().flatMap { filesByKey[$0]! }
+        }
+        if let cached = Self.listings[files.key] { take(cached.files) }
+        let token = listing
+        files.list { rels in
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let found = rels.map { FinderCandidate.file(files.root.appendingPathComponent($0), distance: files.distance, note: files.note,
+                                                            inSpace: files.inSpace, host: files.host) }
+                DispatchQueue.main.async {
+                    Self.listings[files.key] = (Date(), found)
+                    if Self.listings.count > 12, let oldest = Self.listings.min(by: { $0.value.at < $1.value.at })?.key { Self.listings.removeValue(forKey: oldest) }
+                    guard let self, self.listing == token else { return }
+                    take(found)
+                    self.refresh()
+                }
+            }
+        }
     }
 
     /// Shows the workspace's outline (⌘P): tiles by column, and what is in
@@ -588,6 +713,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         var hint: String
         /// The keys it takes, at the hint's end, if not ↩'s going.
         var keys: String? = nil
+        /// How far it looks (the tile's, or the space's); nil, not a place
+        /// to look (⌘N's kinds), none shown.
+        var reach: Reach? = nil
     }
     private var outlineScope: OutlineScope?
     private var otherOutline: OutlineScope?
@@ -596,6 +724,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         outlineScope = scope
         otherOutline = wider
         showOutline(scope.provider, startingAt: scope.start, placeholder: scope.placeholder, over: window)
+        reaches = [scope.reach, wider?.reach].compactMap { $0 }
+        if let r = scope.reach { reach = r }
+        reachMarker.set(reaches, current: reach)
+        layout()
     }
 
     /// ⇥ in an outline with another to go to: that one, the query kept.
@@ -606,6 +738,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         outline = other.provider
         outlineStart = other.start
         field.placeholderString = other.placeholder
+        if let r = other.reach { reach = r }
+        reachMarker.set(reaches, current: reach)
         shown = []
         table.reloadData()
         refresh()
@@ -614,6 +748,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func showOutline(_ provider: @escaping (String) -> [FinderItem], startingAt start: Int? = nil,
                      placeholder: String = "Go to a tile, or a place in its outline…", over window: NSWindow?) {
         if outlineScope?.placeholder != placeholder { outlineScope = nil; otherOutline = nil }
+        // An outline of its own (a terminal's commands): no reach to show.
+        if outlineScope == nil { reaches = []; reachMarker.set([], current: reach) }
         outline = provider
         outlineStart = start
         chosen = []
@@ -689,6 +825,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         queryChanged()
     }
     func debugMove(_ by: Int) { move(by) }
+    var debugReach: String { reaches.map { $0 == reach ? "[\($0.title)]" : $0.title }.joined(separator: " ") }
 
     /// A row's block's summary card, made once; none for one with nothing
     /// to say beyond its name (a workspace: its row says what it holds).
@@ -709,14 +846,15 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func updateHint() {
         if outline != nil {
             let what = outlineScope?.hint ?? "The space, by column and tile, headings within"
-            hint.stringValue = what + (otherOutline != nil ? "    ⇥ \(otherOutline!.placeholder.hasPrefix("Go to a tile") ? "The space" : "This tile")" : "") + "    " + (outlineScope?.keys ?? "↩ Go    ⎋ Close")
+            hint.stringValue = what + (otherOutline != nil ? "    ⌘P \(otherOutline!.reach == .tile ? "This tile" : "The space")" : "") + "    " + (outlineScope?.keys ?? "↩ Go    ⎋ Close")
             return
         }
         // With the counts at the foot, the keys alone.
         let keys = Self.keys
+        let wider = reach == .all ? "⌘O This space" : "⌘O All spaces"
         let what = switch scope {
-        case .names: "Blocks and spaces by name    ⇧⌘O In them    "
-        case .blocks: "Outlines and texts, this space's first    ⌘O By name    "
+        case .names: "\(wider)    ⇧⌘O In them    "
+        case .blocks: "⇧⌘O \(reach == .all ? "This space" : "All spaces")    ⌘O By name    "
         }
         hint.stringValue = (countRow.frame.width > 0 ? "" : what) + keys
     }
@@ -742,7 +880,12 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         // The chips before the query, its first letter after them.
         let chipsWidth = chipRow.frame.width
         chipRow.frame.origin = NSPoint(x: 52, y: height - Self.fieldHeight + (Self.fieldHeight - KindToken.chipHeight) / 2)
-        field.frame = NSRect(x: 52 + chipsWidth, y: height - Self.fieldHeight + 13, width: Self.width - 70 - chipsWidth, height: 30)
+        // Where it looks, at the field's end, always.
+        let marker = reachMarker.wanted
+        reachMarker.frame = NSRect(x: Self.width - 16 - marker.width, y: height - Self.fieldHeight + (Self.fieldHeight - marker.height) / 2,
+                                   width: marker.width, height: marker.height)
+        let markerRoom = marker.width > 0 ? marker.width + 12 : 0
+        field.frame = NSRect(x: 52 + chipsWidth, y: height - Self.fieldHeight + 13, width: Self.width - 70 - chipsWidth - markerRoom, height: 30)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
         // The counts in what the keys leave them.
         let keysWidth = ceil((Self.keys as NSString).size(withAttributes: [.font: UIType.footnote]).width)
@@ -761,48 +904,69 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     /// the other scopes and the outline at once, being small.
     private func refresh() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        if let outline { return show(outline(query), query: query) }
+        if let outline { return showOutlined(outline, query) }
         guard scope == .names else { return showSearched(query) }
         let gen = generation.next()
-        let all = self.all
+        let reached = self.reached, all = self.all, narrow = reach != .all
         let only = self.only
         let generation = self.generation
         ranking.async { [weak self] in
-            guard let ranked = FinderRanking.rank(query, all, only: only, current: { generation.isCurrent(gen) }) else { return }
+            guard let ranked = FinderRanking.rank(query, reached, only: only, current: { generation.isCurrent(gen) }) else { return }
+            // Nothing here: how much every space has.
+            let wider = narrow && ranked.rows.isEmpty && !query.isEmpty ? FinderRanking.rank(query, all, only: only, current: { generation.isCurrent(gen) })?.rows.count : nil
             DispatchQueue.main.async {
                 guard let self, generation.isCurrent(gen) else { return }
                 self.counts = ranked.counts
-                self.show(self.items(ranked.rows, query: query), query: query)
+                var items = self.items(ranked.rows, query: query)
+                if let wider, items.isEmpty, let row = self.widerRow(wider) { items = [row] }
+                self.show(items, query: query)
             }
         }
+    }
+
+    /// An outline's rows; none found, a row saying what the other has.
+    private func showOutlined(_ outline: (String) -> [FinderItem], _ query: String) {
+        var items = outline(query)
+        if items.isEmpty, !query.isEmpty, let other = otherOutline, let i = reaches.firstIndex(of: reach), i + 1 < reaches.count,
+           let row = widerRow(other.provider(query).count) {
+            items = [row]
+        }
+        show(items, query: query)
     }
 
     /// The same, here and now (opening, and for DebugControl).
     private func refreshNow() {
         let query = field.stringValue.trimmingCharacters(in: .whitespaces)
-        if let outline { return show(outline(query), query: query) }
+        if let outline { return showOutlined(outline, query) }
         guard scope == .names else { return showSearched(query) }
         _ = generation.next()
-        let ranked = FinderRanking.rank(query, all, only: only)
+        let ranked = FinderRanking.rank(query, reached, only: only)
         counts = ranked?.counts ?? [:]
-        show(items(ranked?.rows ?? [], query: query), query: query)
+        var rows = items(ranked?.rows ?? [], query: query)
+        if rows.isEmpty, !query.isEmpty, reach != .all, let row = widerRow(FinderRanking.rank(query, all, only: only)?.rows.count ?? 0) { rows = [row] }
+        show(rows, query: query)
     }
 
     /// In Blocks: what the controller finds, counted by kind, then
     /// narrowed to the chips'.
     private func showSearched(_ query: String) {
-        let found = search?(query, scope) ?? []
+        let found = search?(query, scope, reach) ?? []
         var counts: [String: Int] = [:]
         for item in found { for k in item.kinds { counts[k, default: 0] += 1 } }
         self.counts = counts
         let only = self.only
-        show(only.isEmpty ? found : found.filter { $0.kinds.contains(where: only.contains) }, query: query)
+        var rows = only.isEmpty ? found : found.filter { $0.kinds.contains(where: only.contains) }
+        if rows.isEmpty, !query.isEmpty, reach != .all {
+            let wider = (search?(query, scope, .all) ?? []).filter { only.isEmpty || $0.kinds.contains(where: only.contains) }
+            if let row = widerRow(wider.count) { rows = [row] }
+        }
+        show(rows, query: query)
     }
 
     private func items(_ ranked: [FinderCandidate], query: String) -> [FinderItem] {
         var items = ranked.map { c -> FinderItem in
             let run: () -> Void
-            if let path = c.path, c.action < 0 { run = { [weak self] in self?.openFile?(path) } }
+            if let path = c.path, c.action < 0 { let host = c.host; run = { [weak self] in self?.openFile?(path, host) } }
             else { let a = actions[c.action]; run = a }
             let drag: (() -> NSPasteboardWriting?)?
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
@@ -880,6 +1044,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func openSelected() {
         guard table.selectedRow >= 0, table.selectedRow < shown.count else { return }
         let item = shown[table.selectedRow]
+        if item.keepsOpen { return item.run() }
         close()
         item.run()
     }
@@ -924,6 +1089,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             let word = state == "unsaved" ? item.note.replacingOccurrences(of: #"^edited( · )?"#, with: "", options: .regularExpression) : item.note
             content.summary.note = [state, word.isEmpty ? nil : word].compactMap { $0 }.joined(separator: " · ")
             if content.summary.note?.isEmpty == true { content.summary.note = nil }
+            // Only the finder's word (where it is): not in the state's colour.
+            if state == nil { content.summary.tone = .plain }
             content.age = item.age
             let cell = tableView.makeView(withIdentifier: CardCell.identifier, owner: nil) as? CardCell ?? CardCell()
             cell.show(content)
@@ -1245,3 +1412,63 @@ final class KindToken: NSView {
     // A click in the panel goes to it, not to moving the panel.
     override var mouseDownCanMoveWindow: Bool { false }
 }
+
+/// Where a finder looks, beside its field (§3.5): its reaches as words,
+/// the one it's at on a pill in the accent; one clicked, it looks there.
+final class ReachMarker: NSView {
+    private var reaches: [Finder.Reach] = []
+    private var current: Finder.Reach = .space
+    var onPick: ((Finder.Reach) -> Void)?
+    private static let font = UIType.footnote
+    private static let pad: CGFloat = 8, gap: CGFloat = 2, height: CGFloat = 22
+
+    func set(_ reaches: [Finder.Reach], current: Finder.Reach) {
+        self.reaches = reaches
+        self.current = current
+        isHidden = reaches.isEmpty
+        needsDisplay = true
+        superview?.needsLayout = true
+    }
+
+    private func width(_ r: Finder.Reach) -> CGFloat {
+        ceil((r.title as NSString).size(withAttributes: [.font: Self.font]).width) + 2 * Self.pad
+    }
+
+    var wanted: NSSize {
+        guard !reaches.isEmpty else { return .zero }
+        return NSSize(width: reaches.map(width).reduce(0, +) + Self.gap * CGFloat(reaches.count - 1), height: Self.height)
+    }
+
+    private func rects() -> [(Finder.Reach, NSRect)] {
+        var x: CGFloat = 0
+        return reaches.map { r in
+            let w = width(r)
+            defer { x += w + Self.gap }
+            return (r, NSRect(x: x, y: 0, width: w, height: bounds.height))
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        for (r, rect) in rects() {
+            let on = r == current
+            if on {
+                Theme.accent.withAlphaComponent(0.16).setFill()
+                NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
+            }
+            let s = NSAttributedString(string: r.title, attributes: [
+                .font: on ? NSFont.systemFont(ofSize: Self.font.pointSize, weight: .semibold) : Self.font,
+                .foregroundColor: on ? Theme.accent : Theme.tertiaryText,
+            ])
+            let size = s.size()
+            s.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if let (r, _) = rects().first(where: { $0.1.contains(p) }) { onPick?(r) }
+    }
+
+    override func resetCursorRects() { if reaches.count > 1 { addCursorRect(bounds, cursor: .pointingHand) } }
+}
+

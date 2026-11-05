@@ -5679,12 +5679,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         if query.hasPrefix("blocks ") {
             let q = String(query.dropFirst(7)), start = Date()
-            let n = finderBlockItems(q).count
+            let n = finderBlockItems(q, everywhere: true).count
             return String(format: "%d rows in %.1f ms", n, Date().timeIntervalSince(start) * 1000)
         }
         return finder.debugTime(query)
     }
     func debugFinderChoose() { finder.debugChoose() }
+    var debugFinderReach: String { finder.isShowing ? finder.debugReach : "closed" }
     func debugSearchOutline(_ query: String) -> String {
         guard let f = arrangement?.focused, views[f]?.outline != nil else { return "no outline" }
         if !finder.isShowing { searchOutline(of: f) }
@@ -5735,11 +5736,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let f = Finder()
         // The chosen row's block: its card beside the list, at once.
         f.summarize = { [weak self] id in self?.cardContent(for: id) }
-        f.search = { [weak self] query, scope in
+        f.search = { [weak self] query, scope, reach in
             guard let self else { return [] }
             switch scope {
             case .names: return []
-            case .blocks: return self.finderBlockItems(query)
+            case .blocks: return self.finderBlockItems(query, everywhere: reach == .all)
             }
         }
         f.special = { [weak self] query in
@@ -5767,10 +5768,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let title: String = { if case let .page(a) = parsed { return a } else { return q } }()
             return FinderItem(symbol: "globe", title: title, detail: detail, note: "web", run: { [weak self] in self?.openAddress(q, place: .here) })
         }
-        f.openFile = { [weak self] path in
+        f.openFile = { [weak self] path, on in
             guard let self else { return }
             // A project's file: on its host (§2.6).
-            if let on = self.finderFilesHost {
+            if let on {
                 return self.open(path: path, line: 1, column: nil, on: on, from: self.arrangement?.focused, context: "found in ⌘O")
             }
             self.open(path, from: nil)
@@ -5854,11 +5855,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// holds the query — this space's blocks first, then the rest; then
     /// the outlines only a tile knows, the desk's — each going to the
     /// place itself, as its tile's outline would.
-    private func finderOutlineItems(_ q: String) -> [FinderItem] {
+    private func finderOutlineItems(_ q: String, everywhere: Bool) -> [FinderItem] {
         var items: [FinderItem] = []
         var seen = Set<BlockID>()
         let here = arrangement?.placements.map(\.block) ?? []
-        for id in here + hosts.blocks.map(\.id) where seen.insert(id).inserted {
+        for id in here + (everywhere ? hosts.blocks.map(\.id) : []) where seen.insert(id).inserted {
             guard let b = hosts.block(id), let places = outlinePlaces(of: b) else { continue }
             let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
             for p in places where p.lower.contains(q) {
@@ -5873,7 +5874,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // A tile's own outline, for what only it knows: gone to through a
         // link where an item has a place (a symbol's line, a PDF's page),
         // else picked in its tile, this space's.
-        let shown = (arrangement?.placements.map(\.id) ?? []) + views.keys.sorted { $0.description < $1.description }
+        let shown = (arrangement?.placements.map(\.id) ?? []) + (everywhere ? views.keys.sorted { $0.description < $1.description } : [])
         var tiles = Set<PlacementID>(), outlined = Set<BlockID>()
         for pid in shown where tiles.insert(pid).inserted {
             guard let view = views[pid], !(view is TerminalView), let o = view.outline, !o.items.isEmpty,
@@ -5904,15 +5905,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// selected workspace's first, then every other note and file kept as
     /// a block — a row each, its name, where it is, the lines that hold
     /// the query marked, going to the first of them; then agents' turns.
-    private func finderBlockItems(_ query: String) -> [FinderItem] {
+    /// `everywhere`: every space's blocks (⇧⌘O again), not only this one's.
+    private func finderBlockItems(_ query: String, everywhere: Bool) -> [FinderItem] {
         guard !query.isEmpty else { return [] }
         let q = query.lowercased()
         let needle = Array(q.utf8)
-        let places = finderOutlineItems(q)
+        let places = finderOutlineItems(q, everywhere: everywhere)
         var items: [FinderItem] = []
         var seen = Set<BlockID>()
         let here = arrangement.map { a in a.placements.map { ($0.block, Optional($0.id)) } } ?? []
-        let rest = hosts.blocks.filter { $0.kind == .text }.map { ($0.id, PlacementID?.none) }
+        let rest = everywhere ? hosts.blocks.filter { $0.kind == .text }.map { ($0.id, PlacementID?.none) } : []
         for (blockID, placement) in here + rest where seen.insert(blockID).inserted {
             // Each text read through as made once per version (`SearchText`),
             // not lowercased afresh, line by line, at every key.
@@ -5941,8 +5943,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                     kinds: FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)))
             if items.count >= 100 { break }
         }
-        // Agents' turns: what was asked and what each said.
-        for block in hosts.blocks {
+        // Agents' turns: what was asked and what each said (this space's agents', unless everywhere).
+        let hereBlocks = Set(here.map(\.0))
+        for block in hosts.blocks where everywhere || hereBlocks.contains(block.id) {
             for turn in (block.terminal?.turns ?? []).reversed() {
                 let said = [turn.prompt, turn.message ?? ""].joined(separator: "\n")
                 guard said.lowercased().contains(q) else { continue }
@@ -5968,26 +5971,47 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return places + items
     }
 
-    /// ⌘O, Open Quickly: every block and space, by name — and in a
-    /// project (§2.6), its files, as its host lists them, before what's
-    /// elsewhere. Other files are found by Find in Files (⇧⌘F).
+    /// ⌘O: blocks, spaces and files by name (§3.5) — in this space first
+    /// (its tiles, what was closed from it, its projects' files); ⌘O again,
+    /// in every space.
     @objc func openDocument(_ sender: Any?) {
+        // Open already: a step wider (or back).
+        if finder.opener == .names { return finder.widen() }
         let (corpus, actions) = finderCorpus()
-        var files: FinderFiles?
+        // Each project's files: those of the space's tiles' projects now,
+        // the rest of the desk's once it's widened. Those open as blocks
+        // already are found as blocks.
+        var files: [FinderFiles] = []
         var known: Set<String> = []
-        if let (on, project) = focusedProject(), let client = hosts.client(on) {
-            files = FinderFiles(root: project.root, key: on.raw + ":" + project.root, list: { done in
+        let focused = focusedProject()
+        for (on, project, inSpace) in finderProjects() {
+            guard let client = hosts.client(on) else { continue }
+            let nearest = focused.map { $0.0 == on && $0.1.root == project.root } == true
+            files.append(FinderFiles(root: project.root, host: on, inSpace: inSpace, key: on.raw + ":" + project.root, list: { done in
                 client.listTree(project.root) { entries, _ in done((entries ?? []).filter { !$0.isDirectory }.map(\.name)) }
-            }, distance: 2, note: "in \(project.name)")
-            // Those open as blocks already are found as blocks.
-            known = Set(client.node.blocks.compactMap { $0.kind == .text || $0.kind == .image || $0.kind == .pdf ? $0.path : nil })
-            finderFilesHost = on
+            }, distance: nearest ? 2 : inSpace ? 4 : 6, note: "in \(project.name)"))
+            known.formUnion(client.node.blocks.compactMap { $0.kind == .text || $0.kind == .image || $0.kind == .pdf ? $0.path : nil })
         }
-        finder.show(corpus: corpus, actions: actions, files: files, knownPaths: known, scope: .names, placeholder: "Open quickly…", over: window)
+        finder.show(corpus: corpus, actions: actions, files: files, knownPaths: known, scope: .names,
+                    reach: selected == nil ? .all : .space, placeholder: "Open quickly…", over: window)
     }
 
-    /// The host the finder's files are on (a project's, §2.6).
-    private var finderFilesHost: HostID?
+    /// The projects (§2.6) the desk's tiles are in, each once: whether it's
+    /// one of the space shown's; the focused tile's first.
+    private func finderProjects() -> [(HostID, Project, Bool)] {
+        var out: [(HostID, Project, Bool)] = []
+        var seen = Set<String>()
+        func add(_ block: BlockID, inSpace: Bool) {
+            guard let b = hosts.block(block), let place = b.place, let p = hosts.client(block.host)?.project(holding: place) else { return }
+            if seen.insert(block.host.raw + ":" + p.root).inserted { out.append((block.host, p, inSpace)) }
+        }
+        if let f = focusedShown?.placement.block { add(f, inSpace: true) }
+        for p in arrangement?.placements ?? [] { add(p.block, inSpace: true) }
+        for ws in allWorkspaces where ws != selected {
+            for p in hosts.arrangement(ws)?.placements ?? [] { add(p.block, inSpace: false) }
+        }
+        return out
+    }
 
     /// The project the focused tile's block is in (§2.6), on its host.
     func focusedProject() -> (HostID, Project)? {
@@ -6003,9 +6027,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// ⇧⌘O, Find in Blocks: the same finder, by the words in the blocks.
+    /// ⇧⌘O: lines in blocks' texts and outlines — this space's; ⇧⌘O
+    /// again, every space's.
     @objc func findInBlocks(_ sender: Any?) {
+        if finder.opener == .blocks { return finder.widen() }
         let (corpus, actions) = finderCorpus()
-        finder.show(corpus: corpus, actions: actions, files: nil, scope: .blocks, placeholder: "Find in blocks…", over: window)
+        finder.show(corpus: corpus, actions: actions, files: [], scope: .blocks, reach: selected == nil ? .all : .space,
+                    placeholder: "Find in blocks…", over: window)
     }
 
     /// What the finder finds by name (§3.5), taken once as it opens: every
@@ -6032,7 +6060,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let running = runningPrograms()
         // The focused block's project (§2.6): its blocks before what's elsewhere.
         let project = focusedProject()
-        finderFilesHost = nil
+        // What's this space's (found at ⌘O's nearer reach): its tiles, its
+        // pins, and what was closed from it and not yet collected.
+        var ofSpace = here
+        if let ws = selected {
+            ofSpace.formUnion(pins(of: ws).map(\.to))
+            for c in closedStack { if case let .tile(w, _, _, p, _) = c, w == ws { ofSpace.insert(p.block) } }
+        }
+        // Where each block in another space is: said of it, every space looked in.
+        var elsewhere: [BlockID: String] = [:]
+        for ws in allWorkspaces where ws != selected {
+            guard let a = hosts.arrangement(ws) else { continue }
+            let name = title(of: a)
+            for p in a.placements where elsewhere[p.block] == nil { elsewhere[p.block] = name }
+        }
         for block in hosts.blocks where block.kind != .process {
             guard let entry = hosts.registryEntry(block.id) else { continue }
             let remote = block.id.host != host.host ? " on \(hosts.label(of: block.id.host))" : ""
@@ -6120,6 +6161,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if onDesk.contains(block.id) {
                 distance = min(distance, 3)
             }
+            // In another space: which.
+            if !ofSpace.contains(block.id), let space = elsewhere[block.id], note.isEmpty || note == "linked" || note == "near" { note = "in \(space)" }
             // How long since it was seen, in a pill — none for just now.
             let seen = Age.short(entry.lastSeen)
             let age = seen == "now" ? nil : seen
@@ -6132,11 +6175,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // What its summary says is found too: often the best of what
             // it holds (a terminal's last command, an agent's last words).
             let summary = block.kind == .arrangement ? "" : block.summary().lines.joined(separator: " ")
-            corpus.append(FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note, age: age,
-                                          name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
-                                          summary: summary,
-                                          distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id,
-                                          kinds: FindKinds.of(block.kind, path: block.path, agent: agent != nil)))
+            var candidate = FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note, age: age,
+                                            name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
+                                            summary: summary,
+                                            distance: distance, recency: max(entry.lastSeen.wall, joinedAt[block.id] ?? 0), action: actions.count, block: block.id,
+                                            kinds: FindKinds.of(block.kind, path: block.path, agent: agent != nil))
+            candidate.inSpace = ofSpace.contains(block.id)
+            corpus.append(candidate)
             actions.append { [weak self] in self?.recall(id) }
         }
         // Agents' turns (§3.8), by what was asked: found as the turn, which
@@ -6147,11 +6192,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard !first.isEmpty else { continue }
                 let agentID = block.id, turnID = turn.id
                 let files = (turn.files ?? []).prefix(3).joined(separator: ", ")
-                corpus.append(FinderCandidate(symbol: "text.bubble", title: String(first.prefix(120)),
-                                              detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
-                                              note: "", age: Age.short(turn.began) == "now" ? nil : Age.short(turn.began), name: first + " turn " + turn.agent,
-                                              around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
-                                              distance: 60, recency: turn.began.wall, action: actions.count, kinds: ["turn"]))
+                var candidate = FinderCandidate(symbol: "text.bubble", title: String(first.prefix(120)),
+                                                detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
+                                                note: "", age: Age.short(turn.began) == "now" ? nil : Age.short(turn.began), name: first + " turn " + turn.agent,
+                                                around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
+                                                distance: 60, recency: turn.began.wall, action: actions.count, kinds: ["turn"])
+                // An agent's here: its turns are this space's.
+                candidate.inSpace = here.contains(block.id)
+                corpus.append(candidate)
                 actions.append { [weak self] in self?.showTurn(turnID, of: agentID, place: .here) }
             }
         }
@@ -6849,6 +6897,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func goToTile(_ sender: Any?) {
+        // Open already (the tile's or the space's): the other.
+        if finder.opener == .outline, finder.widens { return finder.widen() }
         guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
         // It begins where you are: the focused tile, and in a text, the
         // heading the caret is under, or the one at the top of a preview.
@@ -6864,14 +6914,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f].map { (f, $0) } }.flatMap { f, view in
             guard let outline = view.outline, !outline.items.isEmpty else { return nil }
             return Finder.OutlineScope(provider: { query in self.tileOutlineItems(f, view, outline, query) }, start: outline.current,
-                                       placeholder: "Go to a place in this tile…", hint: "This tile's outline")
+                                       placeholder: "Go to a place in this tile…", hint: "This tile's outline", reach: .tile)
         }
         // Each query looked up in the space's index (kept as outlines
         // change), not the outlines gone through again.
         let space = Finder.OutlineScope(provider: { [weak self] query in
             guard let self, let a = self.arrangement else { return [] }
             return self.spaceOutlineRows(a, query: query)
-        }, start: spaceOutlineStart(a), placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within")
+        }, start: spaceOutlineStart(a), placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within", reach: .space)
         if let tile { finder.showOutline(tile, wider: space, over: window) } else { finder.showOutline(space, over: window) }
     }
 
@@ -8263,6 +8313,10 @@ extension MainWindowController: GridDelegate {
         let others = a.columns[c].enumerated().filter { $0.element.id != f && !a.isStashed($0.element.id) }
         guard let heir = others.last(where: { $0.offset < i })?.element ?? others.first?.element else { return NSSound.beep() }
         appendToSelected(a.stashing(f) + [.focus(heir.id)])
+    }
+    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool {
+        guard let a = arrangement else { return false }
+        return !showingSome([], in: a, placement: top, .fan).isEmpty
     }
 
     /// ⇧⌘↩: the focused tile over the whole arrangement, or back.
