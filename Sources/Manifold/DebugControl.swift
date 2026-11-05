@@ -550,9 +550,10 @@ enum DebugControl {
         case "quickwalk":
             // "quickwalk <steps> <hold seconds>": ⌃⇥ pressed (steps of it),
             // control let go after that long — under the wait, nothing shows.
+            // "quickwalk <steps> <hold> <again>": ⇥ pressed again after <again>.
             let w = arg.split(separator: " ").compactMap { Double($0) }
-            guard w.count == 2 else { return "usage: quickwalk <steps> <hold>" }
-            return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1]) ?? "no window"
+            guard w.count == 2 || w.count == 3 else { return "usage: quickwalk <steps> <hold> [again]" }
+            return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1], again: w.count == 3 ? w[2] : nil) ?? "no window"
         case "arrivalpicture":
             // "arrivalpicture <path.png>": the last tile arrived at's picture, as it flew.
             guard let any = wc?.content.debugArrival else { return "none" }
@@ -560,6 +561,9 @@ enum DebugControl {
             guard let cg, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return "not an image (a surface?)" }
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(cg.width)x\(cg.height)"
+        case "walksettled":
+            // From the last quickwalk's press till its cards were in place.
+            return wc?.debugWalkSettled ?? "not settled"
         case "flights":
             // ⌃⇥'s pictures on their way, this moment.
             return wc?.debugFlights ?? "no window"

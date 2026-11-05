@@ -559,6 +559,14 @@ destination:
    a time, a tap going further back rather than back and forth. What
    the window settled on comes first, ahead of the hosts' trail, so a
    switch doesn't wait on a host to hear of it.
+   ⌃⇥ or ⌥⇥ held, its cards are in place 150 ms after the
+   press, not starting then (the wait GNOME's and niri's switchers make
+   before they appear): made out of sight as it's pressed, shown 60 ms
+   on and unfolding in the time left; let go before they're in place, it
+   was a tap — they're put away at once and the tile behind comes up,
+   no folding back seen; ⇥ again before they show is no tap, and they
+   come at once, in place 60 ms on (⇥ while they unfold hurries them).
+   A stack that has to grow to fan out does that once they're wanted.
 4. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
    is found. With nothing typed, the focused block's neighborhood,
    nearest first; typed, what the query names best first — its title,

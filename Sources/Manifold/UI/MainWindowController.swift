@@ -3330,12 +3330,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement, let f = a.focused else { return NSSound.beep() }
         if content.isSwitching {
             _ = content.stepStackSwitcher(f, back: back)
+            // Made ahead, not yet seen: ⇥ again is no tap — seen at once.
+            if madeAhead != nil {
+                madeAhead = nil
+                content.revealStackSwitcher(settledBy: Date() + Self.switcherHurried)
+            }
             return
         }
-        // Pressed again before the cards show: a step more, still unseen.
+        // Pressed again before the cards show: no quick switch, then — the
+        // cards at once, the steps taken, unfolding quicker.
         if var q = quickWalk {
             q.steps += back ? -1 : 1
             quickWalk = q
+            q.show.cancel()
+            showQuickWalk(now: true)
             return
         }
         if NSEvent.modifierFlags.contains(.control) {
@@ -3344,9 +3352,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // cards come, the steps taken meanwhile already taken.
             guard !a.isStashed(f), let (c, _) = a.locate(f),
                   a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return NSSound.beep() }
-            let work = DispatchWorkItem { [weak self] in self?.showQuickWalk() }
-            quickWalk = (f, back ? -1 : 1, work)
+            let now = Date()
             watchStackWalk()
+            // The cards made now, out of sight, and shown in a moment if
+            // control's still held — made meanwhile, they're in place when
+            // it's done, not starting.
+            if !content.stackSwitcherNeedsRoom(f),
+               content.openStackSwitcher(f, steps: back ? -1 : 1, settledBy: now + Self.switcherSettled, revealAt: now + Self.switcherDelay) {
+                madeAhead = (f, back ? -1 : 1)
+                return
+            }
+            // A stack that has to grow first: that once they're wanted.
+            let work = DispatchWorkItem { [weak self] in self?.showQuickWalk() }
+            quickWalk = (f, back ? -1 : 1, work, now)
+            content.pictureAhead(f)
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
             return
         }
@@ -3370,6 +3389,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func endStackWalk(settling: Bool) {
         stackMonitors.forEach(NSEvent.removeMonitor)
         stackMonitors = []
+        // Let go before the cards made ahead were in place: a tap — put
+        // away (unseen, or as they are), the tile stepped to brought up.
+        if let m = madeAhead {
+            madeAhead = nil
+            if content.abandonStackSwitcher() {
+                if settling { quickStep(m.top, steps: m.steps) }
+                return
+            }
+        }
         // Let go before the cards showed: the tile stepped to comes up.
         if let q = quickWalk {
             q.show.cancel()
@@ -3382,17 +3410,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// ⌃⇥ pressed, the cards not shown yet: the tile, the steps taken, and
     /// what shows them if control is still held.
-    private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem)?
-    /// How long ⌃⇥ is held before the cards show — as ⌘⇥'s switcher waits
-    /// before it appears (some 200 ms; Apple doesn't say).
-    static let switcherDelay: TimeInterval = 0.15
+    private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem, at: Date)?
+    /// ⌃⇥ pressed, its cards made out of sight: the tile and the step.
+    private var madeAhead: (top: PlacementID, steps: Int)?
+    /// ⌃⇥ held, its cards are in place this long after it's pressed — as
+    /// GNOME's and niri's switchers wait 150 ms to appear, but settled by
+    /// then, not starting.
+    static let switcherSettled: TimeInterval = 0.15
+    /// How long it's held before they start: long enough for a tap
+    /// (control let go at once) to switch with nothing shown; they're made
+    /// (some 20 ms) and unfold in the rest.
+    static let switcherDelay: TimeInterval = 0.06
+    /// ⇥ pressed again before they showed: no quick switch wanted — they
+    /// come at once, in place this long after.
+    static let switcherHurried: TimeInterval = 0.06
 
-    /// Held past the wait: the cards, at the step reached.
-    private func showQuickWalk() {
+    /// Held past the wait (or ⇥ pressed again, `now`): the cards, at the
+    /// step reached, opened there in one go.
+    private func showQuickWalk(now: Bool = false) {
         guard let q = quickWalk else { return }
         quickWalk = nil
-        guard NSEvent.modifierFlags.contains(.control), content.stepStackSwitcher(q.top, back: q.steps < 0) else { return endStackWalk(settling: false) }
-        for _ in 0..<max(0, abs(q.steps) - 1) { _ = content.stepStackSwitcher(q.top, back: q.steps < 0) }
+        guard NSEvent.modifierFlags.contains(.control) || now else { return endStackWalk(settling: false) }
+        let by = now ? Date() + Self.switcherHurried : q.at + Self.switcherSettled
+        guard content.openStackSwitcher(q.top, steps: q.steps == 0 ? 1 : q.steps, settledBy: by) else { return endStackWalk(settling: false) }
     }
 
     /// A quick ⌃⇥: the tile `steps` down the stack (round it; negative,
@@ -3406,21 +3446,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Debugging: ⌃⇥ pressed with control held, then let go after `hold` seconds.
-    func debugQuickWalk(steps: Int, hold: TimeInterval) -> String {
+    func debugQuickWalk(steps: Int, hold: TimeInterval, again: TimeInterval? = nil) -> String {
         guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f),
               a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return "no stack" }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, let q = self.quickWalk else { return }
-            self.quickWalk = nil
-            if self.content.stepStackSwitcher(q.top, back: q.steps < 0) {
-                for _ in 0..<max(0, abs(q.steps) - 1) { _ = self.content.stepStackSwitcher(q.top, back: q.steps < 0) }
+        let pressed = Date()
+        content.debugUnfolded = nil
+        content.debugUnfoldStarted = nil
+        content.debugUnfoldAsked = nil
+        guard content.openStackSwitcher(f, steps: steps, settledBy: pressed + Self.switcherSettled, revealAt: pressed + Self.switcherDelay) else { return "not opened" }
+        madeAhead = (f, steps)
+        // ⇥ again after `again` seconds.
+        if let again {
+            DispatchQueue.main.asyncAfter(deadline: .now() + again) { [weak self] in
+                guard let self, self.madeAhead != nil else { return }
+                _ = self.content.stepStackSwitcher(f, back: false)
+                self.madeAhead = nil
+                self.content.revealStackSwitcher(settledBy: Date() + Self.switcherHurried)
             }
         }
-        quickWalk = (f, steps, work)
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
         DispatchQueue.main.asyncAfter(deadline: .now() + hold) { [weak self] in self?.endStackWalk(settling: true) }
+        // How long till the cards were in place, told once they are.
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(hold, 0.5)) { [weak self] in
+            guard let self else { return }
+            let ms = { (d: Date?) in d.map { String(Int($0.timeIntervalSince(pressed) * 1000)) } ?? "-" }
+            self.debugWalkSettled = "asked \(ms(self.content.debugUnfoldAsked)) started \(ms(self.content.debugUnfoldStarted)) settled \(ms(self.content.debugUnfolded)) ms"
+        }
         return "pressed"
     }
+
+    /// Debugging: from the last `quickwalk`'s press till its cards were in place, in ms.
+    var debugWalkSettled: String?
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window
     /// (or, backward, its previous) — Settings, another window.
@@ -7936,6 +7991,10 @@ extension MainWindowController: GridDelegate {
         stackMonitors = []
     }
 
+    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool {
+        guard let a = arrangement else { return false }
+        return !showingSome([], in: a, placement: top, .fan).isEmpty
+    }
     func gridRoomForFan(_ top: PlacementID) -> Bool {
         guard let a = arrangement else { return false }
         let events = showingSome([], in: a, placement: top, .fan)

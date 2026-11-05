@@ -16,6 +16,8 @@ protocol GridDelegate: AnyObject {
     /// A stack about to fan out: its tile grown to hold the fan, if it's
     /// short of it. True when it was (the fan waits for the tile to settle).
     func gridRoomForFan(_ top: PlacementID) -> Bool
+    /// Whether `gridRoomForFan` would have to make room (nothing changed).
+    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool
     /// A tile as its summary card shows it (a stack's column).
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
     /// A linked block's summary card, under the bar's links.
@@ -1366,6 +1368,11 @@ final class GridView: NSView, NSDraggingSource {
     /// or after `wait` at most (then as `pictured` has it), kept for later.
     private func picturing(_ body: NSView, _ bar: NSView?, wait: Double = 0.25, _ done: @escaping (Pictured) -> Void) {
         guard let page = body as? Snapshotting else { return done(pictured(body, bar)) }
+        // Taken a moment ago, ahead of being wanted (⌃⇥ held): that one.
+        if let p = picturedAhead, p.body === body, Date().timeIntervalSince(p.at) < 1 {
+            picturedAhead = nil
+            return done(pictured(body, bar, page: p.image))
+        }
         var called = false
         page.snapshot { [weak self, weak body, weak bar] image in
             guard let self, let body, !called else { return }
@@ -1377,6 +1384,21 @@ final class GridView: NSView, NSDraggingSource {
             guard let self, let body, !called else { return }
             called = true
             done(self.pictured(body, bar))
+        }
+    }
+
+    /// A page's picture taken ahead (`pictureAhead`), for `picturing` to
+    /// use rather than wait for one.
+    private var picturedAhead: (body: NSView, image: CGImage?, at: Date)?
+
+    /// ⌃⇥ pressed, its cards perhaps wanted in a moment: the stack's top's
+    /// picture taken now, if it's a page (one that can't be drawn at once),
+    /// so they needn't wait for it.
+    func pictureAhead(_ top: PlacementID) {
+        guard let t = tile(top), let body = shownBody(t), let page = body as? Snapshotting else { return }
+        page.snapshot { [weak self, weak body] image in
+            guard let self, let body else { return }
+            self.picturedAhead = (body, image?.cgImage(forProposedRect: nil, context: nil, hints: nil), Date())
         }
     }
 
@@ -2114,7 +2136,11 @@ final class GridView: NSView, NSDraggingSource {
     @discardableResult
     /// `steps`: the choice that far down the column (up, negative) from
     /// the first, as it opens — pictured so, not moved after.
-    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false, steps: Int = 0) -> Bool {
+    /// `settledBy`: the cards in place then (⌃⇥'s, timed from its press),
+    /// unfolding in what time's left; else as a click opens them.
+    /// `revealAt`: made now, out of sight, and shown (unfolding) then —
+    /// ⌃⇥'s, made while it waits to see if it's a tap.
+    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false, steps: Int = 0, settledBy: Date? = nil, revealAt: Date? = nil) -> Bool {
         guard switcher == nil, !fanWaiting else { return true }
         guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
               let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
@@ -2122,12 +2148,13 @@ final class GridView: NSView, NSDraggingSource {
         // and fans out once it has.
         if !roomMade, delegate?.gridRoomForFan(top) == true {
             fanWaiting = true
+            fanSteps = steps
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.glide) { [weak self] in
                 guard let self else { return }
                 self.fanWaiting = false
                 let steps = self.fanSteps
                 self.fanSteps = 0
-                _ = self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true, steps: steps)
+                _ = self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true, steps: steps, settledBy: settledBy)
             }
             return true
         }
@@ -2170,17 +2197,24 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
         s.present(dealt: false)
         s.alphaValue = 0
-        picturing(shownBody(stack.top) ?? stack.top.view, pills[top], wait: 0.12) { [weak self, weak s] tile in
+        reveal = Reveal(switcher: s, at: revealAt, settledBy: settledBy)
+        picturing(shownBody(stack.top) ?? stack.top.view, pills[top], wait: settledBy != nil ? 0.05 : 0.12) { [weak self, weak s] tile in
             guard let self, let s, self.switcher === s, !s.isClosing else { return }
-            s.alphaValue = 1
-            // The tile itself out of sight under the column: its picture
-            // is what's seen going (it was seen fading under the column's
-            // ground coming in).
-            for v in [shownBody(stack.top), stack.top.view, self.pills[top], top == self.focused ? self.focusRing : nil].compactMap({ $0 }) where v.alphaValue > 0 {
-                v.alphaValue = 0
-                self.unseen.append(v)
+            // Its flight made now (the cards pictured), flown when it's time.
+            let flight = self.unfolding(s, tile: tile)
+            self.reveal?.go = { [weak self, weak s] settledBy in
+                guard let self, let s, self.switcher === s, !s.isClosing else { return }
+                s.alphaValue = 1
+                // The tile itself out of sight under the column: its picture
+                // is what's seen going (it was seen fading under the column's
+                // ground coming in).
+                for v in [self.shownBody(stack.top), stack.top.view, self.pills[top], top == self.focused ? self.focusRing : nil].compactMap({ $0 }) where v.alphaValue > 0 {
+                    v.alphaValue = 0
+                    self.unseen.append(v)
+                }
+                flight?(settledBy.map { $0.timeIntervalSinceNow })
             }
-            self.unfold(s, tile: tile)
+            self.revealWhenDue()
         }
         if followingPointer { watchSwitcherClicks() }
         return true
@@ -2229,28 +2263,141 @@ final class GridView: NSView, NSDraggingSource {
     /// out from under it, each a whole card showing what it is all the way,
     /// down to its place (only cross-fading where they end, with Reduce
     /// motion). The cards themselves show once theirs are there.
-    private func unfold(_ s: StackColumnView, tile: Pictured) {
-        guard let host = layer else { return }
+    /// The cards made and shown out of sight, waiting for their time to
+    /// unfold (`go`, once their pictures are made, given the time they're
+    /// to be in place by).
+    private struct Reveal {
+        weak var switcher: StackColumnView?
+        var at: Date?
+        var settledBy: Date?
+        var go: ((Date?) -> Void)?
+        var timer: DispatchWorkItem?
+    }
+    private var reveal: Reveal?
+
+    /// The cards unfolding if they're made and it's time; else when it is.
+    private func revealWhenDue() {
+        guard var r = reveal, let go = r.go else { return }
+        if let at = r.at, at > Date() {
+            r.timer?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.revealWhenDue() }
+            r.timer = work
+            reveal = r
+            DispatchQueue.main.asyncAfter(deadline: .now() + at.timeIntervalSinceNow, execute: work)
+            return
+        }
+        r.timer?.cancel()
+        reveal = nil
+        go(r.settledBy)
+    }
+
+    /// ⌃⇥'s cards, made ahead, shown now and in place by `settledBy` (⇥
+    /// pressed again: no tap, then).
+    func revealStackSwitcher(settledBy: Date) {
+        guard var r = reveal else { return }
+        r.at = nil
+        r.settledBy = settledBy
+        reveal = r
+        revealWhenDue()
+    }
+
+    /// ⌃⇥'s cards, made ahead but not yet seen, put away unseen (control let
+    /// go at once: a tap). False if they've been seen.
+    func discardUnseenStackSwitcher() -> Bool {
+        guard let r = reveal, let s = r.switcher, s === switcher else { return false }
+        r.timer?.cancel()
+        reveal = nil
+        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
+        switcherMonitor = nil
+        s.removeFromSuperview()
+        switcher = nil
+        needsLayout = true
+        return true
+    }
+
+    /// ⌃⇥'s cards put away at once, unseen or still unfolding: control let
+    /// go before they were in place — a tap, as far as anyone can tell, the
+    /// tile it steps to coming up as it would have (no folding back seen
+    /// first). False once they're in place.
+    func abandonStackSwitcher() -> Bool {
+        if discardUnseenStackSwitcher() { return true }
+        guard let s = switcher, !s.isClosing, !s.cardsShown else { return false }
+        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
+        switcherMonitor = nil
+        // The flights gone, the tiles under them seen again.
+        land()
+        s.removeFromSuperview()
+        switcher = nil
+        needsLayout = true
+        return true
+    }
+
+    /// Whether ⌃⇥'s cards would need their tile to grow first (a stack too
+    /// short to fan out).
+    func stackSwitcherNeedsRoom(_ top: PlacementID) -> Bool { delegate?.gridNeedsRoomForFan(top) == true }
+
+    private func unfold(_ s: StackColumnView, tile: Pictured, within: TimeInterval? = nil) {
+        unfolding(s, tile: tile)?(within)
+    }
+
+    /// The switcher's opening, made (its pictures taken), to be flown in the
+    /// time given (nil: as a click opens it).
+    private func unfolding(_ s: StackColumnView, tile: Pictured) -> ((TimeInterval?) -> Void)? {
+        guard let host = layer else { return nil }
         let whole = tile.whole
         let cards = s.cardPictures(in: self)
         // Where the first card is: the stack's top, which the rest come
         // out from under.
         let first = cards.first.map(\.frame).flatMap { $0 == .zero ? nil : $0 } ?? whole
-        var items: [Morph] = []
-        for (i, c) in cards.enumerated() where c.frame != .zero {
-            let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
-            if i == 0 {
-                items.append(Morph(from: whole, to: c.frame, leaving: tile, coming: card, z: 10, shrink: Self.cardShrink))
-            } else {
-                // Whole, from under the first, where the stack's top is.
-                let under = NSRect(x: c.frame.minX, y: first.maxY - c.frame.height, width: c.frame.width, height: c.frame.height)
-                items.append(Morph(from: under, to: c.frame, coming: card, delay: Double(i - 1) * 0.02, z: -CGFloat(i)))
+        return { [weak self, weak s] within in
+            guard let self, let s else { return }
+            // Each card behind a little after the one before: within the
+            // time given, not added to it.
+            let stagger = within == nil ? 0.02 : 0.008, staggered = min(Double(max(cards.count - 2, 0)) * stagger, within == nil ? .infinity : 0.024)
+            var items: [Morph] = []
+            for (i, c) in cards.enumerated() where c.frame != .zero {
+                let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
+                if i == 0 {
+                    items.append(Morph(from: whole, to: c.frame, leaving: tile, coming: card, z: 10, shrink: Self.cardShrink))
+                } else {
+                    // Whole, from under the first, where the stack's top is.
+                    let under = NSRect(x: c.frame.minX, y: first.maxY - c.frame.height, width: c.frame.width, height: c.frame.height)
+                    items.append(Morph(from: under, to: c.frame, coming: card, delay: min(Double(i - 1) * stagger, staggered), z: -CGFloat(i)))
+                }
+            }
+            guard !items.isEmpty else { return }
+            s.cardsShown = false
+            self.debugUnfoldStarted = Date()
+            let d = within.map { max($0 - staggered, 0.05) * Motion.slowdown } ?? Motion.spatial * 1.5
+            self.flying += Self.morph(items, in: host, over: d) { [weak self, weak s] in
+                s?.cardsShown = true
+                self?.debugUnfolded = Date()
             }
         }
-        guard !items.isEmpty else { return }
-        s.cardsShown = false
-        let d = Motion.spatial * 1.5
-        flying += Self.morph(items, in: host, over: d) { [weak s] in s?.cardsShown = true }
+    }
+
+    /// Debugging: when the cards were last in place, and started for it;
+    /// when they were asked for.
+    var debugUnfolded: Date?
+    var debugUnfoldStarted: Date?
+    var debugUnfoldAsked: Date?
+
+    /// The cards unfolding, hurried: ⇥ again while they're on their way —
+    /// what's wanted is plain, the rest of the way gone faster.
+    func hurryUnfold() {
+        guard switcher?.cardsShown == false else { return }
+        Self.hurry(flying)
+    }
+
+    /// Flights hurried the rest of their way, their time carried on from
+    /// where they are, so nothing jumps.
+    static func hurry(_ layers: [CALayer]) {
+        let now = CACurrentMediaTime()
+        for l in layers where l.speed == 1 {
+            l.timeOffset = l.convertTime(now, from: nil)
+            l.beginTime = now
+            l.speed = 2.5
+        }
     }
 
     /// A tile chosen in the switcher, waiting to be laid out where it goes,
@@ -2317,14 +2464,27 @@ final class GridView: NSView, NSDraggingSource {
     func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
         let step = back ? -1 : 1
         if fanWaiting { fanSteps += step; return true }
-        if let s = switcher { s.move(step); return true }
+        if let s = switcher {
+            hurryUnfold()
+            s.move(step)
+            return true
+        }
         return openStackSwitcher(top, followingPointer: false, steps: step)
+    }
+
+    /// ⌃⇥'s cards, `steps` taken, in place by `settledBy`; made now and
+    /// shown at `revealAt`, if it's given.
+    func openStackSwitcher(_ top: PlacementID, steps: Int, settledBy: Date, revealAt: Date? = nil) -> Bool {
+        debugUnfoldAsked = Date()
+        return openStackSwitcher(top, followingPointer: false, steps: steps, settledBy: settledBy, revealAt: revealAt)
     }
 
     /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
     /// top as it was), which comes forward to fill the tile; the views go
     /// back to the grid, and the stack is told which is its top now.
     func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false, takingOut out: PlacementID? = nil) {
+        // Never seen (made ahead for ⌃⇥): put away as it is.
+        if discardUnseenStackSwitcher() { return }
         guard let s = switcher, !s.isClosing else { return }
         if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
         switcherMonitor = nil
