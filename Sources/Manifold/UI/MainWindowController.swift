@@ -3069,6 +3069,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     static let tileWalkLimit = 24
 
     private func walkTiles(back: Bool) {
+        let pressed = Date()
         let step = back ? -1 : 1
         if var w = tileWalk {
             // Option let go unheard (the app left meanwhile): over.
@@ -3077,6 +3078,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 w.index = ((w.index + step) % n + n) % n
                 tileWalk = w
                 tileSwitcher?.column.choose(w.index)
+                if tileUnseen != nil {
+                    // ⇥ again before the cards showed: no tap — they come at once.
+                    w.show.cancel()
+                    revealTileSwitcher(settledBy: Date() + Self.switcherHurried)
+                } else {
+                    // On their way: what's wanted is plain, the rest hurried.
+                    GridView.hurry(tileFlights)
+                }
                 return
             }
         }
@@ -3087,11 +3096,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let n = places.count
         let index = ((start + step) % n + n) % n
         guard NSEvent.modifierFlags.contains(.option) || debugHeld else { return go(to: places[index]) }
-        let work = DispatchWorkItem { [weak self] in self?.showTileSwitcher() }
+        // As ⌃⇥'s: the cards made now, out of sight, shown in a moment if
+        // option's still held, and in place when the wait's done.
+        let work = DispatchWorkItem { [weak self] in self?.revealTileSwitcher(settledBy: pressed + Self.switcherSettled) }
         tileWalk = (places, index, work)
         watchTileWalk()
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
+        prepareTileSwitcher()
+        // From the press, not from when they're made.
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + Self.switcherDelay).timeIntervalSinceNow), execute: work)
     }
+
+    /// ⌥⇥'s cards made out of sight: what shows them, unfolding to be in
+    /// place by the time it's given.
+    private var tileUnseen: ((Date) -> Void)?
 
     private func watchTileWalk() {
         tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -3123,6 +3140,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let index = chosen ?? w.index
         let target = settling && w.places.indices.contains(index) ? w.places[index] : nil
         guard let (frame, column) = tileSwitcher else {
+            if let target { go(to: target) }
+            return
+        }
+        // Let go before the cards were in place (unseen, or unfolding): a
+        // tap — put away at once, gone to the tile stepped to.
+        if tileUnseen != nil || !column.cardsShown {
+            tileUnseen = nil
+            tileSwitcher = nil
+            landTiles()
+            frame.removeFromSuperview()
             if let target { go(to: target) }
             return
         }
@@ -3217,10 +3244,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         warpPointerToFocus()
     }
 
-    /// Held past the wait: the cards, over the space, the one stepped to
-    /// chosen — the focused tile becoming the first, the rest coming from
-    /// their tiles here, or out from under it.
+    /// The cards now (debugging): made, and unfolding as a click's would.
     private func showTileSwitcher() {
+        prepareTileSwitcher()
+        revealTileSwitcher(settledBy: Date() + Motion.spatial * 1.5)
+    }
+
+    /// The cards shown, unfolding to be in place by `settledBy`, if they're
+    /// made and not yet seen.
+    private func revealTileSwitcher(settledBy: Date) {
+        guard let go = tileUnseen else { return }
+        tileUnseen = nil
+        go(settledBy)
+    }
+
+    /// The cards made, over the space, out of sight till they're shown —
+    /// the one stepped to chosen; the focused tile to become the first,
+    /// the rest to come from their tiles here, or out from under it.
+    private func prepareTileSwitcher() {
         guard let w = tileWalk, tileSwitcher == nil, NSEvent.modifierFlags.contains(.option) || debugHeld else { return }
         let entries = w.places.compactMap { p -> SummaryCardContent? in
             guard let t = p.tile, let b = hosts.arrangement(p.space)?.placement(t)?.block, var c = cardContent(for: b, view: views[t], id: t) else { return nil }
@@ -3250,47 +3291,76 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(frame, positioned: .above, relativeTo: stateView ?? stage)
         tileSwitcher = (frame, column)
         column.present(dealt: false)
-        guard !Motion.reduced, let host = root.layer else { return fadeIn(frame) }
+        // Out of sight till shown; its cards' pictures taken now.
+        frame.alphaValue = 0
+        guard !Motion.reduced, let host = root.layer else {
+            tileUnseen = { [weak self, weak frame] _ in
+                guard let self, let frame else { return }
+                frame.alphaValue = 1
+                self.fadeIn(frame)
+            }
+            return
+        }
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.placedParts(), from: content)
         let sheets = sheetsInRoot(for: w.places)
         let cards = column.cardPictures(in: root)
-        guard let first = cards.first(where: { $0.frame != .zero }) else { return }
+        guard let first = cards.first(where: { $0.frame != .zero }) else {
+            tileUnseen = { [weak frame] _ in frame?.alphaValue = 1 }
+            return
+        }
+        // Each card a little after the one before, within the time given.
+        let stagger = 0.008, staggered = min(Double(cards.count - 1) * stagger, 0.024)
         var items: [GridView.Morph] = []
         for (i, c) in cards.enumerated() where c.frame != .zero {
             let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
+            let delay = min(Double(i) * stagger, staggered)
             if let tile = tiles[c.id] {
                 items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, shrink: GridView.cardShrink))
             } else if let sheet = sheets[c.id] {
                 // Pulled out of its stack's sheet.
-                items.append(GridView.Morph(from: sheet, to: c.frame, coming: card, delay: Double(i) * 0.03))
+                items.append(GridView.Morph(from: sheet, to: c.frame, coming: card, delay: delay))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
                 // In another space: out of its row in the sidebar.
-                items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: Double(i) * 0.03))
+                items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: delay))
             } else {
                 // Elsewhere: out from under the first.
-                items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: Double(i) * 0.03))
+                items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: delay))
             }
         }
-        let d = Motion.spatial * 1.5
         column.cardsShown = false
-        tileFlights += GridView.morph(items, in: host, over: d) { [weak column] in column?.cardsShown = true }
-        // The column's ground comes in under them.
-        if let l = column.layer, let ground = l.backgroundColor {
-            let a = CABasicAnimation(keyPath: "backgroundColor")
-            a.fromValue = ground.copy(alpha: 0)
-            a.toValue = ground
-            a.duration = d
-            a.timingFunction = Motion.appear
-            l.add(a, forKey: "ground")
-            let s = CABasicAnimation(keyPath: "shadowOpacity")
-            s.fromValue = 0
-            s.toValue = frame.layer?.shadowOpacity ?? 0
-            s.duration = d
-            frame.layer?.add(s, forKey: "ground")
+        tileUnseen = { [weak self, weak frame, weak column] settledBy in
+            guard let self, let frame, let column, self.tileSwitcher?.column === column else { return }
+            frame.alphaValue = 1
+            // (A frame allowed for its many flights to be put on screen.)
+            let d = max(settledBy.timeIntervalSinceNow - staggered - 1.0 / 60, 0.05) * Motion.slowdown
+            self.debugTilesShown = Date()
+            self.tileFlights += GridView.morph(items, in: host, over: d) { [weak self, weak column] in
+                column?.cardsShown = true
+                self?.debugTilesSettled = Date()
+            }
+            // The column's ground comes in under them.
+            if let l = column.layer, let ground = l.backgroundColor {
+                let a = CABasicAnimation(keyPath: "backgroundColor")
+                a.fromValue = ground.copy(alpha: 0)
+                a.toValue = ground
+                a.duration = d
+                a.timingFunction = Motion.appear
+                l.add(a, forKey: "ground")
+                let s = CABasicAnimation(keyPath: "shadowOpacity")
+                s.fromValue = 0
+                s.toValue = frame.layer?.shadowOpacity ?? 0
+                s.duration = d
+                frame.layer?.add(s, forKey: "ground")
+            }
         }
     }
+
+    /// Debugging: when ⌥⇥'s cards were last asked for, shown, and in place.
+    var debugTilesPressed: Date?
+    var debugTilesShown: Date?
+    var debugTilesSettled: Date?
 
     /// "tilewalk step|back|end|escape|order|pick <n>": ⌥⇥ pressed with
     /// option held, option let go, Escape, a card clicked; or the walk and
@@ -3300,7 +3370,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         switch w.first ?? "" {
         case "step", "back":
             debugHeld = true
+            if tileWalk == nil { debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil }
             walkTiles(back: w.first == "back")
+        case "again":
+            // "tilewalk again <seconds>": ⌥⇥ pressed, then ⇥ again that much later.
+            debugHeld = true
+            debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil
+            walkTiles(back: false)
+            let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.03
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in self?.walkTiles(back: false) }
+        case "timing":
+            // From the first step's press: when the cards were shown, and in place.
+            let ms = { (d: Date?) in d.flatMap { d in self.debugTilesPressed.map { String(Int(d.timeIntervalSince($0) * 1000)) } } ?? "-" }
+            return "shown \(ms(debugTilesShown)) settled \(ms(debugTilesSettled)) ms"
         case "show": tileWalk.map { _ in showTileSwitcher() }
         case "end": endTileWalk(settling: true)
         case "escape": endTileWalk(settling: false)

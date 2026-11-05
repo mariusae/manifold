@@ -341,6 +341,9 @@ final class StackColumnView: NSView {
         layoutSubtreeIfNeeded()
         let shown = convert(bounds, to: view)
         return cards.map { c in
+            let f = c.convert(c.bounds, to: view)
+            // Out of view: no picture (it isn't flown), none drawn.
+            guard shown.contains(f) else { return (c.content.id, .zero, nil, GridView.ground(of: c)) }
             var picture: CGImage?
             let scale = window?.backingScaleFactor ?? 2
             if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(c.bounds.width * scale), pixelsHigh: Int(c.bounds.height * scale),
@@ -350,8 +353,7 @@ final class StackColumnView: NSView {
                 c.cacheDisplay(in: c.bounds, to: rep)
                 picture = rep.cgImage
             }
-            let f = c.convert(c.bounds, to: view)
-            return (c.content.id, shown.contains(f) ? f : .zero, picture, GridView.ground(of: c))
+            return (c.content.id, f, picture, GridView.ground(of: c))
         }
     }
 
