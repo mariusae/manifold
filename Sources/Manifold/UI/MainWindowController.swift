@@ -2544,6 +2544,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// it kept is collected after the grace, reopened meanwhile by ⇧⌘T.
     @objc func closeTab(_ sender: Any?) {
         guard let id = selected else { return }
+        closeSpace(id)
+    }
+
+    /// A space removed, as ⇧⌘W removes the one shown (`mani close` names one).
+    func closeSpace(_ id: BlockID) {
         let before = hosts.reachable()
         let name = hosts.arrangement(id).map { title(of: $0) } ?? "Untitled"
         removeFromDesk(id)

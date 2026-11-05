@@ -1306,7 +1306,19 @@ final class ManiDesk {
     }
 
     private func close(_ r: ManiRequest, _ scope: Scope) throws -> String {
-        let t = try resolve(r.args[0], scope)
+        let t: Target
+        do { t = try resolve(r.args[0], scope) } catch {
+            // Not a tile's or block's name: a space's, as the sidebar has it.
+            let ws: BlockID
+            do { ws = try space(named: r.args[0]) } catch let f as Failure where f.message.hasPrefix("more than one") { throw f } catch _ { throw error }
+            wc.closeSpace(ws)
+            return ""
+        }
+        // A space named (not a tile showing one): the space removed, as ⇧⌘W.
+        if t.tile == nil, hosts.block(t.block)?.kind == .arrangement, wc.allWorkspaces.contains(t.block) {
+            wc.closeSpace(t.block)
+            return ""
+        }
         guard let tile = t.tile, let ws = t.workspace else { throw Failure(message: "\(r.args[0]) isn't shown") }
         if ws == wc.selected { wc.gridClose(tile) } else { hosts.append([.remove(tile)], to: .block(ws)) }
         return ""

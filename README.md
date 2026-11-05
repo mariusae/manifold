@@ -1899,7 +1899,9 @@ is migrated into logs on first run.
     mani new git --at @leftmost --below
     mani new terminal --at @leftmost --below --size 0.3 --run "make test"
     mani open ~/src/app/README.md --at @leftmost --over
-    ``` `mani run <terminal> <command>`
+    ``` `mani close` given a space (its name or id, or `@space`) removes
+    it, as ⇧⌘W does: to Recently Closed, what only it kept collected
+    after the half hour. `mani run <terminal> <command>`
     types a command into a terminal's shell (through its host, shown or
     not); `--wait` waits for it to end, prints its output and exits with
     its status (`--timeout`: 124 if it doesn't). A terminal with no shell
