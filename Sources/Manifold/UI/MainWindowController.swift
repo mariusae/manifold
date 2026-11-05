@@ -3411,7 +3411,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil
             walkTiles(back: false)
             let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.03
-            DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in self?.walkTiles(back: false) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (debugTilesPressed! + after).timeIntervalSinceNow)) { [weak self] in self?.walkTiles(back: false) }
+        case "tap":
+            // "tilewalk tap <seconds>": ⌥⇥ pressed, option let go that much later.
+            // (Timed from the press, as a key let go is, not from when the
+            // cards are made.)
+            debugHeld = true
+            let pressed = Date()
+            debugTilesPressed = pressed; debugTilesShown = nil; debugTilesSettled = nil
+            walkTiles(back: false)
+            let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.08
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + after).timeIntervalSinceNow)) { [weak self] in self?.endTileWalk(settling: true) }
         case "timing":
             // From the first step's press: when the cards were shown, and in place.
             let ms = { (d: Date?) in d.flatMap { d in self.debugTilesPressed.map { String(Int(d.timeIntervalSince($0) * 1000)) } } ?? "-" }
@@ -3528,10 +3538,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌃⇥ (⌥⇥) held, its cards are in place this long after it's pressed:
     /// settled by then, not starting — but long enough that they're seen
     /// coming out of where they are, which says what they are.
-    static let switcherSettled: TimeInterval = 0.2
-    /// When they start: as soon as they're made (some 25 ms); a tap let go
-    /// before, nothing's seen; after, they fold back as they came.
-    static let switcherDelay: TimeInterval = 0.03
+    static let switcherSettled: TimeInterval = 0.27
+    /// When they start: long enough after the press that a quick tap (let
+    /// go within it) switches with nothing seen — at 30 ms most taps
+    /// caught the cards; after, they fold back as they came.
+    static let switcherDelay: TimeInterval = 0.12
     /// ⇥ pressed again before they showed: no quick switch wanted — they
     /// come at once, in place this long after.
     static let switcherHurried: TimeInterval = 0.06
@@ -3568,14 +3579,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         madeAhead = (f, steps)
         // ⇥ again after `again` seconds.
         if let again {
-            DispatchQueue.main.asyncAfter(deadline: .now() + again) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + again).timeIntervalSinceNow)) { [weak self] in
                 guard let self, self.madeAhead != nil else { return }
                 _ = self.content.stepStackSwitcher(f, back: false)
                 self.madeAhead = nil
                 self.content.revealStackSwitcher(settledBy: Date() + Self.switcherHurried)
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + hold) { [weak self] in self?.endStackWalk(settling: true) }
+        // (From the press, as a key let go is, not from when the cards are made.)
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + hold).timeIntervalSinceNow)) { [weak self] in self?.endStackWalk(settling: true) }
         // How long till the cards were in place, told once they are.
         DispatchQueue.main.asyncAfter(deadline: .now() + max(hold, 0.5)) { [weak self] in
             guard let self else { return }

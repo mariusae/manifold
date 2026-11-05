@@ -563,11 +563,12 @@ destination:
    a time, a tap going further back rather than back and forth. What
    the window settled on comes first, ahead of the hosts' trail, so a
    switch doesn't wait on a host to hear of it.
-   ⌃⇥ or ⌥⇥ held, its cards are in place 200 ms after the
-   press: made out of sight as it's pressed (some 25 ms), shown 30 ms on
-   and unfolding in the time left — long enough to be seen coming out of
-   where they are, which says what they are (an earlier 150 ms, shown at
-   60, was over before it was seen). Let go before they show, it was a
+   ⌃⇥ or ⌥⇥ held, its cards are in place 270 ms after the
+   press: made out of sight as it's pressed (some 25 ms), shown 120 ms on
+   and unfolding in the 150 ms left — long enough to be seen coming out
+   of where they are, which says what they are (an earlier 150 ms, shown
+   at 60, was over before it was seen), and late enough that a quick tap
+   sees nothing (shown at 30, most taps caught them). Let go before they show, it was a
    tap: nothing's seen, the tile behind comes up; let go as they unfold,
    they fold back the way they came, four times as fast (from where
    they've got to, no jump), then it comes up. ⇥ again before they show
