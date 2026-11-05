@@ -65,6 +65,11 @@ public final class Mux {
     /// Bulk streams with frames waiting, in turn.
     private var ready: [MuxStream] = []
 
+    /// The link's bytes by what they're for, each second lately (on the
+    /// queue); and when it was made.
+    private var meter = TrafficMeter()
+    public let since = Date()
+
     /// Pacing (bulk): bytes sent, and acknowledged as received.
     private var bulkSent: UInt64 = 0
     private var bulkAcked: UInt64 = 0
@@ -172,14 +177,16 @@ public final class Mux {
     /// A new stream (the client's side): `bulk` ones paced, `urgent` ones
     /// (a terminal's) paced too but ahead of the others; `compress` ones
     /// compressed, if the other end takes it; handlers run on
-    /// `callbackQueue` (nil: the mux's queue).
-    public func open(bulk: Bool, urgent: Bool = false, compress: Bool = false, callbackQueue: DispatchQueue? = nil) -> MuxStream {
+    /// `callbackQueue` (nil: the mux's queue). `purpose`, what it's for,
+    /// is for showing what the link carries: it isn't sent.
+    public func open(bulk: Bool, urgent: Bool = false, compress: Bool = false, callbackQueue: DispatchQueue? = nil,
+                     purpose: StreamPurpose = .other) -> MuxStream {
         lock.lock()
         let id = nextID
         nextID &+= 1
         let compress = compress && _compression
         lock.unlock()
-        let s = MuxStream(id: id, bulk: bulk || urgent, urgent: urgent, compresses: compress, mux: self)
+        let s = MuxStream(id: id, bulk: bulk || urgent, urgent: urgent, compresses: compress, mux: self, purpose: purpose)
         s.callbackQueue = callbackQueue
         onQueue { [self] in
             if connection.isClosed { return s.peerClosed() }
@@ -237,8 +244,22 @@ public final class Mux {
             guard frame.payload.count == 8 else { return }
             acked(frame.payload.reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
         default:
+            meter.count(.control, received: frame.payload.count + 5, at: Date().timeIntervalSince1970)
             control.deliver(frame)
         }
+    }
+
+    /// A stream's frame, `wire` bytes as it went or came, counted (on the
+    /// queue); one for a stream no longer here, as another's.
+    private func count(_ s: MuxStream?, sent: Int = 0, received: Int = 0) {
+        meter.count(s?.purpose.kind ?? .other, sent: sent, received: received, at: Date().timeIntervalSince1970)
+        s?.flow.sent += sent
+        s?.flow.received += received
+    }
+
+    /// The control stream's frame, sent (on the queue).
+    fileprivate func countControl(_ frame: Frame) {
+        meter.count(.control, sent: frame.payload.count + 5, at: Date().timeIntervalSince1970)
     }
 
     private func streamOp(_ id: UInt32, _ op: Op, _ rest: Data, wire: Int) {
@@ -258,7 +279,8 @@ public final class Mux {
                 withUnsafeBytes(of: bulkReceived.bigEndian) { d.append(contentsOf: $0) }
                 connection.send(Frame(.linkAck, d))
             }
-            guard let s = streams[id] else { return }
+            guard let s = streams[id] else { return count(nil, received: wire) }
+            count(s, received: wire)
             var bytes = rest
             if op == .zstdFrame || op == .zstdPacedFrame {
                 // Out of turn, or not what its encoder made: the
@@ -301,7 +323,10 @@ public final class Mux {
             if !ready.contains(where: { $0 === s }) { ready.append(s) }
             if !pumping { pumpBulk() }
         } else {
-            while let f = s.next() { sendOp(s.id, f.zstd ? .zstdFrame : .frame, f.bytes) }
+            while let f = s.next() {
+                sendOp(s.id, f.zstd ? .zstdFrame : .frame, f.bytes)
+                count(s, sent: f.bytes.count + 10)
+            }
             s.drainedIfEmpty()
         }
     }
@@ -355,6 +380,7 @@ public final class Mux {
     private func sendPaced(_ s: MuxStream, _ f: (bytes: Data, zstd: Bool)) {
         let frame = Self.opFrame(s.id, f.zstd ? .zstdPacedFrame : .pacedFrame, f.bytes)
         bulkSent &+= UInt64(frame.payload.count + 5)
+        count(s, sent: frame.payload.count + 5)
         marks.append((bulkSent, frame.payload.count + 5, Date(), bulkAcked, lastAckAt))
         connection.send(frame)
     }
@@ -464,6 +490,26 @@ public final class Mux {
         }
     }
 
+    /// What the link carries, by kind (from anywhere).
+    public var traffic: LinkTraffic {
+        onQueueNow {
+            let t = Date().timeIntervalSince1970
+            let window = LinkTraffic.rateWindow
+            let rate = meter.flow(over: window, before: t).mapValues { Flow(sent: $0.sent / window, received: $0.received / window) }
+            return LinkTraffic(rate: rate, lastMinute: meter.flow(over: 60, before: t), total: meter.total, since: since)
+        }
+    }
+
+    /// The streams open now, in the order they were opened (from anywhere).
+    public var openStreams: [StreamInfo] {
+        onQueueNow {
+            streams.values.sorted { $0.id < $1.id }.map {
+                StreamInfo(id: $0.id, purpose: $0.purpose, bulk: $0.bulk, urgent: $0.urgent, compresses: $0.compresses,
+                           opened: $0.opened, flow: $0.flow, queued: $0.queued, heldForCredit: $0.heldForCredit)
+            }
+        }
+    }
+
     /// Debugging: the pacing's state (from anywhere).
     public var debugPacing: String { onQueueNow { pacing } }
 
@@ -491,7 +537,12 @@ public final class ControlChannel: Channel {
     /// queue, which may be busy.
     public private(set) var arrived = Date()
     public var isClosed: Bool { mux?.onQueueNow { mux?.connection.isClosed ?? true } ?? true }
-    public func send(_ frame: Frame) { mux?.onQueue { [weak mux] in mux?.connection.send(frame) } }
+    public func send(_ frame: Frame) {
+        mux?.onQueue { [weak mux] in
+            mux?.countControl(frame)
+            mux?.connection.send(frame)
+        }
+    }
     public func close() { mux?.close() }
 
     fileprivate func deliver(_ frame: Frame) {
@@ -527,6 +578,11 @@ public final class MuxStream: Channel {
     public let urgent: Bool
     /// Its frames go compressed (both ends agreed when it opened).
     public let compresses: Bool
+    /// What it's for, as its opener said (the other end's: `other`).
+    public let purpose: StreamPurpose
+    public let opened = Date()
+    /// Its bytes as they went over the wire (on the mux's queue).
+    var flow = Flow()
     /// How much may wait to go before a producer is told to hold off
     /// (`wantsMore`): a terminal's is small, so one that falls behind is
     /// caught up with its screen, not left to drain what it missed.
@@ -573,8 +629,9 @@ public final class MuxStream: Channel {
     /// A stream's compressing let go of after this long without a frame.
     static var compressIdle: TimeInterval = 10
 
-    init(id: UInt32, bulk: Bool, urgent: Bool = false, compresses: Bool = false, mux: Mux) {
+    init(id: UInt32, bulk: Bool, urgent: Bool = false, compresses: Bool = false, mux: Mux, purpose: StreamPurpose = .other) {
         self.id = id
+        self.purpose = purpose
         self.bulk = bulk
         self.urgent = urgent
         self.compresses = compresses
@@ -724,6 +781,8 @@ public final class MuxStream: Channel {
     /// A frame goes while there's any window left (one bigger than the
     /// window still goes, alone).
     var hasNext: Bool { !outbox.isEmpty && window > 0 }
+    /// Frames wait for the other end's credit (on the queue).
+    var heldForCredit: Bool { !outbox.isEmpty && window <= 0 }
     /// The size of the frame that goes next, if one can.
     var nextSize: Int? { hasNext ? outbox[0].bytes.count : nil }
 

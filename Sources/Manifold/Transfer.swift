@@ -26,7 +26,7 @@ enum Transfer {
         guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
         let q = DispatchQueue(label: "manifold.upload")
         let finish = once(done)
-        let stream = mux.open(bulk: true, compress: true, callbackQueue: q)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: q, purpose: StreamPurpose(.file, "↑ " + remote))
         let source = TreeSource(stream, root: local.path)
         var result: String??
         var stopped = false
@@ -53,7 +53,7 @@ enum Transfer {
         guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
         let q = DispatchQueue(label: "manifold.download")
         let finish = once(done)
-        let stream = mux.open(bulk: true, compress: true, callbackQueue: q)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: q, purpose: StreamPurpose(.file, "↓ " + remote))
         let sink = TreeSink(stream, destination: local.path, replace: replace)
         var stopped = false
         sink.onProgress = { written, total in progress?(written, total) }
@@ -79,8 +79,8 @@ enum Transfer {
         guard let to = b.mux else { return failed(done, "\(b.host.raw) isn't connected") }
         let q = DispatchQueue(label: "manifold.relay")
         let finish = once(done)
-        let source = from.open(bulk: true, compress: true, callbackQueue: q)
-        let sink = to.open(bulk: true, compress: true, callbackQueue: q)
+        let source = from.open(bulk: true, compress: true, callbackQueue: q, purpose: StreamPurpose(.file, "↓ \(path), to \(b.host.raw)"))
+        let sink = to.open(bulk: true, compress: true, callbackQueue: q, purpose: StreamPurpose(.file, "↑ \(dest), from \(a.host.raw)"))
         // Credit back to the source only as the sink takes what it sent:
         // the slower link sets the pace, and nothing piles up here.
         source.manualCredit = true
@@ -137,7 +137,7 @@ enum Transfer {
         guard let mux = c.mux else { return failed(done, "\(c.host.raw) isn't connected") }
         let q = DispatchQueue(label: "manifold.copy")
         let finish = once(done)
-        let stream = mux.open(bulk: true, compress: true, callbackQueue: q)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: q, purpose: StreamPurpose(.file, "\(path) → \(dest)"))
         var result: String??
         var stopped = false
         stream.onFrame = { frame in
@@ -241,7 +241,7 @@ extension HostClient {
     func readFile(_ path: String, offset: Int64 = 0, length: Int64? = nil, limit: Int64? = nil,
                   onData: @escaping (Data) -> Void, done: @escaping (String?) -> Void) -> () -> Void {
         guard let mux else { done("not connected"); return {} }
-        let stream = mux.open(bulk: true, compress: true, callbackQueue: .main)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: .main, purpose: StreamPurpose(.file, "↓ " + path))
         var ended: String??
         stream.onFrame = { frame in
             if frame.kind == .data { return onData(frame.payload) }
@@ -257,7 +257,7 @@ extension HostClient {
     /// it; `done` (on the main thread) with why not, or where it went.
     func saveImage(_ data: Data, block: BlockID, name: String, folder: String?, done: @escaping (String?, String?) -> Void) {
         guard let mux else { return done("not connected", nil) }
-        let stream = mux.open(bulk: true, callbackQueue: .main)
+        let stream = mux.open(bulk: true, callbackQueue: .main, purpose: StreamPurpose(.file, "↑ " + name))
         var ended: (String?, String?)?
         var offset = 0, finished = false
         stream.onFrame = { frame in

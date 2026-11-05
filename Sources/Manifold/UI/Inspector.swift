@@ -144,9 +144,43 @@ final class InspectorList: NSView {
 
     func isOpen(_ id: String) -> Bool { open[id] ?? Self.openAtFirst.contains(id) }
 
+    /// The sections shown. The same rows as before with only their values
+    /// changed (a host's traffic, each second), they're changed in place —
+    /// the pointer's row, its tip, the scroll left as they are.
     func show(_ nodes: [OrgNode]) {
+        let same = Self.shape(nodes) == Self.shape(sections)
         sections = nodes
+        if same, !editing, !pendingRebuild, updateInPlace() { return }
         rebuild()
+    }
+
+    /// What rows there are, apart from their values: each section and the
+    /// label of each row, and what a row does.
+    private static func shape(_ nodes: [OrgNode]) -> [String] {
+        nodes.flatMap { s in
+            ["§" + s.id + (s.isGroup ? "" : "/" + s.detail)] + s.children.map {
+                "\($0.detail)|\($0.editable != nil)|\($0.adds != nil)|\($0.copies != nil)|\($0.block?.description ?? "")|\($0.action != nil)"
+            }
+        }
+    }
+
+    /// Each row given its new node, in the order they're shown; false if
+    /// what's shown isn't what the sections say (rebuilt, then).
+    private func updateInPlace() -> Bool {
+        var views = stack.subviews.makeIterator()
+        func next(_ node: OrgNode) -> Bool {
+            switch views.next() {
+            case let r as InspectorRow: r.update(node); return true
+            case is InspectorEditRow: return node.editable != nil
+            default: return false
+            }
+        }
+        for s in sections {
+            guard s.isGroup else { if !next(s) { return false }; continue }
+            guard views.next() is InspectorHeading else { return false }
+            if isOpen(s.id) { for r in s.children where !next(r) { return false } }
+        }
+        return views.next() == nil
     }
 
     private func toggle(_ id: String) {
@@ -306,7 +340,7 @@ private final class InspectorHeading: NSView {
 /// A row: its label (what it is, the part before an em dash) right-aligned
 /// in its column, a colon, its value; a row with no label its value across.
 private final class InspectorRow: NSView {
-    let node: OrgNode
+    private(set) var node: OrgNode
     private let onOpen: ((OrgNode) -> Void)?
     private let label: String
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
@@ -326,8 +360,21 @@ private final class InspectorRow: NSView {
         let words = node.detail.components(separatedBy: " — ").first ?? node.detail
         label = words.prefix(1).uppercased() + words.dropFirst()
         super.init(frame: .zero)
-        toolTip = node.tooltip ?? (label.isEmpty ? node.title : "\(label): \(node.title)")
-        if let copies = node.copies { toolTip = (toolTip ?? "") + "\nClick to copy: \(copies)" }
+        setTip()
+    }
+
+    private func setTip() {
+        var tip = node.tooltip ?? (label.isEmpty ? node.title : "\(label): \(node.title)")
+        if let copies = node.copies { tip += "\nClick to copy: \(copies)" }
+        if toolTip != tip { toolTip = tip }
+    }
+
+    /// The same row, its value now (its label, and what it does, as they were).
+    func update(_ new: OrgNode) {
+        let changed = new.title != node.title
+        node = new
+        setTip()
+        if changed { needsDisplay = true }
     }
 
     required init?(coder: NSCoder) { fatalError() }

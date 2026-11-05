@@ -4646,9 +4646,106 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             section("Environment", "host-environment", "dollarsign.square", env)
         }
 
+        // What its link carries, as this Mac sees it: bytes a second now, by
+        // what they're for; and each stream open on it. Kept up to date
+        // while it's shown (`inspectorIsLive`).
+        if let mux = c.mux {
+            inspectorIsLive = true
+            let (traffic, streams) = linkRows(mux, row)
+            section("Traffic", "host-traffic", "arrow.up.arrow.down", traffic)
+            section("Streams", "host-streams", "point.3.connected.trianglepath.dotted", streams)
+        }
+
         section("For Tools", "tools", "wrench.and.screwdriver", [row(c.host.raw, "host id", "number", copies: c.host.raw)])
         return sections
     }
+
+    /// A link's traffic (each way, now and lately, by what it's for) and
+    /// its streams (what each is for, how long it's been open, what it's
+    /// carried, whether it's held up), as inspector rows.
+    private func linkRows(_ mux: Mux, _ row: (String, String, String, String?) -> OrgNode) -> (traffic: [OrgNode], streams: [OrgNode]) {
+        func bytes(_ n: Int) -> String { Self.linkBytes.string(fromByteCount: Int64(n)) }
+        func rate(_ f: Flow) -> String { "↓ \(bytes(f.received))/s · ↑ \(bytes(f.sent))/s" }
+        func amount(_ f: Flow) -> String { "↓ \(bytes(f.received)) · ↑ \(bytes(f.sent))" }
+        /// A kind's label, for its traffic (many) or a stream of it.
+        func label(_ k: StreamPurpose.Kind, one: Bool = false) -> String {
+            switch k {
+            case .control: "state"
+            case .terminal: one ? "terminal" : "terminals"
+            case .replay: one ? "replay" : "replays"
+            case .file: one ? "file" : "files"
+            case .forward: one ? "forward" : "forwards"
+            case .page: one ? "page" : "pages"
+            case .other: "other"
+            }
+        }
+        func symbol(_ k: StreamPurpose.Kind) -> String {
+            switch k {
+            case .control: "arrow.triangle.2.circlepath"
+            case .terminal: "terminal"
+            case .replay: "clock.arrow.circlepath"
+            case .file: "doc"
+            case .forward: "arrow.left.arrow.right"
+            case .page: "globe"
+            case .other: "questionmark.circle"
+            }
+        }
+        let t = mux.traffic
+        var traffic: [OrgNode] = [row(rate(LinkTraffic.sum(t.rate)), "now", "speedometer", nil)]
+        // Each kind that carried anything in the last minute: its rate now,
+        // and the minute's bytes.
+        for k in StreamPurpose.Kind.allCases {
+            guard let minute = t.lastMinute[k] else { continue }
+            let n = row(rate(t.rate[k] ?? Flow()), label(k), symbol(k), nil)
+            n.tooltip = "\(k.noun.many.capitalized) now: \(rate(t.rate[k] ?? Flow()))\nIn the last minute: \(amount(minute))"
+                + "\nSince the link was made: \(amount(t.total[k] ?? Flow()))"
+            traffic.append(n)
+        }
+        traffic.append(row(amount(LinkTraffic.sum(t.lastMinute)), "last minute", "clock", nil))
+        let up = HostDashboard.duration(Date().timeIntervalSince(t.since))
+        traffic.append(row(amount(LinkTraffic.sum(t.total)) + " in \(up)", "since linked", "sum", nil))
+        let st = mux.stats
+        traffic.append(row("\(bytes(st.inFlight)) of \(bytes(st.budget))", "in flight", "paperplane", nil))
+
+        let open = mux.openStreams
+        var kinds: [StreamPurpose.Kind: Int] = [:]
+        for s in open { kinds[s.purpose.kind, default: 0] += 1 }
+        let held = kinds.sorted { $0.key < $1.key }.map { "\($0.value) \($0.value == 1 ? $0.key.noun.one : $0.key.noun.many)" }
+        var streams: [OrgNode] = [row("\(open.count)" + (held.isEmpty ? "" : ": " + held.joined(separator: ", ")), "open", "number", nil)]
+        // By kind, then oldest first; as many as are worth reading.
+        let now = Date()
+        let shown = 60
+        for s in open.sorted(by: { ($0.purpose.kind, $0.id) < ($1.purpose.kind, $1.id) }).prefix(shown) {
+            var what = s.purpose.detail
+            if let b = s.purpose.block, let block = hosts.block(b) { what = Self.linkTitle(block) }
+            if what.isEmpty { what = "stream \(s.id)" }
+            var parts = [what, HostDashboard.duration(now.timeIntervalSince(s.opened)), amount(s.flow)]
+            if s.heldForCredit { parts.append("held") } else if s.queued > 0 { parts.append("\(bytes(s.queued)) waiting") }
+            let n = row(parts.joined(separator: " · "), label(s.purpose.kind, one: true), symbol(s.purpose.kind), nil)
+            n.block = s.purpose.block
+            let pacing = s.urgent ? "paced, ahead of the others" : s.bulk ? "paced" : "not paced"
+            n.tooltip = "\(what)\nStream \(s.id): \(pacing)\(s.compresses ? ", compressed" : "")"
+                + "\nOpen \(HostDashboard.duration(now.timeIntervalSince(s.opened))), since \(Self.inspectorDate.string(from: s.opened))"
+                + "\nCarried \(amount(s.flow))"
+                + (s.heldForCredit ? "\nHeld: the other end hasn't taken what it was sent" : s.queued > 0 ? "\n\(bytes(s.queued)) waiting to go" : "")
+            streams.append(n)
+        }
+        if open.count > shown { streams.append(row("and \(open.count - shown) more", "", "ellipsis", nil)) }
+        return (traffic, streams)
+    }
+
+    /// Bytes as a link's rows say them: "0 bytes", not "Zero KB".
+    private static let linkBytes: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        f.allowsNonnumericFormatting = false
+        return f
+    }()
+
+    /// The inspector shows what changes by the second (a host's link): it's
+    /// shown again each second while it does.
+    private var inspectorIsLive = false
+    private var inspectorTick: DispatchWorkItem?
 
     private static let inspectorDate: DateFormatter = {
         let f = DateFormatter()
@@ -4668,10 +4765,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         inspectorWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let panel = self.inspector, panel.isVisible else { return }
+            self.inspectorIsLive = false
             let (nodes, open) = self.inspectorTree()
             _ = open
             panel.show(title: self.inspectorHeader.title, subtitle: self.inspectorHeader.subtitle, symbol: self.inspectorHeader.symbol,
                        tags: self.inspectorHeader.tags, nodes: nodes)
+            // Live: again in a second (one tick waiting at a time).
+            self.inspectorTick?.cancel()
+            guard self.inspectorIsLive else { return }
+            let tick = DispatchWorkItem { [weak self] in self?.refreshInspector(now: true) }
+            self.inspectorTick = tick
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: tick)
         }
         inspectorWork = work
         if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work) }

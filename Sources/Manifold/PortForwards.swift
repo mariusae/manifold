@@ -114,7 +114,7 @@ final class PortForwards {
         }
         // Its handlers on the main thread, where the connections here and
         // this bookkeeping are (the link's own queue would race them).
-        let stream = mux.open(bulk: true, callbackQueue: .main)
+        let stream = mux.open(bulk: true, callbackQueue: .main, purpose: StreamPurpose(.forward, "localhost:\(remote)"))
         stream.manualCredit = true
         stream.send(.message(ClientMessage.tunnel(port: remote)))
         c.start(queue: .main)

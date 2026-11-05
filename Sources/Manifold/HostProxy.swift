@@ -263,7 +263,7 @@ private final class ProxyConnection {
     /// said to the page, and the bytes piped once it's connected.
     func connect(through mux: Mux) {
         guard step == .asked, let request else { return }
-        let stream = mux.open(bulk: true, callbackQueue: .main)
+        let stream = mux.open(bulk: true, callbackQueue: .main, purpose: StreamPurpose(.page, "\(request.host):\(request.port)"))
         self.stream = stream
         stream.manualCredit = true
         stream.send(.message(ClientMessage.connect(host: request.host, port: request.port)))

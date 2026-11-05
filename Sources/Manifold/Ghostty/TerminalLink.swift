@@ -262,7 +262,7 @@ final class TerminalLink {
         }
         // Paced, ahead of files: a flood of output doesn't fill the link.
         // Compressed (where the link and the host's server take it).
-        let stream = mux.open(bulk: true, urgent: true, compress: true, callbackQueue: queue)
+        let stream = mux.open(bulk: true, urgent: true, compress: true, callbackQueue: queue, purpose: StreamPurpose(.terminal, block: block))
         stream.onFrame = { [weak self] frame in self?.received(frame) }
         stream.onClose = { [weak self, weak mux] in
             // Its connection closed with it: the link went, not the shell
@@ -390,7 +390,7 @@ final class TerminalLink {
 
     private func fill(_ gap: Gap) {
         guard let mux = client?.mux else { return }
-        let stream = mux.open(bulk: true, compress: true, callbackQueue: queue)
+        let stream = mux.open(bulk: true, compress: true, callbackQueue: queue, purpose: StreamPurpose(.replay, block: block))
         gap.stream = stream
         stream.onFrame = { [weak self, weak gap, weak stream] frame in
             // Not what an earlier asking (since given up) sends still.
