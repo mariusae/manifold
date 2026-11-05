@@ -1093,6 +1093,20 @@ enum DebugControl {
         case "peekat":
             // "peekat <line> <column>": a peek asked at the name there (from 1,
             // 0) in the focused editor; "peekat" alone, what the tip says.
+            // "peekat tip": a tip shown under the focused editor's caret, as
+            // a peek's; "peekat move": the pointer moved (an event through
+            // the app's queue, as the tip's watching sees one).
+            if arg == "tip", let e = wc?.debugFocusedEditor, let window = e.window {
+                let r = e.textView.caretRectInWindow(e.textView.primarySelection.head)
+                PeekTip.shared.show(NSAttributedString(string: "enum VCS : String, Codable, Sendable"), under: r, in: window)
+                return "shown"
+            }
+            if arg == "move", let window = wc?.window,
+               let ev = NSEvent.mouseEvent(with: .mouseMoved, location: NSPoint(x: 5, y: 5), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+                NSApp.postEvent(ev, atStart: false)
+                return "posted"
+            }
             let n = arg.split(separator: " ").compactMap { Int($0) }
             guard n.count == 2 else { return PeekTip.shared.isShown ? PeekTip.shared.shownText : "nothing shown" }
             guard let e = wc?.debugFocusedEditor else { return "no editor focused" }

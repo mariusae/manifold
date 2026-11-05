@@ -2667,12 +2667,25 @@ final class TextView: NSView, NSTextInputClient {
     /// The pointer over a link, or a name ⌘ shows as one: the pointing hand.
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
 
+    /// The pointer gone from the text (to another tile, out of the window):
+    /// no peek left behind.
+    override func mouseExited(with event: NSEvent) {
+        endPeek()
+        super.mouseExited(with: event)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { endPeek() }
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        guard isUnderPointer else { return }
+        // Something over it (a popup, another tile's): not a peek's place.
+        guard isUnderPointer else { return endPeek() }
         notePeek(at: convert(event.locationInWindow, from: nil), event: event)
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)

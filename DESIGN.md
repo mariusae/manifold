@@ -252,7 +252,11 @@ come: anchors in diffs (made again from their sources); indexers'
 settings per host (as language servers' are); notes in the margin.
 Peek (`PeekTip`) asks the language server's hover and the index at once,
 the index's answer shown first and the server's in its place when it
-comes. Pinned highlights (⌃⌘E) and the caret's tint are the one
+comes. The tip watches for its own going — the pointer off the name, a
+key or a button down, a scroll, its window no longer key — rather than
+leave it to the text it came from (which heard nothing once the pointer
+was over another tile, and the tip stayed till the app quit); it takes
+no clicks, they go through it. Pinned highlights (⌃⌘E) and the caret's tint are the one
 symbol's uses, as the language server highlights them
 (`documentHighlight`, `LSPRequest.highlights`) — a parameter's, not a
 property's spelled the same — asked again a moment after the text

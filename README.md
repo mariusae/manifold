@@ -1105,7 +1105,7 @@ around it, and comes back with its history.
 - **Reading code**: the pointer resting on a name shows what it is
   under it (peek): its definition's line and documentation, from the
   language server, else at once from the project's index, gone as the
-  pointer leaves. Code ▸ Highlight Uses (⌃⌘E) keeps a symbol's uses
+  pointer leaves the name (to anywhere), a key or a click. Code ▸ Highlight Uses (⌃⌘E) keeps a symbol's uses
   tinted in its own colour — four at once, again to unpin, Clear
   Highlights for all; the caret on a name tints its other uses in the
   file. Both are that symbol's uses as its language server knows them

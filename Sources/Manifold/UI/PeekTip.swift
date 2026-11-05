@@ -3,8 +3,11 @@ import AppKit
 /// What a name in code is, shown under it while the pointer rests there
 /// (peek): its definition's signature and documentation, as its language
 /// server or its project's index says them. One at a time, never taking
-/// the keyboard; gone as the pointer leaves the name, a key goes down or
-/// the text scrolls.
+/// the keyboard or the pointer (clicks go through it); gone as the pointer
+/// leaves the name, a key or a button goes down, anything scrolls, or its
+/// window stops being the key one — watched by the tip itself, not left to
+/// the text it came from to hear (the pointer gone to another tile, the
+/// text heard nothing, and it stayed till the app quit).
 final class PeekTip {
     static let shared = PeekTip()
 
@@ -26,6 +29,7 @@ final class PeekTip {
         panel.hasShadow = true
         panel.hidesOnDeactivate = true
         panel.animationBehavior = .none
+        panel.ignoresMouseEvents = true
         let box = NSView()
         Flat.float(box)
         text.isSelectable = false
@@ -57,12 +61,44 @@ final class PeekTip {
         }
         panel.orderFront(nil)
         isShown = true
+        watch(anchor, window)
     }
 
     func hide() {
+        unwatch()
         guard isShown else { return }
         isShown = false
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
+    }
+
+    private var monitor: Any?
+    private var resigned: NSObjectProtocol?
+
+    /// While shown: the pointer off the name (with a little slack), a key
+    /// or a button down, a scroll, or the window no longer key — put away.
+    private func watch(_ anchor: NSRect, _ window: NSWindow) {
+        unwatch()
+        let near = anchor.insetBy(dx: -4, dy: -4)
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .leftMouseDown, .rightMouseDown, .otherMouseDown,
+                                                              .keyDown, .scrollWheel, .mouseExited]) { [weak self] event in
+            switch event.type {
+            case .mouseMoved, .leftMouseDragged, .mouseExited:
+                if !near.contains(NSEvent.mouseLocation) { self?.hide() }
+            default:
+                self?.hide()
+            }
+            return event
+        }
+        resigned = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hide() }
+        }
+    }
+
+    private func unwatch() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        if let resigned { NotificationCenter.default.removeObserver(resigned) }
+        resigned = nil
     }
 }
