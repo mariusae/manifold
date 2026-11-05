@@ -1504,7 +1504,11 @@ host's terminals and agents (`ps`, from their shells), each block on a
 panel of its own, air between them: its summary card (§3.1) at the top,
 what it's doing beside what runs, and its processes on it, set in under
 the card's words. The cards are as full as lets every block and process
-fit in the tile: three lines, two, one, or the title alone. **Machine** is the
+fit in the tile: three lines, two, one, or the title alone. The CPU and
+Mem headers order the blocks by what all their processes take together,
+the most first (clicked again, the least), each tree by the same, siblings
+among siblings; Command puts them back as the host lists them; the order
+is kept with the tile. **Machine** is the
 whole machine, as btop shows it but drawn: CPU (busy and the kernel's
 part over five minutes, each core a cell deeper the busier, load, the
 processor and uptime), memory (used, cached and free as one bar, swap,

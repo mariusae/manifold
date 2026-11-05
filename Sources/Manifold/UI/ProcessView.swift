@@ -31,6 +31,10 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// The host's client, for the machine (it keeps the history).
     var client: () -> HostClient? = { nil }
     private var machineQuery = MachineQuery(limit: 150)
+    /// The blocks' order: by their processes' CPU or memory together
+    /// ("cpu", "memory"), the most first unless `ascending`; nil, as the
+    /// host lists them.
+    private var blockSort: (key: String, ascending: Bool)?
     private var machine: MachineSample?
     private var asked: Date?
     private let fieldBox = FlatFieldBox(fontSize: 12)
@@ -219,6 +223,10 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         timer = nil
         guard window != nil else { return }
         if !keeper.restored, keeper.value("mode") == Mode.machine.rawValue, mode != .machine { setMode(.machine, noting: false) }
+        if !keeper.restored, let k = keeper.value("blockSort"), k == "cpu" || k == "memory" {
+            blockSort = (k, keeper.value("blockSortAscending") == "1")
+            sortChanged()
+        }
         refresh()
         startTimer()
     }
@@ -310,6 +318,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             let id = c.identifier.rawValue
             var t = titles[id] ?? id
             if mode == .machine, key[machineQuery.sort] == id { t += machineQuery.ascending ? " ▴" : " ▾" }
+            if mode == .blocks, let b = blockSort, b.key == id { t += b.ascending ? " ▴" : " ▾" }
             c.headerCell.stringValue = t
         }
         table.headerView?.needsDisplay = true
@@ -318,7 +327,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// A header clicked, the machine's: sorted by it, the busiest (or the
     /// first by name) first; again, the other way.
     func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
-        guard mode == .machine else { return }
+        guard mode == .machine else { return blocksSorted(by: tableColumn.identifier.rawValue) }
         let sorts: [String: MachineQuery.Sort] = ["command": .name, "pid": .pid, "user": .user, "threads": .threads, "cpu": .cpu, "memory": .memory]
         guard let s = sorts[tableColumn.identifier.rawValue] else { return }
         if machineQuery.sort == s {
@@ -331,6 +340,27 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         asked = nil
         refresh()
     }
+
+    /// A header clicked, the blocks': CPU or memory orders the blocks by
+    /// what all their processes take together, the most first (again, the
+    /// other way), each one's tree by the same, siblings among siblings;
+    /// Command, back as the host lists them.
+    private func blocksSorted(by id: String) {
+        switch id {
+        case "cpu", "memory":
+            blockSort = blockSort?.key == id ? (id, !blockSort!.ascending) : (id, false)
+        case "command":
+            blockSort = nil
+        default:
+            return
+        }
+        keeper.note(["blockSort": blockSort?.key ?? "", "blockSortAscending": blockSort?.ascending == true ? "1" : "0"])
+        sortChanged()
+        refilter()
+    }
+
+    /// What a process takes, by the blocks' sort.
+    private func measure(_ e: ProcessEntry, _ key: String) -> Double { key == "cpu" ? e.cpu : Double(e.memory) }
 
     /// While the filter is being typed, the pill is out of its way.
     var caretRectInWindow: NSRect? {
@@ -372,6 +402,23 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         var rows: [Row] = []
         var seen: [BlockID] = []
         for e in all { if let b = e.block, !seen.contains(b) { seen.append(b) } }
+        // By what each block's processes take together (all of them, not
+        // only those the filter leaves), ties as listed.
+        func ordered(_ items: [ProcessEntry]) -> [ProcessEntry] {
+            guard let sort = blockSort else { return items }
+            return items.enumerated().sorted { a, b in
+                let x = measure(a.element, sort.key), y = measure(b.element, sort.key)
+                return x != y ? (sort.ascending ? x < y : x > y) : a.offset < b.offset
+            }.map(\.element)
+        }
+        if let sort = blockSort {
+            var total: [BlockID: Double] = [:]
+            for e in all { if let b = e.block { total[b, default: 0] += measure(e, sort.key) } }
+            seen = seen.enumerated().sorted { a, b in
+                let x = total[a.element] ?? 0, y = total[b.element] ?? 0
+                return x != y ? (sort.ascending ? x < y : x > y) : a.offset < b.offset
+            }.map(\.element)
+        }
         var count = 0
         for b in seen {
             let mine = matching.filter { $0.block == b }
@@ -381,7 +428,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             if q.isEmpty {
                 let pids = Set(mine.map(\.pid))
                 func walk(_ parent: Int32?, depth: Int) {
-                    for e in mine where (parent == nil ? !pids.contains(e.parent) : e.parent == parent) {
+                    for e in ordered(mine.filter { parent == nil ? !pids.contains($0.parent) : $0.parent == parent }) {
                         rows.append(.process(e, depth: depth))
                         count += 1
                         walk(e.pid, depth: depth + 1)
@@ -389,7 +436,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
                 }
                 walk(nil, depth: 0)
             } else {
-                for e in mine { rows.append(.process(e, depth: 0)); count += 1 }
+                for e in ordered(mine) { rows.append(.process(e, depth: 0)); count += 1 }
             }
             rows.append(.foot(b))
         }
@@ -606,16 +653,16 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
 
     /// Debugging: the mode, what's shown, the panels' state.
     var debugDescription_: String {
-        let rows = shown.prefix(8).map { r -> String in
+        let rows = shown.prefix(40).map { r -> String in
             switch r {
-            case let .group(b): "[\(blockTitle(b) ?? "?")]"
+            case let .group(b): "[\(blockTitle(b) ?? "?") \(b.ulid.suffix(4))]"
             case .foot: "–"
-            case let .process(e, d): String(repeating: " ", count: d) + e.command
+            case let .process(e, d): String(repeating: " ", count: d) + e.command + " cpu=\(e.cpu) mem=\(e.memory)"
             case let .machine(p): "\(p.pid) \(p.name) \(MachineWords.cpu(p.cpu)) \(MachineWords.memory(p.memory))"
             }
         }
         let m = machine.map { "cores=\($0.cores.count) cpu=\(MachineWords.percent($0.now.cpu)) mem=\(MachineWords.percent($0.memory.usedFraction)) disks=\($0.disks.map(\.mount)) procs=\($0.processCount) history=\(panels.history.count)" } ?? "no sample"
-        return "mode=\(mode.rawValue) \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height)) card-lines=\(cardLines)\n" + rows.joined(separator: "\n")
+        return "mode=\(mode.rawValue) sort=\(blockSort.map { "\($0.key)\($0.ascending ? "▴" : "▾")" } ?? "listed") \(m) panels=\(panels.isHidden ? "hidden" : panels.compact ? "compact" : "full") \(Int(panels.frame.height)) card-lines=\(cardLines)\n" + rows.joined(separator: "\n")
     }
     /// Each block on a panel of its own: its card at the top, its
     /// processes on it, a foot closing it.
