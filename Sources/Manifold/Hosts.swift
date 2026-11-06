@@ -520,7 +520,7 @@ final class Hosts {
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _):
             (client(of: block) ?? local).propose(proposal, done: done)
         // A project's said to its own host's client (`HostClient.propose`); here, this Mac's.
-        case .workspaces, .settings, .preferences, .environment, .indexAgents, .listFolder, .lookUpPaths, .listTree, .languages, .makeFolder, .movePath, .showRevision,
+        case .workspaces, .settings, .preferences, .environment, .indexAgents, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .movePath, .showRevision,
              .project, .unproject:
             local.propose(proposal, done: done)
         case let .seen(ids):

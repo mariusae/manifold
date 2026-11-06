@@ -163,7 +163,106 @@ final class TextView: NSView, NSTextInputClient {
     var gutterWidth: CGFloat {
         guard showsLineNumbers else { return 0 }
         let digits = max(2, String(max(text.lineCount, 1)).count)
-        return CGFloat(digits) * gutterDigitWidth + 26
+        return blameWidth + CGFloat(digits) * gutterDigitWidth + 26
+    }
+
+    // MARK: Blame
+
+    /// Each line's commit (blame), in a column of its own left of the line
+    /// numbers: a run of lines from one commit says its author and age on
+    /// its first line, shaded darker the newer it is (in lightness, not
+    /// hue); a line not committed says so. Nil: no column.
+    var blame: BlameLines? {
+        didSet {
+            blameAges = blame.map { b in
+                let ats = b.commits.map(\.at)
+                return (ats.min() ?? 0, ats.max() ?? 0)
+            }
+            invalidateAll()
+            resizeToFit()
+            needsDisplay = true
+        }
+    }
+    private var blameAges: (oldest: Double, newest: Double)?
+    /// A line's commit clicked in the blame column (its index in `blame`).
+    var onBlameClick: ((Int) -> Void)?
+    private var blameTipLine: Int?
+
+    var blameWidth: CGFloat { blame == nil ? 0 : (gutterDigitWidth * 22).rounded() }
+
+    /// A line's commit index (-1: not committed), nil past the blame's end.
+    private func blameIndex(_ n: Int) -> Int? {
+        guard let b = blame, n >= 0, n < b.lines.count else { return nil }
+        return b.lines[n]
+    }
+
+    /// How new a commit is, 0 (the oldest here) to 1 (the newest).
+    private func recency(_ i: Int) -> CGFloat {
+        guard let b = blame, b.commits.indices.contains(i), let a = blameAges, a.newest > a.oldest else { return 0.5 }
+        return CGFloat((b.commits[i].at - a.oldest) / (a.newest - a.oldest))
+    }
+
+    private func drawBlame(line n: Int, top lineTop: CGFloat, height: CGFloat, first: Int, font gutterFont: NSFont) {
+        guard blame != nil, let idx = blameIndex(n) else { return }
+        let x0 = Self.insets.left, w = blameWidth - 8
+        Theme.text.withAlphaComponent(idx < 0 ? 0.13 : 0.025 + 0.11 * recency(idx)).setFill()
+        NSRect(x: x0, y: lineTop, width: w, height: height).fill()
+        // Its run's first line, or the first one drawn: who, and when — a
+        // hairline over it where another run ends (two runs of one author
+        // and age read as one, else).
+        guard n == first || blameIndex(n - 1) != idx, let b = blame else { return }
+        if n > 0, n != first {
+            Theme.divider.setFill()
+            NSRect(x: x0, y: lineTop, width: w, height: 1).fill()
+        }
+        let words: String
+        if idx < 0 { words = "Not committed" } else {
+            let c = b.commits[idx]
+            words = "\(c.author.split(separator: " ").first.map(String.init) ?? c.author) · \(Age.short(Stamp(wall: Int64(c.at * 1000))))"
+        }
+        let s = NSAttributedString(string: words, attributes: [.font: gutterFont, .foregroundColor: idx < 0 ? Theme.secondaryText : gutterColor])
+        let size = s.size()
+        NSGraphicsContext.current?.saveGraphicsState()
+        NSBezierPath(rect: NSRect(x: x0, y: lineTop, width: w - 4, height: lineHeight)).addClip()
+        s.draw(at: NSPoint(x: x0 + 4, y: lineTop + (lineHeight - size.height) / 2))
+        NSGraphicsContext.current?.restoreGraphicsState()
+    }
+
+    /// The pointer over a line's blame: its commit, said under it.
+    private func blameHover(_ p: NSPoint) -> Bool {
+        guard blame != nil, p.x >= Self.insets.left, p.x < Self.insets.left + blameWidth else {
+            if blameTipLine != nil { blameTipLine = nil; PeekTip.shared.hide() }
+            return false
+        }
+        let n = line(atY: p.y)
+        guard n != blameTipLine, let idx = blameIndex(n), let b = blame, let window else { return true }
+        blameTipLine = n
+        let text: String
+        if idx < 0 { text = "Not committed: changed since the last commit" } else {
+            let c = b.commits[idx]
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            f.timeStyle = .short
+            text = "\(c.sha.prefix(12)) · \(c.author) · \(f.string(from: Date(timeIntervalSince1970: c.at)))" + (c.summary.isEmpty ? "" : "\n\(c.summary)") + "\nClick to see the file as it left it"
+        }
+        let r = NSRect(x: Self.insets.left, y: top(ofLine: n), width: blameWidth, height: lineHeight)
+        PeekTip.shared.show(NSAttributedString(string: text, attributes: [.font: UIType.detail, .foregroundColor: Theme.text]), under: convert(r, to: nil), in: window)
+        return true
+    }
+
+    /// Lines came or went at `firstLine` (an edit of ours): the blame kept
+    /// in step — what's typed isn't committed.
+    private func blameEdited(firstLine: Int, oldCount: Int, newCount: Int) {
+        guard var b = blame else { return }
+        let at = min(max(firstLine, 0), b.lines.count)
+        if newCount > oldCount {
+            b.lines.insert(contentsOf: Array(repeating: -1, count: newCount - oldCount), at: min(at + 1, b.lines.count))
+        } else if newCount < oldCount {
+            let drop = min(oldCount - newCount, max(b.lines.count - at - 1, 0))
+            if drop > 0 { b.lines.removeSubrange((at + 1)..<(at + 1 + drop)) }
+        }
+        if at < b.lines.count { b.lines[at] = -1 }
+        blame = b
     }
     /// Where the git marks are: between the line numbers and the text, as
     /// Xcode and VS Code have them — beside the lines they mark, not at
@@ -1207,7 +1306,8 @@ final class TextView: NSView, NSTextInputClient {
                 let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: gutterColor])
                 let size = s.size()
                 ctx.restoreGState()
-                s.draw(at: NSPoint(x: Self.insets.left + 2, y: lineTop + (lineHeight - size.height) / 2))
+                drawBlame(line: n, top: lineTop, height: CGFloat(max(l.rows.count, 1)) * lineHeight, first: first, font: gutterFont)
+                s.draw(at: NSPoint(x: Self.insets.left + blameWidth + 2, y: lineTop + (lineHeight - size.height) / 2))
                 ctx.saveGState()
                 ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }
@@ -1572,10 +1672,12 @@ final class TextView: NSView, NSTextInputClient {
                 rowCounts.removeSubrange(firstLine..<firstLine + drop)
             }
             invalidateRowStarts(after: firstLine)
+            blameEdited(firstLine: firstLine, oldCount: knownLineCount, newCount: newCount)
             knownLineCount = newCount
             fenceLines = nil
         } else if let e = edits.first {
             let n = text.line(at: e.start)
+            if blame != nil { blameEdited(firstLine: n, oldCount: 0, newCount: 0) }
             let was = layouts.removeValue(forKey: n)?.text
             if !markdown, docFont != nil, syntax != nil, [was ?? "", text.lineText(n)].contains(where: { $0.contains("```") || $0.contains("~~~") }) {
                 // A doc comment's fence came or went, maybe: the lines after
@@ -2513,6 +2615,11 @@ final class TextView: NSView, NSTextInputClient {
             folds.remove(at: i)
             return
         }
+        // A line's blame clicked: its commit, for the editor to show.
+        if blame != nil, p.x >= Self.insets.left, p.x < Self.insets.left + blameWidth {
+            if let i = blameIndex(line(atY: p.y)), i >= 0 { onBlameClick?(i) }
+            return
+        }
         // Pressed in the gutter: its line may be dragged out, as a
         // reference to what's there; let go without moving, a click.
         if event.clickCount == 1, gutterWidth > 0, p.x < textLeft, flags.isDisjoint(with: [.shift, .option, .command]) {
@@ -2700,6 +2807,8 @@ final class TextView: NSView, NSTextInputClient {
     override func mouseMoved(with event: NSEvent) {
         // Something over it (a popup, another tile's): not a peek's place.
         guard isUnderPointer else { return endPeek() }
+        // Over the blame: its commit, said; not a name's peek.
+        if blameHover(convert(event.locationInWindow, from: nil)) { return updateCursor() }
         notePeek(at: convert(event.locationInWindow, from: nil), event: event)
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
@@ -2758,6 +2867,20 @@ final class TextView: NSView, NSTextInputClient {
             menu.addItem(withTitle: "New Note from Selection", action: #selector(MainWindowController.newNoteFromSelection(_:)), keyEquivalent: "")
         }
         menu.addItem(withTitle: "Copy Link to This Line", action: #selector(MainWindowController.copyLinkToLine(_:)), keyEquivalent: "")
+        // The file's history and blame (an editor's, of a file).
+        var holder = superview
+        while let v = holder, !(v is EditorView) { holder = v.superview }
+        if let editor = holder as? EditorView, !editor.path.isEmpty {
+            menu.addItem(.separator())
+            let history = menu.addItem(withTitle: "History of This File", action: #selector(EditorView.showFileHistory(_:)), keyEquivalent: "y")
+            history.keyEquivalentModifierMask = [.command, .option]
+            history.target = editor
+            history.state = editor.fileHistory?.shown == true ? .on : .off
+            let blame = menu.addItem(withTitle: "Blame", action: #selector(EditorView.toggleBlame(_:)), keyEquivalent: "b")
+            blame.keyEquivalentModifierMask = [.command, .control]
+            blame.target = editor
+            blame.state = editor.blameShown ? .on : .off
+        }
         // An agent asked about the place (§2.5): what it makes comes back
         // into the graph, and shows here.
         menu.addItem(.separator())
@@ -3210,7 +3333,7 @@ extension TextView {
         let l = layout(line: n)
         if showsLineNumbers {
             let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78)), .foregroundColor: gutterColor])
-            s.draw(at: NSPoint(x: Self.insets.left + 2 + dx, y: top + (lineHeight - s.size().height) / 2))
+            s.draw(at: NSPoint(x: Self.insets.left + blameWidth + 2 + dx, y: top + (lineHeight - s.size().height) / 2))
         }
         guard let row = l.rows.first, !l.text.isEmpty else { return }
         ctx.saveGState()

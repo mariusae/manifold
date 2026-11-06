@@ -32,6 +32,10 @@ protocol EditorViewDelegate: AnyObject {
     func editorPlaces(_ view: EditorView) -> [TextView.Place]
     /// The editor asks the block's language server something.
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void)
+    /// A question about the file's history, for its host's version control.
+    func editor(_ view: EditorView, fileHistory request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void)
+    /// The file isn't in version control: its history in Manifold instead.
+    func editorShowsManifoldHistory(_ view: EditorView)
     /// The editor asks the host's SCIP index of its file's project (§2.5).
     func editor(_ view: EditorView, scip request: SCIPRequest, done: @escaping (SCIPResult) -> Void)
     /// Opens another file at a line and column (from 1), beside this one.
@@ -350,6 +354,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             status.frame = NSRect(x: 10, y: 3, width: bounds.width - 20, height: Self.statusHeight - 6)
             bottom = Self.statusHeight
         }
+        if historyStrip.superview === self {
+            historyStrip.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: HistoryStrip.height)
+            bottom += HistoryStrip.height
+        }
         // The outline at the left, a third of the tile at most.
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
@@ -399,6 +407,20 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// The definitions pinned over the text's top (§7.1).
     let pinned = PinnedDefinitions()
+
+    /// The file's history along its foot, when asked for (⌥⌘Y), and the
+    /// commit it shows (`EditorHistory`).
+    var fileHistory: FileHistoryState?
+    let historyStrip = HistoryStrip()
+    /// Each line's commit, in a column (⌃⌘B).
+    var blameShown = false
+    /// The latest of what was asked of the host for it: answers to older
+    /// ones (a knob dragged on) are let go.
+    var historyAsked = 0
+    /// Back in time: the text as a commit left it, read-only, in place.
+    var scrubbed: Bool { fileHistory?.position != nil }
+    /// That text, held here: the text view holds its document weakly.
+    var pastDocument: StaticDocument?
 
     /// What would be pinned over a line (from 0) scrolled to the top — the
     /// definitions it's in — so one gone to lands under them, not behind.
@@ -548,6 +570,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// selection and scroll position come back.
     func documentChanged() {
         guard let doc = document else { return }
+        // Back in time: the commit's text stays; caught up with on coming back.
+        if scrubbed { return }
         let external = doc.version != lastVersion && doc.version != textView.undoKnownVersion
         let versionChanged = doc.version != lastVersion
         lastVersion = doc.version
@@ -572,7 +596,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 DispatchQueue.main.async { [weak self] in self?.scroll(toTopLine: line) }
             }
         }
-        if external { textView.savedUndoDepth = textView.undoDepth }
+        if external {
+            textView.savedUndoDepth = textView.undoDepth
+            // Changed on disk (a checkout, a commit's rewrite): blame now asked again.
+            blameStale()
+        }
         textView.isEditable = !doc.unreadable && !offline && !viewing && isLoaded
         loadingMessage = isLoaded ? nil : "Reading the file…"
         note.set(isLoaded ? .idle : .busy("Reading…"))
@@ -591,12 +619,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// The host redid the block's git gutter.
     func gutterChanged() {
+        if scrubbed { return }
         let marks = delegate?.editorGutter(self) ?? []
         if marks != textView.gutterMarks { textView.gutterMarks = marks }
     }
 
     /// The language server said something new about the block.
     func diagnosticsChanged() {
+        if scrubbed { return }
         let items = delegate?.editorDiagnostics(self) ?? []
         if items != textView.diagnostics { textView.diagnostics = items }
         updateStatus()
@@ -1036,6 +1066,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             return isDirty || path.isEmpty
         case #selector(revertDocumentToSaved(_:)):
             return (isDirty || banner != nil) && !path.isEmpty
+        case #selector(toggleBlame(_:)):
+            item.state = blameShown ? .on : .off
+            return !path.isEmpty
+        case #selector(showFileHistory(_:)):
+            item.state = fileHistory?.shown == true ? .on : .off
+            return true
         case #selector(goToDefinition(_:)), #selector(findReferences(_:)), #selector(showDocumentation(_:)),
              #selector(renameSymbol(_:)), #selector(formatDocument(_:)), #selector(completeSymbol(_:)):
             return !path.isEmpty

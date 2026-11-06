@@ -8141,11 +8141,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var historyOf: BlockID?
 
     /// ⌥⌘Y: the focused file's history: its text at every change.
+    /// History of This File (⌥⌘Y) where no editor took it (an editor
+    /// shows its file's version control history itself, `EditorHistory`):
+    /// the text's history in Manifold, over the window.
     @objc func showFileHistory(_ sender: Any?) {
         guard history == nil else { return hideHistory() }
         guard let f = focusedShown, f.kind == .text else { return }
-        let block = f.placement.block
-        let placement = f.id
+        showManifoldHistory(f.placement.block, placement: f.id)
+    }
+
+    func editor(_ view: EditorView, fileHistory request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void) {
+        guard let c = hosts.client(view.block.host) else { return done(.error("the host isn't attached")) }
+        c.fileHistory(request, done: done)
+    }
+
+    /// An editor's file in no repository: its history in Manifold.
+    func editorShowsManifoldHistory(_ view: EditorView) {
+        guard history == nil else { return }
+        showManifoldHistory(view.block, placement: view.placement)
+    }
+
+    private func showManifoldHistory(_ block: BlockID, placement: PlacementID) {
         let h = makeHistory()
         h.font = hosts.state.appearance.theme.font(hosts.state.appearance.editorFont, size: hosts.state.appearance.theme.editorSize(hosts.state.appearance.editorFont))
         h.onRestoreText = { [weak self] text in self?.restore(block, toText: text) }

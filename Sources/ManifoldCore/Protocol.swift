@@ -240,6 +240,9 @@ public enum Proposal: Codable, Sendable {
     /// A project's languages as GitHub counts them (`Linguist`, §2.6),
     /// answered with `languages`.
     case languages(path: String)
+    /// A file's history as its version control has it (its commits, the
+    /// file as one left it, blame), answered with `fileHistory`.
+    case fileHistory(FileHistoryRequest)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
     /// A file as a revision (a commit, a tree) has it, as a block of its own
@@ -622,6 +625,7 @@ public enum ServerMessage: Codable, Sendable {
     case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
     /// A project's languages, most first (nil: it can't be read).
     case languages(id: Int, [Linguist.Count]?)
+    case fileHistory(id: Int, FileHistoryResult)
     /// What `lookUpPaths` asked, path by path, in order (nil: nothing
     /// there); fewer than asked when the host ran out of time looking.
     case pathKinds(id: Int, [PathKind?])

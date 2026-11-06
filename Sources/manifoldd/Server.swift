@@ -107,7 +107,7 @@ final class Server {
     private let scip: SCIPService
     private let searches: Searches
     private let mentions: Mentions
-    private let git: Git
+    let git: Git
     /// The machine's readings, kept as history (§7.5).
     private let machine = MachineSampler()
     /// The host's ssh agent link (§8.6).
@@ -1043,6 +1043,8 @@ final class Server {
                     conn.send(.message(ServerMessage.languages(id: id, counts)))
                 }
             }
+        case let .fileHistory(request):
+            fileHistory(request) { result in conn.send(.message(ServerMessage.fileHistory(id: id, result))) }
         case let .captureTurn(block, agent, turn):
             writeTurn(block, agent: agent, turn: turn)
             done(node.block(block) == nil ? "no such turn" : nil)

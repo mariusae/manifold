@@ -1488,10 +1488,24 @@ around it, and comes back with its history.
   a reload shows exactly what you left. The block keeps what it was last
   left at through each lens too, so a tile made for it again (recalled
   after it was closed, brought to another space) starts there.
-- **History of This File…** (⌥⌘Y) scrubs the focused file through every change it's had
-  in Manifold: Restore This Text puts a version back (one undoable edit);
-  Compare with Now opens a diff block of then against now. Open This
-  Version opens the text as it was then as a block of its own, beside.
+- **History of This File** (⌥⌘Y, File ▸ Source Control, or an editor's
+  right-click) — for a file in git or Sapling, a strip along the editor's
+  foot: each commit that changed it a tick (renames followed), the
+  oldest at the left, the file as it is at the right end. Click or drag
+  to one, or step with the arrows (`[` and `]` while back in time): the
+  text as that commit left it, read-only, in place, on a tinted page — a
+  past version, not the file as it is — what that commit changed marked
+  in the gutter, and the view kept on the same lines as it goes back and
+  forth. Now (or ⎋) comes back. **Blame** (⌃⌘B, the same places): each
+  line's commit in a column beside the line numbers — its author and age
+  on a run's first line, shaded darker the newer it is, a line not yet
+  committed (edits not saved too) said so; the pointer on one says the
+  commit, a click goes back to it. Blame follows the strip: as of the
+  commit shown. For a file in no repository, ⌥⌘Y scrubs it through every
+  change it's had in Manifold: Restore This Text puts a version back (one
+  undoable edit); Compare with Now opens a diff block of then against
+  now. Open This Version opens the text as it was then as a block of its
+  own, beside.
 - **Web pages** open in an embedded browser when a URL is ⌘-clicked in a
   terminal, typed in Open Quickly, or made with File ▸ New Web Page: the page
   has the whole tile, its bar has the address (click it, or ⌘L — Go to

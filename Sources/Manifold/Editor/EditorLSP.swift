@@ -315,6 +315,16 @@ extension EditorView {
 extension EditorView {
     func textView(_ view: TextView, handle event: NSEvent) -> Bool {
         if handleCompletionKey(event) { return true }
+        // Back in time (read-only): [ and ] a commit older or newer, ⎋ the
+        // history closed, back to now.
+        if scrubbed, event.modifierFlags.intersection([.command, .shift, .option, .control]).isEmpty {
+            switch event.charactersIgnoringModifiers {
+            case "[": olderRevision(nil); return true
+            case "]": newerRevision(nil); return true
+            case "\u{1b}": closeFileHistory(); return true
+            default: break
+            }
+        }
         // ⌃G: Go to Line, as code editors have it (⌘L too) — editing or
         // viewing. Here, not the menu's: a terminal keeps its ⌃G.
         if event.modifierFlags.intersection([.command, .shift, .option, .control]) == .control,

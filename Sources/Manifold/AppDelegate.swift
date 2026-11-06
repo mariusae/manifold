@@ -282,6 +282,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "")
         item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
         item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
+        // Each line's commit, in a column beside the line numbers.
+        item(source, "Blame", #selector(EditorView.toggleBlame(_:)), "b", [.command, .control])
         let sourceItem = NSMenuItem(title: "Source Control", action: nil, keyEquivalent: "")
         sourceItem.submenu = source
         file.addItem(sourceItem)

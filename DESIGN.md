@@ -1963,6 +1963,18 @@ a new one started there by its bridge) notes the old one deleted.
 
 ---
 
+A file's version-control history (`fileHistory`) is the host's to read:
+the commits that changed it (`git log --follow`, `sl log --follow`, a
+page of 200 at a time, each with the file's name then), the file as one
+left it, and blame as of one (`git blame --porcelain`, `sl annotate
+-Tjson -c -u -d`) — always of a commit; blame now is the last commit's,
+carried onto the text as it is in the editor by a line diff
+(`FileHistory.carry`), what differs not committed: the same for git and
+Sapling, edits not saved included, and kept in step with each edit
+until the file changes on disk. An editor shows a commit's text in
+place, read-only (a `StaticDocument` it holds — the text view holds its
+document weakly), the line at the top carried through the difference.
+
 ### 8.5 As built, in short
 
 Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:

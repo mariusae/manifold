@@ -408,6 +408,22 @@ enum DebugControl {
             let h = arg.isEmpty ? wc.hosts.local.host : HostID(arg)
             wc.hosts.deleteSession(h)
             return "asked \(h.raw)"
+        case "filehistory":
+            // "filehistory": the focused editor's history (⌥⌘Y) and what it
+            // shows; "filehistory go <i>|now|older|newer|blame|close|click <line>".
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            let w = arg.split(separator: " ").map(String.init)
+            switch w.first {
+            case "open": e.showFileHistory(nil)
+            case "go": if let i = w.dropFirst().first.flatMap({ Int($0) }) { e.goToRevision(i) }
+            case "now": e.goToRevision(nil)
+            case "older": e.olderRevision(nil)
+            case "newer": e.newerRevision(nil)
+            case "blame": e.toggleBlame(nil)
+            case "close": e.closeFileHistory()
+            default: break
+            }
+            return e.debugHistory
         case "findin":
             // "findin <query>": the focused tile searched (⌘F), as its pill does; "findin next".
             guard let s = wc?.debugFocusedView as? Searchable else { return "not searchable" }

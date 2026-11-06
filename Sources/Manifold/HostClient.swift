@@ -564,6 +564,16 @@ final class HostClient {
     }
     private var pendingLanguages: [Int: ([Linguist.Count]?) -> Void] = [:]
 
+    /// A file's history, as the host's version control has it.
+    func fileHistory(_ request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void) {
+        guard conn != nil else { return done(.error("not attached")) }
+        let id = nextProposal
+        nextProposal += 1
+        pendingFileHistory[id] = done
+        conn?.send(.message(ClientMessage.propose(id: id, .fileHistory(request))))
+    }
+    private var pendingFileHistory: [Int: (FileHistoryResult) -> Void] = [:]
+
     private func list(_ proposal: Proposal, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
         guard conn != nil else { return done(nil, false) }
         let id = nextProposal
@@ -1345,6 +1355,8 @@ final class HostClient {
             pendingListings.removeValue(forKey: id)?(entries, complete)
         case let .languages(id, counts):
             pendingLanguages.removeValue(forKey: id)?(counts)
+        case let .fileHistory(id, result):
+            pendingFileHistory.removeValue(forKey: id)?(result)
         case let .pathKinds(id, kinds):
             pendingLookUps.removeValue(forKey: id)?(kinds)
         case let .machine(id, sample):
