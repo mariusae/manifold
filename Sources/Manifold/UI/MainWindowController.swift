@@ -5876,6 +5876,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // or heading there, kept as the text moves — not the line's number.
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
         Drags.localHost = host.host
+        // A view waiting on another host says how much has come from it.
+        BusyNote.link = { [weak self] h in
+            guard let self, let c = self.hosts.client(h), c.isRemote else { return nil }
+            return (self.hosts.label(of: h), c.bytesIn)
+        }
         // Another host's file dropped in the Finder: fetched there, shown
         // going in the transfers as a folder's download is.
         Drags.fetch = { [weak self] f, url, done in

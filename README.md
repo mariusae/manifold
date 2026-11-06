@@ -1829,7 +1829,9 @@ is migrated into logs on first run.
   being listed, a file being read (in its editor or preview), a
   repository's status, the processes, a search match's file, a terminal
   being reached each show a spinner and "Reading…" (or "Connecting…") where
-  their contents will be; a subfolder opened in a listing, "Reading…" at its
+  their contents will be — on another host, once much has come, a bar
+  going and how much ("Reading from devbox — 12 MB"); a diff, "Comparing…"
+  so; a page loading, a line along its top as far as it's got; a subfolder opened in a listing, "Reading…" at its
   foot; a folder that's empty, hidden-files-only, missing or unreadable
   says which, rather than showing nothing. A click that waits for a host
   to make something (a command's output, a turn, a version, a notebook,

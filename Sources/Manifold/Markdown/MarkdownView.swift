@@ -137,6 +137,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         }
         addSubview(scrubber)
         addSubview(note)
+        note.host = block.host
         // The note's outline (its headings and top-level items, as its
         // editor and outline have it): an entry gone to by its line.
         headingsOutline.onPick = { [weak self] i in

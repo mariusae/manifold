@@ -128,6 +128,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         scroll.drawsBackground = false
         addSubview(scroll)
         addSubview(note)
+        note.host = block.host
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         documentChanged()
     }

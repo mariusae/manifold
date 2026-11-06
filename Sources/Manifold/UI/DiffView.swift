@@ -31,6 +31,9 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
+    /// While its host compares (and sends what it found): said in the
+    /// middle, a moment on — with how much has come, from another host.
+    private let waiting = BusyNote()
     private let scroll = ClippingScrollView()
     private let rowsView = DiffRowsView()
     fileprivate var printableRows: [DiffRow] { rowsView.rows }
@@ -65,6 +68,8 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         note.alignment = .right
         addSubview(header)
         addSubview(note)
+        waiting.host = block.host
+        addSubview(waiting)
         rowsView.font = theme.font(.monospaced, size: 12)
         rowsView.onFold = { [weak self] in
             self?.unfolded = true
@@ -130,6 +135,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             top -= h
         }
         scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: top)
+        waiting.frame = scroll.frame
         rowsView.minWidth = scroll.contentSize.width
         rowsView.relayout()
         finder.layout(in: bounds)
@@ -141,15 +147,23 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }
 
     func documentChanged() {
-        guard let b = source(), let d = b.diff else { return }
+        guard let b = source() else { return waiting.set(.busy("Comparing…")) }
+        let d = b.diff
+        // Waiting until it's compared (or said why not).
+        waiting.set(d?.loadedAt == nil && d?.error == nil ? .busy("Comparing…") : .idle)
+        guard let d else { return }
         header.stringValue = b.displayTitle
         guard d.loadedAt != loadedAt else { return }
         loadedAt = d.loadedAt
         rebuild()
     }
 
+    /// Debugging: how long the last rebuild's steps took.
+    static var debugTiming = "none"
+
     private func rebuild() {
         guard let b = source(), let d = b.diff else { return }
+        let t0 = CACurrentMediaTime()
         var rows: [DiffRow] = []
         if let e = d.error {
             note.stringValue = e
@@ -177,16 +191,21 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         } else if let old = d.oldText, let new = d.newText {
             rows = DiffRows.sides(old: old, new: new, unfolded: unfolded)
         } else {
-            note.stringValue = d.loadedAt == nil ? "Reading…" : ""
+            note.stringValue = ""
         }
+        waiting.set(d.loadedAt == nil && d.error == nil ? .busy("Comparing…") : .idle)
         if d.error == nil, d.loadedAt != nil {
             let added = rows.filter { $0.kind == .added }.count, removed = rows.filter { $0.kind == .removed }.count
             note.stringValue = added + removed == 0 ? "No difference" : "+\(added) −\(removed)"
         }
+        let t1 = CACurrentMediaTime()
         rowsView.rows = rows
         rowsView.relayout()
+        let t2 = CACurrentMediaTime()
         if d.loadedAt != nil { restoreState() }
         fillOutline()
+        let t3 = CACurrentMediaTime()
+        Self.debugTiming = String(format: "%d rows: rows %.0f ms, layout %.0f ms, outline %.0f ms", rows.count, (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000)
     }
 
     // MARK: The outline (§7.5)

@@ -140,6 +140,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         addSubview(scroll)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         addSubview(split)
+        preview.host = block.host
         preview.read = { [weak self] path, done in
             guard let self, let d = self.delegate else { return done(nil) }
             d.searchView(self, read: path, done: done)

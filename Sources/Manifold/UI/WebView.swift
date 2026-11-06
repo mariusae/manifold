@@ -65,6 +65,9 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     /// Why a page couldn't be opened (a name not found, nothing listening),
     /// in its place until the next goes — not a blank page.
     private let failure = BusyNote()
+    /// How far the page has loaded, as a thin line along its top while it
+    /// loads (as Safari's address bar fills) — a slow page seen coming.
+    private let loadLine = NSView()
     fileprivate var webForPrinting: WKWebView { web }
 
     /// A picture of the page as it is now, when it's ready (for a card).
@@ -145,6 +148,9 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         watching.append(web.observe(\.title, options: []) { [weak self] _, _ in
             DispatchQueue.main.async { self?.titleChanged() }
         })
+        // How far it's loaded, for the line along its top.
+        watching.append(web.observe(\.estimatedProgress, options: []) { [weak self] _, _ in DispatchQueue.main.async { self?.showLoading() } })
+        watching.append(web.observe(\.isLoading, options: []) { [weak self] _, _ in DispatchQueue.main.async { self?.showLoading() } })
         web.allowsBackForwardNavigationGestures = true
         // Nothing is dropped on a page: WebKit takes no part in drags.
         web.unregisterDraggedTypes()
@@ -172,7 +178,29 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         }
         web.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height)
         failure.frame = web.frame
+        placeLoadLine()
         finder.layout(in: web.frame)
+    }
+
+    /// The load line, as the page loads: there while it loads, as long as
+    /// how far it's got; gone once it has.
+    private func showLoading() {
+        if loadLine.superview == nil {
+            loadLine.wantsLayer = true
+            loadLine.layer?.backgroundColor = Theme.accent.cgColor
+            addSubview(loadLine, positioned: .above, relativeTo: nil)
+        }
+        loadLine.isHidden = !web.isLoading || web.estimatedProgress >= 1
+        placeLoadLine()
+    }
+
+    private func placeLoadLine() {
+        let f = web.frame
+        let w = (f.width * CGFloat(max(0.05, min(1, web.estimatedProgress)))).rounded()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            loadLine.animator().frame = NSRect(x: f.minX, y: f.maxY - 2, width: w, height: 2)
+        }
     }
 
     // MARK: The outline (§7.5)

@@ -246,6 +246,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         footer.isHidden = true
         addSubview(footer)
         addSubview(note)
+        note.host = block.host
         readme.isHidden = true
         readme.onToggle = { [weak self] in self?.toggleReadme() }
         readme.onResize = { [weak self] height, done in

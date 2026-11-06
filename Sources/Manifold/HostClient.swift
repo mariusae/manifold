@@ -65,6 +65,9 @@ final class HostClient {
     /// Bytes from the host on the connection being made, before it has
     /// answered in full.
     private var received = 0
+    /// What has come over its links, in all: for a view waiting on the
+    /// host to say how much of what it waits for has come.
+    private(set) var bytesIn: Int64 = 0
     /// How far the step has got, of how much, where it can say.
     private var stepProgress: (done: Int, total: Int)?
 
@@ -1157,6 +1160,7 @@ final class HostClient {
         received = 0
         connection.onRead = { [weak self] n in
             DispatchQueue.main.async {
+                self?.bytesIn += Int64(n)
                 guard let self, self.link == .connecting else { return }
                 if self.received == 0 { self.begin("Receiving the host's state") }
                 self.received += n

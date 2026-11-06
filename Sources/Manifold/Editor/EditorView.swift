@@ -123,6 +123,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         addSubview(scrubber)
         addSubview(note)
+        note.host = block.host
         // The definitions the top of the text is in, pinned over it.
         pinned.textView = textView
         pinned.isHidden = true

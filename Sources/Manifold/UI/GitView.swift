@@ -112,6 +112,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         scroll.drawsBackground = false
         listBox.addSubview(scroll)
         listBox.addSubview(note)
+        note.host = block.host
         paneNote.font = UIType.body
         paneNote.textColor = Theme.secondaryText
         paneNote.alignment = .center
