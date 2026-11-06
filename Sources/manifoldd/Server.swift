@@ -2280,10 +2280,15 @@ final class Server {
             if let cwd = a.terminal?.cwd { append(.cwd(cwd), to: .block(block)) }
             append(.link(Link(from: agent, to: block, kind: .opened, at: clock.now(), context: "turn \(id)")), to: .links(host))
         }
-        var md = "# " + firstLine.replacingOccurrences(of: "#", with: "") + "\n\n"
+        // Who, and how long; then what was asked, as it was typed — a
+        // quote in the text's own size, not a title the size of a page's
+        // (the tile's bar names it already).
         let took = t.ended.map { " · took " + Self.duration(Double($0.wall - t.began.wall) / 1000) } ?? " · still working"
-        md += "*\(t.agent) · \(a.displayTitle)\(took)*\n\n"
-        md += "## Asked\n\n" + t.prompt + "\n\n"
+        var md = "*\(t.agent) · \(a.displayTitle)\(took)*\n\n"
+        let asked = t.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !asked.isEmpty {
+            md += asked.split(separator: "\n", omittingEmptySubsequences: false).map { $0.isEmpty ? ">" : "> " + $0 }.joined(separator: "\n") + "\n\n"
+        }
         var did = ""
         if let path = t.transcript, let done = TurnTranscript.render(path: path, prompt: t.prompt), !done.isEmpty {
             did = done
