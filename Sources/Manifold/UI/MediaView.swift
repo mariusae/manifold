@@ -258,7 +258,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         // The image block as a thing (§3.11): a note shows it, not a copy.
         let item = Drags.block?(block, [.shift]) ?? NSPasteboardItem()
         if let tiff = image.tiffRepresentation { item.setData(tiff, forType: .tiff) }
-        let drag = NSDraggingItem(pasteboardWriter: item)
+        let drag = NSDraggingItem(pasteboardWriter: Drags.writer(item) ?? item)
         let size = NSSize(width: min(image.size.width, 160), height: min(image.size.width, 160) * image.size.height / max(image.size.width, 1))
         let at = convert(event.locationInWindow, from: nil)
         drag.setDraggingFrame(NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height), contents: image)

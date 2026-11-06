@@ -375,7 +375,7 @@ final class LinkBadge: NSView {
     private func drag(_ block: BlockID, from view: NSView, _ event: NSEvent) {
         hidePreview()
         guard let item = Drags.block?(block, event.modifierFlags) else { return }
-        let drag = NSDraggingItem(pasteboardWriter: item)
+        let drag = NSDraggingItem(pasteboardWriter: Drags.writer(item) ?? item)
         let picture = NSImage(size: view.bounds.size)
         if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
             view.cacheDisplay(in: view.bounds, to: rep)

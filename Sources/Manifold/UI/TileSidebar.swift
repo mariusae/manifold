@@ -17,7 +17,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     var onPageChange: ((Page) -> Void)?
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        rows.indices.contains(row) ? outline.dragItem(rows[row]) : nil
+        Drags.writer(rows.indices.contains(row) ? outline.dragItem(rows[row]) : nil)
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
@@ -332,7 +332,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     /// Debugging: rows chosen together, and what dragging them writes.
     func debugChoose(_ picks: [Int]) -> String {
         table.selectRowIndexes(IndexSet(picks.filter(rows.indices.contains)), byExtendingSelection: false)
-        let writers = table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) as? NSPasteboardItem }
+        let writers = table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0).map(Drags.plain) as? NSPasteboardItem }
         return writers.map { $0.string(forType: .string) ?? "?" }.joined(separator: "\n")
     }
 

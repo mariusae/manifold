@@ -1909,7 +1909,14 @@ final class GridView: NSView, NSDraggingSource {
             }
             pathDrag = false
         }
-        let dragItem = NSDraggingItem(pasteboardWriter: item)
+        // Another host's file or folder: promised, as its folder's rows are —
+        // the Finder gets it, fetched when it's dropped. (In Manifold the
+        // item goes on as it was: a tile moved, or a thing, from host to host.)
+        var writer: NSPasteboardWriting = item
+        if let b = shown?.block, let path = b.path, b.id.host != delegate?.gridLocalHost {
+            writer = Drags.promise(of: .init(host: b.id.host, path: path, isDirectory: b.kind == .directory), carrying: item) ?? item
+        }
+        let dragItem = NSDraggingItem(pasteboardWriter: writer)
         let image = BlockDragImage.make(for: shown)
         let p = view.convert(event.locationInWindow, from: nil)
         dragItem.setDraggingFrame(NSRect(x: p.x - 24, y: p.y - image.size.height / 2, width: image.size.width,

@@ -205,6 +205,10 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
 
     /// A symbol, a line dragged out: its file at its line; a file, the file.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        Drags.writer(rowItem(row))
+    }
+
+    private func rowItem(_ row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row), case let .found(f) = rows[row] else { return nil }
         switch f {
         case let .symbol(h): return Drags.file(h.path, isDirectory: false, on: host, fragment: "line=\(h.line + 1)")

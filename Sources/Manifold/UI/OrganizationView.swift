@@ -868,7 +868,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         let mods = NSEvent.modifierFlags
         if mods.contains(.shift) {
             pathDrag = true
-            return delegate?.organizationPathItem(for: block, modifiers: mods)
+            return Drags.writer(delegate?.organizationPathItem(for: block, modifiers: mods))
         }
         pathDrag = false
         let pb = NSPasteboardItem()

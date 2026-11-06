@@ -421,7 +421,7 @@ final class GraphCanvas: NSView, NSDraggingSource {
         guard let p = pressed, hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4,
               let writer = Drags.block?(p.id, [.shift]), let r = rect(of: p.id) else { return }
         pressed = nil
-        let item = NSDraggingItem(pasteboardWriter: writer)
+        let item = NSDraggingItem(pasteboardWriter: Drags.writer(writer) ?? writer)
         item.setDraggingFrame(r, contents: nil)
         let session = beginDraggingSession(with: [item], event: event, source: self)
         DragPill.dress(session, from: self, at: NSEvent.mouseLocation)

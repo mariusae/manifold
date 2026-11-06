@@ -973,7 +973,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             else { let a = actions[c.action]; run = a }
             let drag: (() -> NSPasteboardWriting?)?
             if let id = c.block { drag = { Drags.block?(id, Drags.modifiers) } }
-            else if let path = c.path, c.action < 0 { drag = { Drags.file(path, isDirectory: false, on: Drags.localHost) } }
+            // On its own host (a file found on another, not this Mac's).
+            else if let path = c.path, c.action < 0 { let host = c.host ?? Drags.localHost; drag = { Drags.file(path, isDirectory: false, on: host) } }
             else { drag = nil }
             return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
         }
@@ -1057,7 +1058,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        shown.indices.contains(row) ? shown[row].drag?() : nil
+        Drags.writer(shown.indices.contains(row) ? shown[row].drag?() : nil)
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {

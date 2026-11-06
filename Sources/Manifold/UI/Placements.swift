@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
 import ManifoldCore
 
@@ -365,6 +366,38 @@ enum Drags {
 
     static var modifiers: NSEvent.ModifierFlags { NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags }
 
+    /// Another host's file (or folder) fetched to `url` on this Mac — a
+    /// promise kept, once it's dropped in the Finder; `done` with what went
+    /// wrong. Given by the window.
+    static var fetch: ((_ file: DragThing.File, _ to: URL, _ done: @escaping (String?) -> Void) -> Void)?
+
+    /// What a drag writes, out of what a source made: a file on another
+    /// host's, a promise of it — carrying the item too, for drops in
+    /// Manifold — so the Finder (or Mail) gets the file, fetched when it's
+    /// dropped; anything else as it is. Only for drags: a promise can't be
+    /// pasted (the clipboard takes the item, `plain`).
+    static func writer(_ w: NSPasteboardWriting?) -> NSPasteboardWriting? {
+        guard let item = w as? NSPasteboardItem, let data = item.data(forType: .manifoldThing),
+              let t = try? JSONDecoder().decode(DragThing.self, from: data), let f = t.file else { return w }
+        return promise(of: f, carrying: item) ?? item
+    }
+
+    /// A promise of another host's file, carrying `item`; nil for this Mac's.
+    static func promise(of f: DragThing.File, carrying item: NSPasteboardItem) -> NSPasteboardWriting? {
+        guard f.host != localHost, fetch != nil else { return nil }
+        let name = (f.path as NSString).lastPathComponent
+        let type = f.isDirectory ? UTType.folder : (UTType(filenameExtension: (name as NSString).pathExtension) ?? .data)
+        let p = HostFilePromise(fileType: type.identifier, delegate: HostFilePromise.keeper)
+        p.userInfo = f
+        p.extra = item
+        return p
+    }
+
+    /// What's put on the clipboard of a drag's writer: a promise's item.
+    static func plain(_ w: NSPasteboardWriting) -> NSPasteboardWriting {
+        (w as? HostFilePromise)?.extra ?? w
+    }
+
     /// A block's address on the clipboard, a place in it if given
     /// ("line=12", "page=3", "command=7"). Given by the window.
     static var copyLink: ((_ block: BlockID, _ fragment: String?) -> Void)?
@@ -419,5 +452,44 @@ enum PageSelection {
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
             NotificationCenter.default.post(name: .manifoldSelectionMade, object: view())
         }
+    }
+}
+
+/// A promise of another host's file or folder, as the Finder takes one,
+/// carrying the drag's own item too (its path, its block) for drops in
+/// Manifold. Fetched from the host when it's dropped (`Drags.fetch`).
+final class HostFilePromise: NSFilePromiseProvider {
+    var extra: NSPasteboardItem?
+
+    override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        super.writableTypes(for: pasteboard) + (extra?.types ?? [])
+    }
+
+    override func writingOptions(forType type: NSPasteboard.PasteboardType, pasteboard: NSPasteboard) -> NSPasteboard.WritingOptions {
+        extra?.types.contains(type) == true ? [] : super.writingOptions(forType: type, pasteboard: pasteboard)
+    }
+
+    override func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        if let extra, extra.types.contains(type) { return extra.string(forType: type) ?? extra.data(forType: type) }
+        return super.pasteboardPropertyList(forType: type)
+    }
+
+    static let keeper = Keeper()
+
+    /// Names the file, and fetches it when it's asked for.
+    final class Keeper: NSObject, NSFilePromiseProviderDelegate {
+        func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+            ((provider.userInfo as? DragThing.File)?.path as NSString?)?.lastPathComponent ?? "file"
+        }
+
+        func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL, completionHandler: @escaping (Error?) -> Void) {
+            guard let f = provider.userInfo as? DragThing.File, let fetch = Drags.fetch else { return completionHandler(CocoaError(.fileWriteUnknown)) }
+            fetch(f, url) { error in
+                completionHandler(error.map { NSError(domain: "Manifold", code: 1, userInfo: [NSLocalizedDescriptionKey: $0]) })
+            }
+        }
+
+        /// Fetched on the main queue, where the host's answers come.
+        func operationQueue(for provider: NSFilePromiseProvider) -> OperationQueue { .main }
     }
 }

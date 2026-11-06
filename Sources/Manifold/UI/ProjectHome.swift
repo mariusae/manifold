@@ -478,7 +478,7 @@ final class HomeRow: NSView, NSDraggingSource {
         guard !writers.isEmpty else { return }
         dragged = true
         let items = writers.map { w -> NSDraggingItem in
-            let item = NSDraggingItem(pasteboardWriter: w)
+            let item = NSDraggingItem(pasteboardWriter: Drags.writer(w) ?? w)
             item.setDraggingFrame(bounds, contents: nil)
             return item
         }

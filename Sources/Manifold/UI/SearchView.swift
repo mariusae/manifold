@@ -448,6 +448,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     /// A file or a hit dragged out: the file, as a folder's entry is.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        Drags.writer(rowItem(row))
+    }
+
+    private func rowItem(_ row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
         case let .file(path, _): return Drags.file(path, isDirectory: false, on: block.host)

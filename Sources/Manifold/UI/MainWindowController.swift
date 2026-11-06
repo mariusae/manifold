@@ -5786,6 +5786,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // or heading there, kept as the text moves — not the line's number.
         Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
         Drags.localHost = host.host
+        // Another host's file dropped in the Finder: fetched there, shown
+        // going in the transfers as a folder's download is.
+        Drags.fetch = { [weak self] f, url, done in
+            guard let self, let c = self.hosts.client(f.host) else { return done("the host isn't attached") }
+            let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(self.hosts.label(of: f.host)) to \(url.deletingLastPathComponent().lastPathComponent)",
+                                            symbol: "arrow.down") { progress, finished in
+                Transfer.download(f.path, on: c, to: url, progress: progress, done: finished)
+            } then: { error in done(error) }
+            item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
+        }
         MarkdownStyle.placeName = { [weak self] id, anchor in self?.hosts.block(id)?.anchors?[anchor].map(Anchoring.name(of:)) }
         Drags.selection = { [weak self] id, range, text in
             guard let self, let b = self.hosts.block(id), let wanted = Anchoring.anchor(range: range, of: b),

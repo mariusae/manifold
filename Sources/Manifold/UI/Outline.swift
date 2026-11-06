@@ -658,7 +658,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         guard !dragged, let start = pressedAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4,
               let writer = row.drag?(event.modifierFlags) else { return }
         dragged = true
-        let item = NSDraggingItem(pasteboardWriter: writer)
+        let item = NSDraggingItem(pasteboardWriter: Drags.writer(writer) ?? writer)
         let image = bitmapImageRepForCachingDisplay(in: bounds).map { rep -> NSImage in
             cacheDisplay(in: bounds, to: rep)
             let i = NSImage(size: bounds.size)

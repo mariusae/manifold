@@ -471,6 +471,10 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     /// A change dragged out: its file, as a folder's entry is; a commit,
     /// the commit (its diff, its sha). Each row chosen, if it's one of them.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        Drags.writer(rowItem(row))
+    }
+
+    private func rowItem(_ row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row) else { return nil }
         switch rows[row] {
         case let .change(entry): return Drags.file(root + "/" + entry.path, isDirectory: false, on: block.host)
