@@ -555,6 +555,9 @@ around it, and comes back with its history.
   focused tile, ⇧↩ in a new column, ⌘↩ below it and linked, ⌥↩ over it;
   and `mani new <kind> [what]` reads the same words in a shell. One
   table of kinds makes all three, so none is missing from one of them.
+  It makes spaces too (**New Space**, one row for each connected host),
+  and a kind typed is offered on every host (`t` lists New Terminal,
+  then New Terminal on devbox); `@devbox` in what's typed picks the host.
 - **The Mac's own keys** mean what they do in every Mac app, beside
   Manifold's: ⌘K is a terminal's Clear Screen and, in a note, Link… (as
   in Notes, Pages and Mail; one item, named for what's focused); ⌥⎋ (or

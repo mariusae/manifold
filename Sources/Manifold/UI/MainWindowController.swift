@@ -2464,24 +2464,59 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌘↩ below it and linked, ⌥↩ over it.
     @objc func newBlockPicker(_ sender: Any?) {
         let provider: (String) -> [FinderItem] = { [weak self] query in
-            let (word, what) = BlockKinds.parse(query)
-            return BlockKinds.matching(word).map { k in
-                let with = k.what == nil ? nil : what
-                let key = k.key.map { "⌥⌘" + $0.uppercased() } ?? ""
-                let then = k.what.map { with == nil ? "then: \($0)" : "" } ?? ""
-                return FinderItem(symbol: k.symbol, title: "New " + k.title + (with.map { " — " + $0 } ?? ""), detail: k.help,
-                                  note: [key, then].filter { !$0.isEmpty }.joined(separator: " · "),
-                                  run: { [weak self] in self?.makeFromPicker(k, with) })
+            guard let self else { return [] }
+            // "@devbox" anywhere: made on that host (a connected one whose
+            // label starts so); else on the focused tile's.
+            let words = query.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+            let named = words.first { $0.hasPrefix("@") }.map { String($0.dropFirst()).lowercased() }
+            let rest = words.filter { !$0.hasPrefix("@") }.joined(separator: " ")
+            let here = self.focusedHost
+            let connected = self.hosts.all.filter { $0.link == .connected }.map(\.host)
+            // The focused tile's host first, then this Mac, then the rest.
+            let ordered = [here] + ([self.host.host] + connected).filter { $0 != here }
+            var seen = Set<HostID>()
+            let all = ordered.filter { connected.contains($0) || $0 == self.host.host }.filter { seen.insert($0).inserted }
+            let picked = named.map { n in all.filter { self.hosts.label(of: $0).lowercased().hasPrefix(n) } }
+            let (word, what) = BlockKinds.parse(rest)
+            // A kind typed: on every host (the focused tile's first); nothing
+            // typed, each kind once, on the focused tile's.
+            let kindHosts = picked ?? (word.isEmpty ? [here] : all)
+            let on = { (h: HostID) in h == here && picked == nil ? "" : " on " + self.hosts.label(of: h) }
+            var items: [FinderItem] = []
+            for k in BlockKinds.matching(word) {
+                for h in kindHosts {
+                    let with = k.what == nil ? nil : what
+                    let key = h == here ? k.key.map { "⌥⌘" + $0.uppercased() } ?? "" : ""
+                    let then = k.what.map { with == nil ? "then: \($0)" : "" } ?? ""
+                    items.append(FinderItem(symbol: k.symbol, title: "New " + k.title + on(h) + (with.map { " — " + $0 } ?? ""), detail: k.help,
+                                            note: [key, then].filter { !$0.isEmpty }.joined(separator: " · "),
+                                            run: { [weak self] in self?.makeFromPicker(k, with, on: h) }))
+                }
             }
+            // A space, on any host: its terminal in the focused folder, on
+            // the focused tile's host; at home elsewhere.
+            let w = word.lowercased()
+            if w.isEmpty || ["space", "workspace"].contains(where: { $0.hasPrefix(w) }) {
+                for h in picked ?? all {
+                    items.append(FinderItem(symbol: "plus.rectangle.on.rectangle", title: "New Space" + (h == here && picked == nil ? "" : " on " + self.hosts.label(of: h)),
+                                            detail: "a space of its own, with a terminal", note: h == here ? "⌘T" : "",
+                                            run: { [weak self] in
+                        guard let self else { return }
+                        self.newWorkspace(on: h, cwd: h == here ? self.focusedCwd : nil)
+                    }))
+                }
+            }
+            return items
         }
         finder.showOutline(Finder.OutlineScope(provider: provider, start: nil,
-                                               placeholder: "New block: its letter or name, then what it takes — w example.com",
+                                               placeholder: "New block or space: its letter or name, then what it takes — w example.com; @host for another",
                                                hint: "Make a block", keys: "↩ Here    ⇧↩ New Column    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"),
                            over: window)
     }
 
-    private func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?) {
+    private func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?, on h: HostID? = nil) {
         let f = arrangement?.focused
+        let h = h ?? focusedHost
         // ⇧↩ alone: a new column, as ⇧ with ⌥⌘ and a kind's letter.
         let event = NSApp.currentEvent
         let newColumn = event?.type == .keyDown && (event?.keyCode == 36 || event?.keyCode == 76)
@@ -2494,7 +2529,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if newColumn { place = .beside }
         do {
             let from = focusedShown?.block
-            let made = try makeBlock(kind, what: what, cwd: focusedCwd, on: focusedHost)
+            // The focused folder, on its own host; another's home.
+            let made = try makeBlock(kind, what: what, cwd: h == focusedHost ? focusedCwd : nil, on: h)
             // A note is about what was focused, as ⌥⌘N's is.
             if kind.name == "note", let b = from, b.kind != .arrangement { hosts.link(from: b.id, to: made.block, kind: .linked, context: "new note") }
             if made.later { showWhenMade(made.block, lens: made.lens, place: place, what: "the " + kind.title.lowercased()) }
