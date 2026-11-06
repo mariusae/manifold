@@ -133,6 +133,7 @@ final class ProjectStrip: NSView {
         }
         let (symbol, words, tip, again) = Self.indexWords(f)
         index.symbolName = symbol
+        index.spins = f.indexMissing == nil && f.index?.state == .indexing
         index.title = words
         index.toolTip = tip
         reindexes = again
@@ -140,27 +141,38 @@ final class ProjectStrip: NSView {
     }
 
     /// The index's chip: its symbol, words, tip, and whether a click
-    /// indexes it again.
+    /// indexes it again. The tip says all of how it stands — state, by
+    /// what, when, where, why it failed — whatever the chip had room for.
     static func indexWords(_ f: ProjectFacts) -> (String, String, String?, Bool) {
-        if let missing = f.indexMissing { return ("minus.circle", "No index", missing.prefix(1).uppercased() + missing.dropFirst(), false) }
-        guard let s = f.index else { return ("circle.dashed", "Index…", nil, false) }
+        if let missing = f.indexMissing {
+            return ("minus.circle", "No index", "No index: " + missing.prefix(1).lowercased() + missing.dropFirst(), false)
+        }
+        guard let s = f.index else { return ("circle.dashed", "Index…", "Asking the host how its index stands…", false) }
         let by = s.indexer.map { " · \($0)" } ?? ""
+        let with = s.indexer.map { " with the \($0) indexer" } ?? ""
+        let whenMade = s.at.map { $0.formatted(date: .abbreviated, time: .shortened) }
+        let place = s.root.map { "\n" + ($0 as NSString).abbreviatingWithTildeInPath } ?? ""
         switch s.state {
-        case .none: return ("circle.dashed", "Not indexed — Index", "Make its index (SCIP)\(s.indexer.map { ", with the \($0) indexer" } ?? "")", true)
-        case .indexing: return ("arrow.triangle.2.circlepath", "Indexing…" + by, nil, false)
+        case .none:
+            return ("circle.dashed", "Not indexed — Index", "Not indexed\(place)\n\nClick to make its index (SCIP)\(with)", true)
+        case .indexing:
+            return ("arrow.triangle.2.circlepath", "Indexing…" + by, "Indexing\(with)…\(place)" + (whenMade.map { "\n\nThe last index was made \($0)" } ?? ""), false)
         case .current:
             let when = s.at.map { Age.short(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? ""
             let indexed = "Indexed" + (when.isEmpty ? "" : when == "now" ? " just now" : " \(when) ago") + by
+            let made = "Indexed\(with)" + (whenMade.map { ", \($0)" } ?? "") + place
             // Behind its code: said, and a click makes it again.
             if let n = s.changed, n > 0 {
                 return ("exclamationmark.arrow.circlepath", indexed + " · \(n) file\(n == 1 ? "" : "s") changed since",
-                        "\(n) code file\(n == 1 ? " has" : "s have") changed since the index was made: what it finds may be out of date. Click to index again", true)
+                        made + "\n\n\(n) code file\(n == 1 ? " has" : "s have") changed since: what it finds may be out of date.\n\nClick to index again", true)
             }
-            return ("checkmark.circle", indexed, "Index again", true)
+            return ("checkmark.circle", indexed, made + "\n\nClick to index again", true)
         case .failed:
             // Why, in the chip; all it said, in its tip.
             let why = s.reason.map { ": " + ($0.count > 70 ? String($0.prefix(68)) + "…" : $0) } ?? ""
-            return ("exclamationmark.triangle", "Indexing failed" + by + why, (s.message ?? "") + "\n\nClick to index again", true)
+            let said = (s.message?.isEmpty == false ? s.message! : s.reason) ?? "The indexer said nothing."
+            return ("exclamationmark.triangle", "Indexing failed" + by + why,
+                    "Indexing failed\(with)" + place + "\n\n" + said + (whenMade.map { "\n\nThe last index was made \($0)" } ?? "") + "\n\nClick to index again", true)
         }
     }
 
@@ -181,7 +193,7 @@ final class ProjectStrip: NSView {
     }
 
     var debugState: String {
-        [branch, changes, index].filter { !$0.isHidden }.map(\.title).joined(separator: " | ")
+        [branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }.joined(separator: " | ")
     }
 }
 

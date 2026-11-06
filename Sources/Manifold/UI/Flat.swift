@@ -219,7 +219,16 @@ final class FlatButton: NSButton {
     private let toggles: Bool
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
     /// The symbol before the words (or alone, with none).
-    var symbolName: String? { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
+    var symbolName: String? { didSet { invalidateIntrinsicContentSize(); needsDisplay = true; needsLayout = true } }
+    /// The symbol turning, round and round (work under way: indexing).
+    var spins = false { didSet { if spins != oldValue { needsDisplay = true; needsLayout = true } } }
+    /// The turning symbol, a view of its own (as the system turns one).
+    private var spinner: Spinner?
+    private final class Spinner: NSImageView {
+        var name = ""
+        /// Clicks go to the button.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
 
     init(_ title: String, symbol: String? = nil, style: Style = .normal, toggles: Bool = false, font: NSFont = UIType.body,
          target: AnyObject? = nil, action: Selector? = nil) {
@@ -228,6 +237,7 @@ final class FlatButton: NSButton {
         super.init(frame: NSRect(x: 0, y: 0, width: 60, height: Flat.buttonHeight))
         setButtonType(toggles ? .pushOnPushOff : .momentaryPushIn)
         isBordered = false
+        clipsToBounds = true
         self.title = title
         self.font = font
         symbolName = symbol
@@ -268,6 +278,50 @@ final class FlatButton: NSButton {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
 
+    /// Where the symbol goes, and where the words begin: centered
+    /// together, or — given less room than they take — from the left, the
+    /// words cut short with an ellipsis (never spilling onto what's beside).
+    private func placed() -> (symbol: NSRect?, textX: CGFloat) {
+        let ts = label.size()
+        let image = symbol
+        let iw = image.map { $0.size.width + (title.isEmpty ? 0 : 5) } ?? 0
+        let x = max(((bounds.width - ceil(ts.width) - iw) / 2).rounded(), title.isEmpty ? 6 : 10)
+        guard let image else { return (nil, x) }
+        let ir = NSRect(x: x, y: ((bounds.height - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
+        return (ir, x + iw)
+    }
+
+    override func layout() {
+        super.layout()
+        guard spins, let name = symbolName, let r = placed().symbol else {
+            spinner?.removeFromSuperview()
+            spinner = nil
+            return
+        }
+        let v = spinner ?? Spinner()
+        if spinner == nil {
+            v.imageScaling = .scaleNone
+            addSubview(v)
+            spinner = v
+        }
+        let size = (font?.pointSize ?? 12) - 1
+        if v.name != name {
+            v.name = name
+            v.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: size, weight: .medium))
+            v.removeAllSymbolEffects()
+            v.addSymbolEffect(.rotate.clockwise, options: .repeat(.continuous))
+        }
+        v.contentTintColor = ink
+        v.alphaValue = isEnabled ? 1 : 0.4
+        v.frame = r
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        spinner?.contentTintColor = ink
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let ctx = NSGraphicsContext.current?.cgContext
         ctx?.saveGState()
@@ -288,18 +342,22 @@ final class FlatButton: NSButton {
             (on ? EdgeColor.accentSoft : Flat.line).setStroke()
             path.stroke()
         }
-        // The symbol and the words, centered together.
+        // The symbol and the words, centered together (a turning symbol,
+        // its own view's).
         let text = label
         let ts = text.size()
-        let image = symbol?.tinted(ink)
-        let iw = image.map { $0.size.width + (title.isEmpty ? 0 : 5) } ?? 0
-        var x = ((bounds.width - ceil(ts.width) - iw) / 2).rounded()
-        if let image {
-            let ir = NSRect(x: x, y: ((bounds.height - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
+        let (ir, x) = placed()
+        if let ir, !spins, let image = symbol?.tinted(ink) {
             image.draw(in: ir, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            x += iw
         }
-        text.draw(at: NSPoint(x: x, y: ((bounds.height - ts.height) / 2).rounded()))
+        let room = NSRect(x: x, y: ((bounds.height - ts.height) / 2).rounded(), width: max(0, bounds.width - x - (title.isEmpty ? 6 : 10)), height: ts.height)
+        if room.width >= ceil(ts.width) { text.draw(at: room.origin) } else {
+            let cut = NSMutableAttributedString(attributedString: text)
+            let p = NSMutableParagraphStyle()
+            p.lineBreakMode = .byTruncatingTail
+            cut.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: cut.length))
+            cut.draw(in: room)
+        }
     }
 }
 
