@@ -2706,11 +2706,11 @@ final class TextView: NSView, NSTextInputClient {
         let over = target != nil
         let at = convert(event.locationInWindow, from: nil)
         let chip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
-        if over != overLink || chip != overChip {
-            overLink = over
-            overChip = chip
-            updateCursor()
-        }
+        overLink = over
+        overChip = chip
+        // Set on every move, not only when it changes: come from a line
+        // between tiles, or from under a popup, it was left as theirs.
+        updateCursor()
     }
 
     override func cursorUpdate(with event: NSEvent) {

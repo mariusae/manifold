@@ -1572,12 +1572,22 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// Moved over the terminal — not over something covering it (the
     /// sidebar floating out), which would have it show a link's hand.
-    override func mouseMoved(with event: NSEvent) { if isUnderPointer { sendMousePos(event) } }
+    // Its cursor set again as the pointer moves over it, not only when the
+    // terminal changes its shape: come from a line between tiles (resizing),
+    // the shape unchanged, it was left as the line's.
+    override func mouseMoved(with event: NSEvent) {
+        guard isUnderPointer else { return }
+        sendMousePos(event)
+        if window?.isKeyWindow == true { cursor.set() }
+    }
     override func mouseDragged(with event: NSEvent) { if pendingLink == nil { sendMousePos(event) } }
     override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
     override func otherMouseDragged(with event: NSEvent) { sendMousePos(event) }
 
-    override func mouseEntered(with event: NSEvent) { sendMousePos(event) }
+    override func mouseEntered(with event: NSEvent) {
+        sendMousePos(event)
+        if isUnderPointer, window?.isKeyWindow == true { cursor.set() }
+    }
 
     override func mouseExited(with event: NSEvent) {
         guard let surface, NSEvent.pressedMouseButtons == 0 else { return }

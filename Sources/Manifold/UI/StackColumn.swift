@@ -431,8 +431,14 @@ final class StackColumnView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect], owner: self))
     }
+
+    /// Over the cards, the pointing hand: each is a place to click — set on
+    /// every move too, as what's under the column (a terminal, a text)
+    /// hears the pointer's moves through it and would set its own.
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
+    override func mouseEntered(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     private func card(at windowPoint: NSPoint) -> Int? {
         let p = document.convert(windowPoint, from: nil)
@@ -441,6 +447,7 @@ final class StackColumnView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         guard !isClosing else { return }
+        NSCursor.pointingHand.set()
         if !followsPointer {
             // From ⌃⇥: the pointer moved over the cards is the pointer wanted.
             guard let seen = pointerSeenAt else { pointerSeenAt = event.locationInWindow; return }
