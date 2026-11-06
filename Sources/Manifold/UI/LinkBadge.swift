@@ -393,6 +393,12 @@ final class LinkBadge: NSView {
 
     /// Debugging: the fan, as the pointer resting on the stack would open it.
     func debugFan(_ open: Bool) { fanned = open; layoutSubtreeIfNeeded() }
+    /// Where the nth face's middle is, in the window.
+    func debugChipCenter(_ n: Int) -> NSPoint? {
+        guard chips.indices.contains(n), !chips[n].isHidden else { return nil }
+        let f = chips[n].convert(chips[n].bounds, to: nil)
+        return NSPoint(x: f.midX, y: f.midY)
+    }
     var debugTitles: [String] {
         let one = cards.prefix(fanned ? singles : chips.count).map { ($0.outbound ? "→ " : "← ") + $0.title }
         return overflow ? one + ["[stack of \(cards.count - singles)]"] : one

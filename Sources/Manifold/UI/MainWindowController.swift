@@ -1710,9 +1710,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     func debugSwitcherHover(_ i: Int) -> String { content.debugSwitcherHover(i) }
     var debugSheetTargets: String { content.debugSheetTargets }
-    func debugFollowLink(toPlacementEndingIn suffix: String) -> String {
+    func debugFollowLink(toPlacementEndingIn suffix: String, modifiers: NSEvent.ModifierFlags = []) -> String {
         guard let a = arrangement, let f = a.focused, let t = a.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return "no \(suffix)" }
-        gridOpenLink(t.block, from: f, modifiers: [])
+        gridOpenLink(t.block, from: f, modifiers: modifiers)
         return debugStack(swap: false)
     }
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
@@ -1743,6 +1743,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func debugBadge(_ arg: String) -> String {
+        // "badge on <placement suffix> …": that tile's badge, not the focused one's.
+        let w = arg.split(separator: " ", maxSplits: 2).map(String.init)
+        if w.first == "on", w.count > 1, let p = arrangement?.placements.first(where: { $0.id.hasSuffix(w[1]) }) {
+            return content.debugBadge(p.id, w.count > 2 ? w[2] : "")
+        }
         guard let f = arrangement?.focused else { return "nothing focused" }
         return content.debugBadge(f, arg)
     }

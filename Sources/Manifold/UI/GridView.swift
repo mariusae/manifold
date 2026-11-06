@@ -659,6 +659,18 @@ final class GridView: NSView, NSDraggingSource {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
         }
         if words.first == "preview", let n = words.dropFirst().first.flatMap({ Int($0) }) { return b.debugPreview(n) }
+        // "badge click n": the nth face clicked, as the pointer does — a
+        // press and a release posted at its middle, hit-tested by the window.
+        if words.first == "click", let n = words.dropFirst().first.flatMap({ Int($0) }), let window, let p = b.debugChipCenter(n) {
+            let hit = window.contentView?.hitTest(window.contentView!.convert(p, from: nil))
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+                    NSApp.postEvent(e, atStart: false)
+                }
+            }
+            return "clicked at \(Int(p.x)) \(Int(p.y)), over \(hit.map { String(describing: type(of: $0)) } ?? "nothing")"
+        }
         if arg == "fanned" { return "badge \(NSStringFromRect(b.frame)): " + b.debugGeometry + " · bar's fan edge \(pills[placement]?.fanEdge.map { "\(Int($0))" } ?? "none")" }
         if words.first == "scrub", let f = words.dropFirst().first.flatMap({ Double($0) }) { return b.debugScrub(CGFloat(f)) }
         return b.debugTitles.joined(separator: " | ") + " (sheets \(folded) folded)"

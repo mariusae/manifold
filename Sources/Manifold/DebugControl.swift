@@ -484,7 +484,8 @@ enum DebugControl {
             let a = arg.split(separator: " ").map(String.init)
             // "stack golink <placement suffix>": that tile's block followed
             // from the focused tile's links, as a badge's link clicked.
-            if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1]) }
+            // ("stack golink <suffix> over": ⌥-clicked, shown over the focused tile.)
+            if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1], modifiers: a.dropFirst(2).first == "over" ? .option : a.dropFirst(2).first == "beside" ? .command : []) }
             // "stack sheets": where each stack's sheets take a click.
             if a.first == "sheets" { return wc.debugSheetTargets }
             // "stack sheetclick [drag]": the first stack's sheets clicked, or dragged.
