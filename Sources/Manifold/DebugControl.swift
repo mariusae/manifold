@@ -408,6 +408,15 @@ enum DebugControl {
             let h = arg.isEmpty ? wc.hosts.local.host : HostID(arg)
             wc.hosts.deleteSession(h)
             return "asked \(h.raw)"
+        case "findin":
+            // "findin <query>": the focused tile searched (⌘F), as its pill does; "findin next".
+            guard let s = wc?.debugFocusedView as? Searchable else { return "not searchable" }
+            if arg == "next" { s.findNext(forward: true); return "next" }
+            var said = "?"
+            s.search(arg, caseSensitive: false) { n in said = n.map(String.init) ?? "nil" }
+            return "found \(said)"
+        case "difftiming":
+            return DiffView.debugTiming
         case "newpicker":
             // ⌘N's picker opened; "wsoutline <query>" then types in it.
             wc?.newBlockPicker(nil)

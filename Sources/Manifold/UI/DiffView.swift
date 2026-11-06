@@ -308,6 +308,8 @@ final class DiffRowsView: NSView {
     /// Rows found (⌘F), by index into `rows`, and the one gone to.
     var found: Set<Int> = [] { didSet { foundLines = Dictionary(found.map { ($0 < rowLines.count ? rowLines[$0] : $0, $0) }, uniquingKeysWith: { a, _ in a }); needsDisplay = true } }
     var current: Int? { didSet { currentLine = current.map { $0 < rowLines.count ? rowLines[$0] : $0 }; needsDisplay = true } }
+    /// What's looked for, so each match is marked where it is in its row.
+    var query: (text: String, options: String.CompareOptions)? { didSet { needsDisplay = true } }
     /// The same, by line on screen, side by side.
     private var foundLines: [Int: Int] = [:]
     private var currentLine: Int?
@@ -375,7 +377,40 @@ final class DiffRowsView: NSView {
     }
 
     static let foundBackground = NSColor.themed { $0.diff.found }
-    static let currentBackground = NSColor.themed { $0.diff.current }
+    static let currentBackground = NSColor.themed { $0.found.current }
+
+    /// A found row: a bar down its left edge — a shape, seen whatever the
+    /// row's green or red, by any eye; the one gone to, wider and full.
+    private func markRow(y: CGFloat, current: Bool) {
+        Theme.text.withAlphaComponent(current ? 0.9 : 0.45).setFill()
+        NSRect(x: 0, y: y + 1, width: current ? 4 : 3, height: rowHeight - 2).fill()
+    }
+
+    /// Each match in a row's text, drawn from `origin` in `attrs`: boxed
+    /// behind its letters and ringed in the text's own colour (it shows
+    /// on any band, and to eyes that don't tell the bands apart); the one
+    /// gone to filled stronger, its ring thicker. Under the text, which is
+    /// drawn after.
+    private func markMatches(in text: String, at origin: NSPoint, attrs: [NSAttributedString.Key: Any], current: Bool) {
+        guard let q = query, !q.text.isEmpty else { return }
+        let s = text as NSString
+        var from = 0
+        let h = font.pointSize * 1.25
+        while from < s.length {
+            let r = s.range(of: q.text, options: q.options, range: NSRange(location: from, length: s.length - from))
+            guard r.location != NSNotFound, r.length > 0 else { break }
+            let x0 = NSAttributedString(string: s.substring(to: r.location), attributes: attrs).size().width
+            let w = NSAttributedString(string: s.substring(with: r), attributes: attrs).size().width
+            let box = NSRect(x: origin.x + x0 - 1.5, y: origin.y + (font.pointSize * 1.2 - h) / 2, width: w + 3, height: h)
+            let path = NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3)
+            (current ? Self.currentBackground : Self.foundBackground).setFill()
+            path.fill()
+            path.lineWidth = current ? 2 : 1
+            Theme.text.withAlphaComponent(current ? 0.95 : 0.6).setStroke()
+            path.stroke()
+            from = r.location + r.length
+        }
+    }
 
     private var lineCount: Int { sideBySide ? pairs.count : rows.count }
 
@@ -431,10 +466,7 @@ final class DiffRowsView: NSView {
             case .fold: attrs[.foregroundColor] = Theme.secondaryText
             case .context: break
             }
-            if found.contains(i) {
-                (i == current ? Self.currentBackground : Self.foundBackground).setFill()
-                NSRect(x: gutter - 4, y: y, width: bounds.width - gutter + 4, height: rowHeight).fill()
-            }
+            if found.contains(i) { markRow(y: y, current: i == current) }
             let textY = y + (rowHeight - font.pointSize * 1.2) / 2 - 1
             switch r.kind {
             case let .file(name):
@@ -453,6 +485,7 @@ final class DiffRowsView: NSView {
                     s.draw(at: NSPoint(x: 76 - s.size().width, y: textY + 1))
                 }
                 (marker as NSString).draw(at: NSPoint(x: gutter - 12, y: textY), withAttributes: attrs)
+                if found.contains(i) { markMatches(in: r.text, at: NSPoint(x: gutter, y: textY), attrs: attrs, current: i == current) }
                 (r.text as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
             }
         }
@@ -465,6 +498,7 @@ final class DiffRowsView: NSView {
         guard first <= last else { return }
         let half = (bounds.width / 2).rounded()
         let textY = { (y: CGFloat) in y + (self.rowHeight - self.font.pointSize * 1.2) / 2 - 1 }
+        var marking: Bool? = nil
         func side(_ row: DiffRow?, x: CGFloat, width: CGFloat, y: CGFloat, number: Int?) {
             guard let row else { return }
             let band = NSRect(x: x, y: y, width: width, height: rowHeight)
@@ -474,6 +508,7 @@ final class DiffRowsView: NSView {
             case .removed: Self.removedBackground.setFill(); band.fill(); marker = "−"
             default: break
             }
+            if x == 0, let current = marking { markRow(y: y, current: current) }
             if let number {
                 let s = NSAttributedString(string: "\(number)", attributes: dimAttrs)
                 s.draw(at: NSPoint(x: x + 36 - s.size().width, y: textY(y) + 1))
@@ -481,14 +516,12 @@ final class DiffRowsView: NSView {
             (marker as NSString).draw(at: NSPoint(x: x + sideGutter - 12, y: textY(y)), withAttributes: textAttrs)
             NSGraphicsContext.current?.saveGraphicsState()
             NSBezierPath(rect: NSRect(x: x + sideGutter, y: y, width: max(0, width - sideGutter - 8), height: rowHeight)).addClip()
+            if let current = marking { markMatches(in: row.text, at: NSPoint(x: x + sideGutter, y: textY(y)), attrs: textAttrs, current: current) }
             (row.text as NSString).draw(at: NSPoint(x: x + sideGutter, y: textY(y)), withAttributes: textAttrs)
             NSGraphicsContext.current?.restoreGraphicsState()
         }
         for i in first...last {
-            if let line = foundLines[i] {
-                (line == currentLine ? Self.currentBackground : Self.foundBackground).setFill()
-                NSRect(x: 0, y: CGFloat(i) * rowHeight, width: bounds.width, height: rowHeight).fill()
-            }
+            marking = foundLines[i] != nil ? (i == currentLine) : nil
             let pair = pairs[i]
             let y = CGFloat(i) * rowHeight
             if let r = pair.span {
@@ -547,9 +580,11 @@ extension DiffView: Searchable {
             foundAt = nil
             rowsView.found = []
             rowsView.current = nil
+            rowsView.query = nil
             return done(nil)
         }
         let options: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+        rowsView.query = (query, options)
         foundRows = rowsView.rows.indices.filter { rowsView.rows[$0].text.range(of: query, options: options) != nil }
         rowsView.found = Set(foundRows)
         let from = foundAt == nil ? 0 : (rowsView.current ?? 0)
@@ -577,6 +612,7 @@ extension DiffView: Searchable {
         foundAt = nil
         rowsView.found = []
         rowsView.current = nil
+        rowsView.query = nil
         window?.makeFirstResponder(rowsView)
     }
 
