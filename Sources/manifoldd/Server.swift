@@ -440,8 +440,36 @@ final class Server {
             conn.close()
         case .shutdown?:
             exit(endSessions: true)
+        case .erase?:
+            // `manifoldd erase` on the host itself.
+            erase(by: conn)
         default:
             conn.close()
+        }
+    }
+
+    /// The session deleted for good (issue #1): every app told, its shells
+    /// and whatever else it runs ended, then every file it keeps removed,
+    /// and the server gone — nothing saved on the way out.
+    private func erase(by conn: any Channel) {
+        let who = machines[ObjectIdentifier(conn)]
+        log("session deleted for good\(who.map { " from \($0)" } ?? "")")
+        // Each once: the asker is among the clients, unless it's `manifoldd erase`.
+        for c in clients where c !== conn { c.send(.message(ServerMessage.erased(by: who))) }
+        conn.send(.message(ServerMessage.erased(by: who)))
+        languageServers.stopAll()
+        searches.stopAll()
+        for n in notebooks.values { n.terminate() }
+        for s in sessions.values { s.terminate() }
+        listener?.cancel()
+        timer?.cancel()
+        snapshotTimer?.cancel()
+        // A moment for the word to go out; then the files, and gone.
+        queue.asyncAfter(deadline: .now() + 0.3) { [store] in
+            store.closeAll()
+            let failed = SessionFiles.erase()
+            for f in failed { FileHandle.standardError.write(Data("manifoldd: couldn't delete \(f)\n".utf8)) }
+            sysExit(failed.isEmpty ? 0 : 1)
         }
     }
 
@@ -558,6 +586,8 @@ final class Server {
             own(shard, by: conn)
         case .takeOver?:
             if appClients.contains(ObjectIdentifier(conn)) { attach(to: conn) }
+        case .erase?:
+            erase(by: conn)
         case let .resync(shard)?:
             if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
         case let .propose(id, proposal)?:

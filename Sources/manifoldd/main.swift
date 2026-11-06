@@ -9,6 +9,8 @@ import ManifoldCore
 // manifoldd mani ...       the `mani` command, on a host Manifold installed
 //                           this server on (a script there named so runs it)
 // manifoldd stop            end the server and every session
+// manifoldd erase [--yes]   delete this host's session for good: every file
+//                           Manifold keeps here, the server installed too
 // manifoldd state           print what the host has
 
 let args = CommandLine.arguments.dropFirst()
@@ -59,6 +61,34 @@ case "attach":
         exit(2)
     }
     Attach.run(block: block)
+
+case "erase":
+    // The host's session deleted for good: every file Manifold keeps here,
+    // the server too. Asked first, unless --yes.
+    if !args.contains("--yes") {
+        FileHandle.standardError.write(Data("Delete \(SessionFiles.describe) for good — its spaces, notes, terminals' history, indexes, and the server installed here? Files of your own stay. Type delete to go ahead: ".utf8))
+        guard readLine()?.trimmingCharacters(in: .whitespaces) == "delete" else {
+            FileHandle.standardError.write(Data("Nothing deleted.\n".utf8))
+            exit(1)
+        }
+    }
+    if let fd = try? UnixSocket.connect(path: Paths.socket) {
+        // Running: it does it, telling the apps attached first.
+        let frame = Frame.message(ClientMessage.erase).encoded
+        _ = frame.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        var b = [UInt8](repeating: 0, count: 4096)
+        while read(fd, &b, b.count) > 0 {}
+        // Gone once its folder is.
+        var waited = 0
+        while FileManager.default.fileExists(atPath: Paths.session.path), waited < 50 { usleep(100_000); waited += 1 }
+    } else {
+        let failed = SessionFiles.erase()
+        guard failed.isEmpty else {
+            failed.forEach { FileHandle.standardError.write(Data("couldn't delete \($0)\n".utf8)) }
+            exit(1)
+        }
+    }
+    print("deleted")
 
 case "stop":
     guard let fd = try? UnixSocket.connect(path: Paths.socket) else { exit(0) }

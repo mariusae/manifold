@@ -1846,7 +1846,16 @@ is migrated into logs on first run.
   hand — and its trail, leaving the graph empty (what's on each
   space stays; mentions come back as texts change) — only from the
   host's own row in the sidebar, and only once you've said so: it can't
-  be undone. Reset Server is in every menu of something on a host, under
+  be undone. **Delete Session on *host*…** (the same row's menu) deletes
+  the host's session for good — its spaces and blocks, notes (kept
+  nowhere else), terminals' history, indexes, logs: every file Manifold
+  keeps there, and on another host the server installed there — once
+  you've said so, with what goes counted (This Mac's, its name typed
+  too). Another host's is forgotten here; This Mac's, and Manifold
+  starts afresh, as on its first launch, other hosts still attached.
+  Links and tiles of it on other hosts are taken off, each as it's next
+  reached. Files of your own stay. On the host itself, `manifoldd erase`
+  does the same (asking first, unless `--yes`), for one no Mac reaches. Reset Server is in every menu of something on a host, under
   the host's name: a tile's, a terminal's or an editor's right-click, a
   space's or a block's row in the sidebar. A bridge that keeps
   dying before the host answers is taken as a server gone missing

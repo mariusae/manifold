@@ -109,10 +109,13 @@ public struct HostsFile: Codable {
     /// By session id.
     public var hosts: [String: HostEntry] = [:]
     public var providers: [RemoteProvider] = RemoteProvider.defaults
+    /// Sessions deleted for good (issue #1), by id: what other hosts still
+    /// link to or place of theirs is taken off as each is next reached.
+    public var deleted: [String] = []
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case hosts, providers }
+    enum CodingKeys: String, CodingKey { case hosts, providers, deleted }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -123,6 +126,7 @@ public struct HostsFile: Codable {
             hosts = old.mapValues { HostEntry(destination: $0, label: nil) }
         }
         providers = (try? c.decodeIfPresent([RemoteProvider].self, forKey: .providers)) ?? RemoteProvider.defaults
+        deleted = (try? c.decodeIfPresent([String].self, forKey: .deleted)) ?? []
     }
 
     public func provider(named name: String) -> RemoteProvider? { providers.first { $0.name == name } }

@@ -367,6 +367,10 @@ public enum ClientMessage: Codable, Sendable {
     /// The user took the host over (§8.2): attached to this launch, the
     /// epoch moved on, every other launch of the app watching.
     case takeOver
+    /// The host's session deleted for good (issue #1): its shells ended,
+    /// every file it keeps removed — its data folder, the server installed
+    /// there — and the server gone. Every app is told (`erased`) first.
+    case erase
     /// The client's copy of a shard fell out of step (entries that don't
     /// follow, a text that should be in and isn't): the host sends its
     /// snapshot.
@@ -568,6 +572,9 @@ public enum ServerMessage: Codable, Sendable {
     /// machine it's on: this client stops appending to it and mirrors,
     /// until the user takes it back.
     case fenced(shard: ShardID, by: String? = nil)
+    /// The host's session was deleted, `by` that machine (or on the host
+    /// itself): it's gone, and its server with it.
+    case erased(by: String?)
     /// Who the host is attached to (§8.2), told on welcome and whenever it
     /// changes: its `epoch` (only ever growing, kept by the host), the
     /// machine `by` it, whether it's this launch (`yours`), whether that

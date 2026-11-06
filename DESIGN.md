@@ -1945,6 +1945,22 @@ takes its log and snapshot with it, its links here, a note's picture
 Manifold kept, and a terminal's scrollback. Logs set aside by a change of
 the data format (`logs.before-format-…`) are removed two weeks on.
 
+A session is deleted for good (issue #1) by its server, asked by an app
+(`erase`) or by `manifoldd erase` on the host: every app told (`erased`),
+its shells and language servers and indexers ended, then every file in
+its data folder removed but the app's list of other hosts (`hosts.json`,
+on a Mac), and the server installed there (`~/.manifold/bin`) — the
+default session's, not one under `MANIFOLD_DIR` — and the server gone,
+nothing saved on the way out. Files of the user's own aren't the
+session's. Each Mac keeps the ids of sessions deleted (`hosts.json`'s
+`deleted`) and takes off what every host it reaches links to or places
+of them, as it reaches it — so nothing points for good at what can't be
+reached. Told, an app forgets another host's session; This Mac's, it
+clears what it kept of it (its window's state, pages' history and icons
+and website data, its logs) and starts again, a new session. One that
+finds another session where one it knew was (deleted while it was away,
+a new one started there by its bridge) notes the old one deleted.
+
 ---
 
 ### 8.5 As built, in short

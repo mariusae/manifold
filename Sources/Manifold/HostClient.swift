@@ -435,6 +435,22 @@ final class HostClient {
 
     /// Who the host is attached to changed (or was said).
     var onAttachment: (() -> Void)?
+    /// The host's session was deleted for good (issue #1), by that machine
+    /// (nil: on the host itself, or here): it isn't reached again.
+    var onErased: ((String?) -> Void)?
+    /// The destination answered as another session than the one it was:
+    /// that one's gone (deleted, its folder cleared), this one is new.
+    var onReplaced: ((HostID) -> Void)?
+    private(set) var erased = false
+
+    /// A session's id (`h` and ten characters), not a name from before sessions.
+    static func isSession(_ h: HostID) -> Bool { h.raw.count == 11 && h.raw.hasPrefix("h") }
+
+    /// Deletes the host's session for good (issue #1): the server ends its
+    /// shells, removes every file it keeps, and goes; told back (`erased`).
+    func erase() {
+        conn?.send(.message(ClientMessage.erase))
+    }
 
     /// When this client last moved a workspace's focus itself — not as
     /// another attachment's move came in from the host.
@@ -1157,6 +1173,11 @@ final class HostClient {
     private func handle(_ message: ServerMessage) {
         switch message {
         case let .welcome(version, pid, host, label, _, home, snapshots, features, up, build):
+            // Another session where this one was: it's gone.
+            let before = self.host
+            if hasState || isRemote, before != host, Self.isSession(before), Self.isSession(host) {
+                DispatchQueue.main.async { [weak self] in self?.onReplaced?(before) }
+            }
             // When its server started, by this Mac's clock.
             serverStarted = up.map { Date().addingTimeInterval(-$0) }
             serverVersion = version
@@ -1258,6 +1279,14 @@ final class HostClient {
             fenced.insert(shard)
             if let by { fencedBy = by }
             onFenced?(shard)
+        case let .erased(by):
+            // Deleted for good: not reached again (a server would start
+            // afresh there, a new session, unasked). Said once.
+            guard !erased else { break }
+            NSLog("host %@: its session was deleted%@", host.raw, by.map { " by \($0)" } ?? "")
+            erased = true
+            disconnected = true
+            onErased?(by)
         case let .attachment(epoch, by, yours, present, behind, acts, actor):
             attachedHere = yours
             attachedPresent = present

@@ -401,6 +401,13 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "deletesession":
+            // "deletesession [host]": that host's session (This Mac's) deleted
+            // for good, as Delete Session does once confirmed.
+            guard let wc else { return "no window" }
+            let h = arg.isEmpty ? wc.hosts.local.host : HostID(arg)
+            wc.hosts.deleteSession(h)
+            return "asked \(h.raw)"
         case "newpicker":
             // ⌘N's picker opened; "wsoutline <query>" then types in it.
             wc?.newBlockPicker(nil)

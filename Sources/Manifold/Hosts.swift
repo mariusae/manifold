@@ -198,6 +198,25 @@ final class Hosts {
 
     private func wire(_ client: HostClient) {
         client.onChange = { [weak self] in self?.scheduleChange() }
+        client.onErased = { [weak self, weak client] by in
+            guard let self, let client else { return }
+            self.noteDeleted(client.host)
+            self.onErased?(client, by)
+        }
+        client.onReplaced = { [weak self, weak client] old in
+            guard let self, let client else { return }
+            self.noteDeleted(old)
+            // Known by its new id from now on.
+            if self.remotes[old] === client {
+                self.remotes.removeValue(forKey: old)
+                self.remotes[client.host] = client
+                var file = HostsFile.load()
+                if let entry = file.hosts.removeValue(forKey: old.raw) { file.hosts[client.host.raw] = entry }
+                file.save()
+            }
+            self.onReplaced?(client, old)
+            self.onChange?()
+        }
         client.onBlockChanged = { [weak self] id in self?.blockChanged(id) }
         client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
         client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
@@ -219,6 +238,8 @@ final class Hosts {
             self.pushedLanguageServers.removeValue(forKey: client.host)
             self.pushLanguageServers()
             client.propose(.editing(self.editing.filter { $0.host == client.host }))
+            // Links and tiles of sessions deleted meanwhile, taken off.
+            self.sweepDeleted(on: client)
         }
         client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
         client.onGutter = { [weak self] block in self?.onGutter?(block) }
@@ -747,6 +768,60 @@ final class Hosts {
 
     /// Whether blocks on the host can be worked on now.
     func isReachable(_ host: HostID) -> Bool { link(of: host) == .connected }
+
+    // MARK: Deleting a session (issue #1)
+
+    /// A session's deletion said, by the machine that did it (nil, here or
+    /// on the host): the window forgets it, or starts afresh.
+    var onErased: ((HostClient, String?) -> Void)?
+    /// A destination's session found replaced by a new one.
+    var onReplaced: ((HostClient, HostID) -> Void)?
+
+    /// Sessions deleted for good, as this Mac knows them.
+    var deletedSessions: Set<HostID> { Set(HostsFile.load().deleted.map(HostID.init)) }
+
+    /// A session noted deleted, and what every host reached now links to or
+    /// places of it taken off.
+    func noteDeleted(_ host: HostID) {
+        var file = HostsFile.load()
+        if !file.deleted.contains(host.raw) {
+            file.deleted.append(host.raw)
+            file.save()
+        }
+        for c in all where c.host != host && c.isConnected { sweepDeleted(on: c) }
+    }
+
+    /// What a host links to, or places, of sessions deleted: unlinked, and
+    /// taken off its spaces — so nothing points at what can't be reached
+    /// again (they'd be placeholders for good). Each host as it's reached.
+    func sweepDeleted(on c: HostClient) {
+        let gone = deletedSessions.subtracting([c.host])
+        guard !gone.isEmpty, c.link == .connected else { return }
+        let links = c.node.links(c.host).links.filter { gone.contains($0.from.host) || gone.contains($0.to.host) }
+        for l in links { c.propose(.unlink(l.id)) }
+        var placements = 0
+        for b in c.node.blocks where b.id.host == c.host && b.kind == .arrangement {
+            guard let a = b.arrangement else { continue }
+            let dead = a.placements.filter { gone.contains($0.block.host) }
+            guard !dead.isEmpty else { continue }
+            placements += dead.count
+            c.append(dead.map { .remove($0.id) }, to: .block(b.id))
+        }
+        if !links.isEmpty || placements > 0 {
+            NSLog("host %@: %d link(s) and %d tile(s) of deleted sessions taken off", c.host.raw, links.count, placements)
+        }
+    }
+
+    /// Deletes a host's session for good (issue #1): noted deleted, what
+    /// other hosts reached now link to or place of it taken off, then the
+    /// host asked to end everything and remove its files. `done` once it
+    /// said so (or its link went with it).
+    func deleteSession(_ host: HostID) {
+        guard let c = client(host) else { return }
+        NSLog("deleting the session %@ for good", host.raw)
+        noteDeleted(host)
+        c.erase()
+    }
 
     /// Detaches from a host and forgets it, so it isn't attached again at
     /// start; its server and blocks stay there. A host still being

@@ -217,6 +217,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
         }
         hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.settingsWindow?.refresh() }
+        hosts.onErased = { [weak self] client, by in self?.sessionErased(client, by: by) }
+        hosts.onReplaced = { [weak self] client, _ in
+            guard let self, client.isRemote else { return }
+            self.toast.show("The session on \(self.hosts.label(of: client.host)) was gone — deleted there; a new one started", action: "OK", for: 10) {}
+        }
         hosts.onFenced = { [weak self] client in
             self?.sayWatching(client)
             self?.refreshOrganization()
@@ -2685,6 +2690,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             graph.isEnabled = hosts.client(host)?.isConnected == true
             items.append(.separator())
             items.append(graph)
+            let delete = ClosureMenuItem("Delete Session on \(label)…", symbol: "trash") { [weak self] in self?.deleteSession(host) }
+            delete.isEnabled = hosts.client(host)?.link == .connected
+            items.append(delete)
         }
         return items
     }
@@ -2740,6 +2748,83 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Resets a host's graph, once asked: every link and the trail gone.
+    /// Delete Session (issue #1), once asked — what goes counted, and for
+    /// This Mac its name typed: the host's session gone for good, every file
+    /// Manifold keeps there (logs, notes, terminals' history, indexes, the
+    /// pictures kept for notes, the server installed there); what other
+    /// hosts link to or place of it taken off. Then: another host's,
+    /// forgotten here; This Mac's, Manifold starts afresh. Files of the
+    /// user's own stay.
+    private func deleteSession(_ host: HostID) {
+        guard let c = hosts.client(host), let window else { return }
+        let label = hosts.label(of: host)
+        let blocks = c.node.blocks.filter { $0.id.host == host }
+        let spaces = blocks.filter { $0.kind == .arrangement }.count
+        let notes = blocks.filter { $0.isNote && !($0.text?.text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }.count
+        let shells = blocks.filter { $0.terminal?.pid != nil }.count
+        func n(_ k: Int, _ one: String) -> String { "\(k) \(one)\(k == 1 ? "" : "s")" }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = c.isRemote ? "Delete the session on \(label) for good?" : "Delete This Mac's session for good?"
+        alert.informativeText = "Its \(n(spaces, "space")) and every block on them go — \(n(notes, "note")) (kept nowhere else), \(n(shells, "running shell")), terminals' history, indexes, logs — and every file Manifold keeps "
+            + (c.isRemote ? "on \(label), its server too; then it's forgotten here." : "on this Mac for it; Manifold then starts afresh, as on its first launch (other hosts stay attached).")
+            + " Links and tiles of it on other hosts are taken off. Files of your own — opened, saved, in your folders — stay. This can't be undone."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        // This Mac's: its name typed first.
+        var typed: NSTextField?
+        if !c.isRemote {
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+            field.placeholderString = "Type \(label) to delete"
+            alert.accessoryView = field
+            alert.buttons[0].isEnabled = false
+            typed = field
+            NotificationCenter.default.addObserver(forName: NSControl.textDidChangeNotification, object: field, queue: .main) { [weak alert] _ in
+                MainActor.assumeIsolated { alert?.buttons.first?.isEnabled = field.stringValue == label }
+            }
+            alert.window.initialFirstResponder = field
+        }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn, typed.map({ $0.stringValue == label }) ?? true else { return }
+            if let id = self.selected, id.host == host {
+                let rest = self.allWorkspaces.filter { $0.host != host }
+                self.hosts.select(rest.first)
+            }
+            self.hosts.deleteSession(host)
+        }
+    }
+
+    /// A session's deletion said back (by this Mac, another, or on the host):
+    /// another host's, forgotten here; This Mac's, Manifold starts afresh.
+    private func sessionErased(_ c: HostClient, by: String?) {
+        let label = hosts.label(of: c.host)
+        if c.isRemote {
+            hosts.detach(c.host)
+            refreshOrganization(now: true)
+            toast.show("The session on \(label) was deleted" + (by.map { $0 == HostClient.machine ? "" : " (on \($0))" } ?? " (on the host)"), action: "OK", for: 8) {}
+            return
+        }
+        // This Mac's: what the app kept of it goes too — its window's
+        // state, the pages' history and icons, their website data, its
+        // logs — and Manifold starts again, a new session.
+        WebStores.clear(through: nil) {
+            let fm = FileManager.default
+            let dir = Paths.directory
+            for name in ["client.json", "web-history.json", "favicons"] { try? fm.removeItem(at: dir.appendingPathComponent(name)) }
+            try? fm.removeItem(at: fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Manifold"))
+            // Started again once this one has gone (its server is already):
+            // the same program, with what it was started with.
+            guard let exe = Bundle.main.executablePath else { return NSApp.terminate(nil) }
+            let relaunch = Process()
+            relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+            relaunch.arguments = ["-c", "sleep 1.5; exec \"$0\" \"$@\"", exe] + Array(CommandLine.arguments.dropFirst())
+            try? relaunch.run()
+            NSLog("pid %d: started again as %d, quitting", getpid(), relaunch.processIdentifier)
+            NSApp.terminate(nil)
+        }
+    }
+
     private func resetGraph(_ host: HostID) {
         let alert = NSAlert()
         alert.messageText = "Reset the graph on \(hosts.label(of: host))?"
