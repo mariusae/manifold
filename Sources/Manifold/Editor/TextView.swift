@@ -1667,6 +1667,10 @@ final class TextView: NSView, NSTextInputClient {
         case ([.command, .control], String(UnicodeScalar(NSDownArrowFunctionKey)!)): moveLines(up: false); return true
         case ([.control, .shift], String(UnicodeScalar(NSUpArrowFunctionKey)!)): addCaret(up: true); return true
         case ([.control, .shift], String(UnicodeScalar(NSDownArrowFunctionKey)!)): addCaret(up: false); return true
+        // ⌥↑ ⌥↓: a page up or down, as elsewhere on the Mac (not a
+        // paragraph's ends, which ⌘← ⌘→ and the line's own keys have).
+        case ([.option], String(UnicodeScalar(NSUpArrowFunctionKey)!)): page(-1, extend: false); return true
+        case ([.option], String(UnicodeScalar(NSDownArrowFunctionKey)!)): page(1, extend: false); return true
         case ([.option, .shift], String(UnicodeScalar(NSUpArrowFunctionKey)!)): addCaret(up: true); return true
         case ([.option, .shift], String(UnicodeScalar(NSDownArrowFunctionKey)!)): addCaret(up: false); return true
         default: return false
@@ -2727,6 +2731,26 @@ final class TextView: NSView, NSTextInputClient {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
+        // A name in code right-clicked: what Edit ▸ Code does with a symbol,
+        // first — the caret put on it (unless it's in what's selected), as
+        // they act at the caret.
+        let p = convert(event.locationInWindow, from: nil)
+        if syntax != nil, !markdown, let w = word(at: p) {
+            let o = offset(at: p)
+            if !selections.contains(where: { !$0.isCaret && $0.min <= o && o <= $0.max }) {
+                setSelections([Selection(at: min(max(o, w.start), w.end))], scroll: false)
+            }
+            window?.makeFirstResponder(self)
+            for (title, action) in [("Go to Definition", #selector(EditorView.goToDefinition(_:))),
+                                    ("Find References", #selector(EditorView.findReferences(_:))),
+                                    ("Show Callers", #selector(MainWindowController.showCallers(_:))),
+                                    ("Show Documentation", #selector(EditorView.showDocumentation(_:))),
+                                    ("Highlight Uses", #selector(highlightUses(_:))),
+                                    ("Rename Symbol…", #selector(EditorView.renameSymbol(_:)))] {
+                menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+            }
+            menu.addItem(.separator())
+        }
         menu.addItem(withTitle: "Cut", action: #selector(cut(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")

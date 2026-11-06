@@ -847,7 +847,11 @@ around it, and comes back with its history.
 - **Language servers** run on the file's host, one per language and
   project root, started when a file of theirs is placed: what they say
   is underlined, marked in the gutter and spelled out along the bottom
-  when the caret is on it. Edit ▸ Code: Complete (⌃Space, or ⌥⎋ where
+  when the caret is on it. Right-click a name in code for the symbol's
+  own: Go to Definition, Find References, Show Callers, Show
+  Documentation, Highlight Uses, Rename (the caret put on it). A symbol
+  gone to lands below what's pinned over the top, not behind it; ⌥↑ ⌥↓
+  page up and down. Edit ▸ Code: Complete (⌃Space, or ⌥⎋ where
   ⌃Space switches the keyboard), Go to
   Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link

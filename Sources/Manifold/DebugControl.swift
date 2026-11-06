@@ -401,6 +401,23 @@ enum DebugControl {
                 NSApp.postEvent(e, atStart: false)
             }
             return holder()
+        case "newpicker":
+            // ⌘N's picker opened; "wsoutline <query>" then types in it.
+            wc?.newBlockPicker(nil)
+            return "opened"
+        case "editormenu":
+            // "editormenu <line> <column>": the focused editor right-clicked at
+            // that place (from 1): its menu's items, and where the caret went.
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count == 2, let e = wc?.debugFocusedEditor, let window = e.window else { return "usage: editormenu <line> <column>" }
+            let tv = e.textView
+            let o = tv.offset(line: n[0], column: n[1]).start
+            let r = tv.caretRectInWindow(o)
+            let p = NSPoint(x: r.maxX + 3, y: r.midY)
+            guard let ev = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let menu = tv.menu(for: ev) else { return "no menu" }
+            return menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: " | ") + " · caret \(tv.caretLine + 1):\(tv.caretColumn)"
         case "gotoline":
             // "gotoline <text> [return|escape]": Go to Line in the focused editor, typed and keyed.
             let w = arg.split(separator: " ").map(String.init)
