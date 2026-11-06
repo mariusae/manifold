@@ -134,16 +134,29 @@ final class WeakView {
 /// A place within a block (§3.5).
 enum NavLocation: Equatable {
     case line(Int)
+    /// A text as it was looked at: the caret's line (from 1) and where in
+    /// the text it was, and the line at the top of the view (from 0, a
+    /// fraction into it) — gone back to, it's scrolled as it was, not
+    /// just so the caret shows (a jump within the same file moved it).
+    case text(line: Int, caret: Int, top: Double)
     case command(Int)
     case offset(Double)
     case page(Int)
 
+    /// The line it's at, if a text's.
+    var line: Int? {
+        switch self {
+        case let .line(n), let .text(n, _, _): n
+        default: nil
+        }
+    }
+
     /// Near enough to be one place: lines a few apart are.
     func near(_ other: NavLocation) -> Bool {
+        if let a = line, let b = other.line { return abs(a - b) <= 3 }
         switch (self, other) {
-        case let (.line(a), .line(b)): abs(a - b) <= 3
-        case let (.offset(a), .offset(b)): abs(a - b) < 40
-        default: self == other
+        case let (.offset(a), .offset(b)): return abs(a - b) < 40
+        default: return self == other
         }
     }
 }

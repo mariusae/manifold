@@ -1168,11 +1168,25 @@ extension EditorView: Printable {
 }
 
 extension EditorView {
-    /// The caret's line (from 1).
-    var navLocation: NavLocation? { .line(textView.text.line(at: textView.primarySelection.head) + 1) }
+    /// The caret (its line from 1, and where it is) and the line at the
+    /// top of the view: gone back to, the text is scrolled as it was.
+    var navLocation: NavLocation? { .text(line: caretLine, caret: textView.primarySelection.head, top: topLine) }
 
     func go(to location: NavLocation) {
-        if case let .line(n) = location { select(line: n, column: nil) }
+        switch location {
+        case let .line(n): select(line: n, column: nil)
+        case let .text(n, caret, top):
+            // The caret where it was, if its line's still there (else the
+            // line's start), and the view scrolled as it was — not only so
+            // the caret shows (a jump within the file moved it).
+            let lines = textView.text.lineCount
+            let r = textView.text.lineRange(min(max(n - 1, 0), max(lines - 1, 0)))
+            let head = (r.start...r.end).contains(caret) ? caret : r.start
+            textView.setSelections([Selection(head, head)])
+            window?.makeFirstResponder(textView)
+            scroll(toTopLine: min(top, Double(max(lines - 1, 0))))
+        default: break
+        }
     }
 }
 

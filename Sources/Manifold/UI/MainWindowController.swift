@@ -1947,7 +1947,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Copy Link to This Line: the focused text's address with the caret's
     /// line (`#line=N`), going there from anywhere.
     @objc func copyLinkToLine(_ sender: Any?) {
-        guard let f = focusedShown, let e = views[f.id] as? EditorView, case let .line(n)? = e.navLocation else { return NSSound.beep() }
+        guard let f = focusedShown, let e = views[f.id] as? EditorView, let n = e.navLocation?.line else { return NSSound.beep() }
         copyLink(to: f.placement.block, fragment: anchored("line=\(n)", in: f.placement.block))
     }
 
