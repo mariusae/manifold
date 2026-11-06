@@ -131,7 +131,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             NavJumps.willJump?(self)
             let at = self.textView.text.offset(ofLine: line)
             let body = self.textView.text.lineText(line).prefix { $0 == " " || $0 == "\t" }.utf8.count
-            self.scroll(toY: self.textView.top(ofLine: line) - 8)
+            self.scroll(toY: self.textView.top(ofLine: line) - 8 - self.pinnedRoom(line))
             self.textView.setSelections([Selection(at: at + body)], scroll: false)
             self.window?.makeFirstResponder(self.textView)
         }
@@ -141,7 +141,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             guard let self, self.headingLines.indices.contains(i) else { return }
             let line = self.headingLines[i]
             NavJumps.willJump?(self)
-            self.scroll(toY: self.textView.top(ofLine: line) - 8)
+            self.scroll(toY: self.textView.top(ofLine: line) - 8 - self.pinnedRoom(line))
             self.textView.setSelections([Selection(at: self.textView.text.offset(ofLine: line))], scroll: false)
             self.window?.makeFirstResponder(self.textView)
             self.headingsOutline.current = i
@@ -398,6 +398,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// The definitions pinned over the text's top (§7.1).
     let pinned = PinnedDefinitions()
+
+    /// What would be pinned over a line (from 0) scrolled to the top — the
+    /// definitions it's in — so one gone to lands under them, not behind.
+    func pinnedRoom(_ line: Int) -> CGFloat {
+        CGFloat(min(textView.enclosing(line: line).count, PinnedDefinitions.most)) * textView.rowHeight
+    }
 
     private func updatePinned() {
         guard textView.showsStructure else { pinned.isHidden = true; return }

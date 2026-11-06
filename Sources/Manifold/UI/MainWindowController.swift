@@ -1696,7 +1696,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Debugging: the focused text's top line (from 0), as ⌘↩ carries it.
     func debugTopLine() -> String {
         guard let f = focusedShown else { return "nothing focused" }
-        if let e = views[f.id] as? EditorView { return String(format: "editor%@ %.2f caret %d", e.viewing ? " viewing" : "", e.topLine, e.caretLine) }
+        if let e = views[f.id] as? EditorView {
+            // (And the lines pinned over its top, from 1, and how many rows they take.)
+            let pinned = e.pinned.isHidden ? "" : " pinned " + e.pinned.lines.map { String($0 + 1) }.joined(separator: ",") + String(format: " room %.0f", e.pinnedRoom(e.caretLine - 1))
+            return String(format: "editor%@ %.2f caret %d", e.viewing ? " viewing" : "", e.topLine, e.caretLine) + pinned
+        }
         guard let m = views[f.id] as? MarkdownView else { return "not a text" }
         var line: Double?? = nil
         m.topLine { line = .some($0) }

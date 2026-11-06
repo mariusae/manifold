@@ -1439,8 +1439,12 @@ final class TextView: NSView, NSTextInputClient {
     func scrollToCaret() {
         guard let s = selections.last else { return }
         var r = caretRect(s.head)
-        r.origin.y -= lineHeight
-        r.size.height += lineHeight * 2
+        // Room above for the definitions it's in, which would be pinned
+        // over the text's top (§7.1) were it scrolled there — not left
+        // under them (a symbol gone to, landing at the top).
+        let pinned = CGFloat(min(enclosing(line: text.line(at: s.head)).count, PinnedDefinitions.most)) * rowHeight
+        r.origin.y -= lineHeight + pinned
+        r.size.height += lineHeight * 2 + pinned
         r.origin.x -= 20
         r.size.width += 40
         scrollToVisible(r)
