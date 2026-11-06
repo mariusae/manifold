@@ -295,6 +295,11 @@ final class Hosts {
 
     func client(of block: BlockID) -> HostClient? { client(block.host) }
 
+    /// Whether a block's news may sound or notify on this Mac: its host is
+    /// attached here, or the Mac it's attached to isn't connected (§8.2) —
+    /// not on every Mac that has it open.
+    func speaksHere(_ block: BlockID) -> Bool { client(of: block)?.speaksHere ?? true }
+
     /// What to call a host: This Mac; what it calls itself; what it was
     /// called when attached; else its session id.
     func label(of host: HostID) -> String {

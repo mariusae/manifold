@@ -1841,8 +1841,44 @@ now — the other client gone, a server restarted — and ends with the app
 launch (`instance`): a link made again — its old connection maybe not yet
 seen to close — keeps the pens the old one held, so a client is never
 fenced by its own ghost. Terminals aren't fenced: what's typed goes to
-the shell from any client. That is apex §4 cut down to the one event that
-matters; epochs and leases are not needed.
+the shell from any client.
+
+Who the host is attached to is the host's to say, and it keeps it: the
+launch that last took it (by a focus there, or Take Over) and an
+**epoch**, counted up each time it changes hands, in `attached.json`
+beside its logs — so it outlasts a server restarted. Every app is told
+(`attachment`: the epoch, by whom, whether it's this launch, whether
+that one is connected) on its welcome and whenever it changes, and says
+the epoch it last knew on each reconnection (`hello`). One behind — a
+Mac asleep, or its link down, while another took over, so the `fenced`
+it should have had never came — is watching from its welcome: its
+focus takes nothing, and what it appends is refused, whoever holds the
+shard or no one (its holder's connection gone, which took its pens with
+it — the gap a Mac woken used to take the host back through). Only Take
+Over (`takeOver`) moves the epoch for it. A text not read in yet is
+anyone's to put in. A fresh launch knows the epoch it's welcomed with,
+so its first focus takes, as before. The host's news sounds only where
+it's attached — the knocks, and a terminal's bell, which every Mac with
+the terminal open hears — or, the Mac it's attached to not connected,
+on every one, so nothing goes unheard. That is apex §4 cut down to the
+events that matter; leases are not needed.
+
+Who **acts** for a host is one answer, fenced as the pens are, and
+everything that asks takes it: a `mani` command (all but `env`, which
+the host answers), what the host asks a leader to write (a file's text
+read in), and whose Mac sounds and notifies. It's the launch the host is
+attached to, while that's connected; else the latest-connected app not
+behind the epoch (a launch since, which knows it); else none — every app
+connected is watching — and `mani` says so ("Manifold on … has this host
+and isn't connected; Take Over in the Manifold you're at"), the sounds
+going to every Mac rather than to none. Every app is told who acts
+(`attachment`'s `acts`, `actor`) when it changes: an app come or gone, a
+take-over. Whether a link is gone isn't guessed from quiet: an app that
+pings (over a link, every two seconds) and from which nothing at all has
+been read for 15 s, with nothing being written to it either, is closed
+by the host, and so stops acting; one that closes with commands it
+hadn't answered has each asker told ("Manifold (on …) went away before
+it answered"), so `mani` never waits for good on a Mac that's gone.
 
 Apex §4 as is: attachments are explicit and survive reconnects; leases are
 per shard and granted to attachments; fencing by epoch; a new attachment

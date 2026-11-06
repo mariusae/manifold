@@ -1294,6 +1294,8 @@ enum DebugControl {
             // Each host: watching or not, who took over, what's fenced.
             // "fencing takeover": Take Over on every host watched.
             if arg == "takeover", let wc { for c in wc.hosts.all where c.watching { wc.takeOver(c) } }
+            // "fencing away <seconds>": the local host's link down that long (a Mac asleep).
+            if arg.hasPrefix("away "), let wc, let s = Double(arg.dropFirst(5)) { wc.hosts.local.debugAway(s); return "away \(s) s" }
             return wc?.debugFencing ?? "no window"
         case "attend":
             // As focusing the block with the window key does: dismisses

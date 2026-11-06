@@ -978,6 +978,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// once (a setting, the same for every terminal) — not in full screen,
     /// where selecting is for reading.
     static var copyOnSelect = true
+    /// Whether a terminal's bell sounds on this Mac (its host attached here).
+    static var ringsHere: (BlockID) -> Bool = { _ in true }
 
     /// ⌘⌥-click: ghostty opens a link on ⌘-click alone (its modifiers must
     /// match), so ⌥ is kept from it and remembered here, for the open that

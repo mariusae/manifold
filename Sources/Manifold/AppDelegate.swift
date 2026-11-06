@@ -90,6 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowController?.render()
         if let wc = windowController {
             notifier.inSight = { [weak wc] b in wc?.inSight(b) ?? false }
+            notifier.speaksHere = { [weak hosts] b in hosts?.speaksHere(b) ?? true }
+            TerminalView.ringsHere = { [weak hosts] b in hosts?.speaksHere(b) ?? true }
             notifier.onOpen = { [weak wc] b, command in wc?.openFromNotification(b, command: command) }
             notifier.update(hosts.blocks)
         }

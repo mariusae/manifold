@@ -252,9 +252,30 @@ final class HostClient {
     private(set) var fenced: Set<ShardID> = []
     /// What the attachment that took them calls its machine.
     private(set) var fencedBy: String?
-    var watching: Bool { !fenced.isEmpty }
-    /// Another attachment took a shard's pen (newly watching, or one more).
-    var onFenced: ((ShardID) -> Void)?
+    var watching: Bool { !fenced.isEmpty || superseded }
+    /// Another launch of the app attached to the host since this one last
+    /// knew it (the host's epoch moved past ours: asleep, the link down,
+    /// the server restarted meanwhile): watching it all, whoever holds what.
+    private(set) var superseded = false
+    /// The host's attachment epoch as this launch last knew it, said again
+    /// on every reconnection (none on the first).
+    private var epoch: UInt64?
+    /// The host is attached to this launch; the one it is, connected.
+    private(set) var attachedHere = false
+    private(set) var attachedPresent = false
+    /// The host says this launch acts for it (§8.2: the one attached, while
+    /// it's connected, else one not behind), and which Mac does — none, if
+    /// every one connected is watching.
+    private(set) var actsHere = false
+    private(set) var actor: String?
+    /// Whether what happens on this host may sound or notify here: this
+    /// launch acts for it — the one answer the host gives for `mani` and
+    /// for what it asks written, too; or no one does, and then every Mac
+    /// with it open, so nothing goes unheard.
+    var speaksHere: Bool { actsHere || actor == nil }
+    /// Another attachment took a shard's pen, or the whole host (nil):
+    /// newly watching, or one more.
+    var onFenced: ((ShardID?) -> Void)?
     /// Something here was to be appended to a shard this client is fenced
     /// from, and wasn't: the user did something that didn't take.
     var onRefused: ((ShardID) -> Void)?
@@ -263,6 +284,8 @@ final class HostClient {
     static let instance = ULID.make()
     /// What another client is told this one's machine is called.
     static let machine: String = {
+        // (A second test instance on one Mac named apart: MANIFOLD_MACHINE.)
+        if let named = ProcessInfo.processInfo.environment["MANIFOLD_MACHINE"], !named.isEmpty { return named }
         let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
         return name ?? ProcessInfo.processInfo.hostName
     }()
@@ -387,7 +410,7 @@ final class HostClient {
     /// sent to the host to keep and pass on.
     func append(_ events: [Event], to shard: ShardID) {
         guard !events.isEmpty else { return }
-        guard !fenced.contains(shard) else { return onRefused?(shard) ?? () }
+        guard !fenced.contains(shard), !superseded || unread(shard) else { return onRefused?(shard) ?? () }
         // A workspace's focus moved here: its pen taken first (§8.2), so
         // what's appended isn't refused for another holding it — taken
         // after, at the render, the move was refused and this client
@@ -404,6 +427,14 @@ final class HostClient {
     }
 
     func append(_ event: Event, to shard: ShardID) { append([event], to: shard) }
+
+    /// A text not read in yet (§8.2): no one can have edited it.
+    private func unread(_ shard: ShardID) -> Bool {
+        shard.block.flatMap { node.block($0) }?.needsRead == true
+    }
+
+    /// Who the host is attached to changed (or was said).
+    var onAttachment: (() -> Void)?
 
     /// When this client last moved a workspace's focus itself — not as
     /// another attachment's move came in from the host.
@@ -428,6 +459,10 @@ final class HostClient {
         let all = refused.union(node.shards.keys.filter { node.leader(of: $0) == .client })
         fenced = []
         fencedBy = nil
+        superseded = false
+        // The host attached here first (the epoch moved on), so the pens
+        // asked for after aren't refused as behind.
+        conn?.send(.message(ClientMessage.takeOver))
         for s in all.sorted(by: { $0.description < $1.description }) {
             conn?.send(.message(ClientMessage.own(shard: s)))
             // What was refused meanwhile: the host's copy is the truth.
@@ -923,6 +958,16 @@ final class HostClient {
         link = .unreachable(why)
     }
 
+    /// Debugging: the link down for `seconds` (as a Mac asleep), then made again.
+    func debugAway(_ seconds: TimeInterval) {
+        disconnected = true
+        conn?.close()
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            self?.disconnected = false
+            self?.connect()
+        }
+    }
+
     func disconnect() {
         disconnected = true
         retryWork?.cancel()
@@ -951,7 +996,8 @@ final class HostClient {
     /// host's been silent, for its terminals.
     private func startPinging() {
         pingTimer?.invalidate()
-        guard isRemote else { return }
+        // (A test instance pings its local host too, as over a link: MANIFOLD_PING_LOCAL.)
+        guard isRemote || ProcessInfo.processInfo.environment["MANIFOLD_PING_LOCAL"] != nil else { return }
         pingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.heartbeat() }
         }
@@ -1101,7 +1147,7 @@ final class HostClient {
             }
         }
         mux.start()
-        conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold", machine: Self.machine, instance: Self.instance)))
+        conn.send(.message(ClientMessage.hello(version: protocolVersion, name: "Manifold", machine: Self.machine, instance: Self.instance, epoch: epoch)))
         self.conn = conn
         self.mux = mux
         isConnected = true
@@ -1212,6 +1258,23 @@ final class HostClient {
             fenced.insert(shard)
             if let by { fencedBy = by }
             onFenced?(shard)
+        case let .attachment(epoch, by, yours, present, behind, acts, actor):
+            attachedHere = yours
+            attachedPresent = present
+            actsHere = acts
+            self.actor = actor
+            if behind {
+                NSLog("watching: %@ attached at epoch %llu, after this launch last knew", by ?? "another Manifold", epoch)
+                let was = superseded
+                superseded = true
+                if let by { fencedBy = by }
+                if !was { onFenced?(nil) }
+            } else {
+                // Attached here, or no one else since: known, said again on
+                // reconnecting. (Behind, it stays as it was: still behind.)
+                self.epoch = epoch
+            }
+            onAttachment?()
         case let .propose(shard, proposal):
             lower(proposal, into: shard)
         case let .done(id, error):

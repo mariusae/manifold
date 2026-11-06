@@ -22,6 +22,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Whether the block is in sight now (Manifold in front, its tile showing).
     var inSight: (BlockID) -> Bool = { _ in false }
+    /// Whether its host is attached to this Mac (§8.2): only there is it
+    /// said — another Mac with it open stays quiet.
+    var speaksHere: (BlockID) -> Bool = { _ in true }
     /// A notification clicked: the block, and a command of it if one.
     var onOpen: ((BlockID, Int?) -> Void)?
 
@@ -41,7 +44,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             if let r = b.statusRecord {
                 let new = seenStatus[b.id].map { $0 != r.at } ?? true
                 seenStatus[b.id] = r.at
-                if seeded, new, r.wantsAttention, Self.speaks(b.kind), !inSight(b.id) { post(status: r, of: b) }
+                if seeded, new, r.wantsAttention, Self.speaks(b.kind), !inSight(b.id), speaksHere(b.id) { post(status: r, of: b) }
             }
             // The shell's commands, not an agent's turns (marks on the
             // scrubber too): a turn ending is said by the agent's status.
@@ -49,7 +52,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             if let commands = b.terminal?.commands, let last = commands.last(where: { $0.ended != nil && !turns.contains($0.id) }) {
                 let before = seenCommand[b.id]
                 seenCommand[b.id] = last.id
-                if seeded, let before, last.id != before, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand, !inSight(b.id) {
+                if seeded, let before, last.id != before, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand, !inSight(b.id), speaksHere(b.id) {
                     post(command: last, of: b, took: ended.wall - last.at.wall)
                 }
             }

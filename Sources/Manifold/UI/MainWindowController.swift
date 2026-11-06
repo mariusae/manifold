@@ -1071,7 +1071,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     var debugFencing: String {
         hosts.all.map { c in
-            "\(hosts.label(of: c.host)): " + (c.watching ? "watching, taken by \(c.fencedBy ?? "?"): \(c.fenced.map(\.description).sorted().joined(separator: " "))" : "leading")
+            "\(hosts.label(of: c.host)): " + (c.watching ? "watching, taken by \(c.fencedBy ?? "?")\(c.superseded ? " (superseded)" : ""): \(c.fenced.map(\.description).sorted().joined(separator: " "))" : "leading")
+                + " · attached \(c.attachedHere ? "here" : c.attachedPresent ? "elsewhere" : "to no one here") · acts \(c.actsHere ? "here" : c.actor.map { "on \($0)" } ?? "nowhere") · speaks \(c.speaksHere ? "here" : "not here")"
         }.joined(separator: "\n")
     }
 

@@ -351,8 +351,11 @@ public enum HostProposal: Codable, Sendable {
 public enum ClientMessage: Codable, Sendable {
     /// `instance`: the app's launch, the same across its reconnections (a
     /// connection that comes back is the same attachment, not another
-    /// taking the pen from it); `machine`, what to call it to another.
-    case hello(version: Int, name: String, machine: String? = nil, instance: String? = nil)
+    /// taking the pen from it); `machine`, what to call it to another;
+    /// `epoch`, the host's attachment epoch as this launch last knew it
+    /// (none on its first connection): behind the host's, someone else
+    /// attached meanwhile, and this one is watching (§8.2).
+    case hello(version: Int, name: String, machine: String? = nil, instance: String? = nil, epoch: UInt64? = nil)
     /// Is the host there? Answered with `pong` at once (§8): a client
     /// over a pipe that hangs learns so.
     case ping
@@ -361,6 +364,9 @@ public enum ClientMessage: Codable, Sendable {
     /// The client wants the pen for a shard it may lead (§8.2): it focused
     /// the block. The host hands it over, fencing the last owner.
     case own(shard: ShardID)
+    /// The user took the host over (§8.2): attached to this launch, the
+    /// epoch moved on, every other launch of the app watching.
+    case takeOver
     /// The client's copy of a shard fell out of step (entries that don't
     /// follow, a text that should be in and isn't): the host sends its
     /// snapshot.
@@ -562,6 +568,14 @@ public enum ServerMessage: Codable, Sendable {
     /// machine it's on: this client stops appending to it and mirrors,
     /// until the user takes it back.
     case fenced(shard: ShardID, by: String? = nil)
+    /// Who the host is attached to (§8.2), told on welcome and whenever it
+    /// changes: its `epoch` (only ever growing, kept by the host), the
+    /// machine `by` it, whether it's this launch (`yours`), whether that
+    /// launch is connected (`present`), whether another attached since
+    /// this one last knew (`superseded`): watching, only Take Over takes;
+    /// and who acts for the host now — this launch (`acts`), and the
+    /// machine (`actor`, none if no one does: all watching).
+    case attachment(epoch: UInt64, by: String?, yours: Bool, present: Bool, superseded: Bool, acts: Bool = false, actor: String? = nil)
     case propose(shard: ShardID, HostProposal)
     case done(id: Int, error: String?)
     /// A shard's history: the state its (compacted) log starts from, if

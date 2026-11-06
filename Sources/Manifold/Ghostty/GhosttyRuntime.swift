@@ -211,7 +211,11 @@ final class GhosttyRuntime {
             DispatchQueue.main.async { view?.overLink(str.flatMap { $0.isEmpty ? nil : $0 }) }
             return true
         case GHOSTTY_ACTION_RING_BELL:
-            NSSound.beep()
+            // Only on the Mac its host is attached to (§8.2): every Mac with
+            // the terminal open hears its output.
+            DispatchQueue.main.async {
+                if view.map({ TerminalView.ringsHere($0.block) }) ?? true { NSSound.beep() }
+            }
             return true
         // Search (§3.1 Find): the core finds and highlights; it tells us how
         // many and which is selected, and asks for the pill when a binding
