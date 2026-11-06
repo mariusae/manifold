@@ -151,6 +151,35 @@ final class Server {
         log("data format \(found.map(String.init) ?? "none") → \(dataFormat): logs set aside, starting afresh")
     }
 
+    /// How long logs set aside by a change of format are kept, in case:
+    /// then they go — they hold everything as it was, deleted notes too.
+    static let setAsideDays = 14
+
+    /// The folders set aside (`logs.before-format-2-<when>`) once they're
+    /// older than that, by the time in their name.
+    private static func sweepSetAside() {
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: Paths.directory.path)) ?? []
+        let iso = ISO8601DateFormatter()
+        for name in names {
+            guard let r = name.range(of: ".before-format-") else { continue }
+            // "<format>-2026-10-21T02-25-11Z": the time, its colons put back.
+            let rest = name[r.upperBound...]
+            guard let dash = rest.firstIndex(of: "-") else { continue }
+            var when = String(rest[rest.index(after: dash)...])
+            if let t = when.firstIndex(of: "T") {
+                when = String(when[...t]) + when[when.index(after: t)...].replacingOccurrences(of: "-", with: ":")
+            }
+            guard let date = iso.date(from: when), Date().timeIntervalSince(date) > Double(setAsideDays) * 86400 else { continue }
+            do {
+                try fm.removeItem(at: Paths.directory.appendingPathComponent(name))
+                log("removed \(name): set aside \(Int(Date().timeIntervalSince(date) / 86400)) days ago")
+            } catch {
+                log("couldn't remove \(name): \(error.localizedDescription)")
+            }
+        }
+    }
+
     /// When this server started: how long it's been up, in the app's host card.
     private let started = Date()
 
@@ -718,6 +747,9 @@ final class Server {
     private func discard(_ block: BlockID, deleted: Bool) {
         sessions.removeValue(forKey: block)?.terminate()
         notebooks.removeValue(forKey: block)?.terminate()
+        // A terminal's scrollback, kept beside the logs: gone with it (it
+        // waited for the next start's pruning).
+        try? FileManager.default.removeItem(at: historyFile(block))
         watchers.removeValue(forKey: block)
         unreachableSince.removeValue(forKey: block)
         guard let b = node.block(block) else { return }
@@ -2527,6 +2559,8 @@ final class Server {
     }
 
     private var lastRetention = Date.distantPast
+    /// How long a space's log keeps what was placed and moved.
+    static let spaceHistoryDays = 30
 
     /// Retention, by the settings (§4), once an hour: text history older
     /// than `textHistoryDays` is folded into each block's base; transcripts
@@ -2545,6 +2579,18 @@ final class Server {
         // A git block's refreshes, and a process block's listings, replace
         // one another: their logs are folded into their bases whole.
         for b in node.blocks(of: .git) + node.blocks(of: .process) { store.fold(.block(b.id), node: node) }
+        // The registry, the links and the desk: nothing reads their history
+        // back, and it kept every block's name and path, every link's
+        // context, every time a block was seen — gone ones' too (the
+        // registry grew by megabytes a day): folded into their state, which
+        // remembers what was discarded for its while (`goneDays`) and no more.
+        writeSnapshots()
+        for shard in [ShardID.registry(host), .links(host), .desk(host)] { store.fold(shard, node: node) }
+        // The spaces: what was placed and moved where, kept for a month
+        // (the inspector shows a space's latest), then folded.
+        let month = Stamp(wall: Int64(Date().addingTimeInterval(-Double(Self.spaceHistoryDays) * 86400).timeIntervalSince1970 * 1000), logical: 0, host: host)
+        for b in node.blocks(of: .arrangement) where b.id.host == host { store.compact(.block(b.id), before: month, node: node) }
+        Self.sweepSetAside()
         if settings.terminalHistoryDays > 0 {
             let cutoff = Int64(Date().addingTimeInterval(-Double(settings.terminalHistoryDays) * 86400).timeIntervalSince1970 * 1000)
             for b in node.blocks(of: .terminal) + node.blocks(of: .agent) {

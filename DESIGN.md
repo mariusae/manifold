@@ -1932,6 +1932,19 @@ files on disk: a file block's log records edits and saves, and its snapshot
 is not the file's truth, the disk is. Notes are stored only in the log;
 they can be exported, or given a path, which makes them files.
 
+What's kept, and for how long (`retain`, hourly): a text's log as long as
+Settings says (all of it, by default); a git block's or a process
+block's, folded into its state (each refresh replaces the last); a
+space's, a month, then folded — what was placed and moved; the registry,
+the links and the desk, folded into their state as they go, as nothing
+reads their history back — which kept every block's name and path, every
+link's context and every time a block was seen, a discarded block's too,
+and grew by megabytes a day; the state remembers what was discarded for a
+while (`goneDays`) and no more. A block discarded (deleted, or collected)
+takes its log and snapshot with it, its links here, a note's picture
+Manifold kept, and a terminal's scrollback. Logs set aside by a change of
+the data format (`logs.before-format-…`) are removed two weeks on.
+
 ---
 
 ### 8.5 As built, in short
