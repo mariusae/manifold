@@ -364,6 +364,52 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(p.first?.text == "commit abc")
 }
 
+@Test func aPatchsHunksEndByTheirCountsNotAtABlankLine() {
+    // A blank line of context whose space was trimmed is context; the
+    // blank line after a hunk, before the next commit (`git log -p`), and
+    // what follows it, aren't; "\ No newline" after the last line is no row.
+    let patch = """
+    diff --git a/x.txt b/x.txt
+    --- a/x.txt
+    +++ b/x.txt
+    @@ -1,4 +1,4 @@
+     a
+
+    -b
+    +B
+     c
+    \\ No newline at end of file
+
+    commit def
+    Author: Me
+
+    diff --git a/y.txt b/y.txt
+    --- a/y.txt
+    +++ b/y.txt
+    @@ -1 +1 @@
+    -y
+    +Y
+
+    """
+    let p = DiffRows.patch(patch)
+    #expect(p.filter { $0.kind == .context }.map(\.text) == ["a", "", "c"])
+    #expect(p.contains { $0.kind == .context && $0.oldLine == 2 && $0.newLine == 2 && $0.text == "" })
+    #expect(p.contains { $0.kind == .removed && $0.oldLine == 3 && $0.text == "b" })
+    #expect(!p.contains { $0.text.contains("commit def") || $0.text.contains("No newline") })
+    #expect(p.contains { $0.kind == .file("y.txt") })
+    #expect(p.contains { $0.kind == .added && $0.newLine == 1 && $0.text == "Y" })
+}
+
+@Test func aBigPatchIsReadInLinearTime() {
+    // Every blank line once split the whole patch again: quadratic.
+    let hunk = "@@ -1,3 +1,3 @@\n a\n\n-b\n+B\n"
+    let patch = (0..<4000).map { "diff --git a/f\($0) b/f\($0)\n--- a/f\($0)\n+++ b/f\($0)\n" + hunk }.joined()
+    let start = Date()
+    let rows = DiffRows.patch(patch)
+    #expect(rows.count == 4000 * 6)
+    #expect(Date().timeIntervalSince(start) < 2)
+}
+
 // MARK: Scrubbing
 
 @Test func replayingALogUpToAMoment() {

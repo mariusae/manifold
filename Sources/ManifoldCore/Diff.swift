@@ -200,7 +200,23 @@ public enum DiffRows {
         var rows: [DiffRow] = []
         var oldLine = 0, newLine = 0
         var inHunk = false
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        // What the hunk's header says is left of it, each side: it ends
+        // when both are used up — not at a blank line, which within it is
+        // a blank line of context (a patch whose spaces were trimmed), and
+        // after it isn't (between the commits of a `git log -p`).
+        var oldLeft = 0, newLeft = 0
+        // A heading is the commit's, before its first file only.
+        var seenFile = false
+        func took(old: Bool, new: Bool) {
+            if old { oldLeft -= 1 }
+            if new { newLeft -= 1 }
+            if oldLeft <= 0, newLeft <= 0 { inHunk = false }
+        }
+        // Split once: the last line known by its place (it was found by
+        // splitting the whole patch again at every blank line in a hunk —
+        // 200 s for a 10 MB patch, on the main thread).
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for (i, raw) in lines.enumerated() {
             let line = String(raw)
             if line.hasPrefix("diff --git ") {
                 inHunk = false
@@ -208,30 +224,40 @@ public enum DiffRows {
                 let parts = line.dropFirst(11).split(separator: " ")
                 let name = parts.last.map { $0.hasPrefix("b/") ? String($0.dropFirst(2)) : String($0) } ?? ""
                 rows.append(DiffRow(kind: .file(name)))
+                seenFile = true
             } else if line.hasPrefix("@@") {
                 inHunk = true
                 // "@@ -a,b +c,d @@ heading"
                 let fields = line.split(separator: " ")
                 if fields.count >= 3 {
-                    oldLine = Int(fields[1].dropFirst().split(separator: ",").first ?? "0") ?? 0
-                    newLine = Int(fields[2].dropFirst().split(separator: ",").first ?? "0") ?? 0
+                    let o = fields[1].dropFirst().split(separator: ","), n = fields[2].dropFirst().split(separator: ",")
+                    oldLine = Int(o.first ?? "0") ?? 0
+                    newLine = Int(n.first ?? "0") ?? 0
+                    // A count left out is one.
+                    oldLeft = o.count > 1 ? Int(o[1]) ?? 0 : 1
+                    newLeft = n.count > 1 ? Int(n[1]) ?? 0 : 1
+                } else {
+                    oldLeft = .max; newLeft = .max
                 }
                 let heading = line.range(of: "@@", options: .backwards).map { String(line[$0.upperBound...]).trimmingCharacters(in: .whitespaces) } ?? ""
                 rows.append(DiffRow(kind: .hunk, oldLine: oldLine, newLine: newLine, text: heading))
             } else if inHunk, line.hasPrefix("+") {
                 rows.append(DiffRow(kind: .added, newLine: newLine, text: String(line.dropFirst())))
                 newLine += 1
+                took(old: false, new: true)
             } else if inHunk, line.hasPrefix("-") {
                 rows.append(DiffRow(kind: .removed, oldLine: oldLine, text: String(line.dropFirst())))
                 oldLine += 1
+                took(old: true, new: false)
             } else if inHunk, line.hasPrefix(" ") || line.isEmpty {
-                guard !(line.isEmpty && raw == text.split(separator: "\n", omittingEmptySubsequences: false).last) else { continue }
+                guard !(line.isEmpty && i == lines.count - 1) else { continue }
                 rows.append(DiffRow(kind: .context, oldLine: oldLine, newLine: newLine, text: String(line.dropFirst())))
                 oldLine += 1
                 newLine += 1
-            } else if inHunk, line.hasPrefix("\\") {
-                continue  // "\ No newline at end of file"
-            } else if !inHunk, rows.isEmpty || !line.isEmpty, !line.hasPrefix("index "), !line.hasPrefix("--- "), !line.hasPrefix("+++ "),
+                took(old: true, new: true)
+            } else if line.hasPrefix("\\") {
+                continue  // "\ No newline at end of file", in its hunk or just after it
+            } else if !inHunk, !seenFile, rows.isEmpty || !line.isEmpty, !line.hasPrefix("index "), !line.hasPrefix("--- "), !line.hasPrefix("+++ "),
                       !line.hasPrefix("new file"), !line.hasPrefix("deleted file"), !line.hasPrefix("similarity"), !line.hasPrefix("rename"),
                       !line.hasPrefix("old mode"), !line.hasPrefix("new mode") {
                 // The commit's heading, before the first file.
