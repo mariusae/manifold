@@ -2242,6 +2242,15 @@ What the README said once of how things work under what you see, kept here.
   of what runs under its shell, the shell first, each process a submenu of
   End, Force End and what runs under it.
 
+A terminal attached from two views at once (two Macs, two tiles) has one
+size, a pty's: the view's that last attached or was typed into
+(`Session.sizedFor`). Another's resizes are kept and applied when it's
+typed into — not as they come, which flipped the pty between two widths,
+each view drawing what was laid out for the other's (lines broken short,
+a column of letters down an edge). What a view in the back sends by
+itself (its focus going, a query answered: an escape sequence) doesn't
+count as typing.
+
 ### Copies between hosts
 
   A copy between two

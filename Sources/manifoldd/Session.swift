@@ -191,6 +191,12 @@ final class Session {
     /// the pty goes back to the size of the one that remains, so the
     /// program isn't left drawing for a pane that is gone.
     private var sizes: [ObjectIdentifier: (cols: UInt16, rows: UInt16)] = [:]
+    /// The attachment whose size the terminal has: the last to attach or
+    /// to type into it. Another's resizes are kept, not applied — two views
+    /// of one terminal (two Macs, or two tiles) each resizing it to their own
+    /// width left the other drawing what was laid out for a different one,
+    /// garbled — until it's typed into, when it's the one.
+    private var sizedFor: ObjectIdentifier?
 
     /// Whether any attachment has seen the output so far: until one
     /// has, the replay is live — a shell's startup queries, say, whose
@@ -222,6 +228,7 @@ final class Session {
         }
         sizes[ObjectIdentifier(conn)] = (cols, rows)
         // At its size first, so the snapshot is drawn for it.
+        sizedFor = ObjectIdentifier(conn)
         resize(cols: cols, rows: rows)
         if let screen {
             // The terminal as it is: its queries were answered when they came,
@@ -251,7 +258,11 @@ final class Session {
         wantsModes.remove(ObjectIdentifier(conn))
         inputIDs.removeValue(forKey: ObjectIdentifier(conn))
         sizes.removeValue(forKey: ObjectIdentifier(conn))
-        if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
+        // The one it was sized for gone: the latest left's size.
+        if sizedFor == ObjectIdentifier(conn) {
+            sizedFor = attachments.last.map(ObjectIdentifier.init)
+            if let last = attachments.last, let s = sizes[ObjectIdentifier(last)] { resize(cols: s.cols, rows: s.rows) }
+        }
     }
 
     var isAttached: Bool { !attachments.isEmpty }
@@ -260,11 +271,21 @@ final class Session {
         switch frame.kind {
         case .data:
             if let conn, let id = inputIDs[ObjectIdentifier(conn)] { inputTaken[id, default: 0] += UInt64(frame.payload.count) }
+            // Typed into from another view: sized for it, first. (Not for an
+            // escape sequence: the focus said, a query answered — what a view
+            // in the back sends by itself — or an arrow, until it types.)
+            if let conn, frame.payload.first != 0x1B, sizedFor != ObjectIdentifier(conn), let s = sizes[ObjectIdentifier(conn)] {
+                sizedFor = ObjectIdentifier(conn)
+                resize(cols: s.cols, rows: s.rows)
+            }
             input.append(frame.payload)
             writeInput()
         case .resize:
             guard let s = frame.size else { break }
-            if let conn { sizes[ObjectIdentifier(conn)] = (s.cols, s.rows) }
+            if let conn {
+                sizes[ObjectIdentifier(conn)] = (s.cols, s.rows)
+                guard sizedFor == nil || sizedFor == ObjectIdentifier(conn) else { break }
+            }
             resize(cols: s.cols, rows: s.rows)
         default:
             break
