@@ -10246,9 +10246,13 @@ extension MainWindowController: NotebookViewDelegate {
 }
 
 extension MainWindowController: MediaViewDelegate {
-    func mediaView(_ view: MediaView, needsBytes done: @escaping (Data?) -> Void) {
+    func mediaView(_ view: MediaView, needsBytes progress: @escaping (Int64, Int64?) -> Void, done: @escaping (Data?) -> Void) {
         guard let client = hosts.client(view.block.host) else { return done(nil) }
-        client.readBytes(view.block, done: done)
+        client.readBytes(view.block, progress: progress, done: done)
+    }
+
+    func mediaViewHostName(_ view: MediaView) -> String? {
+        view.block.host == host.host ? nil : hosts.label(of: view.block.host)
     }
 }
 

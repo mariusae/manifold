@@ -1040,8 +1040,11 @@ around it, and comes back with its history.
   what's there already asked about before it's replaced; drop this
   Mac's files on another host's terminal and they're sent to its
   shell's folder (a name of their own if one's taken) and their paths
-  there typed. Drag another host's entry to the Finder, the Desktop or
-  Mail and it's fetched there. Right-click an entry (or a file tile's
+  there typed. Drag another host's file to the Finder, the Desktop or
+  Mail — a folder's entry, a tile by its bar, a search's or ⌘O's row, a
+  change, an outline's row — and it's fetched there (shown going with the
+  other copies). An image or PDF from another host says how much of it
+  has come, with a bar, while it's brought to be shown. Right-click an entry (or a file tile's
   menu) for **Open With** — on another host, **Open Locally With**: a
   copy opened by the app here, sent back each time it's saved — and
   **Download**, to Downloads. Every copy shows at the foot of the

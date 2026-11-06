@@ -32,6 +32,9 @@ final class FileSender {
         if let limit, size > limit { return refuse("bigger than \(limit) bytes") }
         do { try handle.seek(toOffset: UInt64(max(0, offset))) } catch { return refuse(error.localizedDescription) }
         let sender = FileSender(stream: stream, handle: handle, length: length, queue: queue)
+        // How much is coming, first: for whoever waits on it to say so (an
+        // app before this one passes it over).
+        stream.send(.message(TreeMessage.total(length.map { min($0, max(0, size - offset)) } ?? max(0, size - offset))))
         // The stream keeps it until it closes.
         stream.onDrain = { sender.more() }
         stream.onClose = { sender.finish() }

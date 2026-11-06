@@ -238,13 +238,14 @@ extension HostClient {
     /// `limit`, the link gone). What it returns stops it (and then `done`
     /// says the link went).
     @discardableResult
-    func readFile(_ path: String, offset: Int64 = 0, length: Int64? = nil, limit: Int64? = nil,
+    func readFile(_ path: String, offset: Int64 = 0, length: Int64? = nil, limit: Int64? = nil, onTotal: ((Int64) -> Void)? = nil,
                   onData: @escaping (Data) -> Void, done: @escaping (String?) -> Void) -> () -> Void {
         guard let mux else { done("not connected"); return {} }
         let stream = mux.open(bulk: true, compress: true, callbackQueue: .main, purpose: StreamPurpose(.file, "↓ " + path))
         var ended: String??
         stream.onFrame = { frame in
             if frame.kind == .data { return onData(frame.payload) }
+            if case let .total(n)? = frame.decode(TreeMessage.self) { return onTotal?(n) ?? () }
             if case let .end(error, _)? = frame.decode(ServerMessage.self) { ended = .some(error) }
         }
         stream.onClose = { done(ended ?? "the link to the host went") }
@@ -291,10 +292,12 @@ extension HostClient {
         return readFile(path, limit: Int64(limit), onData: { whole.append($0) }) { error in done(error == nil ? whole : nil) }
     }
 
-    /// A file block's bytes (an image, a PDF), as big as it is.
-    func readBytes(_ block: BlockID, done: @escaping (Data?) -> Void) {
+    /// A file block's bytes (an image, a PDF), as big as it is; `progress`
+    /// as they come (how many, and of how many, once the host says).
+    func readBytes(_ block: BlockID, progress: ((Int64, Int64?) -> Void)? = nil, done: @escaping (Data?) -> Void) {
         guard let path = node.block(block)?.path else { return done(nil) }
         var whole = Data()
-        readFile(path, onData: { whole.append($0) }) { error in done(error == nil ? whole : nil) }
+        var total: Int64?
+        readFile(path, onTotal: { total = $0 }, onData: { whole.append($0); progress?(Int64(whole.count), total) }) { error in done(error == nil ? whole : nil) }
     }
 }

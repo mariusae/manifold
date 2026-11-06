@@ -3,8 +3,11 @@ import PDFKit
 import ManifoldCore
 
 protocol MediaViewDelegate: AnyObject {
-    /// The file's bytes, from its host.
-    func mediaView(_ view: MediaView, needsBytes done: @escaping (Data?) -> Void)
+    /// The file's bytes, from its host: how many have come (and of how
+    /// many) as they come, then all of them.
+    func mediaView(_ view: MediaView, needsBytes progress: @escaping (Int64, Int64?) -> Void, done: @escaping (Data?) -> Void)
+    /// What its host is called, if it's another than this Mac.
+    func mediaViewHostName(_ view: MediaView) -> String?
 }
 
 /// The image and PDF lenses (DESIGN.md §7.5): the file as its host has
@@ -22,6 +25,11 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
     private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
+    /// While a big file comes from its host: how much has, in the middle
+    /// of where it will be — shown only if it takes a moment.
+    private let coming = NSStackView()
+    private let comingBar = NSProgressIndicator()
+    private let comingWords = NSTextField(labelWithString: "")
     private let scroll: NSScrollView = {
         let s = ClippingScrollView()
         s.contentView = CenteringClipView()
@@ -100,6 +108,19 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         note.alignment = .right
         addSubview(header)
         addSubview(note)
+        comingBar.style = .bar
+        comingBar.controlSize = .small
+        comingBar.minValue = 0
+        comingBar.maxValue = 1
+        comingBar.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        comingWords.font = UIType.detail
+        comingWords.textColor = Theme.secondaryText
+        coming.orientation = .vertical
+        coming.spacing = 6
+        coming.addArrangedSubview(comingWords)
+        coming.addArrangedSubview(comingBar)
+        coming.isHidden = true
+        addSubview(coming)
         if kind == .pdf {
             let p = PDFView()
             p.autoScales = true
@@ -187,6 +208,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         }
         pdfView?.frame = content
         scroll.frame = content
+        let size = coming.fittingSize
+        coming.frame = NSRect(x: content.midX - size.width / 2, y: content.midY - size.height / 2, width: size.width, height: size.height)
         if pdfView != nil { finder.layout(in: content) }
         if !fitted { fit() }
     }
@@ -204,8 +227,32 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     private func load() {
         guard let b = source(), b.path != nil else { return }
         note.stringValue = loaded ? note.stringValue : "Reading…"
-        delegate?.mediaView(self) { [weak self] data in
+        var arrived = false
+        var said: (Int64, Int64?) = (0, nil)
+        let from = delegate?.mediaViewHostName(self)
+        func show() {
+            let (n, total) = said
+            comingWords.stringValue = (from.map { "Bringing it from \($0)" } ?? "Reading it") + " — "
+                + (total.map { "\(Self.megabytes(n)) of \(Self.megabytes($0))" } ?? Self.megabytes(n))
+            if let total, total > 0 { comingBar.isIndeterminate = false; comingBar.doubleValue = Double(n) / Double(total) }
+            else { comingBar.isIndeterminate = true; comingBar.startAnimation(nil) }
+        }
+        // Only if it's slow to come: a moment in, it's said and shown going.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, !arrived else { return }
+            show()
+            self.addSubview(self.coming, positioned: .above, relativeTo: nil)
+            self.coming.isHidden = false
+            self.needsLayout = true
+        }
+        delegate?.mediaView(self, needsBytes: { [weak self] n, total in
+            said = (n, total)
+            if self?.coming.isHidden == false { show() }
+        }) { [weak self] data in
+            arrived = true
             guard let self else { return }
+            self.coming.isHidden = true
+            self.comingBar.stopAnimation(nil)
             guard let data else {
                 self.note.stringValue = "Couldn't read it"
                 return
@@ -230,6 +277,11 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
                 self.note.stringValue = "Not an image"
             }
         }
+    }
+
+    /// "12.4 MB" (or KB, for less than one).
+    static func megabytes(_ n: Int64) -> String {
+        n < 1 << 20 ? "\(max(1, n >> 10)) KB" : String(format: "%.1f MB", Double(n) / Double(1 << 20))
     }
 
     /// The whole image in view.
