@@ -55,6 +55,8 @@ struct Shown: Equatable {
         case .notebook: .notebook
         case .outline: .terminal
         case .ui: .ui
+        case .thread: .thread
+        case .threads: .arrangement
         }
     }
 }

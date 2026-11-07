@@ -87,6 +87,8 @@ enum Theme {
         case .outline: "list.bullet.rectangle"
         case .outliner: "list.bullet.indent"
         case .ui: "slider.horizontal.3"
+        case .thread: "bubble.left.and.bubble.right"
+        case .threads: "text.bubble"
         }
     }
 

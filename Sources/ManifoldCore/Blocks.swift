@@ -28,6 +28,8 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     /// A form made from a shell (`mani ui`): widgets an agent describes,
     /// their values, kept (§7.8).
     case ui
+    /// A conversation about a place, or a space (§3.12).
+    case thread
 
     public var defaultTitle: String {
         switch self {
@@ -47,6 +49,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .notebook: "Shell Notebook"
         case .arrangement: "Untitled"
         case .ui: "Panel"
+        case .thread: "Thread"
         }
     }
 }
@@ -81,6 +84,10 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
     /// A note (Markdown) as an outline to edit — rows, checkboxes, folds
     /// — its Markdown written back as it changes (§7.9).
     case outliner
+    /// A thread as a chat (§3.12).
+    case thread
+    /// A space's threads (or a project's), as one timeline (§3.12).
+    case threads
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -111,6 +118,7 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .notebook: return .notebook
         case .arrangement: return .card
         case .ui: return .ui
+        case .thread: return .thread
         }
     }
 
@@ -1017,6 +1025,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
     public var processes: ProcessState?
     public var arrangement: ArrangementState?
     public var ui: UIState?
+    public var thread: ThreadState?
     /// Status records by id (§3.7); the root record under `rootStatusID`.
     public var status: [String: StatusRecord]?
     /// What each placement's lens needs to come back as it was — scroll
@@ -1058,6 +1067,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         case .notebook: notebook = NotebookState()
         case .arrangement: arrangement = ArrangementState()
         case .ui: ui = UIState()
+        case .thread: thread = ThreadState()
         default: break
         }
     }
@@ -1113,6 +1123,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
 
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
+        if let t = thread?.title { return t }
         if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }

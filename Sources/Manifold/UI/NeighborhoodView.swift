@@ -277,7 +277,7 @@ final class GraphCanvas: NSView, NSDraggingSource {
 
     static func color(_ kind: EdgeKind?) -> NSColor {
         switch kind {
-        case .placed?, .contains?, .link(.pinned)?: Theme.secondaryText
+        case .placed?, .contains?, .link(.pinned)?, .link(.thread)?: Theme.secondaryText
         case .link(.opened)?: Theme.accent
         case .link(.linked)?: Palette.current.kinds.linked.color
         case .link(.embeds)?: Palette.current.kinds.embeds.color

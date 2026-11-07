@@ -6455,6 +6455,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             case .ui:
                 secondary = "panel ui form " + (block.place ?? "")
                 detail = "Panel" + (block.place.map { " · " + $0.abbreviatingHome } ?? "")
+            case .thread:
+                let t = block.thread
+                secondary = "thread comment " + (t?.comments.compactMap(\.comment).joined(separator: " ").prefix(400) ?? "")
+                detail = "Thread" + (t?.about?.title.map { " · " + $0 } ?? "") + (t?.resolved == true ? " · resolved" : "")
             }
             if let r = block.statusRecord, r.wantsAttention {
                 note = r.state == .blocked ? "needs you" : r.state == .done ? "done, not read yet" : "failed"

@@ -1,3 +1,6 @@
+#ifndef __APPLE__
+#define _GNU_SOURCE
+#endif
 #include "cpty.h"
 
 #include <errno.h>
@@ -7,12 +10,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 #ifdef __APPLE__
 #include <libproc.h>
 #include <util.h>
 #else
-#define _GNU_SOURCE
 #include <pty.h>
 #include <utmp.h>
 #include <sys/wait.h>
@@ -146,6 +150,44 @@ int mf_proc_path(pid_t pid, char *buf, int len) {
     if (n < 0) return -1;
     buf[n] = 0;
     return 0;
+#endif
+}
+
+pid_t mf_socket_peer_pid(int fd) {
+#ifdef __APPLE__
+    pid_t pid = -1;
+    socklen_t len = sizeof pid;
+    if (getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) != 0) return -1;
+    return pid;
+#else
+    struct ucred cred;
+    socklen_t len = sizeof cred;
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0) return -1;
+    return cred.pid;
+#endif
+}
+
+pid_t mf_proc_parent(pid_t pid) {
+#ifdef __APPLE__
+    struct proc_bsdshortinfo info;
+    int n = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, sizeof(info));
+    if (n != sizeof(info)) return -1;
+    return (pid_t)info.pbsi_ppid;
+#else
+    char path[64], buf[512];
+    snprintf(path, sizeof path, "/proc/%d/stat", (int)pid);
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    // pid (comm) state ppid …: the comm may hold spaces and parentheses.
+    char *close = strrchr(buf, ')');
+    if (!close) return -1;
+    char state;
+    int ppid;
+    if (sscanf(close + 1, " %c %d", &state, &ppid) != 2) return -1;
+    return (pid_t)ppid;
 #endif
 }
 

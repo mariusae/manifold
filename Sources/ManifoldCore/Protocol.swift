@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 67
+public let protocolVersion = 68
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -271,6 +271,15 @@ public enum Proposal: Codable, Sendable {
     case restartNotebook(block: BlockID)
     /// The notebook's shell started if it isn't running.
     case startNotebook(block: BlockID)
+    /// A thread made (§3.12): about a place, or a space; in a space; its
+    /// first comment, and who wrote it.
+    case newThread(block: BlockID, space: BlockID?, about: ThreadPlace, text: String, author: ThreadAuthor)
+    /// A thread's next entry (stamped by the host).
+    case threadEntry(block: BlockID, ThreadEntry)
+    /// Threads seen, each up to an entry's stamp.
+    case threadSeen([BlockID: Stamp])
+    /// A thread's space (the space it was made in, else where its agent is).
+    case threadSpace(block: BlockID, space: BlockID)
 }
 
 /// One item of a tree on a file stream (§8): where it is under the tree's
@@ -653,6 +662,10 @@ public struct ManiRequest: Codable, Sendable, Equatable {
     public var here: BlockID?
     /// What it read from its input, for a command that takes it.
     public var input: String?
+    /// Who ran it (§3.12), as the host it ran on found it: an agent, by
+    /// the terminal its process runs under; else you. Set by the host,
+    /// whatever the command said.
+    public var author: ThreadAuthor?
 
     public init(verb: String, flags: [String: String], args: [String], cwd: String, here: BlockID?, input: String? = nil) {
         self.verb = verb

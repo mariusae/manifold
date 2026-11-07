@@ -517,8 +517,14 @@ final class Hosts {
              let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
              let .newAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
-             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _):
+             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
+             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .threadSpace(block, _):
             (client(of: block) ?? local).propose(proposal, done: done)
+        case let .threadSeen(marks):
+            for (host, group) in Dictionary(grouping: marks, by: { $0.key.host }) {
+                client(host)?.propose(.threadSeen(Dictionary(uniqueKeysWithValues: group.map { ($0.key, $0.value) })))
+            }
+            done?(nil)
         // A project's said to its own host's client (`HostClient.propose`); here, this Mac's.
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .movePath, .showRevision,
              .project, .unproject:

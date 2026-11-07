@@ -159,6 +159,7 @@ public enum FindKinds {
         case .notebook: "notebook"
         case .arrangement: "space"
         case .ui: "panel"
+        case .thread: "thread"
         }
         guard let name else { return [] }
         return kind == .terminal && agent ? [name, "agent"] : [name]

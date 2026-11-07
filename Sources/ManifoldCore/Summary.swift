@@ -174,6 +174,17 @@ extension Block {
             if notebook?.running != nil { s.note = "running"; s.tone = .running }
         case .ui:
             s.lines = Self.panelLines(self)
+        case .thread:
+            guard let t = thread else { break }
+            // Its place, and the last word said and by whom.
+            if let about = t.about { s.place = [about.title, about.name].compactMap { $0 }.joined(separator: " · ") }
+            if let last = t.lastComment, let words = last.comment {
+                s.lines = [last.author.name + ": " + Self.oneLine(words)]
+            }
+            let n = t.comments.count
+            s.lines.append((t.resolved ? "resolved · " : "") + "\(n) comment\(n == 1 ? "" : "s")")
+            s.note = BlockSummary.ago(t.lastActivity, now: now)
+            if t.resolved { s.tone = .done }
         case .git:
             guard let g = git else { break }
             s.lines = [g.branch.map { "on \($0)" } ?? "", "\(g.status.count) change\(g.status.count == 1 ? "" : "s")"]

@@ -22,6 +22,10 @@ pid_t mf_spawn_detached(const char *path, char *const argv[], const char *log);
 int mf_proc_cwd(pid_t pid, char *buf, int len);
 // The path of a process's executable; -1 if it can't be read.
 int mf_proc_path(pid_t pid, char *buf, int len);
+// The process at the other end of a Unix socket; -1 if it can't be told.
+pid_t mf_socket_peer_pid(int fd);
+// A process's parent; -1 if it can't be read.
+pid_t mf_proc_parent(pid_t pid);
 
 // The name of the terminal's foreground process, or -1.
 int mf_pty_foreground_name(int master, char *buf, int len);

@@ -31,9 +31,9 @@ final class Server {
     /// The language servers' table as the app last gave it (the desk's),
     /// before this host's own settings are put over it.
     private var deskLanguageServers = LanguageServerConfig.defaults
-    private let node = Node()
+    let node = Node()
     private let store: LogStore
-    private let clock: Clock
+    let clock: Clock
     private var clients: [any Channel] = []
     /// Each client's attachment number, and the app among them (named so).
     private var clientIDs: [ObjectIdentifier: Int] = [:]
@@ -63,6 +63,9 @@ final class Server {
     /// What each app's attachment calls its machine, and which launch of
     /// the app it is (`hello`).
     private var machines: [ObjectIdentifier: String] = [:]
+    /// The process at the other end of each connection, as the socket says
+    /// (§3.12): what a `mani` command's author is found from.
+    private var peers: [ObjectIdentifier: pid_t] = [:]
     private var instances: [ObjectIdentifier: String] = [:]
     /// Who the host is attached to (§8.2): the launch of the app that last
     /// took it — by focusing there, or Take Over — and how many times it
@@ -86,7 +89,7 @@ final class Server {
     /// Connections that haven't said what they are yet.
     private var pending: [any Channel] = []
     private var attachments = 0
-    private var sessions: [BlockID: Session] = [:]
+    var sessions: [BlockID: Session] = [:]
     /// Shell notebooks' shells (§7.7), and what a running cell has printed
     /// that the clients haven't been sent yet.
     private var notebooks: [BlockID: NotebookShell] = [:]
@@ -316,10 +319,13 @@ final class Server {
             let mux = Mux(Connection(fd: fd, queue: queue))
             let conn = mux.control
             links[ObjectIdentifier(conn)] = mux
+            let peer = mf_socket_peer_pid(fd)
+            if peer > 0 { peers[ObjectIdentifier(conn)] = peer }
             conn.onFrame = { [weak self, unowned conn] frame in self?.firstFrame(frame, on: conn) }
             conn.onClose = { [weak self, unowned conn] in
                 self?.pending.removeAll { $0 === conn }
                 self?.links.removeValue(forKey: ObjectIdentifier(conn))
+                self?.peers.removeValue(forKey: ObjectIdentifier(conn))
             }
             mux.onStream = { [weak self] stream in
                 stream.onFrame = { [weak self, unowned stream] frame in self?.firstFrame(frame, on: stream) }
@@ -604,6 +610,9 @@ final class Server {
                 return
             }
             let client = clientIDs[ObjectIdentifier(conn)] ?? 0
+            // Who asked, as this host finds it — not as the request says.
+            var request = request
+            request.author = author(ofCaller: peers[ObjectIdentifier(conn)])
             commandsOut[client, default: []].insert(id)
             commandsAt[ObjectIdentifier(app), default: []].insert(CommandAsked(client: client, id: id))
             log("mani \(request.verb) to \(machines[ObjectIdentifier(app)] ?? "the app")")
@@ -751,7 +760,7 @@ final class Server {
 
     /// The host appends to a shard it leads, and tells every client.
     @discardableResult
-    private func append(_ event: Event, to shard: ShardID) -> Entry? {
+    func append(_ event: Event, to shard: ShardID) -> Entry? {
         guard let entry = node.append(event, to: shard, at: clock.now()) else { return nil }
         store.append([entry], to: shard)
         dirtyShards.insert(shard)
@@ -981,6 +990,17 @@ final class Server {
             done()
         case let .startNotebook(block):
             startNotebook(block)
+            done()
+        case let .newThread(block, space, about, text, author):
+            makeThread(block, space: space, about: about, text: text, author: author)
+            done()
+        case let .threadEntry(block, entry):
+            done(addThreadEntry(block, entry))
+        case let .threadSeen(marks):
+            threadsSeen(marks)
+            done()
+        case let .threadSpace(block, space):
+            setThreadSpace(block, space)
             done()
         case let .captureOutput(block, terminal, command, fallback):
             // A command's output as a block of its own (§3.8): the bytes the

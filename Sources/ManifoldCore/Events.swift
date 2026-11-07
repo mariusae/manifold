@@ -74,6 +74,9 @@ public enum LinkKind: String, Codable, Sendable {
     /// Shown at the top of the workspace in the sidebar, there to recall
     /// with its tile closed — the workspace keeps it.
     case pinned
+    /// A space's thread (§3.12), strong: from the space to it, which keeps
+    /// it; the space's timeline is these.
+    case thread
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
@@ -82,6 +85,7 @@ public enum LinkKind: String, Codable, Sendable {
         case "embeds": self = .embeds
         case "linked", "about": self = .linked
         case "pinned": self = .pinned
+        case "thread": self = .thread
         default: self = .opened
         }
     }
@@ -239,10 +243,13 @@ public struct DeskState: Codable, Equatable, Sendable {
     public var agents: [String] = []
     /// Its projects (§2.6), each a folder made one by hand.
     public var projects: [Project] = []
+    /// What you've seen of each thread here (§3.12): its latest entry
+    /// seen, by thread — moved only forward, from whichever Mac.
+    public var threadsSeen: [BlockID: Stamp] = [:]
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey { case order, selected, window, appearance, settings, preferences, agents, projects }
+    enum CodingKeys: String, CodingKey { case order, selected, window, appearance, settings, preferences, agents, projects, threadsSeen }
 
     // A desk saved before a field existed gets its default.
     public init(from decoder: Decoder) throws {
@@ -255,6 +262,7 @@ public struct DeskState: Codable, Equatable, Sendable {
         preferences = (try? c.decodeIfPresent(HostPreferences.self, forKey: .preferences)) ?? HostPreferences()
         agents = (try? c.decodeIfPresent([String].self, forKey: .agents)) ?? []
         projects = (try? c.decodeIfPresent([Project].self, forKey: .projects)) ?? []
+        threadsSeen = (try? c.decodeIfPresent([BlockID: Stamp].self, forKey: .threadsSeen)) ?? [:]
     }
 }
 
@@ -341,6 +349,14 @@ public enum Event: Codable, Equatable, Sendable {
     case output(OutputState)
     /// A shell notebook's cells and runs (§7.7).
     case notebook(NotebookEdit)
+    /// What a thread is about (§3.12), and what it was written against.
+    case threadAbout(ThreadPlace)
+    /// The space a thread is in.
+    case threadSpace(BlockID?)
+    /// A thread's next entry: a comment, or something that happened to it.
+    case threadEntry(ThreadEntry)
+    /// What you've seen of threads, by thread: their latest entry seen.
+    case threadSeen([BlockID: Stamp])
     /// A panel's widgets, the whole of them, as JSON (§7.8).
     case uiSpec(String)
     /// Some of a panel's values, by widget id, each as JSON ("" takes it away).
@@ -526,6 +542,7 @@ extension Block {
         if case let .output(o) = event { output = o }
         if case let .notebook(edit) = event { notebook?.apply(edit) }
         if ui != nil { ui!.apply(event) }
+        if thread != nil { thread!.apply(event) }
         if processes != nil { processes!.apply(event) }
         if arrangement != nil { arrangement!.apply(event, at: at) }
     }
@@ -974,6 +991,8 @@ extension DeskState {
         case let .project(p):
             if let i = projects.firstIndex(where: { $0.root == p.root }) { projects[i] = p } else { projects.append(p) }
         case let .unproject(root): projects.removeAll { $0.root == root }
+        case let .threadSeen(marks):
+            for (thread, at) in marks where threadsSeen[thread].map({ at > $0 }) ?? true { threadsSeen[thread] = at }
         default: break
         }
     }
