@@ -12,6 +12,8 @@ final class ThreadUI {
     var timelines: [Weak<ThreadTimelineView>] = []
     /// The overlay, while it's up.
     var overlay: ThreadOverlayView?
+    /// Agents asked, waiting for their turn to end.
+    var asks: [MainWindowController.PendingAsk] = []
     /// What each thread looked like when last shown, to show again only
     /// what changed.
     var shown: [ObjectIdentifier: String] = [:]
@@ -167,6 +169,7 @@ extension MainWindowController: ThreadChatDelegate {
     /// Every chat on screen brought up to date — those whose thread
     /// changed — and the editors' and diffs' marks, when threads did.
     func threadsChanged() {
+        deliverAsks()
         let all = hosts.threads
         var sig = ""
         for t in all {
@@ -262,6 +265,7 @@ extension MainWindowController: ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, send text: String) {
         if let id = view.threadID {
             hosts.addToThread(id, .comment(text))
+            askAgents(in: id, comment: text, author: Hosts.you)
             return
         }
         guard let place = view.newPlace else { return }
@@ -271,6 +275,7 @@ extension MainWindowController: ThreadChatDelegate {
         }
         view.threadID = id
         view.newPlace = nil
+        askAgents(in: id, comment: text, author: Hosts.you)
         // The card's threads now this one.
         if let card = threadUI.card, card.chat === view { card.threads = [id] }
     }
@@ -529,6 +534,12 @@ extension MainWindowController {
         case "seen":
             hosts.markSeen(hosts.threads)
             return "marked"
+        case "address":
+            // Every open thread of the space handed to an agent at once.
+            guard let space = selected else { return "no space" }
+            let open = hosts.threads(inSpace: space).filter { $0.thread?.resolved != true }.map(\.id)
+            addressThreads(open)
+            return "handed \(open.count)"
         case "agentsay":
             // An agent's comment on the newest thread, as if one wrote it
             // (the first terminal here standing for it).
@@ -681,11 +692,17 @@ extension MainWindowController: ThreadTimelineDelegate {
     func timeline(_ view: ThreadTimelineView, send text: String, to thread: BlockID?) {
         if let thread {
             hosts.addToThread(thread, .comment(text))
+            askAgents(in: thread, comment: text, author: Hosts.you)
             return
         }
         guard let space = view.space ?? selected else { return }
         let name = hosts.arrangement(space).map(title(of:))
-        hosts.newThread(about: ThreadPlace(block: space, title: name), space: space, text: text)
+        let id = hosts.newThread(about: ThreadPlace(block: space, title: name), space: space, text: text)
+        askAgents(in: id, comment: text, author: Hosts.you)
+    }
+
+    func timeline(_ view: ThreadTimelineView, address threads: [BlockID]) {
+        addressThreads(threads)
     }
 
     func timeline(_ view: ThreadTimelineView, resolve: Bool, _ thread: BlockID) {

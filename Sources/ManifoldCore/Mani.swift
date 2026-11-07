@@ -534,6 +534,24 @@ public enum Mani {
               place the symbol is used, `path:line: the line`; `--markdown` as references,
               ready for a walk. Use it before guessing at callers with grep.
 
+            ## Threads: comments on places, yours and the user's
+            The user leaves threads — comments on a line, a declaration, a diff's rows, a
+            command, a page, or the space — and asks you in one by tagging you (`@claude`),
+            or hands you a set ("address these"). Manifold then types a line into your
+            terminal naming the thread. Work in the thread, not in your reply here:
+            - `mani thread read <thread>` — what it's about, where that is now (the line it
+              was written at, if it moved; "gone" if deleted — then the text it was written
+              against is all there is, so read it), and every comment with who wrote it.
+              `mani threads` lists the space's open ones (`--project`, `--all`).
+            - Do what it asks; then `mani thread reply <thread> "what you did"`, with
+              `--resolve` only if you did it. A question, or a choice for the user, is a reply
+              without `--resolve` — then go on with the rest; don't stop to ask in the terminal.
+            - Never resolve what you didn't address. Keep replies short; they're read beside
+              the code.
+            - Where you're unsure of something you did (an assumption, a guess), leave a
+              thread on it for the user: `mani thread new "$(mani ref <file> --line 40)" "…"`.
+            - Your replies are marked as yours by Manifold; you can't write as the user.
+
             ## What the user says, and what to run
             - "this" with a `manifold:` reference in their message: `mani read <it>` (and
               `mani info <it>` for where it is); "fix that note": read it, then `mani write` it.

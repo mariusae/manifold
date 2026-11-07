@@ -16,6 +16,8 @@ protocol ThreadTimelineDelegate: AnyObject {
     /// What it shows was on screen a moment: seen.
     func timeline(_ view: ThreadTimelineView, seen threads: [BlockID])
     func timeline(_ view: ThreadTimelineView, dropped: Dragged, done: @escaping (String?) -> Void)
+    /// The open threads shown handed to an agent at once.
+    func timeline(_ view: ThreadTimelineView, address threads: [BlockID])
 }
 
 /// One run of a timeline: a thread's entries that came together.
@@ -63,6 +65,7 @@ final class ThreadTimelineView: NSView {
     private let scopeControl = NSSegmentedControl()
     private let filterControl = NSSegmentedControl(labels: ["All", "Open", "Unread"], trackingMode: .selectOne, target: nil, action: nil)
     private let readAll = FlatButton("Mark All Read", font: UIType.detail)
+    private let handOver = FlatButton("Hand to Agent", symbol: "sparkle", font: UIType.detail)
     private let scroll = NSScrollView()
     private let list = FlippedStack()
     private let empty = NSTextField(wrappingLabelWithString: "")
@@ -89,6 +92,13 @@ final class ThreadTimelineView: NSView {
         filterControl.action = #selector(filterChosen)
         readAll.target = self
         readAll.action = #selector(markAllRead)
+        handOver.toolTip = "Ask an agent to address the open threads shown"
+        handOver.onClick = { [weak self] in
+            guard let self else { return }
+            var seen = Set<BlockID>()
+            let open = self.model.runs.map(\.thread).filter { $0.thread?.resolved != true && seen.insert($0.id).inserted }.map(\.id)
+            self.delegate?.timeline(self, address: open)
+        }
         list.orientation = .vertical
         list.alignment = .leading
         list.spacing = 14
@@ -129,7 +139,7 @@ final class ThreadTimelineView: NSView {
         composerScroll.layer?.borderWidth = 1
         placeholder.font = UIType.body
         placeholder.textColor = Theme.tertiaryText
-        for v in [titleLabel, scopeControl, filterControl, readAll, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
+        for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
         themed { v in
             v.composerScroll.layer?.borderColor = Theme.divider.cgColor
             v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
@@ -154,6 +164,7 @@ final class ThreadTimelineView: NSView {
         }
         scopeControl.selectedSegment = m.scope
         scopeControl.isHidden = m.scopes.count < 2
+        handOver.isEnabled = m.runs.contains { $0.thread.thread?.resolved != true }
         readAll.isEnabled = m.unseen > 0
         readAll.title = m.unseen > 0 ? "Mark All Read (\(m.unseen))" : "All Read"
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -380,6 +391,9 @@ final class ThreadTimelineView: NSView {
         placeholder.frame.origin = NSPoint(x: pad + 9, y: composerScroll.frame.maxY - placeholder.frame.height - 6)
         replyingTo.frame = NSRect(x: pad, y: composerScroll.frame.maxY + 4, width: w - 20, height: 16)
         clearReply.frame = NSRect(x: pad + min(w - 20, replyingTo.intrinsicContentSize.width) + 4, y: composerScroll.frame.maxY + 4, width: 16, height: 16)
+        handOver.sizeToFit()
+        handOver.frame = NSRect(x: bounds.width - pad - handOver.frame.width, y: composerScroll.frame.maxY + 2, width: handOver.frame.width, height: 20)
+        replyingTo.frame.size.width = max(0, handOver.frame.minX - pad - 8)
         let bottom = replyingTo.frame.maxY + 6
         scroll.frame = NSRect(x: pad, y: bottom, width: w, height: max(0, y - bottom))
         empty.frame = NSRect(x: pad + 20, y: scroll.frame.midY - 30, width: w - 40, height: 60)

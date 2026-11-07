@@ -117,7 +117,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's width while its handle is being dragged.
     private var resizingWidth: CGFloat?
 
-    private var desk: DeskState { host.desk }
+    var desk: DeskState { host.desk }
     private var sidebarWidth: CGFloat {
         let w = resizingWidth ?? hosts.state.window.sidebarWidth.map { CGFloat($0) } ?? Theme.sidebarWidth
         return min(max(w, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
@@ -10477,6 +10477,13 @@ extension MainWindowController: GitViewDelegate {
         comment.keyEquivalent = "m"
         comment.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(comment)
+        // The threads made in this diff handed to an agent at once (§3.12).
+        let made = hosts.threads.filter { $0.thread?.about?.diff?.block == view.block && $0.thread?.resolved != true }.map(\.id)
+        if !made.isEmpty {
+            menu.addItem(ClosureMenuItem("Hand \(made.count) Open Thread\(made.count == 1 ? "" : "s") Here to an Agent", symbol: "sparkle") { [weak self] in
+                self?.addressThreads(made)
+            })
+        }
         menu.addItem(.separator())
         if let s = sides {
             for (rev, label) in [(s.new, "Open This Version"), (s.old, "Open the Version Before")] {

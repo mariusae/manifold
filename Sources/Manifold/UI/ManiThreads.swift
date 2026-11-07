@@ -39,6 +39,7 @@ extension ManiDesk {
             }
             let place = threadPlace(target)
             let id = hosts.newThread(about: place, space: scope.workspace, text: text, author: author)
+            wc.askAgents(in: id, comment: text, author: author)
             return MainWindowController.address(id)
         case "thread reply":
             let t = try await thread(r.args[0], scope)
@@ -46,6 +47,7 @@ extension ManiDesk {
                 throw Failure(message: "no text: give it, or pipe it in", status: 2)
             }
             hosts.addToThread(t.id, .comment(text), author: author)
+            wc.askAgents(in: t.id, comment: text, author: author)
             if r.flags["resolve"] != nil { hosts.addToThread(t.id, .resolved, author: author) }
             return ""
         case "thread resolve", "thread reopen":
