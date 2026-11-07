@@ -461,7 +461,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
             for case let m as MarkdownView in views.values { m.textChanged(); m.refreshCards(); m.refreshPlaces() }
             for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
-            for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged() }
+            for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged(); o.threadPlaces = places(of: o.block) }
             let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
             for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
             for case let n as NotebookView in views.values { n.codeFont = codeFont; n.documentChanged() }
@@ -837,6 +837,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             o.onLinked = { [weak self] b in self?.link(b, to: p.block) }
             o.keepImage = { [weak self] data, kind, insert in self?.keepImage(data, kind: kind, for: p.block, insert: insert) }
             o.cardFor = { [weak self] id, place in self?.cardContent(for: id, at: place) }
+            o.onThreads = { [weak self, weak o] line, rect in
+                guard let self, let o else { return }
+                let ids = self.threads(inText: o.block, line: line)
+                if !ids.isEmpty { self.showThreadCard(threads: ids, at: rect, in: o) }
+            }
             o.pictureFor = { [weak self] source in self?.picture(source, in: p.block) }
             o.documentChanged()
             v = o

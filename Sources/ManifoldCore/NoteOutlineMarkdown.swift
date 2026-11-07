@@ -479,6 +479,21 @@ extension NoteOutlineMarkdown {
     /// The same, from the text.
     public static func items(in source: String) -> [NoteOutlineItem] { items(of: parse(source)) }
 
+    /// The lines of the Markdown (from 0) each row stands for, from its
+    /// own first line to its last — a folded row's hidden rows with it.
+    public static func rowLines(of outline: NoteOutline) -> [ClosedRange<Int>] {
+        var line = outline.frontmatter.map { $0.components(separatedBy: "\n").count } ?? 0
+        func span(_ row: NoteRow) -> Int {
+            row.lineCount + row.folded.reduce(0) { $0 + $1.gap.count + span($1) }
+        }
+        return outline.rows.map { row in
+            line += row.gap.count
+            let start = line
+            line += span(row)
+            return start...max(start, line - 1)
+        }
+    }
+
     /// The lines a place in Markdown stands for (a reference's `#line=N`,
     /// from 1): a heading's section, up to the next heading as high (none
     /// counted in code); a list item, with what's nested in it; else its

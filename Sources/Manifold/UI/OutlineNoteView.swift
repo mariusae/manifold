@@ -221,10 +221,66 @@ final class OutlineNoteView: NSView, PaneContent {
         itemLines = items.map(\.line)
         headings.set(items.map(Outline.Item.init))
         markCurrent()
+        markThreads()
     }
 
     private var itemRows: [Int] = []
     private var itemLines: [Int] = []
+
+    // MARK: Places (§2.5) and threads (§3.12)
+
+    /// The Markdown's lines each row shown stands for (from 0).
+    private var shownRowLines: [ClosedRange<Int>] {
+        var outline = shell
+        outline.rows = text.fullRows
+        let all = NoteOutlineMarkdown.rowLines(of: outline)
+        let skip = text.focus?.before.count ?? 0
+        return Array(all.dropFirst(skip).prefix(text.paragraphRanges.count))
+    }
+
+    /// What's here: the rows selected, else the caret's row — as the lines
+    /// of the Markdown they are, named by their words.
+    var here: Place? {
+        let lines = shownRowLines
+        guard !lines.isEmpty else { return Place(block: block) }
+        let rows = text.selectedRows ?? {
+            let r = text.rowIndex(at: text.selectedRange().location)
+            return r..<(r + 1)
+        }()
+        let a = min(rows.lowerBound, lines.count - 1), b = min(max(rows.upperBound - 1, a), lines.count - 1)
+        let shown = (text.string as NSString).substring(with: text.paragraphRanges[a])
+        let words = shown.prefix { $0 != "\n" && $0 != "\u{2028}" }.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FFFC}")))
+        let name = words.isEmpty ? nil : String(words.prefix(60))
+        let at: Locator = a == b && lines[a].count == 1 ? .line(lines[a].lowerBound + 1) : .lines(lines[a].lowerBound + 1, lines[b].upperBound + 1)
+        return Place(block: block, at: at, name: name)
+    }
+
+    /// The places threads are about, as the editor's are found: marked on
+    /// the rows they're on (at their right), as those rows are now.
+    var threadPlaces: [TextView.Place] = [] { didSet { if threadPlaces != oldValue { markThreads() } } }
+    /// A row's thread mark clicked: the Markdown line it's on, and where the mark is (in this view).
+    var onThreads: ((Int, NSRect) -> Void)?
+
+    private func markThreads() {
+        let lines = shownRowLines
+        var marks: [Int: ThreadMark.State] = [:]
+        for p in threadPlaces where p.threads > 0 {
+            guard let row = lines.firstIndex(where: { $0.contains(p.line) }) else { continue }
+            let m = TextView.threadState(p)
+            if let old = marks[row] {
+                marks[row] = ThreadMark.State(count: old.count + m.count, open: old.open || m.open, unseen: old.unseen || m.unseen)
+            } else {
+                marks[row] = m
+            }
+        }
+        text.threadMarks = marks
+        text.onThreads = { [weak self] row, rect in
+            guard let self, lines.indices.contains(row) else { return }
+            // The line of the place that's on this row.
+            let line = self.threadPlaces.first { $0.threads > 0 && lines[row].contains($0.line) }?.line ?? lines[row].lowerBound
+            self.onThreads?(line, self.convert(rect, from: self.text))
+        }
+    }
 
     private func goToHeading(_ i: Int) {
         guard itemRows.indices.contains(i) else { return }
@@ -1158,6 +1214,31 @@ final class NoteOutlineTextView: NSTextView {
     var onLinked: ((BlockID) -> Void)?
     /// The row focused on (Focus In), the rest of the note set aside.
     var focus: NoteOutlineFocus?
+    /// Threads on rows shown (by index), marked at their right (ThreadMarks.swift).
+    var threadMarks: [Int: ThreadMark.State] = [:] { didSet { if threadMarks != oldValue { needsDisplay = true } } }
+    /// A row's mark clicked: the row, and where its mark is.
+    var onThreads: ((Int, NSRect) -> Void)?
+
+    /// Where a row's thread mark is: at the right of what's shown, on the
+    /// row's first line.
+    func threadMarkRect(row: Int) -> NSRect? {
+        guard let m = threadMarks[row], let lm = layoutManager, paragraphRanges.indices.contains(row) else { return nil }
+        let loc = paragraphRanges[row].location
+        guard loc < (textStorage?.length ?? 0) || loc == 0 else { return nil }
+        let glyph = lm.glyphIndexForCharacter(at: min(loc, max(0, (textStorage?.length ?? 1) - 1)))
+        var line = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        guard line.height > 0 else { return nil }
+        line.origin.y += textContainerOrigin.y
+        return ThreadMark.rect(m, right: min(visibleRect.maxX, bounds.maxX), lineTop: line.minY, lineHeight: min(line.height, 26))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        for (row, m) in threadMarks {
+            guard let r = threadMarkRect(row: row), r.intersects(dirtyRect) else { continue }
+            ThreadMark.draw(m, in: r)
+        }
+    }
     /// Told when the focus changed (its path shown over the rows).
     var onFocusChange: (() -> Void)?
     /// The row the pointer is over: a ghost of a bullet before a row with
@@ -1984,6 +2065,11 @@ final class NoteOutlineTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        // A thread's mark: its threads, as a card there.
+        if let onThreads, let row = threadMarks.keys.first(where: { threadMarkRect(row: $0)?.insetBy(dx: -2, dy: -2).contains(point) == true }),
+           let r = threadMarkRect(row: row) {
+            return onThreads(row, r)
+        }
         // A picture's grip: it made larger or smaller.
         if onPictureGrip(point) { return dragPictureGrip(event) }
         // A block's card clicked: followed, as its link is.

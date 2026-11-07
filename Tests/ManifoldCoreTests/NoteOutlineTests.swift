@@ -126,4 +126,14 @@ struct NoteOutlineTests {
         #expect(NoteOutlineMarkdown.section(of: note, line: 1).hasSuffix("- two"))
         #expect(NoteOutlineMarkdown.section(of: note, line: 99) == "")
     }
+
+    @Test func eachRowSaysItsLines() {
+        let note = "# Title\n\n- one\n  - under\n- two\n  still two\n\ntail"
+        var outline = NoteOutlineMarkdown.parse(note)
+        #expect(NoteOutlineMarkdown.rowLines(of: outline) == [0...0, 2...2, 3...3, 4...5, 7...7])
+        // Folded: a row stands for its hidden rows too.
+        outline.rows[1].folded = [outline.rows[2]]
+        outline.rows.remove(at: 2)
+        #expect(NoteOutlineMarkdown.rowLines(of: outline) == [0...0, 2...3, 4...5, 7...7])
+    }
 }

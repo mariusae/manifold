@@ -509,8 +509,8 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     // MARK: Threads (§3.12)
 
-    /// Threads at rows (by index): whether open, whether not seen.
-    var threadRows: [Int: (open: Bool, unseen: Bool)] {
+    /// Threads at rows (by index): how many, whether one's open, whether one's not seen.
+    var threadRows: [Int: ThreadMark.State] {
         get { rowsView.threadMarks }
         set { rowsView.threadMarks = newValue }
     }
@@ -635,16 +635,26 @@ final class DiffRowsView: NSView, NSDraggingSource {
     /// comment on.
     var chosen: ClosedRange<Int>? { didSet { if chosen != oldValue { needsDisplay = true } } }
     private var chooseFrom: Int?
-    /// Threads at rows (by index): whether one's open, and whether one has
-    /// something not seen — drawn on the rows' lines as they're laid out now.
-    var threadMarks: [Int: (open: Bool, unseen: Bool)] = [:] { didSet { needsDisplay = true } }
-    private var threadLines: [Int: (open: Bool, unseen: Bool)] {
-        var byLine: [Int: (open: Bool, unseen: Bool)] = [:]
+    /// Threads at rows (by index) — drawn on the rows' lines as they're
+    /// laid out now, at their right (ThreadMarks.swift).
+    var threadMarks: [Int: ThreadMark.State] = [:] { didSet { needsDisplay = true } }
+    private var threadLines: [Int: ThreadMark.State] {
+        var byLine: [Int: ThreadMark.State] = [:]
         for (i, m) in threadMarks where i < rows.count {
-            let l = line(ofRow: i), old = byLine[l]
-            byLine[l] = (m.open || old?.open == true, m.unseen || old?.unseen == true)
+            let l = line(ofRow: i)
+            guard let old = byLine[l] else { byLine[l] = m; continue }
+            byLine[l] = ThreadMark.State(count: old.count + m.count, open: m.open || old.open, unseen: m.unseen || old.unseen)
         }
         return byLine
+    }
+
+    private func threadMarkRect(line i: Int, _ m: ThreadMark.State) -> NSRect {
+        ThreadMark.rect(m, right: bounds.maxX, lineTop: CGFloat(i) * rowHeight, lineHeight: rowHeight)
+    }
+
+    /// The lines' thread marks, over their text.
+    private func drawThreadMarks(first: Int, last: Int) {
+        for (i, m) in threadLines where i >= first && i <= last { ThreadMark.draw(m, in: threadMarkRect(line: i, m)) }
     }
     /// A line's thread mark clicked: the line, and where the mark is.
     var onThreads: ((Int, NSRect) -> Void)?
@@ -657,20 +667,13 @@ final class DiffRowsView: NSView, NSDraggingSource {
         sideBySide ? rows.indices.filter { r.contains(rowLines[$0]) } : Array(max(0, r.lowerBound)...min(rows.count - 1, r.upperBound))
     }
 
-    /// What's drawn under a chosen line, and a thread's mark at its left.
+    /// What's drawn under a chosen line.
     private func drawChosenAndThreads(line i: Int, y: CGFloat) {
         if chosen?.contains(i) == true, ordered == nil {
             Theme.accent.withAlphaComponent(0.16).setFill()
             NSRect(x: 0, y: y, width: bounds.width, height: rowHeight).fill()
             Theme.accent.setFill()
             NSRect(x: 0, y: y, width: 2, height: rowHeight).fill()
-        }
-        if let m = threadLines[i] {
-            let color = m.unseen ? Theme.accent : m.open ? Theme.accent.withAlphaComponent(0.7) : Theme.tertiaryText
-            if let image = NSImage(systemSymbolName: m.open ? "text.bubble.fill" : "text.bubble", accessibilityDescription: "Thread")?
-                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [color]))) {
-                image.draw(in: NSRect(x: 3, y: y + (rowHeight - 11) / 2, width: 12, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            }
         }
     }
 
@@ -1128,6 +1131,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
                 NSGraphicsContext.current?.restoreGraphicsState()
             }
         }
+        drawThreadMarks(first: first, last: last)
     }
 
     /// Old on the left, new on the right, a line between; a removed line
@@ -1193,6 +1197,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
         }
         Theme.divider.setFill()
         NSRect(x: half - 0.5, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
+        drawThreadMarks(first: first, last: last)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -1200,8 +1205,8 @@ final class DiffRowsView: NSView, NSDraggingSource {
         let p = convert(event.locationInWindow, from: nil)
         let i = Int(p.y / rowHeight)
         // A thread's mark: its thread.
-        if p.x < 16, threadLines[i] != nil, let onThreads {
-            return onThreads(i, NSRect(x: 0, y: CGFloat(i) * rowHeight, width: 16, height: rowHeight))
+        if let m = threadLines[i], let onThreads, threadMarkRect(line: i, m).insetBy(dx: -2, dy: -2).contains(p) {
+            return onThreads(i, threadMarkRect(line: i, m))
         }
         // A file's heading: its file folded or unfolded. A hunk's: more above it.
         if i >= 0, i < lineCount, event.clickCount == 1, let r = sideBySide ? pairs[i].span : rows[i] {

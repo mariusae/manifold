@@ -159,7 +159,7 @@ final class TextView: NSView, NSTextInputClient {
     static let insets = NSEdgeInsets(top: 10, left: 8, bottom: 40, right: 20)
     /// The gutter: room for the line count's digits, the numbers set at
     /// its left, then lanes of their own, none over another — the git
-    /// marks' (textLeft − 25), a place's thread bubble or link mark
+    /// marks' (textLeft − 25), a place's link mark
     /// (− 21.5 to − 11.5), a diagnostic's dot (− 11.5 to − 6.5), the bar of
     /// the definition the caret's in (− 5 to − 3) — so the text has the rest.
     var gutterWidth: CGFloat {
@@ -996,19 +996,12 @@ final class TextView: NSView, NSTextInputClient {
             label.draw(at: NSPoint(x: chip.minX + 6, y: rowTop + (lineHeight - size.height) / 2))
             foldChips[n] = (chip, i)
         }
-        if let place = placeByLine[n], place.threads > 0 {
-            // A thread about it: a bubble in the gutter — filled while one is
-            // open, the accent's while one has something not seen.
-            let open = place.openThreads > 0
-            let symbol = open ? "text.bubble.fill" : "text.bubble"
-            let color = place.unseen ? Theme.accent : open ? Theme.accent.withAlphaComponent(0.7) : Theme.tertiaryText
-            if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Thread")?
-                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [color]))) {
-                // In its lane (see `gutterWidth`), touching no other mark.
-                let x = showsLineNumbers ? textLeft - 21.5 : max(2, textLeft - 16.5)
-                image.draw(in: NSRect(x: x, y: lineTop + (lineHeight - 9) / 2, width: 10, height: 9), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            }
-        } else if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
+        if let r = threadMarkRect(ofLine: n), let place = placeByLine[n] {
+            // A thread about it: its mark at the line's right, over the text
+            // (ThreadMarks.swift).
+            ThreadMark.draw(Self.threadState(place), in: r)
+        }
+        if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
             // In its lane (see `gutterWidth`), touching no other mark.
             let mark = NSRect(x: textLeft - 20, y: (lineTop + lineHeight / 2 - 3.5).rounded(), width: 7, height: 7)
             Theme.accent.setStroke()
@@ -1016,6 +1009,25 @@ final class TextView: NSView, NSTextInputClient {
             path.lineWidth = 1.2
             path.stroke()
         }
+    }
+
+    static func threadState(_ p: Place) -> ThreadMark.State {
+        ThreadMark.State(count: p.threads, open: p.openThreads > 0, unseen: p.unseen)
+    }
+
+    /// Where line `n`'s thread mark is, if it has threads: at the right of
+    /// what's shown of it.
+    func threadMarkRect(ofLine n: Int) -> NSRect? {
+        guard let place = placeByLine[n], place.threads > 0, !hiddenLines.contains(n) else { return nil }
+        return ThreadMark.rect(Self.threadState(place), right: min(visibleRect.maxX, bounds.maxX), lineTop: top(ofLine: n), lineHeight: lineHeight)
+    }
+
+    /// The line whose thread mark is at `p`, and where the mark is.
+    private func threadMark(at p: NSPoint) -> (line: Int, rect: NSRect)? {
+        for place in places where place.threads > 0 {
+            if let r = threadMarkRect(ofLine: place.line), r.insetBy(dx: -2, dy: -2).contains(p) { return (place.line, r) }
+        }
+        return nil
     }
 
     /// A place's links, as a menu at the gutter: each followed chosen.
@@ -2634,6 +2646,8 @@ final class TextView: NSView, NSTextInputClient {
         endPeek()
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
+        // A thread's mark: its threads, as a card there.
+        if event.clickCount == 1, let m = threadMark(at: p), let onThreads { return onThreads(m.line, m.rect) }
         let offset = self.offset(at: p)
         let flags = event.modifierFlags
         dragMode = min(event.clickCount, 3)
@@ -2818,9 +2832,7 @@ final class TextView: NSView, NSTextInputClient {
         if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
         pressedInSelection = nil
         // A click on a place's mark in the gutter: what links to it, and from it.
-        if let pressed = pressedInGutter, let place = placeByLine[pressed.line], place.threads > 0, let onThreads {
-            onThreads(place.line, NSRect(x: textLeft - 22, y: top(ofLine: place.line), width: 12, height: lineHeight))
-        } else if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
+        if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
             showLinks(of: place, at: convert(event.locationInWindow, from: nil))
         }
         pressedInGutter = nil

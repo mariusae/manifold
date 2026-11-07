@@ -196,6 +196,7 @@ extension MainWindowController: ThreadChatDelegate {
         for v in views.values {
             (v as? EditorView)?.refreshPills()
             if let d = v as? DiffView { markThreads(in: d) }
+            if let o = v as? OutlineNoteView { o.threadPlaces = places(of: o.block) }
         }
     }
 
@@ -337,7 +338,7 @@ extension MainWindowController: ThreadChatDelegate {
 
     /// A diff's thread marks: threads made in it, at their rows.
     func markThreads(in d: DiffView) {
-        var marks: [Int: (open: Bool, unseen: Bool)] = [:]
+        var marks: [Int: ThreadMark.State] = [:]
         let rows = d.rows
         guard !rows.isEmpty else { d.threadRows = [:]; return }
         let made = hosts.threads.filter { $0.thread?.about?.diff?.block == d.block }
@@ -351,7 +352,7 @@ extension MainWindowController: ThreadChatDelegate {
             }) else { continue }
             let open = t.thread?.resolved != true, unseen = !hosts.unseen(t).isEmpty
             let old = marks[i]
-            marks[i] = (open || old?.open == true, unseen || old?.unseen == true)
+            marks[i] = ThreadMark.State(count: (old?.count ?? 0) + 1, open: open || old?.open == true, unseen: unseen || old?.unseen == true)
         }
         d.threadRows = marks
     }

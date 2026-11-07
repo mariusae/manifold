@@ -1219,9 +1219,14 @@ a resolved thread reopens it.
 **Where threads show.** One thread, several lenses (presentation is a
 projection, §2.5):
 
-- *In place*: a mark in the tile's gutter or margin at its place (the
-  editor's place marks, §2.5), a diff's at its rows; clicked, the chat
-  as a card under the line. Resolved ones hidden there, unless asked.
+- *In place*: a mark at the right edge of its line, over whatever text
+  is there, the same in the text editor, the outline (a row: the lines
+  of the Markdown it stands for) and a diff (its rows) — a small badge,
+  a bubble and how many when more than one: on the accent while one has
+  something not seen, outlined in it while one is open, grey once all
+  are resolved (`ThreadMark`); clicked, the chat as a card there. A tile
+  of another kind marks its place its own way (a terminal's command, a
+  PDF's page, a notebook's cell).
 - *As a tile*, for a long conversation — it's a block.
 - *The sidebar's Threads* (⌥⌘3, an icon at its foot beside Spaces and
   Files, with how many have something not seen): the space's threads
