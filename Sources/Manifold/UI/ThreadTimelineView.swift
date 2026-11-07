@@ -70,18 +70,23 @@ final class ThreadTimelineView: NSView {
     private let scopeControl = NSSegmentedControl()
     private let filterControl = NSSegmentedControl(labels: ["All", "Open", "Unread"], trackingMode: .selectOne, target: nil, action: nil)
     private let readAll = FlatButton("Mark All Read", font: UIType.detail)
-    /// Narrow (the sidebar's): no title — the sidebar's header has it —
-    /// Mark All Read a glyph, the scope on a row of its own.
+    /// Narrow (the sidebar's): no title, scope, filter or Mark All Read —
+    /// the sidebar's header has them — and Hand to Agent a glyph.
     var compact = false {
         didSet {
-            titleLabel.isHidden = compact
-            readAll.isHidden = compact
-            readAllGlyph.isHidden = !compact
+            for v in [titleLabel, readAll, scopeControl, filterControl] as [NSView] { v.isHidden = compact }
+            handOver.title = compact ? "" : "Hand to Agent"
             list.spacing = compact ? 10 : 14
             needsLayout = true
         }
     }
-    private let readAllGlyph = IconButton(symbol: "checkmark.circle", size: 12, target: nil, action: nil)
+
+    /// Where its threads are from: the space (0), or its project (1).
+    func setScope(_ i: Int) {
+        model.scope = i
+        chosen = nil
+        filterControl.selectedSegment = filter.rawValue
+    }
     private let handOver = FlatButton("Hand to Agent", symbol: "sparkle", font: UIType.detail)
     private let scroll = NSScrollView()
     private let list = FlippedStack()
@@ -109,10 +114,6 @@ final class ThreadTimelineView: NSView {
         filterControl.action = #selector(filterChosen)
         readAll.target = self
         readAll.action = #selector(markAllRead)
-        readAllGlyph.target = self
-        readAllGlyph.action = #selector(markAllRead)
-        readAllGlyph.toolTip = "Mark All Read"
-        readAllGlyph.isHidden = true
         handOver.toolTip = "Ask an agent to address the open threads shown"
         handOver.onClick = { [weak self] in
             guard let self else { return }
@@ -161,7 +162,7 @@ final class ThreadTimelineView: NSView {
         placeholder.font = UIType.body
         placeholder.lineBreakMode = .byTruncatingTail
         placeholder.textColor = Theme.tertiaryText
-        for v in [titleLabel, scopeControl, filterControl, readAll, readAllGlyph, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
+        for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
         themed { v in
             v.composerScroll.layer?.borderColor = Theme.divider.cgColor
             v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
@@ -185,7 +186,8 @@ final class ThreadTimelineView: NSView {
             scopeControl.setWidth(0, forSegment: i)
         }
         scopeControl.selectedSegment = m.scope
-        scopeControl.isHidden = m.scopes.count < 2
+        scopeControl.isHidden = m.scopes.count < 2 || compact
+        filterControl.selectedSegment = filter.rawValue
         handOver.isEnabled = m.runs.contains { $0.thread.thread?.resolved != true }
         readAll.isEnabled = m.unseen > 0
         readAll.title = m.unseen > 0 ? "Mark All Read (\(m.unseen))" : "All Read"
@@ -421,15 +423,8 @@ final class ThreadTimelineView: NSView {
         filterControl.sizeToFit()
         scopeControl.sizeToFit()
         if compact {
-            // The scope (when there's a project) on its own row, then the
-            // filter, Mark All Read at its right.
-            if !scopeControl.isHidden {
-                scopeControl.frame = NSRect(x: pad, y: y - rowH, width: min(w, scopeControl.frame.width), height: rowH)
-                y -= rowH + 6
-            }
-            filterControl.frame = NSRect(x: pad, y: y - rowH, width: min(w - 26, filterControl.frame.width), height: rowH)
-            readAllGlyph.frame = NSRect(x: bounds.width - pad - 20, y: y - rowH + 1, width: 20, height: 20)
-            y -= rowH + 4
+            // Its controls in the sidebar's header: the runs from the top.
+            y += pad - 2
         } else {
             readAll.frame = NSRect(x: bounds.width - pad - readAll.frame.width, y: y - rowH, width: readAll.frame.width, height: rowH)
             filterControl.frame = NSRect(x: readAll.frame.minX - 8 - filterControl.frame.width, y: y - rowH, width: filterControl.frame.width, height: rowH)

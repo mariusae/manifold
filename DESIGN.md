@@ -695,8 +695,11 @@ the graph has to capture everything any organization needs:
 | **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, a stack's tiles in a dotted outline | the spaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
-Two, and a filter over either (`SidebarFilter`, ⌥⌘., the lighthouse at
-the foot): a test of each block — the first, blocks with a status,
+Two — and the space's threads (§3.12), which are other things than
+blocks in a tree: the three are icons at the sidebar's foot, the one
+shown on a band, Threads with a count of those with something not seen —
+and a filter over either tree (`SidebarFilter`, ⌥⌘., the lighthouse
+beside them): a test of each block — the first, blocks with a status,
 working, needing you, done or failed — that keeps the rows it admits
 and the way to each (`OrgNode.filtered`: a row stays if it or anything
 under it is admitted; a tile behind in a stack keeps its stack's top,
@@ -1216,12 +1219,15 @@ projection, §2.5):
   editor's place marks, §2.5), a diff's at its rows; clicked, the chat
   as a card under the line. Resolved ones hidden there, unless asked.
 - *As a tile*, for a long conversation — it's a block.
-- *The sidebar's Threads* (⌥⌘3, a row at its foot with how many have
-  something not seen): the space's threads listed by title — the open
-  by what was said last, newest first, then the resolved, closed; each
-  with where it's about and how long since, a count of what's not
-  seen — or, by the switch in its header, the timeline. A row clicked
-  is read in the overlay; ⌘, a tile beside; ⌥, its place.
+- *The sidebar's Threads* (⌥⌘3, an icon at its foot beside Spaces and
+  Files, with how many have something not seen): the space's threads
+  listed by title — the open by what was said last, newest first, then
+  the resolved, closed; each with where it's about and how long since,
+  a count of what's not seen — or the timeline. Its header's buttons:
+  the other way to show them, the filter (all, open or unread; the
+  space's or its project's — filled while it narrows them), Mark All
+  Read. A row clicked is read in the overlay; ⌘, a tile beside; ⌥, its
+  place.
 - *The timeline*, in the sidebar or a tile of its own.
 - *The overlay*, anywhere (below).
 

@@ -21,11 +21,61 @@ extension MainWindowController {
         refreshOrganization(now: true)
     }
 
+    /// The threads the sidebar shows, by its filter: the space's or its
+    /// project's; all, the open, or the unread.
+    func sidebarThreads() -> [Block] {
+        guard let space = selected else { return [] }
+        let v = sidebar.timeline
+        var all = hosts.threads(inSpace: space)
+        if v.model.scope == 1, let p = project(ofSpace: space) { all = hosts.threads(inProject: p.root, on: p.host) }
+        switch v.filter {
+        case .all: return all
+        case .open: return all.filter { $0.thread?.resolved != true }
+        case .unread: return all.filter { !hosts.unseen($0).isEmpty }
+        }
+    }
+
+    /// The threads' filter, as their header's button offers it.
+    func sidebarThreadsFilterMenu() -> NSMenu {
+        let menu = NSMenu()
+        let v = sidebar.timeline
+        for (f, title) in [(ThreadTimelineView.Filter.all, "All Threads"), (.open, "Open"), (.unread, "Unread")] {
+            let item = ClosureMenuItem(title) { [weak self] in
+                guard let self else { return }
+                self.sidebar.timeline.filter = f
+                self.sidebarThreadsChanged()
+            }
+            item.state = v.filter == f ? .on : .off
+            menu.addItem(item)
+        }
+        if let space = selected, let p = project(ofSpace: space) {
+            menu.addItem(.separator())
+            for (i, title) in ["In This Space", "In " + p.root.lastPathComponent].enumerated() {
+                let item = ClosureMenuItem(title) { [weak self] in
+                    guard let self else { return }
+                    self.sidebar.timeline.setScope(i)
+                    self.sidebarThreadsChanged()
+                }
+                item.state = v.model.scope == i ? .on : .off
+                menu.addItem(item)
+            }
+        }
+        return menu
+    }
+
+    func sidebarMarkThreadsRead() { hosts.markSeen(sidebarThreads()) }
+
+    private func sidebarThreadsChanged() {
+        sidebar.timeline.marksWhenOpened = nil
+        refreshSidebarThreads()
+        refreshOrganization(now: true)
+    }
+
     /// The list: a row a thread, by its first words, where it's about and
     /// how long since it was written in; a count of what's not seen.
     func threadsTree() -> ([OrgNode], Set<String>) {
-        guard let space = selected else { return ([OrgNode(id: "threads:none", title: "No space", symbol: "circle.dashed")], []) }
-        let all = hosts.threads(inSpace: space)
+        guard selected != nil else { return ([OrgNode(id: "threads:none", title: "No space", symbol: "circle.dashed")], []) }
+        let all = sidebarThreads()
         let new = OrgNode(id: "threads:new", title: "New Thread About This Space…", symbol: "plus.bubble")
         new.action = { [weak self] in self?.newThreadAboutSpace() }
         new.tooltip = "Or select something and press ⌥⌘M to comment on it"
@@ -91,6 +141,8 @@ extension MainWindowController {
         sidebar.setFoot(threads: all.count, open: all.filter { $0.thread?.resolved != true }.count,
                         unseen: all.filter { !hosts.unseen($0).isEmpty }.count)
         sidebar.threadsTimeline = threadsTimelineMode
+        sidebar.setThreadsFilter(narrowed: sidebar.timeline.filter != .all || sidebar.timeline.model.scope != 0,
+                                 unseen: sidebarThreads().reduce(0) { $0 + hosts.unseen($1).count })
         guard organization == .threads, threadsTimelineMode else { return }
         let v = sidebar.timeline
         if v.space != space {

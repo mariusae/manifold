@@ -21,6 +21,11 @@ protocol SidebarDelegate: AnyObject {
     func sidebarFilter(_ filter: SidebarFilter?)
     /// Threads (§3.12) as a list by title, or as the timeline.
     func sidebarThreadsMode(timeline: Bool)
+    /// Threads' filter: which (all, open, unread) and where (the space,
+    /// its project), as a menu.
+    func sidebarThreadsFilterMenu() -> NSMenu
+    /// Every thread shown, read.
+    func sidebarMarkThreadsRead()
 }
 
 class FlippedView: NSView {
@@ -48,12 +53,13 @@ final class SidebarView: NSView {
     private let header = WindowDragView()
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
-    /// The tree; the bar at the bottom: by workspace or by file, the
-    /// filter (⌥⌘.), and the counts of what's doing something, which turn
-    /// the filter on.
+    /// The tree; the bar at the bottom: what it lists — spaces, files or
+    /// threads, an icon each — the filter (⌥⌘.), and the counts of what's
+    /// doing something, which turn the filter on.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
-    private let byButton: IconButton
+    private let tabs: [SidebarTab] = [.desk, .files, .threads].map { SidebarTab($0) }
+    private let tabsRule = NSView()
     private let filterButton: IconButton
     /// What the tree is narrowed to, if anything.
     private(set) var filter: SidebarFilter?
@@ -62,18 +68,29 @@ final class SidebarView: NSView {
     /// collected; it opens its list in place of the tree, and again puts
     /// the tree back.
     private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
-    /// The space's threads (§3.12), with how many have something not seen:
-    /// listed by title, or the timeline, in place of the tree.
-    private let threadsRow = FootRowView(title: "Threads", symbol: Organization.threads.symbol)
+    /// The space's threads (§3.12): listed by title, or the timeline, in
+    /// place of the tree; at the right of their header, the two ways to
+    /// show them, the filter (which, and where) and Mark All Read.
     let timeline = ThreadTimelineView()
-    private let threadsMode = NSSegmentedControl(images: [Theme.symbol("list.bullet", size: 12) ?? NSImage(), Theme.symbol("calendar.day.timeline.left", size: 12) ?? NSImage()],
-                                                 trackingMode: .selectOne, target: nil, action: nil)
+    private let threadsMode = IconButton(symbol: "list.bullet", size: 12, weight: .medium, target: nil, action: nil)
+    private let threadsFilter = IconButton(symbol: "line.3.horizontal.decrease.circle", size: 13, weight: .medium, target: nil, action: nil)
+    private let threadsRead = IconButton(symbol: "checkmark.circle", size: 13, weight: .medium, target: nil, action: nil)
+    private var threadsControls: [NSView] { [threadsMode, threadsFilter, threadsRead] }
     /// Threads shown as the timeline, not the list.
     var threadsTimeline = false {
         didSet {
-            threadsMode.selectedSegment = threadsTimeline ? 1 : 0
+            // Its button shows the other way, a click away.
+            threadsMode.image = Theme.symbol(threadsTimeline ? "list.bullet" : "text.bubble", size: 12, weight: .medium)
+            threadsMode.toolTip = threadsTimeline ? "List by Title" : "Show as Timeline"
             needsLayout = true
         }
+    }
+    /// The threads' filter narrows them (not all, or not only the space's): its button filled, in the accent.
+    func setThreadsFilter(narrowed: Bool, unseen: Int) {
+        threadsFilter.image = Theme.symbol(narrowed ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", size: 13, weight: .medium)
+        threadsFilter.contentTintColor = narrowed ? Theme.accent : Theme.secondaryText
+        threadsRead.isEnabled = unseen > 0
+        threadsRead.toolTip = unseen > 0 ? "Mark All Read (\(unseen))" : "All Read"
     }
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
@@ -90,13 +107,14 @@ final class SidebarView: NSView {
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
-    private var pushed: Bool { organization == .closed || organization == .inspector || organization == .threads }
+    private var pushed: Bool { organization == .closed || organization == .inspector }
+    /// A header of its own under the window's buttons: a pushed list's, or the threads'.
+    private var titled: Bool { pushed || organization == .threads }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
         newButton = IconButton(symbol: "plus", size: 13, weight: .medium, target: nil, action: nil)
         moreButton = IconButton(symbol: "ellipsis", size: 13, weight: .medium, target: nil, action: nil)
-        byButton = IconButton(symbol: Organization.desk.symbol, size: 13, weight: .medium, target: nil, action: nil)
         filterButton = IconButton(symbol: "circle", size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
         wantsLayer = true
@@ -130,30 +148,35 @@ final class SidebarView: NSView {
         pushedSubtitle.textColor = Theme.secondaryText
         for v in [backButton, pushedTitle, pushedSubtitle] { v.isHidden = true; card.addSubview(v) }
 
-        byButton.target = self
-        byButton.action = #selector(toggleBy)
+        for t in tabs {
+            t.onClick = { [weak self, weak t] in
+                guard let self, let t else { return }
+                self.chooseOrganization(t.organization)
+            }
+            card.addSubview(t)
+        }
+        tabsRule.wantsLayer = true
+        tabsRule.themed { $0.layer?.backgroundColor = Theme.divider.cgColor }
+        card.addSubview(tabsRule)
         filterButton.target = self
         filterButton.action = #selector(filterClicked)
         counts.onClick = { [weak self] in self?.delegate?.sidebarFilter(.status) }
-        for v in [byButton, filterButton, counts, closedRow, transfers, toasts] { card.addSubview(v) }
+        for v in [filterButton, counts, closedRow, transfers, toasts] { card.addSubview(v) }
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         setFilter(nil)
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
-        threadsRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .threads ? .desk : .threads) }
-        threadsRow.isHidden = true
-        threadsMode.segmentStyle = .rounded
-        threadsMode.controlSize = .small
-        threadsMode.selectedSegment = 0
-        threadsMode.setToolTip("List by Title", forSegment: 0)
-        threadsMode.setToolTip("Timeline", forSegment: 1)
-        threadsMode.setWidth(26, forSegment: 0)
-        threadsMode.setWidth(26, forSegment: 1)
         threadsMode.target = self
         threadsMode.action = #selector(threadsModeChosen)
-        threadsMode.isHidden = true
+        threadsFilter.target = self
+        threadsFilter.action = #selector(threadsFilterClicked)
+        threadsFilter.toolTip = "Filter Threads"
+        threadsRead.target = self
+        threadsRead.action = #selector(threadsReadClicked)
+        threadsTimeline = false
+        setThreadsFilter(narrowed: false, unseen: 0)
         timeline.compact = true
         timeline.isHidden = true
-        for v in [threadsRow, threadsMode, timeline] as [NSView] { card.addSubview(v) }
+        for v in threadsControls + [timeline] { v.isHidden = true; card.addSubview(v) }
         card.addSubview(organizationView)
 
         resizeHandle.onDrag = { [weak self] x in
@@ -178,29 +201,39 @@ final class SidebarView: NSView {
         newButton.frame = NSRect(x: bounds.width - 78, y: bounds.height - 30, width: 20, height: 20)
         var top = bounds.height - Self.headerHeight
         backButton.isHidden = !pushed
-        pushedTitle.isHidden = !pushed
-        pushedSubtitle.isHidden = !pushed
-        if pushed {
-            // The back button and the list's name, under the header's buttons.
+        pushedTitle.isHidden = !titled
+        pushedSubtitle.isHidden = !titled
+        for v in threadsControls { v.isHidden = organization != .threads }
+        if titled {
+            // The back button (a list pushed over the tree) and the list's
+            // name, under the header's buttons; the threads' own buttons
+            // at its right.
             backButton.frame = NSRect(x: 12, y: top - Self.pushedHeight + 6, width: 24, height: 24)
-            var right = bounds.width - 12
+            var right = bounds.width - 10
             if organization == .threads {
-                threadsMode.sizeToFit()
-                right -= threadsMode.frame.width
-                threadsMode.frame = NSRect(x: right, y: top - Self.pushedHeight + 8, width: threadsMode.frame.width, height: 22)
-                right -= 8
+                for b in threadsControls.reversed() {
+                    right -= 22
+                    b.frame = NSRect(x: right, y: top - Self.pushedHeight + 8, width: 22, height: 22)
+                    right -= 2
+                }
+                right -= 6
             }
-            pushedTitle.frame = NSRect(x: 44, y: top - Self.pushedHeight + 17, width: max(0, right - 44), height: 18)
-            pushedSubtitle.frame = NSRect(x: 44, y: top - Self.pushedHeight + 2, width: max(0, right - 44), height: 14)
+            let left: CGFloat = pushed ? 44 : 16
+            pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
+            pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
             top -= Self.pushedHeight + 6
         }
-        // The bar along the bottom: its buttons at the left, the counts at the right.
-        let by: CGFloat = (Self.barHeight - 20) / 2
-        var x: CGFloat = 12
-        for b in [byButton, filterButton] {
-            b.frame = NSRect(x: x, y: by, width: 20, height: 20)
-            x += 28
+        // The bar along the bottom: what it lists and the filter at the
+        // left, the counts at the right.
+        let by: CGFloat = (Self.barHeight - SidebarTab.size) / 2
+        var x: CGFloat = 8
+        for t in tabs {
+            t.frame = NSRect(x: x, y: by, width: SidebarTab.size, height: SidebarTab.size)
+            x += SidebarTab.size + 2
         }
+        tabsRule.frame = NSRect(x: x + 5, y: (Self.barHeight - 14) / 2, width: 1, height: 14)
+        x += 12
+        filterButton.frame = NSRect(x: x, y: (Self.barHeight - 20) / 2, width: 20, height: 20)
         let cw = counts.wantedWidth
         counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
         var bottom = Self.barHeight
@@ -212,19 +245,12 @@ final class SidebarView: NSView {
         let toastH = toasts.wantedHeight
         toasts.frame = NSRect(x: 8, y: bottom, width: bounds.width - 16, height: toastH)
         bottom += toastH > 0 ? toastH + 8 : 0
-        if !closedRow.isHidden, !pushed {
+        if !closedRow.isHidden, !titled {
             closedRow.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
             bottom += Self.footRowHeight + 6
         } else {
             closedRow.frame = .zero
         }
-        if !threadsRow.isHidden, !pushed {
-            threadsRow.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
-            bottom += Self.footRowHeight + 6
-        } else {
-            threadsRow.frame = .zero
-        }
-        threadsMode.isHidden = organization != .threads
         let timelineShown = organization == .threads && threadsTimeline
         timeline.isHidden = !timelineShown
         organizationView.isHidden = timelineShown
@@ -236,15 +262,10 @@ final class SidebarView: NSView {
     /// Shows an organization's tree.
     func setOrganization(_ org: Organization) {
         organization = org
-        // The by-button shows which of workspaces and files is on (the
-        // other a click away); the inbox its own.
-        let by: Organization = org == .files ? .files : .desk
-        byButton.image = Theme.symbol(by.symbol, size: 13, weight: .medium)
-        byButton.toolTip = org == .files ? "Spaces (⌥⌘1)" : "Files (⌥⌘2)"
-        byButton.contentTintColor = org == .desk || org == .files ? Theme.text : Theme.secondaryText
+        for t in tabs { t.chosen = t.organization == org }
         closedRow.current = org == .closed
-        threadsRow.current = org == .threads
         pushedTitle.stringValue = org.title
+        if org != .threads { pushedSubtitle.stringValue = "" }
         needsLayout = true
     }
 
@@ -266,11 +287,10 @@ final class SidebarView: NSView {
         needsLayout = true
     }
 
-    /// The space's threads, for the foot row: how many, how many open, and
-    /// how many with something not seen (its count); hidden with none.
+    /// The space's threads: how many, how many open, and how many with
+    /// something not seen (the count on their tab).
     func setFoot(threads n: Int, open: Int, unseen: Int) {
-        threadsRow.count = unseen
-        threadsRow.isHidden = n == 0 && organization != .threads
+        tabs.first { $0.organization == .threads }?.count = unseen
         if organization == .threads {
             var words = [open == 1 ? "1 open" : "\(open) open"]
             if n > open { words.append("\(n - open) resolved") }
@@ -281,9 +301,16 @@ final class SidebarView: NSView {
     }
 
     @objc private func threadsModeChosen() {
-        threadsTimeline = threadsMode.selectedSegment == 1
+        threadsTimeline.toggle()
         delegate?.sidebarThreadsMode(timeline: threadsTimeline)
     }
+
+    @objc private func threadsFilterClicked() {
+        guard let menu = delegate?.sidebarThreadsFilterMenu() else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: threadsFilter.bounds.height + 4), in: threadsFilter)
+    }
+
+    @objc private func threadsReadClicked() { delegate?.sidebarMarkThreadsRead() }
 
     /// What's doing something, for the bar's counts (§3.7).
     func setCounts(needsYou: Int, working: Int, done: Int) {
@@ -297,7 +324,6 @@ final class SidebarView: NSView {
         delegate?.sidebarOrganizationChanged(org)
     }
 
-    @objc private func toggleBy() { chooseOrganization(organization == .desk ? .files : .desk) }
     @objc private func filterClicked() { delegate?.sidebarFilter(filter == nil ? .status : nil) }
 
     /// Shows the filter on (its button filled, in the accent) or off.
@@ -453,6 +479,71 @@ final class ClosureMenuItem: NSMenuItem {
 
     /// Debugging: as choosing the item.
     func debugRun() { handler() }
+}
+
+/// One of the bar's tabs: what the sidebar lists (spaces, files,
+/// threads), its icon — strong and on a band when it's the one shown — and
+/// a count of what's new in it, in a dot at its corner.
+final class SidebarTab: NSView {
+    static let size: CGFloat = 26
+    let organization: Organization
+    var onClick: (() -> Void)?
+    var chosen = false { didSet { if chosen != oldValue { update() } } }
+    var count = 0 { didSet { if count != oldValue { update() } } }
+    private let icon = NSImageView()
+    private let badge = NSTextField(labelWithString: "")
+    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+
+    init(_ organization: Organization) {
+        self.organization = organization
+        super.init(frame: .zero)
+        icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
+        badge.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
+        badge.alignment = .center
+        badge.textColor = .white
+        badge.wantsLayer = true
+        badge.layer?.cornerRadius = 6
+        badge.drawsBackground = false
+        badge.themed { $0.layer?.backgroundColor = Theme.accent.cgColor }
+        for v in [icon, badge] { addSubview(v) }
+        let keys: [Organization: String] = [.desk: "⌥⌘1", .files: "⌥⌘2", .threads: "⌥⌘3"]
+        toolTip = organization.title + (keys[organization].map { " (\($0))" } ?? "")
+        update()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func update() {
+        icon.contentTintColor = chosen ? Theme.text : Theme.secondaryText
+        badge.stringValue = count > 99 ? "99+" : "\(count)"
+        badge.isHidden = count == 0
+        needsDisplay = true
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        icon.frame = bounds.insetBy(dx: 4, dy: 4)
+        let w = max(12, ceil(badge.intrinsicContentSize.width) + 4)
+        badge.frame = NSRect(x: bounds.width - w + 3, y: bounds.height - 10, width: w, height: 12)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard chosen || hovering else { return }
+        (chosen ? Theme.selectionInactive : Theme.hover).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
 
 /// A row at the sidebar's foot: a symbol, a name, a count at the right;
