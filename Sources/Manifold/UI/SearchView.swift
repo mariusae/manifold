@@ -199,8 +199,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         let top = bounds.height - 12
         let w = bounds.width
         let midY = top - 13
-        caseButton.frame = NSRect(x: w - 12 - 32, y: midY - Flat.buttonHeight / 2, width: 32, height: Flat.buttonHeight)
-        regexButton.frame = NSRect(x: caseButton.frame.minX - 4 - 32, y: caseButton.frame.minY, width: 32, height: Flat.buttonHeight)
+        // As wide as their words want (at 32 they were cut to “…”).
+        let cw = max(32, ceil(caseButton.intrinsicContentSize.width)), rw = max(32, ceil(regexButton.intrinsicContentSize.width))
+        caseButton.frame = NSRect(x: w - 12 - cw, y: midY - Flat.buttonHeight / 2, width: cw, height: Flat.buttonHeight)
+        regexButton.frame = NSRect(x: caseButton.frame.minX - 4 - rw, y: caseButton.frame.minY, width: rw, height: Flat.buttonHeight)
         fieldBox.frame = NSRect(x: 12, y: midY - Flat.fieldHeight / 2, width: regexButton.frame.minX - 8 - 12, height: Flat.fieldHeight)
         // The folder, under the query: its field, and the button to widen it.
         let pathY = midY - Flat.fieldHeight - 6
