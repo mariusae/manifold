@@ -173,6 +173,20 @@ public final class Graph {
     /// The most steps kept; older ones fall off the front.
     public var trailLimit = 20_000
 
+    // Indexes for asking by more than an edge's ends (§3.12): edges by
+    // what they mean and by the place they lead to; blocks by kind, by
+    // project, and by when they last changed.
+    private var byRelation: [String: Set<String>] = [:]
+    private var atAnchor: [BlockID: [String: Set<String>]] = [:]
+    private var kindOf: [BlockID: BlockKind] = [:]
+    private var ofKind: [BlockKind: Set<BlockID>] = [:]
+    private var changedAt: [BlockID: Stamp] = [:]
+    /// Each host's projects (§2.6): every spelling of a root (its alias
+    /// too), to the root.
+    private var projectRoots: [HostID: [String: String]] = [:]
+    private var projectOf: [BlockID: String] = [:]
+    private var inProject: [HostID: [String: Set<BlockID>]] = [:]
+
     public init() {}
 
     // MARK: Edges
@@ -209,6 +223,7 @@ public final class Graph {
             atPath[block.host]?[old.path]?.removeAll { $0 == block }
             pathOf.removeValue(forKey: block)
         }
+        defer { placeInProject(block) }
         guard let path, !path.isEmpty else { return }
         pathOf[block] = (path, kind)
         atPath[block.host, default: [:]][path, default: []].append(block)
@@ -219,6 +234,7 @@ public final class Graph {
             atPlace[block.host]?[old]?.removeAll { $0 == block }
             placeOf.removeValue(forKey: block)
         }
+        defer { placeInProject(block) }
         guard let path, path.hasPrefix("/") else { return }
         let p = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
         placeOf[block] = p
@@ -356,6 +372,97 @@ public final class Graph {
 
     public func edge(_ id: String) -> Edge? { byID[id] }
 
+    // MARK: Asking by more than the ends (§3.12)
+
+    /// The edges that mean `relation` (`annotates`, `mentions`, …), the
+    /// newest first; only those that hold now, unless `all`.
+    public func edges(relation: String, all: Bool = false) -> [Edge] {
+        (byRelation[relation] ?? []).compactMap { byID[$0] }.filter { all || $0.isLive }.sorted { $0.at > $1.at }
+    }
+
+    /// The edges to a place in a block (an anchor; nil, the block itself
+    /// — none of its places), of one relation if said, the newest first.
+    public func edges(to block: BlockID, anchor: String?, relation: String? = nil) -> [Edge] {
+        let ids = atAnchor[block]?[anchor ?? ""] ?? []
+        return ids.compactMap { byID[$0] }.filter { $0.isLive && (relation == nil || $0.relation == relation) }.sorted { $0.at > $1.at }
+    }
+
+    /// The places in a block that edges lead to, with how many, of one
+    /// relation if said.
+    public func anchorsLinked(in block: BlockID, relation: String? = nil) -> [String: Int] {
+        var out: [String: Int] = [:]
+        for (anchor, ids) in atAnchor[block] ?? [:] where !anchor.isEmpty {
+            let n = ids.compactMap { byID[$0] }.filter { $0.isLive && (relation == nil || $0.relation == relation) }.count
+            if n > 0 { out[anchor] = n }
+        }
+        return out
+    }
+
+    /// The blocks of a kind, as their logs say.
+    public func blocks(kind: BlockKind) -> Set<BlockID> { ofKind[kind] ?? [] }
+    public func kind(of block: BlockID) -> BlockKind? { kindOf[block] }
+
+    /// When a block's log last changed (its latest entry here).
+    public func lastChange(of block: BlockID) -> Stamp? { changedAt[block] ?? createdOf[block] }
+
+    /// The project a block is in (§2.6): the root of the nearest project
+    /// at or above its file, or its place (a terminal's directory); nil,
+    /// none.
+    public func project(of block: BlockID) -> String? { projectOf[block] }
+
+    /// The project a path on a host is in, by its root.
+    public func project(holding path: String, on host: HostID) -> String? {
+        guard let roots = projectRoots[host], !roots.isEmpty, path.hasPrefix("/") else { return nil }
+        var p = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+        while true {
+            if let r = roots[p] { return r }
+            guard p != "/", !p.isEmpty else { return nil }
+            p = p.deletingLastPathComponent
+            if p.isEmpty { p = "/" }
+        }
+    }
+
+    /// The blocks in a project, by its root.
+    public func blocks(inProject root: String, on host: HostID) -> Set<BlockID> { inProject[host]?[root] ?? [] }
+
+    /// A host's projects, by root.
+    public func projects(on host: HostID) -> [String] { Array(Set((projectRoots[host] ?? [:]).values)).sorted() }
+
+    /// Which way a walk goes along edges.
+    public enum Direction: Sendable { case out, `in`, both }
+
+    /// The blocks a walk reaches from `start`, each with how many edges
+    /// away: over edges of the kinds given (any, for nil) and meaning one
+    /// of the relations given (any, for nil), that hold now, the way said,
+    /// at most `depth` edges. What `reachable` and `distances` are, asked
+    /// more narrowly.
+    public func walk<S: Sequence>(from start: S, over kinds: Set<EdgeKind>? = nil, relations: Set<String>? = nil,
+                                  direction: Direction = .out, depth: Int = .max) -> [BlockID: Int] where S.Element == BlockID {
+        var dist: [BlockID: Int] = [:]
+        var frontier: [BlockID] = []
+        for b in start where dist[b] == nil { dist[b] = 0; frontier.append(b) }
+        var d = 0
+        func along(_ byKind: [EdgeKind: [Edge]]?, _ next: inout [BlockID], to end: (Edge) -> BlockID) {
+            guard let byKind else { return }
+            for (kind, edges) in byKind where kinds?.contains(kind) ?? true {
+                for e in edges where e.isLive && (relations == nil || e.relation.map { relations!.contains($0) } == true) {
+                    let b = end(e)
+                    if dist[b] == nil { dist[b] = d; next.append(b) }
+                }
+            }
+        }
+        while !frontier.isEmpty, d < depth {
+            d += 1
+            var next: [BlockID] = []
+            for b in frontier {
+                if direction != .in { along(out[b], &next) { $0.to } }
+                if direction != .out { along(inbound[b], &next) { $0.from } }
+            }
+            frontier = next
+        }
+        return dist
+    }
+
     /// The arrangements a block is placed in (now, or at a moment).
     public func arrangements(holding block: BlockID, at stamp: Stamp? = nil) -> [BlockID] {
         var seen: Set<BlockID> = []
@@ -490,6 +597,8 @@ public final class Graph {
         byShard[edge.shard, default: []].insert(edge.id)
         insert(edge, into: &out[edge.from, default: [:]][edge.kind, default: []])
         insert(edge, into: &inbound[edge.to, default: [:]][edge.kind, default: []])
+        if let r = edge.relation { byRelation[r, default: []].insert(edge.id) }
+        if case .link = edge.kind { atAnchor[edge.to, default: [:]][edge.toAnchor ?? "", default: []].insert(edge.id) }
         if edge.isLive {
             liveOut[edge.from, default: [:]][edge.kind, default: 0] += 1
             liveIn[edge.to, default: [:]][edge.kind, default: 0] += 1
@@ -511,6 +620,8 @@ public final class Graph {
         byShard[edge.shard]?.remove(edge.id)
         out[edge.from]?[edge.kind]?.removeAll { $0.id == edge.id }
         inbound[edge.to]?[edge.kind]?.removeAll { $0.id == edge.id }
+        if let r = edge.relation { byRelation[r]?.remove(edge.id) }
+        if case .link = edge.kind { atAnchor[edge.to]?[edge.toAnchor ?? ""]?.remove(edge.id) }
         if edge.isLive {
             liveOut[edge.from]?[edge.kind, default: 1] -= 1
             liveIn[edge.to]?[edge.kind, default: 1] -= 1
@@ -555,9 +666,11 @@ public final class Graph {
 
     /// An entry applied to a shard, with the shard's state after it.
     public func apply(_ entry: Entry, to shard: ShardID, state: ShardState) {
+        if case .block(let id) = shard, changedAt[id].map({ entry.at > $0 }) ?? true { changedAt[id] = entry.at }
         switch (shard, entry.event) {
         case let (.block(id), .create(kind, _, path)):
             createdOf[id] = entry.at
+            setKind(id, kind)
             setPath(id, path, kind: kind)
         case let (.block(id), .path(p)):
             if let kind = pathOf[id]?.kind ?? state.block?.kind { setPath(id, p, kind: kind) }
@@ -590,6 +703,8 @@ public final class Graph {
             forgetEdges(of: shard)
         case (.registry, .clearGraph):
             forgetSteps(of: shard)
+        case (.desk(let host), .project), (.desk(let host), .unproject):
+            if case .desk(let d) = state { setProjects(d.projects, on: host) }
         default:
             break
         }
@@ -602,8 +717,41 @@ public final class Graph {
             if let (_, kind) = pathOf[id] { setPath(id, nil, kind: kind) }
             setPlace(id, nil)
             createdOf.removeValue(forKey: id)
+            changedAt.removeValue(forKey: id)
+            setKind(id, nil)
         }
         forgetSteps(of: shard)
+    }
+
+    private func setKind(_ block: BlockID, _ kind: BlockKind?) {
+        if let old = kindOf[block] { ofKind[old]?.remove(block) }
+        kindOf[block] = kind
+        if let kind { ofKind[kind, default: []].insert(block) }
+    }
+
+    /// A block's project, found again: its file's, else its place's.
+    private func placeInProject(_ block: BlockID) {
+        let host = block.host
+        if let old = projectOf.removeValue(forKey: block) { inProject[host]?[old]?.remove(block) }
+        let path = pathOf[block]?.path ?? placeOf[block]
+        guard let path, let root = project(holding: path, on: host) else { return }
+        projectOf[block] = root
+        inProject[host, default: [:]][root, default: []].insert(block)
+    }
+
+    /// A host's projects as its desk now has them: every block there
+    /// placed in its project again (a project made or unmade moves only
+    /// what's under it, but there are few, and it's rare).
+    private func setProjects(_ projects: [Project], on host: HostID) {
+        var roots: [String: String] = [:]
+        for p in projects {
+            roots[p.root] = p.root
+            if let a = p.alias { roots[a] = p.root }
+        }
+        guard roots != projectRoots[host] ?? [:] else { return }
+        projectRoots[host] = roots
+        inProject[host] = [:]
+        for b in Set(pathOf.keys).union(placeOf.keys) where b.host == host { placeInProject(b) }
     }
 
     private func forgetEdges(of shard: ShardID) {
@@ -640,6 +788,7 @@ public final class Graph {
         switch state {
         case .block(let b):
             createdOf[b.id] = b.created
+            setKind(b.id, b.kind)
             setPath(b.id, b.path, kind: b.kind)
             // Its place, from the state: a terminal's working directory, a
             // note's home — when it has no file of its own.
@@ -657,6 +806,8 @@ public final class Graph {
             for link in l.links where byID[link.id] == nil {
                 add(Edge(link: link, shard: shard))
             }
+        case .desk(let d):
+            if case .desk(let host) = shard { setProjects(d.projects, on: host) }
         default:
             break
         }
@@ -666,6 +817,8 @@ public final class Graph {
     public func rebuild(from node: Node) {
         out = [:]; inbound = [:]; byID = [:]; byShard = [:]; liveOut = [:]; liveIn = [:]
         pathOf = [:]; atPath = [:]; placeOf = [:]; atPlace = [:]; createdOf = [:]; lastSeen = [:]
+        byRelation = [:]; atAnchor = [:]; kindOf = [:]; ofKind = [:]; changedAt = [:]
+        projectRoots = [:]; projectOf = [:]; inProject = [:]
         steps = []; stepShards = []; stepIndex = [:]; stepIndexValid = true
         for (shard, r) in node.shards { load(shard, state: r.state, entries: r.entries) }
     }
