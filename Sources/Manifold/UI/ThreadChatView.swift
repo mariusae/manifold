@@ -244,8 +244,9 @@ final class ThreadChatView: NSView {
         case .reopened: return eventRow("Reopened by \(e.author.isYou ? "you" : e.author.name)", at: e.at)
         case let .asked(agent, name): return eventRow("\(name) asked to look", at: e.at, icon: model.icon(agent))
         case let .edited(added, removed):
+            if case .manifold = e.author { return eventRow("Changed on disk (+\(added) −\(removed))", at: e.at) }
             let who = e.author.isYou ? "You" : e.author.name
-            return eventRow("\(who) edited it (+\(added) −\(removed))", at: e.at)
+            return eventRow("\(who) edited it (+\(added) −\(removed))", at: e.at, icon: e.author.agentBlock.flatMap(model.icon))
         case .gone: return eventRow("Its lines were deleted", at: e.at, tone: .systemRed)
         case .stopped(let why): return eventRow(why, at: e.at, tone: .systemOrange)
         }

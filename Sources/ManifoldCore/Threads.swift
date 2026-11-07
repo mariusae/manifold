@@ -119,6 +119,9 @@ public struct ThreadPlace: Codable, Equatable, Sendable {
     public var name: String?
     /// Made in a diff: where.
     public var diff: DiffPlace?
+    /// Made on a past version (the history strip, §7.1): the commit whose
+    /// text it was written against.
+    public var revision: String?
 
     public init(block: BlockID, anchor: String? = nil, context: String? = nil, line: Int? = nil, title: String? = nil, name: String? = nil, diff: DiffPlace? = nil) {
         self.block = block

@@ -111,7 +111,9 @@ extension ManiDesk {
             case .resolved: out.append("— resolved by \(e.author.name) (\(when))")
             case .reopened: out.append("— reopened by \(e.author.name) (\(when))")
             case let .asked(_, name): out.append("— \(name) asked (\(when))")
-            case let .edited(a, r): out.append("— edited by \(e.author.name), +\(a) −\(r) (\(when))")
+            case let .edited(a, r):
+                let who: String = if case .manifold = e.author { "changed on disk" } else { "edited by \(e.author.name)" }
+                out.append("— \(who), +\(a) −\(r) (\(when))")
             case .gone: out.append("— its lines were deleted (\(when))")
             case .stopped(let why): out.append("— \(why) (\(when))")
             }

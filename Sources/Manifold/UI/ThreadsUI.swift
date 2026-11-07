@@ -312,6 +312,7 @@ extension MainWindowController: ThreadChatDelegate {
     /// stretch), else the declaration or line the caret's on.
     func threadPlace(in e: EditorView) -> ThreadPlace? {
         guard let b = hosts.block(e.block), let rope = b.text?.text else { return nil }
+        if e.scrubbed { return pastThreadPlace(in: e, b) }
         let sel = e.textView.selections.last ?? Selection(at: 0)
         let wanted: Anchor?
         if sel.isCaret {
@@ -328,6 +329,28 @@ extension MainWindowController: ThreadChatDelegate {
         let lines = (first...min(last, first + 11)).map { rope.lineText($0).trimmingCharacters(in: .newlines) }
         return ThreadPlace(block: e.block, anchor: anchor, context: lines.joined(separator: "\n"), line: first + 1,
                            title: b.path?.lastPathComponent ?? b.displayTitle, name: Anchoring.name(of: wanted))
+    }
+
+    /// A place in a past version (the history strip, §7.1): written
+    /// against that commit's lines; anchored where they are in the file
+    /// now, by their words (unsure: found again as the file changes).
+    private func pastThreadPlace(in e: EditorView, _ b: Block) -> ThreadPlace? {
+        guard let h = e.fileHistory, let i = h.position, h.revisions.indices.contains(i), let rope = b.text?.text else { return nil }
+        let past = e.textView.text
+        let sel = e.textView.selections.last ?? Selection(at: 0)
+        let first = past.line(at: sel.range.start), last = past.line(at: max(sel.range.start, sel.range.end - (sel.isCaret ? 0 : 1)))
+        let lines = (first...min(max(first, last), first + 11)).map { past.lineText($0).trimmingCharacters(in: .newlines) }
+        let pastText = past.string, nowText = rope.string
+        let s = max(0, min(Int(e.mapLine(Double(first), from: pastText, to: nowText)), rope.lineCount - 1))
+        let end = max(s, min(Int(e.mapLine(Double(max(first, last)), from: pastText, to: nowText)), rope.lineCount - 1))
+        var a = Anchor(id: "", at: .range, range: TextRange(rope.offset(ofLine: s), rope.lineRange(end).end), excerpt: lines.first)
+        a.unsure = true
+        let anchor = reference(to: a, in: b.id).flatMap { BlockID.link($0)?.fragment }
+        let r = h.revisions[i]
+        var place = ThreadPlace(block: b.id, anchor: anchor, context: lines.joined(separator: "\n"), line: s + 1,
+                                title: b.path?.lastPathComponent ?? b.displayTitle, name: "as of \(r.short)")
+        place.revision = r.sha
+        return place
     }
 
     /// The threads at a place in a text, by its line: those about the

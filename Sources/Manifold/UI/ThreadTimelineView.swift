@@ -274,7 +274,8 @@ final class ThreadTimelineView: NSView {
             case .resolved: words = "Resolved by \(who)"
             case .reopened: words = "Reopened by \(who)"
             case let .asked(_, name): words = "\(name) asked to look"
-            case let .edited(added, removed): words = "Edited by \(who) (+\(added) −\(removed))"
+            case let .edited(added, removed):
+                if case .manifold = e.author { words = "Changed on disk (+\(added) −\(removed))" } else { words = "Edited by \(who) (+\(added) −\(removed))" }
             case .gone: words = "Its lines were deleted"
             case .stopped(let why): words = why
             case .comment: words = ""

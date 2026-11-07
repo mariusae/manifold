@@ -50,6 +50,7 @@ extension Server {
                               toAnchor: about.anchor, relation: ThreadText.annotates)), to: .links(host))
         }
         threadMentions(block)
+        watchPlaces(block)
     }
 
     /// A thread's space given (one made by `mani`, its agent's space found
@@ -108,5 +109,101 @@ extension Server {
             append(.link(Link(from: block, to: target.block, kind: .opened, at: clock.now(), context: context,
                               toAnchor: target.anchor, relation: ThreadText.mentions)), to: .links(host))
         }
+    }
+}
+
+/// Edits to threads' places (§3.12): each thread about a place in a text
+/// is watched; what's there changing is written into the thread — by
+/// whom: you (typed in an editor), the agent whose tool wrote the file a
+/// moment before, else the disk — a while after the last change, and its
+/// lines deleted, once.
+final class PlaceWatch {
+    /// What each thread's place held when last looked at.
+    var text: [BlockID: String] = [:]
+    /// Edits not yet written, by thread: lines added and taken away, and by whom.
+    var pending: [BlockID: (added: Int, removed: Int, author: ThreadAuthor)] = [:]
+    var flush: [BlockID: DispatchWorkItem] = [:]
+    /// Files agents' tools wrote lately: by whom, and when.
+    var writes: [String: (block: BlockID, name: String, at: Date)] = [:]
+    var gone: Set<BlockID> = []
+}
+
+extension Server {
+    /// An agent's tool wrote a file: an edit to a place there, a moment
+    /// after, is the agent's.
+    func agentWrote(_ path: String, by block: BlockID, agent: String) {
+        let name = AgentCatalog.agent(namedByApp: agent)?.name ?? agent
+        placeWatch.writes[path] = (block, name, Date())
+        let real = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        if real != path { placeWatch.writes[real] = (block, name, Date()) }
+    }
+
+    /// What each open thread's place holds now, to tell an edit by.
+    func watchPlaces(_ only: BlockID? = nil) {
+        for id in only.map({ [$0] }) ?? Array(node.graph.blocks(kind: .thread)) {
+            guard let t = node.block(id)?.thread, !t.resolved, let about = t.about, let anchor = about.anchor,
+                  let b = node.block(about.block), let rope = b.text?.text, let r = b.anchors?[anchor]?.range,
+                  r.start <= r.end, r.end <= rope.count else { continue }
+            placeWatch.text[id] = rope[r]
+        }
+    }
+
+    /// A text changed: the threads about places in it looked at again.
+    func placesEdited(_ file: BlockID, typed: Bool) {
+        let threads = node.graph.edges(to: file, kind: .link(.linked)).filter { $0.relation == ThreadText.annotates && $0.toAnchor != nil }
+        guard !threads.isEmpty, let b = node.block(file), let rope = b.text?.text else { return }
+        for e in threads {
+            guard let t = node.block(e.from), t.thread?.resolved != true, let anchor = e.toAnchor, let a = b.anchors?[anchor] else { continue }
+            let now: String? = a.range.flatMap { r in r.end <= rope.count && r.start <= r.end ? rope[r] : nil }
+            guard let before = placeWatch.text[t.id] else {
+                placeWatch.text[t.id] = now ?? ""
+                continue
+            }
+            let after = now ?? ""
+            guard after != before else { continue }
+            placeWatch.text[t.id] = after
+            if after.isEmpty, !before.isEmpty {
+                if placeWatch.gone.insert(t.id).inserted {
+                    append(.threadEntry(ThreadEntry(at: clock.now(), author: editor(of: b, typed: typed), kind: .gone)), to: .block(t.id))
+                }
+                continue
+            }
+            placeWatch.gone.remove(t.id)
+            var added = 0, removed = 0
+            for h in LineDiff.hunks(old: before, new: after) {
+                added += h.newCount
+                removed += h.oldCount
+            }
+            let author = editor(of: b, typed: typed)
+            var p = placeWatch.pending[t.id] ?? (0, 0, author)
+            if !p.author.same(as: author) {
+                flushEdits(t.id)
+                p = (0, 0, author)
+            }
+            p.added += added
+            p.removed += removed
+            placeWatch.pending[t.id] = p
+            placeWatch.flush[t.id]?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.flushEdits(t.id) }
+            placeWatch.flush[t.id] = work
+            queue.asyncAfter(deadline: .now() + 20, execute: work)
+        }
+    }
+
+    /// Who changed a text: an agent's tool that wrote its file lately;
+    /// else you, typing; else the disk.
+    private func editor(of b: Block, typed: Bool) -> ThreadAuthor {
+        if let path = b.path, let w = placeWatch.writes[path] ?? placeWatch.writes[URL(fileURLWithPath: path).resolvingSymlinksInPath().path],
+           Date().timeIntervalSince(w.at) < 30 {
+            return .agent(block: w.block, name: w.name, turn: node.block(w.block)?.terminal?.turns?.last?.id)
+        }
+        return typed ? .you(machine: nil) : .manifold
+    }
+
+    /// The edits to a place gathered: written into its thread.
+    func flushEdits(_ thread: BlockID) {
+        placeWatch.flush.removeValue(forKey: thread)?.cancel()
+        guard let p = placeWatch.pending.removeValue(forKey: thread), p.added + p.removed > 0, node.block(thread)?.thread != nil else { return }
+        append(.threadEntry(ThreadEntry(at: clock.now(), author: p.author, kind: .edited(added: p.added, removed: p.removed))), to: .block(thread))
     }
 }

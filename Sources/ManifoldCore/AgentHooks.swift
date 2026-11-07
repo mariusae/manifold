@@ -27,10 +27,13 @@ public enum AgentEvent: Codable, Equatable, Sendable {
     case waiting(agent: String, message: String?)
     /// The session ended.
     case ended(agent: String)
+    /// A tool wrote a file (Edit, Write): working, and which file — so an
+    /// edit to a thread's place there is the agent's (§3.12).
+    case wrote(agent: String, path: String)
 
     public var agent: String {
         switch self {
-        case let .started(a), let .prompt(a, _, _), let .working(a), let .finished(a, _, _), let .todos(a, _), let .waiting(a, _), let .ended(a): a
+        case let .started(a), let .prompt(a, _, _), let .working(a), let .finished(a, _, _), let .todos(a, _), let .waiting(a, _), let .ended(a), let .wrote(a, _): a
         }
     }
 }
@@ -95,6 +98,11 @@ public enum AgentHookCommand {
                 return .todos(agent: agent, items.compactMap { i in
                     (i["content"] as? String).map { AgentTodo(text: $0, status: i["status"] as? String ?? "pending") }
                 })
+            }
+            // A file written: which.
+            if let tool = input["tool_input"] as? [String: Any], let path = (tool["file_path"] ?? tool["notebook_path"] ?? tool["path"]) as? String, !path.isEmpty,
+               ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit", "write"].contains(string("tool_name") ?? "") {
+                return .wrote(agent: agent, path: path)
             }
             return .working(agent: agent)
         case "stop":

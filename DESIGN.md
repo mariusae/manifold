@@ -1288,12 +1288,29 @@ project's timeline under a millisecond, a two-step walk under five, the
 whole rebuilt in under a second; if not, interned ids and packed
 adjacency.
 
-To build, in order: the indexes and their benchmark; the `thread` block,
-its entries, authors fenced, `.seen`; places in text and diffs, and the
-chat in place; the overlay; the timeline and the inbox's rule; agents
-(asking, following, Address These, the skill); `mani`; then the other
-places (commits' lines, web quotes, image regions, turns), and edits to
-places as events. ⌥⌘M was the Neighborhood Map's; it moved to ⇧⌥⌘M.
+As built: the graph's indexes (`Graph`: by relation, by place, by kind,
+by project; `walk`), timed in a test; `BlockKind.thread` and its events
+(`threadAbout`, `threadSpace`, `threadEntry`; the desk's `threadSeen`),
+written by the host (`ThreadService`: newThread, threadEntry,
+threadSeen, threadSpace proposals; mentions; a mani command's author by
+the socket's peer process); `ThreadChatView` (the chat), cards in place
+(`ThreadCardView`, a popover) from an editor's gutter or a diff's rows,
+`ThreadTileView` (lens `thread`), `ThreadTimelineView` (lens `threads`
+on the space, Show Threads), `ThreadOverlayView` (⌥⌘M elsewhere; ⌘J to a
+thread); the inbox's rule and the Dock's count; agents asked, followed,
+delivered to when idle, stopped after three asks in a row, handed a set
+(`ThreadAgents`); `mani threads`, `mani thread …` (`ManiThreads`), and
+the agent guide's section. Places: a text's (an editor's selection or
+caret, a past version's from the history strip, kept with its commit),
+a diff's rows, a terminal's command, a PDF's page, a page (its words
+selected kept as the quote), a tile, a space. Edits to a place are
+written into its thread by the host (`PlaceWatch`): yours, typed; an
+agent's, its tool's hook having named the file (`AgentEvent.wrote`);
+else changed on disk — gathered for twenty seconds; its lines deleted,
+once. Not yet: a page's quote found again when it's gone to, a region
+of an image, and an agent's turn as a place of its own (a terminal's
+command stands for it). ⌥⌘M was the Neighborhood Map's; it moved to
+⇧⌥⌘M.
 
 ---
 

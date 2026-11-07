@@ -27,7 +27,7 @@ final class Server {
     let host: HostID
     /// What the host calls itself, for clients to show.
     let label: String?
-    private let queue = DispatchQueue(label: "manifoldd")
+    let queue = DispatchQueue(label: "manifoldd")
     /// The language servers' table as the app last gave it (the desk's),
     /// before this host's own settings are put over it.
     private var deskLanguageServers = LanguageServerConfig.defaults
@@ -110,6 +110,8 @@ final class Server {
     private let scip: SCIPService
     private let searches: Searches
     private let mentions: Mentions
+    /// Threads' places watched for edits (§3.12).
+    let placeWatch = PlaceWatch()
     let git: Git
     /// The machine's readings, kept as history (§7.5).
     private let machine = MachineSampler()
@@ -256,6 +258,7 @@ final class Server {
         }
         agentLink.start()
         settleFirstLineTitles()
+        watchPlaces()
         pruneHistory()
         machine.start()
         // Its language servers as its own settings say, from the start.
@@ -917,6 +920,10 @@ final class Server {
             append(.register(entry), to: .registry(host))
         }
         if block.kind == .text { watch(block) }
+        if block.kind == .text, entries.contains(where: { if case .edit = $0.event { true } else if case .content = $0.event { true } else { false } })
+            || entries.isEmpty && block.kind == .text {
+            placesEdited(id, typed: entries.contains { if case .edit = $0.event { true } else { false } })
+        }
     }
 
     // MARK: Proposals
@@ -2252,10 +2259,11 @@ final class Server {
                 beginTurn(block, id: id, agent: agent, prompt: text, transcript: transcript)
             }
             status(.working, msg: line(text))
-        case .working:
+        case .working, .wrote:
             // After a permission or a tool: working on what it was.
             let current = b.status?[rootStatusID]
             if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
+            if case let .wrote(agent, path) = event { agentWrote(path, by: block, agent: agent) }
         case let .finished(_, message, transcript):
             endTurn()
             finishTurns(block, message: message, transcript: transcript)
