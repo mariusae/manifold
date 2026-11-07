@@ -429,6 +429,14 @@ enum DebugControl {
             // "scopebar": the focused editor's definition bar, and what dragging it writes.
             guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
             return e.textView.debugScopeBar
+        case "pointer":
+            // "pointer [<from> <to>] <at> [click]": the focused editor's text
+            // selected, the pointer at an offset — the cursor it gets (and a click there).
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            let w = arg.split(separator: " ")
+            let n = w.compactMap { Int($0) }
+            guard n.count == 1 || n.count == 3 else { return "usage: pointer [<from> <to>] <at> [click]" }
+            return e.textView.debugPointer(select: n.count == 3 ? (n[0], n[1]) : nil, at: n.last!, click: w.last == "click")
         case "sidebarthreads":
             return wc?.debugSidebarThreads(arg) ?? "no window"
         case "filehistory":

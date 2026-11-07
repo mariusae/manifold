@@ -687,6 +687,52 @@ final class DiffRowsView: NSView, NSDraggingSource {
     /// The side a point's over: in the text (or its numbers) on the left or right.
     private func side(at p: NSPoint) -> Int { sideBySide ? (p.x < bounds.width / 2 ? 1 : 2) : 0 }
 
+    /// Whether a point's in the text selected (on its side).
+    private func inSelection(_ p: NSPoint) -> Bool {
+        guard let s = ordered else { return false }
+        let side = side(at: p), i = Int(p.y / rowHeight)
+        guard s.side == side, i >= 0, i < lineCount, p.x >= textX(side: side) + hOffset - 4 else { return false }
+        let at = Spot(line: i, col: spot(at: p, side: side).col)
+        return at >= s.from && at <= s.to
+    }
+
+    /// Over the text selected, the open hand (it's dragged out); over a
+    /// line's text, the I-beam; elsewhere (numbers, headings), the arrow.
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseMoved(with event: NSEvent) { updateCursor(event) }
+    override func cursorUpdate(with event: NSEvent) { updateCursor(event) }
+
+    private func updateCursor(_ event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil), side = side(at: p), i = Int(p.y / rowHeight)
+        if inSelection(p) { return NSCursor.openHand.set() }
+        let inText = i >= 0 && i < lineCount && p.x >= textX(side: side) + hOffset - 4 && text(line: i, side: side) != nil
+        (inText ? NSCursor.iBeam : NSCursor.arrow).set()
+    }
+
+    /// Debug: the pointer over a line's column on a side — the cursor it
+    /// gets; with `click`, pressed and let go there too.
+    func debugPointer(side: Int, line: Int, col: Int, click: Bool) -> String {
+        guard let window, line >= 0, line < lineCount else { return "no such line" }
+        let t = text(line: line, side: side) ?? ""
+        let x = textX(side: side) + CTLineGetOffsetForStringIndex(ctLine(t), min(col, t.utf16.count), nil)
+        let at = convert(NSPoint(x: x + 1, y: (CGFloat(line) + 0.5) * rowHeight), to: nil)
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        }
+        if click, let down = event(.leftMouseDown), let up = event(.leftMouseUp) { mouseDown(with: down); mouseUp(with: up) }
+        guard let moved = event(.mouseMoved) else { return "no event" }
+        updateCursor(moved)
+        let c = NSCursor.current
+        let name = c === NSCursor.openHand ? "open hand" : c === NSCursor.iBeam ? "I-beam" : c === NSCursor.arrow ? "arrow" : "other"
+        return "\(name); selection \(ordered.map { "\($0.from.line):\($0.from.col)–\($0.to.line):\($0.to.col)" } ?? "none")"
+    }
+
     /// The spot under a point, on a side.
     private func spot(at p: NSPoint, side: Int) -> Spot {
         let line = max(0, min(lineCount - 1, Int(p.y / rowHeight)))
@@ -804,6 +850,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
             if ordered == nil { selection = nil } else { onSelected?() }
         }
         chooseFrom = nil
+        updateCursor(event)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -1120,8 +1167,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
         let side = side(at: p)
         let inText = p.x >= textX(side: side) + hOffset - 4
         if i >= 0, i < lineCount, event.clickCount == 1 {
-            if inText, let s = ordered, s.side == side, Spot(line: i, col: spot(at: p, side: side).col) >= s.from,
-               Spot(line: i, col: spot(at: p, side: side).col) <= s.to, !event.modifierFlags.contains(.shift) {
+            if inSelection(p), !event.modifierFlags.contains(.shift) {
                 // In what's selected: dragged, the lines go out.
                 pressInSelection = event
                 return

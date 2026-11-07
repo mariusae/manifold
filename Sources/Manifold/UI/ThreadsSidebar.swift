@@ -131,6 +131,10 @@ extension MainWindowController {
             let n = (w.count > 1 ? w[1] : "").split(separator: " ").compactMap { Int($0) }
             guard n.count == 5 else { return "usage: select <side> <line> <col> <line> <col>" }
             return d.debugSelect(side: n[0], from: (n[1], n[2]), to: (n[3], n[4]))
+        case "pointer", "click":
+            let n = (w.count > 1 ? w[1] : "").split(separator: " ").compactMap { Int($0) }
+            guard n.count == 3, let rows = d.focusView as? DiffRowsView else { return "usage: pointer|click <side> <line> <col>" }
+            return rows.debugPointer(side: n[0], line: n[1], col: n[2], click: w[0] == "click")
         case "above": return d.debugMore(above: Int(w.count > 1 ? w[1] : ""), below: nil)
         case "below": return d.debugMore(above: nil, below: w.count > 1 ? w[1] : nil)
         case "across": return d.debugScrollAcross(CGFloat(Double(w.count > 1 ? w[1] : "0") ?? 0))

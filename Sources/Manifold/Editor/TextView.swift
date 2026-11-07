@@ -2756,6 +2756,26 @@ final class TextView: NSView, NSTextInputClient {
         return "bar \(NSStringFromRect(bar.rect)) · \(thing)"
     }
 
+    /// Debug: offsets `from`…`to` selected, the pointer put at `at` — the
+    /// cursor it gets; with `click`, pressed and let go there too.
+    func debugPointer(select: (Int, Int)?, at offset: Int, click: Bool) -> String {
+        guard let window else { return "no window" }
+        if let (a, b) = select { setSelections([Selection(a, b)], scroll: false) }
+        let r = caretRect(offset)
+        let at = convert(NSPoint(x: r.minX + 2, y: r.midY), to: nil)
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        }
+        if click, let down = event(.leftMouseDown), let up = event(.leftMouseUp) { mouseDown(with: down); mouseUp(with: up) }
+        overSelection = inSelection(convert(at, from: nil))
+        overLink = false; overChip = false
+        if isUnderPointer { updateCursor() } else { (overSelection ? NSCursor.openHand : NSCursor.iBeam).set() }
+        let c = NSCursor.current
+        let name = c === NSCursor.openHand ? "open hand" : c === NSCursor.iBeam ? "I-beam" : c === NSCursor.arrow ? "arrow" : "other"
+        return "\(name); selections \(selections.map { "\($0.min)–\($0.max)" }.joined(separator: " "))"
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if let pressed = pressedInGutter {
             let p = event.locationInWindow
@@ -2805,6 +2825,9 @@ final class TextView: NSView, NSTextInputClient {
         }
         pressedInGutter = nil
         dragAnchor = nil
+        // Let go over what's now selected (or no longer): the hand, or not.
+        overSelection = inSelection(convert(event.locationInWindow, from: nil))
+        updateCursor()
     }
 
     /// A line dragged from the gutter: a reference to what's there (the
@@ -2899,6 +2922,7 @@ final class TextView: NSView, NSTextInputClient {
         let chip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
         overLink = over
         overChip = chip
+        overSelection = inSelection(at)
         // Set on every move, not only when it changes: come from a line
         // between tiles, or from under a popup, it was left as theirs.
         updateCursor()
@@ -2907,7 +2931,17 @@ final class TextView: NSView, NSTextInputClient {
     override func cursorUpdate(with event: NSEvent) {
         let at = convert(event.locationInWindow, from: nil)
         overChip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
+        overSelection = inSelection(at)
         updateCursor()
+    }
+
+    /// Over what's selected: taken hold of, to drag it out.
+    private var overSelection = false
+
+    private func inSelection(_ p: NSPoint) -> Bool {
+        guard selections.contains(where: { !$0.isCaret }), gutterWidth == 0 || p.x >= textLeft else { return false }
+        let o = offset(at: p)
+        return selections.contains { !$0.isCaret && $0.min <= o && o < $0.max }
     }
 
     private var overLink = false
@@ -2917,6 +2951,7 @@ final class TextView: NSView, NSTextInputClient {
     private func updateCursor() {
         guard isUnderPointer else { return }
         if overChip { return NSCursor.arrow.set() }
+        if overSelection, !overLink { return NSCursor.openHand.set() }
         (overLink || hoveredLink.map { !$0.isEmpty } == true ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 
