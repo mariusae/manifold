@@ -34,10 +34,16 @@ final class Outline {
     var menuFor: ((Int) -> NSMenu?)?
     /// What an item with no place of its own carries, dragged out (a diff's file).
     var writerFor: ((Int) -> NSPasteboardWriting?)?
-    /// The block it's the outline of, and each item's place in it ("line=12",
-    /// "page=3", "command=7"): what a link to an item says.
+    /// The block it's the outline of, and each item's place in it (a
+    /// heading's line, a page, a command): what a link to an item says.
     var block: BlockID?
-    var placeFor: ((Int) -> String?)?
+    var placeFor: ((Int) -> Locator?)?
+
+    /// An item as a place: in the block, where it is, called what it says.
+    func place(_ i: Int) -> Place? {
+        guard let block, items.indices.contains(i) else { return nil }
+        return Place(block: block, at: placeFor?(i), name: items[i].title)
+    }
 
     /// Counts up each time its items change (not the current one): what
     /// a space's index (`OutlineIndex`) goes by, with which outline it is
@@ -83,10 +89,9 @@ final class Outline {
     /// no place of its own, what the view gives (a diff's file), else its block.
     func dragItem(_ i: Int) -> NSPasteboardWriting? {
         guard items.indices.contains(i) else { return nil }
-        if let block, let place = Drags.place, let fragment = placeFor?(i) { return place(block, fragment, items[i].title) }
+        if placeFor?(i) != nil, let p = place(i) { return Drags.place?(p, nil) }
         if let w = writerFor?(i) { return w }
-        if let block, let place = Drags.place { return place(block, nil, items[i].title) }
-        return nil
+        return place(i).flatMap { Drags.place?($0, nil) }
     }
 
     /// Whether an item can be dragged at all.

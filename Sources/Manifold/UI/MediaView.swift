@@ -72,12 +72,12 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         }
         o.menuFor = { [weak self] i in
             guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
-            return Drags.linkMenu("Copy Link to This Page", self.block, "page=\(page + 1)")
+            return Drags.linkMenu("Copy Link to This Page", Place(block: self.block, at: .page(page + 1)))
         }
         o.block = block
         o.placeFor = { [weak self] i in
             guard let self, self.contents.indices.contains(i), let page = self.contents[i].page else { return nil }
-            return "page=\(page + 1)"
+            return .page(page + 1)
         }
         return o
     }()
@@ -637,6 +637,12 @@ extension MediaView {
 
     func go(to location: NavLocation) {
         if case let .page(i) = location, let p = pdfView, let page = p.document?.page(at: i) { p.go(to: page) }
+    }
+
+    /// Here (§2.5): a PDF's page.
+    var here: Place? {
+        guard case let .page(i)? = navLocation else { return nil }
+        return Place(block: block, at: .page(i + 1), name: "Page \(i + 1)")
     }
 }
 

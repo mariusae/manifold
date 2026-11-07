@@ -742,6 +742,13 @@ final class PageWebView: WKWebView {
 }
 
 extension WebView {
+    /// Here (§2.5): the page, by its address (its words selected are
+    /// asked for apart, as they come only asynchronously).
+    var here: Place? {
+        let w = source()?.web
+        return Place(block: block, name: w?.url.map { WebAddress.plain($0) }, title: w?.title)
+    }
+
     func maniSelection() async -> ManiSelected? {
         await PageSelection.text(in: web).map { ManiSelected(text: $0) }
     }

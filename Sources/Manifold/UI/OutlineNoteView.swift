@@ -109,7 +109,7 @@ final class OutlineNoteView: NSView, PaneContent {
         headings.block = block
         headings.placeFor = { [weak self] i in
             guard let lines = self?.itemLines, lines.indices.contains(i) else { return nil }
-            return "line=\(lines[i] + 1)"
+            return .line(lines[i] + 1)
         }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)

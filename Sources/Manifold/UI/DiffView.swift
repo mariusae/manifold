@@ -57,11 +57,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     /// The heading of the file the top of the view is in, kept at the top
     /// while its own row's scrolled past; clicked, the file folded.
     private let sticky = StickyFileHeading()
-    /// What the lines selected carry dragged out, once found (a reference
-    /// to them in their file); till then, the file at their line.
-    var selectionDrag: NSPasteboardWriting?
-    /// Text selected (let go): for the window to find a reference to it.
-    var onSelected: (() -> Void)?
 
     var focusView: NSView { rowsView }
     var isDead: Bool { false }
@@ -127,11 +122,14 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             self.onThreads?(first, self.convert(rect, from: self.rowsView))
         }
         rowsView.onToggleFile = { [weak self] name in self?.toggleFile(name) }
-        rowsView.onSelected = { [weak self] in
-            self?.selectionDrag = nil
-            self?.onSelected?()
+        // Text selected: said, for `mani`'s @selection.
+        rowsView.onSelected = { [weak self] in NotificationCenter.default.post(name: .manifoldSelectionMade, object: self) }
+        // Lines selected, dragged out: a reference to them in their file
+        // (anchored as they're dropped), with their words.
+        rowsView.dragOut = { [weak self] in
+            guard let self, let p = self.place(rows: self.selectedRows) else { return nil }
+            return Drags.place?(p, self.selectedText)
         }
-        rowsView.dragOut = { [weak self] in self?.selectionDrag ?? self?.fileAtSelection() }
         scroll.documentView = rowsView
         scroll.hasVerticalScroller = true
         // Across, the rows' text scrolls under their numbers (DiffRowsView).
@@ -365,20 +363,65 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     var selectedRows: [Int] { rowsView.selectedRows }
     var selectedText: String? { rowsView.selectedText }
 
-    /// Till a reference is found: the file, at the selection's first line, with its words.
-    private func fileAtSelection() -> NSPasteboardWriting? {
-        guard let first = selectedRows.first, let path = filePath(ofRow: first) else { return nil }
-        let r = rowsView.rows[first]
-        let line = r.kind == .removed ? r.oldLine : r.newLine
-        return Drags.item(DragThing(fragment: line.map { "line=\($0)" }, title: path.lastPathComponent,
-                                    file: .init(host: block.host, path: path, isDirectory: false), text: selectedText ?? path))
+    // MARK: Here (§2.5)
+
+    /// Here: the rows chosen (text selected chooses its rows too).
+    var here: Place? { place(rows: chosenRows) }
+
+    /// Where it's scrolled to, for Back and Forward (§3.5).
+    var navLocation: NavLocation? { .offset(Double(scroll.contentView.bounds.minY)) }
+
+    func go(to location: NavLocation) {
+        guard case let .offset(y) = location else { return }
+        rowsView.scroll(NSPoint(x: 0, y: max(0, y)))
+    }
+
+    /// What's selected, for `mani`'s @selection: its words, and the lines
+    /// of its file they're on (the side they're on).
+    func maniSelection() async -> ManiSelected? {
+        guard let text = selectedText, !text.isEmpty else { return nil }
+        guard case let .lines(s, e)? = place(rows: selectedRows)?.at else { return ManiSelected(text: text) }
+        return ManiSelected(text: text, lines: s...e)
+    }
+
+    /// The place rows are in their file (§3.12): the lines of the side
+    /// they're on (removed lines alone, where they were: the next line
+    /// that's there), with the rows as they are, and the diff — found
+    /// again by their words when they're a commit's or an older version's.
+    /// What a comment on them is about; lines selected, dragged out, a
+    /// reference to.
+    func place(rows: [Int]) -> Place? {
+        guard let first = rows.first, let path = filePath(ofRow: first), let subject = source()?.diff?.subject else { return nil }
+        let all = self.rows
+        let rows = rows.filter { all.indices.contains($0) && filePath(ofRow: $0) == path }
+        let newLines = rows.compactMap { all[$0].kind == .removed ? nil : all[$0].newLine }
+        let isNew = !newLines.isEmpty
+        let sideLines = isNew ? newLines : rows.compactMap { all[$0].oldLine }
+        guard let start = sideLines.min(), let end = sideLines.max() else { return nil }
+        let fileLine = isNew ? start : (all[(rows.last ?? 0)...].lazy.compactMap { $0.kind == .removed ? nil : $0.newLine }.first ?? 1)
+        var commit: String?
+        var current = false
+        switch subject {
+        case let .commit(_, sha): commit = sha
+        case .uncommitted, .patch: current = true
+        case let .sides(_, new): current = new.revision == nil
+        case let .versions(_, _, to): current = to == nil
+        default: break
+        }
+        var p = Place(file: path, on: block.host, at: .lines(fileLine, isNew ? end : fileLine))
+        p.context = rows.prefix(16).map { i -> String in
+            let r = all[i]
+            return (r.kind == .added ? "+" : r.kind == .removed ? "-" : " ") + r.text
+        }.joined(separator: "\n")
+        p.diff = DiffPlace(block: block, file: path, new: isNew, start: start, end: end, commit: commit)
+        p.unsure = !current
+        return p
     }
 
     /// Debugging: text selected from (line, offset) to (line, offset) on a side; what it says.
     func debugSelect(side: Int, from: (Int, Int), to: (Int, Int)) -> String {
         rowsView.selection = (side, .init(line: from.0, col: from.1), .init(line: to.0, col: to.1))
         rowsView.chosen = min(from.0, to.0)...max(from.0, to.0)
-        rowsView.onSelected?()
         return "rows \(selectedRows) text \(selectedText.map { "“\($0)”" } ?? "none")"
     }
 
@@ -397,6 +440,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         o.onPick = { [weak self] i in
             guard let self, self.marks.indices.contains(i) else { return }
             let r = self.rowsView.rect(ofRow: self.marks[i])
+            NavJumps.willJump?(self)
             self.rowsView.scroll(NSPoint(x: 0, y: max(r.minY - 4, 0)))
             self.changesOutline.current = i
         }
@@ -645,10 +689,10 @@ final class DiffRowsView: NSView, NSDraggingSource {
     /// A press in the text selected: dragged, the lines go out (a
     /// reference to them); let go, the selection's gone.
     private var pressInSelection: NSEvent?
-    /// Text selected, once let go: for a reference to it to be found ahead of a drag.
-    var onSelected: (() -> Void)?
     /// What the lines selected carry dragged out.
     var dragOut: (() -> NSPasteboardWriting?)?
+    /// Text selected, let go.
+    var onSelected: (() -> Void)?
 
     private var ordered: (side: Int, from: Spot, to: Spot)? {
         guard let s = selection, s.anchor != s.head else { return nil }

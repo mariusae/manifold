@@ -144,6 +144,12 @@ extension MainWindowController: ThreadChatDelegate {
         if b.kind == .arrangement { return ("The space " + (b.arrangement.map(title(of:)) ?? b.displayTitle), nil, false) }
         var parts = [p.title ?? b.path?.lastPathComponent ?? b.displayTitle]
         if let name = p.name, !name.isEmpty, name != parts[0] { parts.append(name) }
+        // A notebook's cell: by its words now (gone, if it is).
+        if case let .cell(id)? = p.anchor.flatMap(Locator.init(fragment:)) {
+            guard let s = b.summary(at: .cell(id)) else { return (parts.joined(separator: " · "), "the cell is gone", true) }
+            if p.name?.isEmpty ?? true { parts.append(s.title) }
+            return (parts.joined(separator: " · "), nil, false)
+        }
         guard let id = p.anchor, let a = b.anchors?[id] else {
             if let l = p.line { parts.append("line \(l)") }
             return (parts.joined(separator: " · "), nil, false)
@@ -307,54 +313,6 @@ extension MainWindowController: ThreadChatDelegate {
         hosts.markSeen(t)
     }
 
-    // MARK: Places in texts
-
-    /// A place in an editor's text for a new thread: the selection (the
-    /// declaration whose name it is, the heading it is, else the
-    /// stretch), else the declaration or line the caret's on.
-    func threadPlace(in e: EditorView) -> ThreadPlace? {
-        guard let b = hosts.block(e.block), let rope = b.text?.text else { return nil }
-        if e.scrubbed { return pastThreadPlace(in: e, b) }
-        let sel = e.textView.selections.last ?? Selection(at: 0)
-        let wanted: Anchor?
-        if sel.isCaret {
-            wanted = Anchoring.anchor(atLine: rope.line(at: sel.head), of: b)
-        } else {
-            // A stretch exactly as selected (whole lines, if it ends at a line's start).
-            var r = sel.range
-            if r.end > r.start, r.end == rope.offset(ofLine: rope.line(at: r.end)), rope.line(at: r.end) > rope.line(at: r.start) { r.end -= 1 }
-            wanted = Anchoring.anchor(range: r, of: b)
-        }
-        guard let wanted, let address = reference(to: wanted, in: e.block), let anchor = BlockID.link(address)?.fragment else { return nil }
-        let range = b.anchors?[anchor]?.range ?? wanted.range ?? sel.range
-        let first = rope.line(at: range.start), last = rope.line(at: max(range.start, range.end))
-        let lines = (first...min(last, first + 11)).map { rope.lineText($0).trimmingCharacters(in: .newlines) }
-        return ThreadPlace(block: e.block, anchor: anchor, context: lines.joined(separator: "\n"), line: first + 1,
-                           title: b.path?.lastPathComponent ?? b.displayTitle, name: Anchoring.name(of: wanted))
-    }
-
-    /// A place in a past version (the history strip, §7.1): written
-    /// against that commit's lines; anchored where they are in the file
-    /// now, by their words (unsure: found again as the file changes).
-    private func pastThreadPlace(in e: EditorView, _ b: Block) -> ThreadPlace? {
-        guard let h = e.fileHistory, let i = h.position, h.revisions.indices.contains(i), let rope = b.text?.text else { return nil }
-        let past = e.textView.text
-        let sel = e.textView.selections.last ?? Selection(at: 0)
-        let first = past.line(at: sel.range.start), last = past.line(at: max(sel.range.start, sel.range.end - (sel.isCaret ? 0 : 1)))
-        let lines = (first...min(max(first, last), first + 11)).map { past.lineText($0).trimmingCharacters(in: .newlines) }
-        let pastText = past.string, nowText = rope.string
-        let s = max(0, min(Int(e.mapLine(Double(first), from: pastText, to: nowText)), rope.lineCount - 1))
-        let end = max(s, min(Int(e.mapLine(Double(max(first, last)), from: pastText, to: nowText)), rope.lineCount - 1))
-        var a = Anchor(id: "", at: .range, range: TextRange(rope.offset(ofLine: s), rope.lineRange(end).end), excerpt: lines.first)
-        a.unsure = true
-        let anchor = reference(to: a, in: b.id).flatMap { BlockID.link($0)?.fragment }
-        let r = h.revisions[i]
-        var place = ThreadPlace(block: b.id, anchor: anchor, context: lines.joined(separator: "\n"), line: s + 1,
-                                title: b.path?.lastPathComponent ?? b.displayTitle, name: "as of \(r.short)")
-        place.revision = r.sha
-        return place
-    }
-
     /// The threads at a place in a text, by its line: those about the
     /// anchors on it.
     func threads(inText id: BlockID, line: Int) -> [BlockID] {
@@ -375,67 +333,6 @@ extension MainWindowController: ThreadChatDelegate {
     }
 
     // MARK: Places in diffs
-
-    /// The diff's chosen rows as a thread's place: in the file, at the
-    /// lines on the side they're on (the new, unless only removed lines
-    /// are chosen), anchored there once its text is in; with the rows as
-    /// they were.
-    func threadPlace(in d: DiffView, done: @escaping (ThreadPlace?) -> Void) {
-        diffPlace(d, rows: d.chosenRows, done: done)
-    }
-
-    /// The place a diff's rows are in their file (§3.12): anchored at the
-    /// lines of the side they're on (removed lines alone, where they
-    /// were), found again by their words when they're a commit's or an
-    /// older version's; the diff and its rows kept with it. A comment on
-    /// rows is about it; lines selected, dragged out, are a reference to it.
-    func diffPlace(_ d: DiffView, rows: [Int], done: @escaping (ThreadPlace?) -> Void) {
-        var rows = rows
-        if rows.isEmpty { return done(nil) }
-        guard let path = d.filePath(ofRow: rows[0]), let diff = hosts.block(d.block) else { return done(nil) }
-        rows = rows.filter { d.filePath(ofRow: $0) == path }
-        let all = d.rows
-        let newLines = rows.compactMap { all[$0].kind == .removed ? nil : all[$0].newLine }
-        let isNew = !newLines.isEmpty
-        let sideLines = isNew ? newLines : rows.compactMap { all[$0].oldLine }
-        guard let start = sideLines.min(), let end = sideLines.max() else { return done(nil) }
-        // Removed lines alone: where they were, in the file as changed — the
-        // next line that's there.
-        let fileLine = isNew ? start : (all[(rows.last ?? 0)...].lazy.compactMap { $0.kind == .removed ? nil : $0.newLine }.first ?? 1)
-        let fileEnd = isNew ? end : fileLine
-        let context = rows.prefix(16).map { i -> String in
-            let r = all[i]
-            return (r.kind == .added ? "+" : r.kind == .removed ? "-" : " ") + r.text
-        }.joined(separator: "\n")
-        var commit: String?
-        var current = false
-        switch diff.diff?.subject {
-        case let .commit(_, sha)?: commit = sha
-        case .uncommitted?, .patch?: current = true
-        case let .sides(_, new)?: current = new.revision == nil
-        case let .versions(_, _, to)?: current = to == nil
-        default: break
-        }
-        let file = hosts.textBlock(for: path, on: d.block.host)
-        hosts.ensureRead(file)
-        func anchorWhenRead(tries: Int) {
-            guard let b = hosts.block(file), let rope = b.text?.text, !(b.text?.isUnread ?? true) else {
-                guard tries > 0 else { return done(nil) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { anchorWhenRead(tries: tries - 1) }
-                return
-            }
-            let s = max(0, min(fileLine - 1, rope.lineCount - 1)), e = max(s, min(fileEnd - 1, rope.lineCount - 1))
-            let range = isNew ? TextRange(rope.offset(ofLine: s), rope.lineRange(e).end) : TextRange(rope.offset(ofLine: s), rope.offset(ofLine: s))
-            var a = Anchor(id: "", at: .range, range: range, excerpt: rope.lineText(s).trimmingCharacters(in: .newlines))
-            // In a commit, or an older version: the file now may differ —
-            // found again by its words.
-            if !current { a.unsure = true }
-            let anchor = reference(to: a, in: file).flatMap { BlockID.link($0)?.fragment }
-            done(ThreadPlace(block: file, anchor: anchor, context: context, line: fileLine, title: path.lastPathComponent,
-                             diff: DiffPlace(block: d.block, file: path, new: isNew, start: start, end: end, commit: commit)))
-        }
-        anchorWhenRead(tries: 40)
-    }
 
     /// A diff's thread marks: threads made in it, at their rows.
     func markThreads(in d: DiffView) {
@@ -480,32 +377,38 @@ extension MainWindowController: ThreadChatDelegate {
     @objc func commentHere(_ sender: Any?) {
         guard let f = focusedShown, let v = views[f.placement.id] else { return showThreadOverlay(nil) }
         if threadUI.overlay?.superview != nil { return closeThreadOverlay() }
-        if let e = v as? EditorView, hosts.block(e.block)?.text != nil, let place = threadPlace(in: e) {
-            let existing = place.anchor.map { hosts.threads(about: e.block, anchor: $0).filter { $0.thread?.resolved != true }.map(\.id) } ?? []
+        let here = self.here(in: f.placement.id)
+        // A text's selection or caret: a card there, with the threads already about it.
+        if let e = v as? EditorView, hosts.block(e.block)?.text != nil, let here {
             let rect = e.caretRectInWindow.map { e.convert($0, from: nil) } ?? NSRect(x: 40, y: e.bounds.midY, width: 10, height: 16)
-            return showThreadCard(threads: existing, newPlace: place, at: rect, in: e)
+            return threadPlace(here) { [weak self] place in
+                guard let self, let place else { return }
+                let existing = place.anchor.map { self.hosts.threads(about: e.block, anchor: $0).filter { $0.thread?.resolved != true }.map(\.id) } ?? []
+                self.showThreadCard(threads: existing, newPlace: place, at: rect, in: e)
+            }
         }
-        if let d = v as? DiffView, !d.chosenRows.isEmpty {
+        // A diff's rows chosen: a card by them.
+        if let d = v as? DiffView, let here = d.here {
             let rect = d.chosenRect ?? NSRect(x: 0, y: d.bounds.midY, width: 40, height: 16)
-            threadPlace(in: d) { [weak self] place in
+            return threadPlace(here) { [weak self] place in
                 guard let self else { return }
                 guard let place else { return self.toast.show("Those rows can't be commented on", action: "OK", for: 3) {} }
                 self.showThreadCard(threads: [], newPlace: place, at: rect, in: d)
             }
-            return
         }
-        if f.block?.kind == .web {
-            // A page's words selected: the quote it's about.
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let selected = await v.maniSelection()
-                var place = self.overlayPlace()
+        // Elsewhere, the overlay: about a terminal's command, a PDF's page,
+        // a page (its words selected, the quote it's about), the tile; or
+        // the space.
+        guard let here else { return showThreadOverlay(nil, tab: 1) }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let selected = f.block?.kind == .web ? await v.maniSelection() : nil
+            self.threadPlace(here) { [weak self] place in
+                var place = place
                 if let s = selected?.text, !s.isEmpty { place?.context = "“" + String(s.prefix(400)) + "”" }
-                self.showThreadOverlay(place)
+                self?.showThreadOverlay(place, tab: place == nil ? 1 : nil)
             }
-            return
         }
-        showThreadOverlay(overlayPlace(), tab: overlayPlace() == nil ? 1 : nil)
     }
 }
 

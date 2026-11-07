@@ -12,7 +12,7 @@ extension ManiDesk {
             var list: [Block]
             if let place = r.flags["place"] {
                 let t = try await target(place, scope)
-                let anchor = wc.anchored(t.fragment, in: t.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
+                let anchor = wc.anchor(t.at, in: t.block)?.anchorID
                 list = anchor == nil ? hosts.threads(about: t.block, anyPlace: true) : hosts.threads(about: t.block, anchor: anchor)
             } else if r.flags["project"] != nil {
                 let host = scope.host
@@ -37,7 +37,7 @@ extension ManiDesk {
             guard let text = (r.args.count > 1 ? r.args[1] : r.input)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
                 throw Failure(message: "no text: give it, or pipe it in", status: 2)
             }
-            let place = threadPlace(target)
+            let place = try await threadPlace(target)
             let id = hosts.newThread(about: place, space: scope.workspace, text: text, author: author)
             wc.askAgents(in: id, comment: text, author: author)
             return MainWindowController.address(id)
@@ -66,24 +66,19 @@ extension ManiDesk {
         return b
     }
 
-    /// A place named, as a thread would be about it: the place's anchor
-    /// (a line of a text made one), and the text there.
-    private func threadPlace(_ t: Target) -> ThreadPlace {
-        let b = hosts.block(t.block)
-        let anchor = wc.anchored(t.fragment, in: t.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
-        var place = ThreadPlace(block: t.block, anchor: anchor, title: b?.path?.lastPathComponent ?? b?.displayTitle)
-        if let a = anchor.flatMap({ b?.anchors?[$0] }) {
-            place.name = Anchoring.name(of: a)
-            if let b, let rope = b.text?.text, let (range, _) = Anchoring.locate(a, in: b) {
-                let first = rope.line(at: range.start), last = rope.line(at: max(range.start, range.end))
-                place.line = first + 1
-                place.context = (first...min(last, first + 11)).map { rope.lineText($0).trimmingCharacters(in: .newlines) }.joined(separator: "\n")
-            }
-        } else if let s = t.selection {
+    /// A place named, as a thread would be about it (the window's
+    /// `threadPlace`): anchored, with the text there — a selection's lines
+    /// (`@selection`), its words.
+    private func threadPlace(_ t: Target) async throws -> ThreadPlace {
+        var place = Place(block: t.block, at: t.at)
+        if t.at == nil, let s = t.selection {
             place.context = s.text
-            place.line = s.lines?.lowerBound
+            if let lines = s.lines { place.at = .lines(lines.lowerBound, lines.upperBound) }
+            if let page = s.page { place.at = .page(page) }
         }
-        return place
+        let made: ThreadPlace? = await withCheckedContinuation { c in wc.threadPlace(place) { c.resume(returning: $0) } }
+        guard let made else { throw Failure(message: "there's no place there to be about") }
+        return made
     }
 
     /// A thread as text: its reference and state, where it is, what it

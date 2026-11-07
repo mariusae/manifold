@@ -297,6 +297,15 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         return id
     }
 
+    /// Here (§2.5): the cell you're in.
+    var here: Place? {
+        // The cell focused, else the one whose editor has the keyboard (a new notebook's first).
+        let typing = cells.first { window?.firstResponder === $0.value.editor }?.key
+        guard let id = focusedCell ?? typing, cells[id] != nil else { return nil }
+        let words = cells[id]?.editor.string.split(separator: "\n").first.map { String($0.prefix(60)) }
+        return Place(block: block, at: .cell(id), name: words)
+    }
+
     func focus(_ id: String, atEnd: Bool) {
         guard let v = cells[id] else { return }
         window?.makeFirstResponder(v.editor)

@@ -181,7 +181,8 @@ enum MarkdownStyle {
             }
             // A place by its name (an anchor's, §2.5), else as written.
             if let place {
-                if Anchor.isAnchor(place), let name = Self.placeName?(id, place) { look.title = name } else { look.title += " · " + place.replacingOccurrences(of: "=", with: " ") }
+                let at = Locator(fragment: place)
+                if let anchor = at?.anchorID, let name = Self.placeName?(id, anchor) { look.title = name } else { look.title += " · " + (at?.words ?? place) }
             }
             let first = NSRange(location: m.range.location, length: 1)
             a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: pillWidth(look), font: base)], range: first)

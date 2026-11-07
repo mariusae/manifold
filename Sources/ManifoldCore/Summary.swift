@@ -206,12 +206,17 @@ extension Block {
     /// section's first lines; a page by its number. Its `place` is the
     /// block it's in. Nil for a place the block doesn't have.
     public func summary(at fragment: String, now: Date = Date()) -> BlockSummary? {
-        // An anchor (§2.5): what it's called, and its first lines.
-        if Anchor.isAnchor(fragment) {
-            guard let a = anchors?[fragment] else { return nil }
+        Locator(fragment: fragment).flatMap { summary(at: $0, now: now) }
+    }
+
+    public func summary(at place: Locator, now: Date = Date()) -> BlockSummary? {
+        switch place {
+        case let .anchor(id):
+            // An anchor (§2.5): what it's called, and its first lines.
+            guard let a = anchors?[id] else { return nil }
             // A command's or a page's: as that place's.
-            if let legible = a.legibleFragment { return summary(at: legible, now: now) }
-            var s = BlockSummary(title: Self.oneLine(a.name ?? a.excerpt ?? fragment, max: 80), place: displayTitle)
+            if let legible = a.legible { return summary(at: legible, now: now) }
+            var s = BlockSummary(title: Self.oneLine(a.name ?? a.excerpt ?? id, max: 80), place: displayTitle)
             if let r = a.range, let rope = text?.text, r.end <= rope.count {
                 let first = rope.line(at: r.start)
                 let last = min(rope.line(at: max(r.end - 1, r.start)), first + 3)
@@ -220,11 +225,7 @@ extension Block {
             }
             if a.unsure == true { s.note = "moved?" }
             return s
-        }
-        let parts = fragment.split(separator: "=", maxSplits: 1).map(String.init)
-        guard parts.count == 2, let n = Int(parts[1]) else { return nil }
-        switch parts[0] {
-        case "command":
+        case let .command(n):
             if let turn = terminal?.turns?.first(where: { $0.id == n }) {
                 var s = BlockSummary(title: Self.oneLine(turn.prompt, max: 80), place: displayTitle)
                 if let m = turn.message { s.lines = [Self.oneLine(m)] }
@@ -246,21 +247,32 @@ extension Block {
                 if status != 0 { s.tone = .failed }
             }
             return s
-        case "line":
-            guard kind == .text, let t = text?.text.string else { return nil }
-            let section = NoteOutlineMarkdown.section(of: t, line: n)
+        case .line, .lines, .range:
+            guard kind == .text, let rope = text?.text else { return nil }
+            let n: Int
+            switch place {
+            case let .range(r): n = rope.line(at: min(r.start, rope.count)) + 1
+            default: n = place.line ?? 1
+            }
+            let section = NoteOutlineMarkdown.section(of: rope.string, line: n)
             let lines = Self.firstLines(section, skipping: "", count: 4)
             guard let first = lines.first else { return nil }
             var s = BlockSummary(title: String(first.prefix(80)), place: displayTitle)
             s.lines = Array(lines.dropFirst())
             return s
-        case "page":
+        case let .page(n):
             guard kind == .pdf else { return nil }
             var s = BlockSummary(title: "Page \(n)", place: displayTitle)
             s.wantsThumbnail = true
             return s
-        default:
-            return nil
+        case let .cell(id):
+            guard let c = notebook?.cells.first(where: { $0.id == id }) else { return nil }
+            let source = Self.firstLines(c.source, skipping: "", count: 3)
+            var s = BlockSummary(title: Self.oneLine(source.first ?? "Empty cell", max: 80), place: displayTitle)
+            s.code = true
+            s.lines = Array(source.dropFirst()) + (c.output ?? "").split(separator: "\n").map { Self.oneLine(String($0)) }.filter { !$0.isEmpty }.suffix(2)
+            if let status = c.status, status != 0 { s.tone = .failed }
+            return s
         }
     }
 

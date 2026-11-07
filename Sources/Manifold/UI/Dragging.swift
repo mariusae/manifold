@@ -33,8 +33,12 @@ struct DragThing: Codable, Equatable {
 
     /// The block it is, or the block a place is in.
     var block: BlockID?
-    /// A place in the block, as a reference names it (`command=7`, `line=12`, `page=3`).
-    var fragment: String?
+    /// A place in the block (or the file, once it's one): anchored, or
+    /// said legibly until it can be.
+    var at: Locator?
+    /// Its place taken from text that may not be the file's now (a
+    /// commit's lines): anchored, it's found again by its words.
+    var unsure: Bool?
     var title: String
     /// The file (or folder) it is: what's copied or moved, opened as a tile.
     var file: File?
@@ -53,12 +57,12 @@ struct DragThing: Codable, Equatable {
     /// The commit it is (a history's row, a commit's diff).
     var commit: Commit?
 
-    private enum CodingKeys: String, CodingKey { case block, fragment, title, file, folder, url, text, selection, commit }
+    private enum CodingKeys: String, CodingKey { case block, at, unsure, title, file, folder, url, text, selection, commit }
 
-    init(block: BlockID? = nil, fragment: String? = nil, title: String, file: File? = nil, folder: File? = nil,
+    init(block: BlockID? = nil, at: Locator? = nil, title: String, file: File? = nil, folder: File? = nil,
          url: String? = nil, text: String? = nil, outside: Bool = false) {
         self.block = block
-        self.fragment = fragment
+        self.at = at
         self.title = title
         self.file = file
         self.folder = folder
@@ -92,26 +96,32 @@ struct DragThing: Codable, Equatable {
     /// The text a form puts in for it, and the block it names (to be
     /// linked from where it lands); nil if it can't be.
     @MainActor func text(_ form: DropForm) async -> (String, BlockID?)? {
-        let place = fragment.map { "#" + $0 } ?? ""
+        // Its place anchored in the block it names (a file's, opened as one now).
+        func place(in id: BlockID) async -> String {
+            guard let at else { return "" }
+            guard at.anchorID == nil, let anchor = Drags.anchor else { return "#" + at.fragment }
+            return "#" + (await anchor(id, at, unsure ?? false)).fragment
+        }
         switch form {
         case .link:
-            if let id = named() { return ("[\(escapedTitle)](manifold:\(id.description)\(place))", id) }
+            if let id = named() { return ("[\(escapedTitle)](manifold:\(id.description)\(await place(in: id)))", id) }
             guard let url else { return nil }
             return (title.isEmpty || title == url ? "<\(url)>" : "[\(escapedTitle)](\(url))", nil)
         case .reference:
             guard let id = named() else { return nil }
-            return ("manifold:\(id.description)\(place)", id)
+            return ("manifold:\(id.description)\(await place(in: id))", id)
         case .path:
             return self.place.map { ($0.path, block) }
         case .text:
             return text.map { ($0, block) }
         case .contents:
             guard let id = named(), let fetch = Drags.contents else { return nil }
-            let s: String? = await withCheckedContinuation { c in fetch(id, fragment) { c.resume(returning: $0) } }
+            let at = self.at
+            let s: String? = await withCheckedContinuation { c in fetch(id, at) { c.resume(returning: $0) } }
             return s.map { ($0, id) }
         case .inline:
             guard let id = named() else { return nil }
-            return ("![\(escapedTitle)](manifold:\(id.description)\(place))", id)
+            return ("![\(escapedTitle)](manifold:\(id.description)\(await place(in: id)))", id)
         case .open, .linkTile, .copy, .move:
             return nil
         }
@@ -162,7 +172,7 @@ struct Dragged {
                     things.append(DragThing(title: t, url: t, text: t))
                 } else if let (id, fragment) = BlockID.reference(t), !t.contains("\n") {
                     // A reference (or a block's link) as text: the block it names.
-                    things.append(DragThing(block: id, fragment: fragment, title: t.hasPrefix("[") ? String(t.dropFirst().prefix { $0 != "]" }) : "", text: s))
+                    things.append(DragThing(block: id, at: fragment.flatMap(Locator.init(fragment:)), title: t.hasPrefix("[") ? String(t.dropFirst().prefix { $0 != "]" }) : "", text: s))
                 } else {
                     things.append(DragThing(title: "", text: s))
                 }
@@ -264,7 +274,7 @@ struct Dragged {
         let more = things.count > 1 ? " and \(things.count - 1) more" : ""
         switch form {
         case .link: return "as a note shows it"
-        case .reference: return t?.block.map { short("manifold:" + $0.description + (t?.fragment.map { "#" + $0 } ?? "")) + more } ?? "manifold:…"
+        case .reference: return t?.block.map { short("manifold:" + $0.description + (t?.at.map { "#" + $0.fragment } ?? "")) + more } ?? "manifold:…"
         case .path: return short(t?.place?.path ?? "") + more
         case .text: return short(t?.text ?? "") + more
         case .contents: return "what it holds, as text"
@@ -455,7 +465,7 @@ extension DropTaking {
     static func kind(of d: Dragged) -> Kind {
         if d.pictures { return .pictures }
         if d.things.contains(where: { $0.selection == true }) { return .selection }
-        if d.things.contains(where: { $0.fragment != nil }) { return .place }
+        if d.things.contains(where: { $0.at != nil }) { return .place }
         if d.hasCommits { return .commits }
         if d.things.contains(where: { $0.block != nil }) { return .block }
         if !d.things.isEmpty, d.things.allSatisfy({ $0.place != nil }) { return .file }

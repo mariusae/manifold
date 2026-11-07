@@ -110,7 +110,7 @@ extension MainWindowController {
         o.timeline.space = selected
         o.timeline.marksWhenOpened = nil
         // Here: the thread asked for, else the place given or under the caret.
-        let here: ThreadPlace? = thread == nil ? (place ?? overlayPlace()) : nil
+        let here: ThreadPlace? = thread == nil ? place : nil
         o.herePlace = here
         o.hereThreads = thread.map { [$0] } ?? here.map { p in hosts.threads(about: p.block, anchor: p.anchor).sorted { $0.created > $1.created }.map(\.id) } ?? []
         o.hasHere = here != nil || thread != nil
@@ -143,35 +143,6 @@ extension MainWindowController {
         let w = min(560, b.width - 40), h = min(max(360, b.height * 0.72), b.height - 60)
         o.frame = NSRect(x: (b.midX - w / 2).rounded(), y: (b.midY - h / 2 + 10).rounded(), width: w, height: h)
         o.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
-    }
-
-    /// The place under the caret, as a thread would be about it: a
-    /// terminal's command gone to (else its last), a PDF's page, a page's
-    /// words selected, else the focused tile itself.
-    func overlayPlace() -> ThreadPlace? {
-        guard let f = focusedShown, let b = f.block, let v = views[f.placement.id] else { return nil }
-        let title = b.path?.lastPathComponent ?? b.displayTitle
-        switch b.kind {
-        case .terminal, .agent:
-            var n: Int?
-            if case .command(let c)? = v.navLocation { n = c }
-            guard let id = n ?? b.terminal?.commands?.last?.id, let c = b.terminal?.commands?.first(where: { $0.id == id }) else { break }
-            let anchor = anchored("command=\(id)", in: b.id)
-            return ThreadPlace(block: b.id, anchor: anchor.flatMap { Anchor.isAnchor($0) ? $0 : nil }, context: "$ " + c.text,
-                               title: title, name: String(c.text.prefix(60)))
-        case .pdf:
-            if case .page(let p)? = v.navLocation {
-                let anchor = anchored("page=\(p + 1)", in: b.id)
-                return ThreadPlace(block: b.id, anchor: anchor.flatMap { Anchor.isAnchor($0) ? $0 : nil }, title: title, name: "Page \(p + 1)")
-            }
-        case .web:
-            return ThreadPlace(block: b.id, title: b.web?.title ?? title, name: b.web?.url.map { WebAddress.plain($0) })
-        case .arrangement, .thread:
-            return nil
-        default:
-            break
-        }
-        return ThreadPlace(block: b.id, title: title)
     }
 
     /// Debugging the overlay: `overlay` (⌥⌘M), `overlay tab <0|1>`,

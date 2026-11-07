@@ -16,6 +16,12 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     let block: BlockID
     weak var delegate: OutputViewDelegate?
     var source: () -> Block? = { nil }
+
+    /// Here (§2.5): the command it's the output of, in its terminal.
+    var here: Place? {
+        guard let o = source()?.output, let terminal = o.source, let n = o.command else { return nil }
+        return Place(block: terminal, at: .command(n), name: String(o.line.prefix(60)))
+    }
     var font: NSFont = .systemMono(ofSize: 12.5, weight: .regular) { didSet { if font != oldValue { shown = nil; refresh() } } }
 
     private let header = NSView()

@@ -358,7 +358,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // link to from a note, its output to give an agent).
         o.placeFor = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return nil }
-            return "command=\(self.outlined[i].id)"
+            return .command(self.outlined[i].id)
         }
         o.menuFor = { [weak self] i in
             guard let self, self.outlined.indices.contains(i) else { return nil }
@@ -508,6 +508,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The command last gone to, while it's the place the terminal is at.
     private var commandGoneTo: Int?
     var navLocation: NavLocation? { commandGoneTo.map { .command($0) } }
+
+    /// Here (§2.5): the command gone to, else the last one run.
+    var here: Place? {
+        guard let id = commandGoneTo ?? outlined.last?.id else { return nil }
+        return Place(block: block, at: .command(id), name: outlined.first { $0.id == id }.map { String($0.text.prefix(60)) })
+    }
     func go(to location: NavLocation) {
         if case let .command(id) = location { _ = go(toCommand: id) }
     }

@@ -102,6 +102,10 @@ protocol PaneContent: NSView {
     var navLocation: NavLocation? { get }
     /// Back there.
     func go(to location: NavLocation)
+    /// What's here (§2.5): its selection, else where it's at — a text's
+    /// caret line, a terminal's command, a PDF's page, a diff's rows — as
+    /// a place: what a comment's about, a link's copied to. Nil: the tile.
+    var here: Place? { get }
     /// What's selected in it, for `mani`'s @selection; nil if nothing.
     func maniSelection() async -> ManiSelected?
     /// What it shows, as text, for `mani read`, where only the view has it
@@ -184,6 +188,7 @@ struct BarButton: Equatable {
 }
 
 extension PaneContent {
+    var here: Place? { nil }
     func maniSelection() async -> ManiSelected? { nil }
     func maniText(_ options: ManiReadOptions) async -> String? { nil }
     var barButtons: [BarButton] { [] }
@@ -320,20 +325,21 @@ typealias TextRange = ManifoldCore.TextRange
 enum Drags {
     static var block: ((_ block: BlockID, _ modifiers: NSEvent.ModifierFlags) -> NSPasteboardItem?)?
 
-    /// A file or folder on a host, dragged (a place in it: a hit's line).
-    static func file(_ path: String, isDirectory: Bool, on host: HostID, fragment: String? = nil) -> NSPasteboardItem {
-        item(DragThing(fragment: fragment, title: path.lastPathComponent, file: .init(host: host, path: path, isDirectory: isDirectory), text: path))
+    /// A file or folder on a host, dragged.
+    static func file(_ path: String, isDirectory: Bool, on host: HostID) -> NSPasteboardItem {
+        item(DragThing(title: path.lastPathComponent, file: .init(host: host, path: path, isDirectory: isDirectory), text: path))
     }
     /// What a block holds, as text (a drop's Contents), or a place in it
     /// (a command's output, a heading's section, a page): fetched, a block
     /// still being made waited for; nil if it can't be.
-    static var contents: ((_ block: BlockID, _ fragment: String?, _ done: @escaping (String?) -> Void) -> Void)?
-    /// A place in a block dragged (an outline's item): the block as a
-    /// thing, its place in it ("line=12"; nil, the block), the item's words.
-    static var place: ((_ block: BlockID, _ fragment: String?, _ title: String) -> NSPasteboardItem?)?
-    /// A text's selection dragged: a reference to its place (the
-    /// declaration it names, else the stretch itself), and its words.
-    static var selection: ((_ block: BlockID, _ range: TextRange, _ text: String) -> NSPasteboardItem?)?
+    static var contents: ((_ block: BlockID, _ at: Locator?, _ done: @escaping (String?) -> Void) -> Void)?
+    /// A place dragged (§2.5) — an outline's item, a hit, a line, a
+    /// selection (`selected`, its words): its block (a file's) as a thing,
+    /// at its place in it, anchored. The one way any place is dragged.
+    static var place: ((_ place: Place, _ selected: String?) -> NSPasteboardItem?)?
+    /// A place in a block that isn't anchored yet (a file's, dropped)
+    /// anchored, its text waited for.
+    static var anchor: ((_ block: BlockID, _ at: Locator, _ unsure: Bool) async -> Locator)?
     /// The block a file dragged names: opened as one (not placed), for a
     /// link or a reference to it; nil for one Manifold doesn't open.
     static var resolve: ((DragThing.File) -> BlockID?)?
@@ -359,7 +365,7 @@ enum Drags {
     static func item(_ t: DragThing) -> NSPasteboardItem {
         let item = NSPasteboardItem()
         if let data = try? JSONEncoder().encode(t) { item.setData(data, forType: .manifoldThing) }
-        let reference = t.block.map { "manifold:" + $0.description + (t.fragment.map { "#" + $0 } ?? "") }
+        let reference = t.block.map { "manifold:" + $0.description + (t.at.map { "#" + $0.fragment } ?? "") }
         if let s = t.text ?? t.place?.path ?? t.url ?? reference { item.setString(s, forType: .string) }
         if let f = t.file, f.host == localHost { item.setString(URL(fileURLWithPath: f.path).absoluteString, forType: .fileURL) }
         if let u = t.url { item.setString(u, forType: .URL) }
@@ -400,14 +406,13 @@ enum Drags {
         (w as? HostFilePromise)?.extra ?? w
     }
 
-    /// A block's address on the clipboard, a place in it if given
-    /// ("line=12", "page=3", "command=7"). Given by the window.
-    static var copyLink: ((_ block: BlockID, _ fragment: String?) -> Void)?
+    /// A place's address on the clipboard, anchored. Given by the window.
+    static var copyLink: ((Place) -> Void)?
 
     /// A menu of one item: Copy Link to the place.
-    static func linkMenu(_ title: String, _ block: BlockID, _ fragment: String) -> NSMenu {
+    static func linkMenu(_ title: String, _ place: Place) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(title, symbol: "link") { copyLink?(block, fragment) })
+        menu.addItem(ClosureMenuItem(title, symbol: "link") { copyLink?(place) })
         return menu
     }
 }

@@ -154,11 +154,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         headingsOutline.block = block
         headingsOutline.placeFor = { [weak self] i in
             guard let self, self.headingLines.indices.contains(i) else { return nil }
-            return "line=\(self.headingLines[i] + 1)"
+            return .line(self.headingLines[i] + 1)
         }
         headingsOutline.menuFor = { [weak self] i in
             guard let self, self.headingLines.indices.contains(i) else { return nil }
-            return Drags.linkMenu("Copy Link to This Heading", self.block, "line=\(self.headingLines[i] + 1)")
+            return Drags.linkMenu("Copy Link to This Heading", Place(block: self.block, at: .line(self.headingLines[i] + 1)))
         }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
@@ -553,6 +553,40 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         stateWork?.cancel()
         completion?.close()
         hover?.close()
+    }
+
+    // MARK: Here (§2.5)
+
+    /// The selection — the declaration whose name it is, the heading it
+    /// is, else the stretch (whole lines, if it ends at a line's start) —
+    /// else the caret's line (the declaration or heading there). On a past
+    /// version (§7.1): its lines, where they are in the file now, written
+    /// against as they were then.
+    var here: Place? {
+        let sel = textView.selections.last ?? Selection(at: 0)
+        if scrubbed { return pastHere(sel) }
+        let rope = textView.text
+        guard sel.head <= rope.count else { return nil }
+        if sel.isCaret { return Place(block: block, at: .line(rope.line(at: sel.head) + 1)) }
+        var r = sel.range
+        if r.end > r.start, r.end == rope.offset(ofLine: rope.line(at: r.end)), rope.line(at: r.end) > rope.line(at: r.start) { r.end -= 1 }
+        return Place(block: block, at: .range(r))
+    }
+
+    private func pastHere(_ sel: Selection) -> Place? {
+        guard let h = fileHistory, let i = h.position, h.revisions.indices.contains(i), let now = document?.text else { return nil }
+        let past = textView.text
+        let first = past.line(at: sel.range.start), last = past.line(at: max(sel.range.start, sel.range.end - (sel.isCaret ? 0 : 1)))
+        let lines = (first...min(max(first, last), first + 11)).map { past.lineText($0).trimmingCharacters(in: .newlines) }
+        let pastText = past.string, nowText = now.string
+        let s = max(0, min(Int(mapLine(Double(first), from: pastText, to: nowText)), now.lineCount - 1))
+        let e = max(s, min(Int(mapLine(Double(max(first, last)), from: pastText, to: nowText)), now.lineCount - 1))
+        let r = h.revisions[i]
+        var p = Place(block: block, at: .lines(s + 1, e + 1), name: "as of \(r.short)")
+        p.context = lines.joined(separator: "\n")
+        p.revision = r.sha
+        p.unsure = true
+        return p
     }
 
     // MARK: TextViewDocument

@@ -1942,7 +1942,8 @@ is migrated into logs on first run.
     command takes a block's **reference** as its name — `manifold:host/id`,
     or a note's `[name](manifold:…)` link — and a place in it after `#`:
     `mani read manifold:…#command=7` reads that command's output,
-    `mani show manifold:…#line=12` goes to the line; `mani info` and
+    `mani show manifold:…#line=12` goes to the line (`#lines=3-7`
+    reads those lines, `#cell=…` a notebook's cell); `mani info` and
     `mani ls --json` give each block's `ref` and `link`, to hand back. A
     reference printed in a terminal is ⌘-clicked as a link is. The skill
     (`mani skill install`) teaches agents all of it.

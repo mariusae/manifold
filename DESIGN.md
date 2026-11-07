@@ -139,7 +139,19 @@ place has: its name, where it was last found, whether it's gone. An
 anchor lasts as long as its block — references are pasted where no edge
 follows them (a commit's message, a chat) — and the few legible places
 written before anchors (`#line=12`, `#command=7`, `#page=3`) still
-lead where they say.
+lead where they say, as do those a person or an agent writes by hand
+(`#lines=3-7`, `#cell=k2x9`).
+
+A place is made one way, whatever it's in. Every view says what's
+**here** — its selection, else where it's at: a text's caret line, a
+terminal's command, a PDF's page, a diff's rows, a notebook's cell, the
+command an output came from — and every outline's item, search hit and
+changed line is a place too: a block (or a file on a host not opened
+yet), where in it, and what it's called. A reference to a place, a drag
+of it, a link copied to it and a thread about it are all made from that
+one description, anchored the same way: a file's place (a hit's line, a
+diff's lines) when it's dropped, its text read first, so it keeps
+leading there and doesn't drift with the line numbers.
 
 An anchor holds what it's at, the way its kind knows the block's
 structure — a declaration's path (`Type.method`, by its language's

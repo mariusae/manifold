@@ -112,7 +112,7 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     /// A page dragged: its place in the PDF, and the page as a PDF.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard let item = Drags.place?(block, "page=\(row + 1)", "Page \(row + 1)") else { return nil }
+        guard let item = Drags.place?(Place(block: block, at: .page(row + 1), name: "Page \(row + 1)"), nil) else { return nil }
         if let data = pdfView?.document?.page(at: row)?.dataRepresentation { item.setData(data, forType: .pdf) }
         return item
     }

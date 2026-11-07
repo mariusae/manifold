@@ -150,11 +150,11 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         headingsOutline.block = block
         headingsOutline.placeFor = { [weak self] i in
             guard let lines = self?.itemLines, lines.indices.contains(i) else { return nil }
-            return "line=\(lines[i] + 1)"
+            return .line(lines[i] + 1)
         }
         headingsOutline.menuFor = { [weak self] i in
             guard let self, self.itemLines.indices.contains(i) else { return nil }
-            return Drags.linkMenu("Copy Link to This Place", self.block, "line=\(self.itemLines[i] + 1)")
+            return Drags.linkMenu("Copy Link to This Place", Place(block: self.block, at: .line(self.itemLines[i] + 1)))
         }
     }
 

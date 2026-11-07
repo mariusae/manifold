@@ -211,9 +211,9 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     private func rowItem(_ row: Int) -> NSPasteboardWriting? {
         guard rows.indices.contains(row), case let .found(f) = rows[row] else { return nil }
         switch f {
-        case let .symbol(h): return Drags.file(h.path, isDirectory: false, on: host, fragment: "line=\(h.line + 1)")
+        case let .symbol(h): return Drags.place?(Place(file: h.path, on: host, at: .line(h.line + 1), name: h.name), nil)
         case let .file(p): return Drags.file(root.appendingPathComponent(p), isDirectory: false, on: host)
-        case let .hit(h): return Drags.file(h.path, isDirectory: false, on: host, fragment: "line=\(h.line)")
+        case let .hit(h): return Drags.place?(Place(file: h.path, on: host, at: .line(h.line)), nil)
         }
     }
 

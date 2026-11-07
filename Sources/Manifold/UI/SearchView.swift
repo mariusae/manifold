@@ -497,7 +497,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         case .section: return nil
         case .hit, .symbol, .name:
             guard let hit = rows[row].asHit(root: query?.root ?? "") else { return nil }
-            return Drags.file(hit.path, isDirectory: false, on: block.host, fragment: "line=\(hit.line)")
+            return Drags.place?(Place(file: hit.path, on: block.host, at: .line(hit.line)), nil)
         }
     }
 

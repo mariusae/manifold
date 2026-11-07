@@ -59,7 +59,7 @@ public struct Mention: Equatable, Sendable {
                 if target.hasPrefix("manifold:"), let id = BlockID(string: String(target.dropFirst(9)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
                     var m = Mention(target: .block(id), text: words)
                     m.embeds = shown
-                    m.anchor = fragment.flatMap { Anchor.isAnchor($0) ? $0 : nil }
+                    m.anchor = fragment.flatMap(Locator.init(fragment:))?.anchorID
                     add(m)
                 } else if !target.isEmpty, !target.contains("://"), !target.hasPrefix("mailto:"), !words.contains("\n") {
                     var m = Mention(target: .path(target.removingPercentEncoding ?? target), text: words)

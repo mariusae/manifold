@@ -142,7 +142,8 @@ extension MainWindowController {
             NSApp.sendAction(#selector(DiffRowsView.copy(_:)), to: d.focusView, from: nil)
             return NSPasteboard.general.string(forType: .string) ?? "nothing"
         case "drag":
-            guard let item = d.selectionDrag as? NSPasteboardItem else { return "no reference yet" }
+            guard let p = d.place(rows: d.selectedRows) else { return "no place for rows \(d.selectedRows): file \(d.selectedRows.first.flatMap(d.filePath(ofRow:)) ?? "-"), rows \(d.selectedRows.map { "\(d.rows[$0].kind) \(d.rows[$0].oldLine.map(String.init) ?? "-")/\(d.rows[$0].newLine.map(String.init) ?? "-")" })" }
+            guard let item = Drags.place?(p, d.selectedText) else { return "no drag" }
             let thing = item.data(forType: .manifoldThing).flatMap { String(data: $0, encoding: .utf8) } ?? "-"
             return "string: \(item.string(forType: .string) ?? "-")\nthing: \(thing)"
         default: return d.debugFold(nil)

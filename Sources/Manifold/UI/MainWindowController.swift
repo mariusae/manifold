@@ -62,7 +62,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var walkLeaving: NSObjectProtocol?
     /// A place settled on: a tile in its space (none, a space with
     /// nothing focused).
-    private struct Place: Equatable {
+    private struct Settled: Equatable {
         var space: BlockID
         var tile: PlacementID?
     }
@@ -73,10 +73,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// only passed on a walk aren't in it, and it doesn't wait on a host to
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
-    private var settled: [Place] = []
+    private var settled: [Settled] = []
     /// ⌥⇥'s walk, while option is held: the places in the order it began
     /// with, how far along it is, and what shows its cards if it's held.
-    private var tileWalk: (places: [Place], index: Int, show: DispatchWorkItem)?
+    private var tileWalk: (places: [Settled], index: Int, show: DispatchWorkItem)?
     private var tileMonitors: [Any] = []
     private var tileLeaving: NSObjectProtocol?
     /// ⌥⇥'s cards, once they show, and their pictures on their way.
@@ -808,19 +808,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             d.onThreads = { [weak self, weak d] row, rect in
                 guard let self, let d else { return }
                 self.diffThreadsClicked(d, row: row, rect: rect)
-            }
-            // Lines selected: a reference to them in their file found, for
-            // when they're dragged out — the place a comment on them has.
-            d.onSelected = { [weak self, weak d] in
-                guard let self, let d else { return }
-                let text = d.selectedText
-                self.diffPlace(d, rows: d.selectedRows) { [weak self, weak d] place in
-                    guard let self, let d, let place, d.selectedText == text else { return }
-                    var t = self.dragThing(place.block, fragment: place.anchor, title: place.name ?? place.title)
-                    t.text = text
-                    t.selection = true
-                    d.selectionDrag = Drags.item(t)
-                }
             }
             markThreads(in: d)
             v = d
@@ -2018,10 +2005,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Copy Link to This Line: the focused text's address with the caret's
-    /// line (`#line=N`), going there from anywhere.
+    /// line's anchor (the declaration or heading there, else the line).
     @objc func copyLinkToLine(_ sender: Any?) {
         guard let f = focusedShown, let e = views[f.id] as? EditorView, let n = e.navLocation?.line else { return NSSound.beep() }
-        copyLink(to: f.placement.block, fragment: anchored("line=\(n)", in: f.placement.block))
+        copyLink(to: Place(block: f.placement.block, at: .line(n)))
     }
 
     // MARK: Asking an agent about a place (§2.5)
@@ -2208,7 +2195,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             else { return "no rows to choose there" }
         case "block":
             guard spec.count > 1, let id = BlockID(string: spec[1]) else { return "no block" }
-            item = spec.count > 2 ? Drags.place?(id, spec[2], hosts.block(id)?.displayTitle ?? "") : Drags.block?(id, [.shift])
+            item = spec.count > 2 ? Drags.place?(Place(block: id, at: Locator(fragment: spec[2]), name: hosts.block(id)?.displayTitle), nil) : Drags.block?(id, [.shift])
+        case "place":
+            // "place <host> <path> <fragment>": a place in a file (a hit's line), dragged.
+            guard spec.count == 4 else { return "place <host> <path> <fragment>" }
+            item = Drags.place?(Place(file: spec[2], on: HostID(spec[1]), at: Locator(fragment: spec[3])), nil)
         case "file":
             guard spec.count == 4 else { return "file <host> <path> d|f" }
             item = Drags.file(spec[2], isDirectory: spec[3] == "d", on: HostID(spec[1]))
@@ -2249,7 +2240,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                   let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "dot <terminal> <command id>" }
             item = source.debugDotDrag(n)
         default:
-            return "drop block|file|finder|text|url|image|row|from|dot|chosen … [as <form>] [grid <column> <at>]"
+            return "drop block|place|file|finder|text|url|image|row|from|dot|chosen … [as <form>] [grid <column> <at>]"
         }
         let items = several ?? item.map { [$0] } ?? []
         guard !items.isEmpty else { return "nothing dragged" }
@@ -3266,7 +3257,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Where the window is now, settled on: the latest place on its trail.
     private func settleHere() {
         guard let space = selected else { return }
-        let here = Place(space: space, tile: hosts.arrangement(space)?.focused)
+        let here = Settled(space: space, tile: hosts.arrangement(space)?.focused)
         settled.removeAll { $0 == here || ($0.space == space && $0.tile == nil) }
         settled.insert(here, at: 0)
         if settled.count > 200 { settled.removeLast() }
@@ -3287,16 +3278,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The tiles of the trail, the latest first, from where the window is:
     /// those settled on here, then the hosts' trail, then the rest of this
     /// space. Each tile once, and only one still on the desk.
-    private func tileTrail() -> [Place] {
+    private func tileTrail() -> [Settled] {
         var home: [PlacementID: BlockID] = [:]
         for w in allWorkspaces {
             for p in hosts.arrangement(w)?.placements ?? [] where !recentlyClosed.contains(p.block) { home[p.id] = w }
         }
-        var out: [Place] = []
+        var out: [Settled] = []
         var seen: Set<PlacementID> = []
         func add(_ p: PlacementID?) {
             guard let p, let w = home[p], seen.insert(p).inserted else { return }
-            out.append(Place(space: w, tile: p))
+            out.append(Settled(space: w, tile: p))
         }
         add(arrangement?.focused)
         for s in settled { add(s.tile) }
@@ -3466,7 +3457,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The sheets of the space shown that `places`' tiles are in (the
     /// root's terms), by tile.
-    private func sheetsInRoot(for places: [Place]) -> [PlacementID: NSRect] {
+    private func sheetsInRoot(for places: [Settled]) -> [PlacementID: NSRect] {
         let sheets = content.sheetPlaces()
         var out: [PlacementID: NSRect] = [:]
         for p in places where p.space == selected {
@@ -3484,7 +3475,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Goes to a place: its space shown, its tile out of its stack (from
     /// behind a maximized one) and focused, the pointer on it.
-    private func go(to p: Place) {
+    private func go(to p: Settled) {
         guard let t = p.tile, let a = hosts.arrangement(p.space), a.placement(t) != nil else { return NSSound.beep() }
         if stateView != nil { hideStateView() }
         if selected != p.space { hosts.select(p.space) }
@@ -3651,11 +3642,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case "pick": if let i = w.dropFirst().first.flatMap({ Int($0) }) { tileSwitcher.map { _ = $0.column.debugPick(i) } }
         default: break
         }
-        func name(_ p: Place) -> String {
+        func name(_ p: Settled) -> String {
             let t = p.tile.flatMap { hosts.arrangement(p.space)?.placement($0)?.block }.flatMap { hosts.block($0)?.summary().title } ?? "-"
             return t + (p.space == selected ? "" : "@" + String(p.space.ulid.suffix(4)))
         }
-        let here = selected.map { name(Place(space: $0, tile: arrangement?.focused)) } ?? "-"
+        let here = selected.map { name(Settled(space: $0, tile: arrangement?.focused)) } ?? "-"
         return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(name).joined(separator: ",") } ?? "-") cards=\(tileSwitcher != nil) order=\(tileTrail().prefix(8).map(name).joined(separator: ","))"
     }
 
@@ -5943,7 +5934,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
         // A line of a text, referred to: its anchor (§2.5) — the declaration
         // or heading there, kept as the text moves — not the line's number.
-        Drags.copyLink = { [weak self] block, fragment in self?.copyLink(to: block, fragment: self?.anchored(fragment, in: block) ?? fragment) }
+        Drags.copyLink = { [weak self] place in self?.copyLink(to: place) }
         Drags.localHost = host.host
         // A view waiting on another host says how much has come from it.
         BusyNote.link = { [weak self] h in
@@ -5961,18 +5952,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
         }
         MarkdownStyle.placeName = { [weak self] id, anchor in self?.hosts.block(id)?.anchors?[anchor].map(Anchoring.name(of:)) }
-        Drags.selection = { [weak self] id, range, text in
-            guard let self, let b = self.hosts.block(id), let wanted = Anchoring.anchor(range: range, of: b),
-                  let address = self.reference(to: wanted, in: id) else { return nil }
-            var t = self.dragThing(id, fragment: BlockID.link(address)?.fragment, title: Anchoring.name(of: wanted))
-            t.text = text
-            t.selection = true
-            return Drags.item(t)
+        Drags.place = { [weak self] place, selected in self?.dragItem(place, selected: selected) }
+        Drags.anchor = { [weak self] id, at, unsure in
+            guard let self else { return at }
+            var p = Place(block: id, at: at)
+            p.unsure = unsure
+            return await self.resolve(p)?.at ?? at
         }
-        Drags.place = { [weak self] id, fragment, title in self.map { Drags.item($0.dragThing(id, fragment: $0.anchored(fragment, in: id), title: title)) } }
-        Drags.contents = { [weak self] id, fragment, done in
+        Drags.contents = { [weak self] id, at, done in
             guard let self else { return done(nil) }
-            self.fetchContents(id, at: fragment, done)
+            self.fetchContents(id, at: at, done)
         }
         Drags.resolve = { [weak self] f in self?.pathBlock(f.path, isDirectory: f.isDirectory, on: f.host)?.0 }
         Drags.opens = { [weak self] f in self?.pathOpens(f.path, isDirectory: f.isDirectory, on: f.host) ?? true }
@@ -6188,8 +6177,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private struct OutlinePlace {
         var title: String
         var lower: String
-        /// Where in the block: "command=7", "line=12".
-        var fragment: String
+        /// Where in the block: a command, a heading's line.
+        var place: Locator
         var detail: String
         var note: String
         var at: Stamp?
@@ -6224,13 +6213,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard !text.isEmpty, seen.insert(text).inserted else { continue }
                 let ran = (c.cwd ?? t.cwd)?.abbreviatingHome ?? "~"
                 let how = c.ended == nil ? "" : c.status.map { $0 == 0 ? "" : "exit \($0)" } ?? ""
-                places.append(OutlinePlace(title: text, lower: text.lowercased(), fragment: "command=\(c.id)",
+                places.append(OutlinePlace(title: text, lower: text.lowercased(), place: .command(c.id),
                                            detail: "\(b.displayTitle) · \(ran)", note: how, at: c.at))
             }
         } else if let t = b.text {
             let place = b.path.map { $0.deletingLastPathComponent.abbreviatingHome } ?? "Note"
             for h in MarkdownOutline.headings(in: t.text.string) {
-                places.append(OutlinePlace(title: h.text, lower: h.text.lowercased(), fragment: "line=\(h.line + 1)",
+                places.append(OutlinePlace(title: h.text, lower: h.text.lowercased(), place: .line(h.line + 1),
                                            detail: "\(b.displayTitle) · \(place)", note: "heading", at: nil))
             }
         }
@@ -6251,11 +6240,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let b = hosts.block(id), let places = outlinePlaces(of: b) else { continue }
             let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
             for p in places where p.lower.contains(q) {
-                let link = "manifold:\(id.description)#\(p.fragment)", fragment = p.fragment, title = p.title
+                let link = "manifold:\(id.description)#\(p.place.fragment)", at = p.place, title = p.title
                 items.append(FinderItem(symbol: symbol, title: p.title, detail: p.detail, note: p.note,
                                         age: p.at.map { Age.short($0) }.flatMap { $0 == "now" ? nil : $0 },
                                         run: { [weak self] in self?.open(link, from: self?.arrangement?.focused) },
-                                        drag: { Drags.place?(id, fragment, title) }, kinds: kinds))
+                                        drag: { Drags.place?(Place(block: id, at: at, name: title), nil) }, kinds: kinds))
                 if items.count >= 100 { return items }
             }
         }
@@ -6270,18 +6259,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
             let inThisSpace = arrangement?.placement(pid) != nil
             for (i, item) in o.items.enumerated() where item.title.lowercased().contains(q) {
-                let fragment = o.placeFor?(i)
-                guard fragment != nil || inThisSpace else { continue }
+                let at = o.placeFor?(i)
+                guard at != nil || inThisSpace else { continue }
                 let id = b.id, title = item.title
                 items.append(FinderItem(symbol: symbol, title: item.title, detail: b.displayTitle + (item.detail.isEmpty ? "" : " · " + item.detail),
                                         note: item.code ? "symbol" : "heading",
                                         run: { [weak self, weak o] in
                                             guard let self else { return }
-                                            if let fragment { return self.open("manifold:\(id.description)#\(fragment)", from: self.arrangement?.focused) }
+                                            if let at { return self.open("manifold:\(id.description)#\(at.fragment)", from: self.arrangement?.focused) }
                                             self.arrive(atTile: pid)
                                             o?.pick(i)
                                         },
-                                        drag: { Drags.place?(id, fragment, title) }, kinds: kinds))
+                                        drag: { Drags.place?(Place(block: id, at: at, name: title), nil) }, kinds: kinds))
                 if items.count >= 150 { return items }
             }
         }
@@ -8427,13 +8416,13 @@ extension MainWindowController: GridDelegate {
     /// the place's summary — a command's with its output's last lines, a
     /// page's with its picture — else the block's own.
     func cardContent(for block: BlockID, at fragment: String?) -> SummaryCardContent? {
-        guard let fragment, let b = hosts.block(block), var s = b.summary(at: fragment) else { return cardContent(for: block) }
+        guard let b = hosts.block(block), var at = fragment.flatMap(Locator.init(fragment:)), var s = b.summary(at: at) else { return cardContent(for: block) }
+        if let id = at.anchorID, let legible = b.anchors?[id]?.legible { at = legible }
         var thumbnail: NSImage?
-        if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)),
-           let t = views.values.first(where: { $0.block == block }) as? TerminalView, let out = t.transcript(ofCommand: id)?.1 {
+        if case let .command(id) = at, let t = views.values.first(where: { $0.block == block }) as? TerminalView, let out = t.transcript(ofCommand: id)?.1 {
             s.lines += out.split(separator: "\n").map { Block.oneLine(String($0)) }.filter { !$0.isEmpty }.suffix(2)
         }
-        if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)), block.host == host.host, let path = b.path,
+        if case let .page(n) = at, block.host == host.host, let path = b.path,
            let page = PDFDocument(url: URL(fileURLWithPath: path))?.page(at: n - 1) {
             thumbnail = page.thumbnail(of: NSSize(width: 160, height: 200), for: .cropBox)
         }
@@ -8808,14 +8797,14 @@ extension MainWindowController: GridDelegate {
                 if let b = Drags.commitBlock?(c) { next(b, .diff) }
             } else if let b = t.block, let block = hosts.block(b) {
                 next(b, Lens.default(for: block.kind, path: block.path))
-                if let f = t.fragment { goTo(f, in: b) }
+                if let at = t.at { goTo(at, in: b) }
             } else if let f = t.file {
                 guard let (b, lens) = pathBlock(f.path, isDirectory: f.isDirectory, on: f.host) else {
                     if f.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: f.path)) }
                     continue
                 }
                 next(b, lens)
-                if let fragment = t.fragment { goTo(fragment, in: b) }
+                if let at = t.at { goTo(at, in: b) }
             } else if let u = t.url {
                 next(host.newWeb(url: u), .web)
             } else if let text = t.text {
@@ -9016,9 +9005,9 @@ extension MainWindowController: GridDelegate {
     /// block, its file if it's one, the folder a terminal is in, a page's
     /// address. One the host is making now (a turn's) by its link alone,
     /// to land as it comes.
-    func dragThing(_ id: BlockID, fragment: String? = nil, title: String? = nil) -> DragThing {
+    func dragThing(_ id: BlockID, at: Locator? = nil, title: String? = nil) -> DragThing {
         let b = hosts.block(id)
-        var t = DragThing(block: id, fragment: fragment, title: title ?? b?.displayTitle ?? "")
+        var t = DragThing(block: id, at: at, title: title ?? b?.displayTitle ?? "")
         guard let b else { return t }
         if let path = b.path, [.text, .image, .pdf, .directory].contains(b.kind) {
             t.file = .init(host: id.host, path: path, isDirectory: b.kind == .directory)
@@ -9026,9 +9015,9 @@ extension MainWindowController: GridDelegate {
             t.folder = .init(host: id.host, path: dir, isDirectory: true)
         }
         t.url = b.web?.url
-        t.text = fragment != nil ? title : b.web?.url
+        t.text = at != nil ? title : b.web?.url
         // A commit's diff: the commit, its sha its words.
-        if fragment == nil, case let .commit(repo, sha)? = b.diff?.subject {
+        if at == nil, case let .commit(repo, sha)? = b.diff?.subject {
             t.commit = .init(host: id.host, repo: repo, sha: sha, summary: t.title)
             t.text = sha
         }
@@ -9071,6 +9060,14 @@ extension MainWindowController: GridDelegate {
         return items
     }
 
+    /// A place's address on the clipboard, anchored (§2.5): as a link where
+    /// links are taken (its name over it), as text elsewhere, as a block's
+    /// link in a note.
+    func copyLink(to place: Place) {
+        guard let (id, at) = resolved(place) else { return }
+        copyLink(to: id, fragment: at?.fragment)
+    }
+
     /// The block's address on the clipboard: as a link where links are
     /// taken (its name over it), as text elsewhere, as a block's link in a note.
     func copyLink(to block: BlockID, fragment: String? = nil) {
@@ -9085,17 +9082,6 @@ extension MainWindowController: GridDelegate {
         item.setString("<a href=\"\(address)\">\(b.displayTitle.replacingOccurrences(of: "<", with: "&lt;"))</a>", forType: .html)
         item.setString("[\(title)](\(address))", forType: .manifoldBlockLink)
         pb.writeObjects([item])
-    }
-
-    /// A `manifold:` address opened from another app (or the command
-    /// line): the block gone to, as a link in a note goes.
-    /// A place in a block, as a link names it: a command (`command=7`), a
-    /// line (`line=12`, a heading's), a PDF's page (`page=3`).
-    func goTo(_ fragment: String, in b: BlockID) {
-        if Anchor.isAnchor(fragment) { return goToAnchor(fragment, in: b) }
-        if fragment.hasPrefix("command="), let id = Int(fragment.dropFirst(8)) { goToCommand(id, in: b) }
-        if fragment.hasPrefix("line="), let n = Int(fragment.dropFirst(5)) { goToPlace(.line(n), in: b) }
-        if fragment.hasPrefix("page="), let n = Int(fragment.dropFirst(5)) { goToPlace(.page(n - 1), in: b) }
     }
 
     // MARK: Walks through code (§2.5)
@@ -9211,21 +9197,6 @@ extension MainWindowController: GridDelegate {
             now.scip = s.symbol
             self.hosts.append([.anchor(now)], to: .block(id))
         }
-    }
-
-    /// A place written as a line of a text (`line=12`, an outline's item)
-    /// as its anchor's id; any other as it is.
-    func anchored(_ fragment: String?, in id: BlockID) -> String? {
-        guard let f = fragment, let b = hosts.block(id) else { return fragment }
-        var address: String?
-        if f.hasPrefix("line="), let n = Int(f.dropFirst(5)), b.kind == .text {
-            address = reference(toLine: n - 1, in: id)
-        } else if f.hasPrefix("command="), let n = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == n }) {
-            address = reference(to: Anchor(id: "", at: .command(n), name: String(c.text.prefix(80))), in: id)
-        } else if f.hasPrefix("page="), let n = Int(f.dropFirst(5)), b.kind == .pdf {
-            address = reference(to: Anchor(id: "", at: .page(n), name: "Page \(n)"), in: id)
-        }
-        return address.flatMap { BlockID.link($0)?.fragment } ?? fragment
     }
 
     static func address(_ id: BlockID, anchor: String? = nil) -> String {
@@ -9620,20 +9591,20 @@ extension MainWindowController: EditorViewDelegate {
     /// What a block holds, as text (a drop's Contents, an agent's), or a
     /// place in it: a block still being made waited for (a few seconds at
     /// most); nil if it doesn't come or can't be read.
-    func fetchContents(_ block: BlockID, at fragment: String? = nil, _ done: @escaping (String?) -> Void) {
+    func fetchContents(_ block: BlockID, at: Locator? = nil, _ done: @escaping (String?) -> Void) {
         Task { @MainActor [weak self] in
             for _ in 0..<40 where self?.hosts.block(block) == nil { try? await Task.sleep(for: .milliseconds(100)) }
             guard let self, let b = self.hosts.block(block) else { return done(nil) }
-            self.give(b, at: fragment, done)
+            self.give(b, at: at, done)
         }
     }
 
     /// A block's contents as text (a place's in it), for an agent.
-    private func give(_ b: Block, at fragment: String?, _ done: @escaping (String?) -> Void) {
+    private func give(_ b: Block, at: Locator?, _ done: @escaping (String?) -> Void) {
         let shown = views.first { $0.value.block == b.id }?.value
         Task { @MainActor in
             do {
-                done(try await maniDesk.contents(of: b, at: fragment, view: shown))
+                done(try await maniDesk.contents(of: b, at: at, view: shown))
             } catch let e as ManiDesk.Failure {
                 toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
                 done(nil)
@@ -10934,7 +10905,7 @@ extension MainWindowController: TerminalViewDelegate {
         // Its items enabled as they say (Run Again isn't, while one runs).
         menu.autoenablesItems = false
         let linkItem = ClosureMenuItem("Copy Link to This \(hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true ? "Turn" : "Command")", symbol: "link") { [weak self] in
-            self?.copyLink(to: view.block, fragment: self?.anchored("command=\(command.id)", in: view.block))
+            self?.copyLink(to: Place(block: view.block, at: .command(command.id)))
         }
         defer { menu.addItem(.separator()); menu.addItem(linkItem) }
         if let turn = hosts.block(view.block)?.terminal?.turns?.first(where: { $0.id == command.id }) {

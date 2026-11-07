@@ -429,6 +429,12 @@ enum DebugControl {
             // "scopebar": the focused editor's definition bar, and what dragging it writes.
             guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
             return e.textView.debugScopeBar
+        case "here":
+            // "here": what the focused tile says is here (§2.5), and what has the keyboard.
+            guard let wc, let f = wc.arrangement?.focused else { return "nothing focused" }
+            let r = wc.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-"
+            guard let p = wc.here(in: f) else { return "no place · keyboard \(r)" }
+            return "\(p.block.map { String($0.ulid.suffix(6)) } ?? p.file?.path ?? "-") at \(p.at?.fragment ?? "-") name \(p.name ?? "-") · keyboard \(r)"
         case "pointer":
             // "pointer [<from> <to>] <at> [click]": the focused editor's text
             // selected, the pointer at an offset — the cursor it gets (and a click there).
@@ -1199,7 +1205,7 @@ enum DebugControl {
             guard n.count == 3 else { return "usage: dragselection <line> <from> <to>" }
             let rope = e.textView.text, start = rope.offset(ofLine: n[0] - 1)
             let range = TextRange(start + n[1], start + n[2])
-            guard let item = Drags.selection?(e.block, range, rope[range]) else { return "carries its words alone" }
+            guard let item = Drags.place?(Place(block: e.block, at: .range(range)), rope[range]) else { return "carries its words alone" }
             return item.types.map { "\($0.rawValue): \(item.string(forType: $0) ?? item.data(forType: $0).map { String(decoding: $0, as: UTF8.self) } ?? "")" }.joined(separator: "\n")
         case "peekat":
             // "peekat <line> <column>": a peek asked at the name there (from 1,

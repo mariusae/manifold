@@ -54,8 +54,9 @@ public struct BlockID: Hashable, Codable, Sendable, CustomStringConvertible, Com
     }
 
     /// A reference written bare, as a pattern: `manifold:host/id`, and a
-    /// place in it — a legible one (`#line=12`) or an anchor (`#k7q2mx`, §2.5).
-    public static let referencePattern = #"manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#(?:[A-Za-z]+=[0-9]+|[0-9a-z]{4,12}\b))?"#
+    /// place in it — a legible one (`#line=12`, `#lines=3-7`, `#cell=k2x9`)
+    /// or an anchor (`#k7q2mx`, §2.5).
+    public static let referencePattern = #"manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#(?:[A-Za-z]+=[0-9A-Za-z]+(?:-[0-9]+)?|[0-9a-z]{4,12}\b))?"#
 
     public static func link(_ address: String) -> (block: BlockID, fragment: String?)? {
         var s = address.hasPrefix("manifold:") ? String(address.dropFirst(9)) : address

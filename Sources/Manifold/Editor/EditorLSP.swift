@@ -368,7 +368,7 @@ extension EditorView {
     /// The selection dragged: its words, and a reference to what it names
     /// (§2.5) — the declaration, else the stretch — a symbol into an agent.
     func textView(_ view: TextView, dragSelection range: TextRange, text: String) -> NSPasteboardWriting? {
-        Drags.selection?(block, range, text)
+        Drags.place?(Place(block: block, at: .range(range)), text)
     }
 
     /// Peek: what the name the pointer rests on is — the language server's
@@ -420,7 +420,7 @@ extension EditorView {
     }
 
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {
-        Drags.place?(block, "line=\(line + 1)", view.text.lineText(line).trimmingCharacters(in: .whitespaces))
+        Drags.place?(Place(block: block, at: .line(line + 1), name: view.text.lineText(line).trimmingCharacters(in: .whitespaces)), nil)
     }
 }
 

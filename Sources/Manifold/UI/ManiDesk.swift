@@ -102,8 +102,8 @@ final class ManiDesk {
         case "link":
             let from = try await target(r.args[0], scope), to = try await target(r.args[1], scope)
             // Places at either end, as anchors (a line of a text made one).
-            let fromAnchor = wc.anchored(from.fragment, in: from.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
-            let toAnchor = wc.anchored(to.fragment, in: to.block).flatMap { Anchor.isAnchor($0) ? $0 : nil }
+            let fromAnchor = wc.anchor(from.at, in: from.block)?.anchorID
+            let toAnchor = wc.anchor(to.at, in: to.block)?.anchorID
             hosts.link(from: from.block, to: to.block, kind: .linked, context: r.flags["note"],
                        fromAnchor: fromAnchor, toAnchor: toAnchor, relation: r.flags["as"])
             return ""
@@ -227,8 +227,8 @@ final class ManiDesk {
         var tile: PlacementID?
         var workspace: BlockID?
         var selection: ManiSelected?
-        /// A place in it, as a reference names one (`line=12`, `page=3`, `command=7`).
-        var fragment: String?
+        /// A place in it, as a reference names one (an anchor, `line=12`, `page=3`, `command=7`).
+        var at: Locator?
     }
 
     /// The words a tile's kind answers to (`@:pdf`, `@right:diff`).
@@ -343,7 +343,7 @@ final class ManiDesk {
         if let (id, fragment) = BlockID.reference(s) {
             if let why = hosts.whyMissing(id) { throw Failure(message: "\(s): \(why)") }
             var t = located(id, scope)
-            t.fragment = fragment
+            t.at = fragment.flatMap(Locator.init(fragment:))
             return t
         }
         // What it's annotated with: the one block with key=value, in the
@@ -569,7 +569,7 @@ final class ManiDesk {
             let range = rope.lineRange(n - 1)
             at = decls.last { $0.range.start >= range.start && $0.range.start <= range.end }?.nameRange.start
                 ?? rope.offset(ofLine: n - 1) + (rope.lineText(n - 1).utf8.prefix { $0 == 32 || $0 == 9 }.count)
-        } else if let f = fragment, Anchor.isAnchor(f), let a = b.anchors?[f], let (range, _) = Anchoring.locate(a, in: b) {
+        } else if let f = fragment.flatMap(Locator.init(fragment:))?.anchorID, let a = b.anchors?[f], let (range, _) = Anchoring.locate(a, in: b) {
             at = decls.first { $0.range == range }?.nameRange.start ?? range.start
         }
         guard let at else { throw Failure(message: "say which symbol: a reference to it, or --symbol, or --line", status: 2) }
@@ -857,7 +857,7 @@ final class ManiDesk {
         if out["summary"] == nil, let summary = summaryJSON(b.id, view: nil) { out["summary"] = summary }
         // How to name it to the user and to mani: its reference (a place in
         // it, if one was named), and as a link a note shows.
-        let ref = "manifold:" + b.id.description + (t.fragment.map { "#" + $0 } ?? "")
+        let ref = "manifold:" + b.id.description + (t.at.map { "#" + $0.fragment } ?? "")
         out["ref"] = ref
         out["link"] = "[\(b.displayTitle.replacingOccurrences(of: "]", with: "\\]"))](\(ref))"
         if let s = t.selection {
@@ -943,21 +943,25 @@ final class ManiDesk {
         let view = t.tile.flatMap { wc.views[$0] }
         // A reference to an anchor: a command's or a page's read as that
         // place is; one in a text, its lines (a declaration whole).
-        if let f = t.fragment, Anchor.isAnchor(f), let legible = b.anchors?[f]?.legibleFragment { t.fragment = legible }
+        if let f = t.at?.anchorID, let legible = b.anchors?[f]?.legible { t.at = legible }
         if r.flags["outline"] != nil {
             guard let outline = view?.outline, !outline.items.isEmpty else { throw Failure(message: "\(b.displayTitle) has no outline\(view == nil ? " (it isn't shown)" : "")") }
             return outline.items.indices.map { i in
-                String(repeating: "  ", count: outline.items[i].level) + outline.items[i].title + (outline.placeFor?(i).map { "\t" + $0 } ?? "")
+                String(repeating: "  ", count: outline.items[i].level) + outline.items[i].title + (outline.placeFor?(i).map { "\t" + $0.fragment } ?? "")
             }.joined(separator: "\n")
         }
         // A reference to a place: that command's output; that page.
-        if r.flags["command"] == nil, let f = t.fragment, f.hasPrefix("command="), let id = Int(f.dropFirst(8)),
+        if r.flags["command"] == nil, case let .command(id)? = t.at,
            let c = b.terminal?.commands?.first(where: { $0.id == id }) {
             return lines(try await output(of: c, in: b.id, view: view), r.flags["lines"])
         }
-        if let f = t.fragment, Anchor.isAnchor(f) { return lines(try anchorText(f, in: b), r.flags["lines"]) }
+        // Any other place (an anchor, lines, a heading's line, a cell): what's there.
+        switch t.at {
+        case .anchor?, .line?, .lines?, .range?, .cell?: return lines(try await contents(of: b, at: t.at, view: view), r.flags["lines"])
+        default: break
+        }
         var pageFlag = r.flags["pages"]
-        if pageFlag == nil, let f = t.fragment, f.hasPrefix("page=") { pageFlag = String(f.dropFirst(5)) }
+        if pageFlag == nil, case let .page(n)? = t.at { pageFlag = String(n) }
         let pages = try pageFlag.map { try range($0, what: "pages") }
         if b.kind == .terminal || b.kind == .agent, let n = r.flags["command"] {
             guard let k = Int(n), let commands = b.terminal?.commands, !commands.isEmpty else { throw Failure(message: "no command \(n) in \(b.displayTitle)") }
@@ -972,19 +976,28 @@ final class ManiDesk {
     /// What a place in a block holds (a reference's `#…`): a command's
     /// output, a page's text, a heading's section or an item's; without
     /// one, the whole block's (a terminal's whole history).
-    func contents(of b: Block, at fragment: String?, view: PaneContent?) async throws -> String {
+    func contents(of b: Block, at: Locator?, view: PaneContent?) async throws -> String {
         // A command's or a page's anchor: that place, as it reads.
-        var fragment = fragment
-        if let f = fragment, Anchor.isAnchor(f), let legible = b.anchors?[f]?.legibleFragment { fragment = legible }
-        if let f = fragment, Anchor.isAnchor(f) { return try anchorText(f, in: b) }
-        if let f = fragment {
-            if f.hasPrefix("command="), let id = Int(f.dropFirst(8)), let c = b.terminal?.commands?.first(where: { $0.id == id }) {
-                return try await output(of: c, in: b.id, view: view)
+        var at = at
+        if let f = at?.anchorID, let legible = b.anchors?[f]?.legible { at = legible }
+        switch at {
+        case let .anchor(f)?:
+            return try anchorText(f, in: b)
+        case let .command(id)?:
+            if let c = b.terminal?.commands?.first(where: { $0.id == id }) { return try await output(of: c, in: b.id, view: view) }
+        case let .page(n)?:
+            return try await contents(of: b, view: view, pages: n...n)
+        case let .cell(id)?:
+            if let c = b.notebook?.cells.first(where: { $0.id == id }) { return c.source + (c.output.map { "\n\n" + $0 } ?? "") }
+        case .line?, .lines?, .range?:
+            guard b.kind == .text, let text = b.text, !b.needsRead else { break }
+            if case let .range(r) = at!, r.end <= text.text.count { return text.text[r] }
+            if case let .lines(s, e) = at!, s >= 1, s <= text.text.lineCount {
+                return (s - 1...min(e, text.text.lineCount) - 1).map { text.text.lineText($0) }.joined(separator: "\n")
             }
-            if f.hasPrefix("page="), let n = Int(f.dropFirst(5)) { return try await contents(of: b, view: view, pages: n...n) }
-            if f.hasPrefix("line="), let n = Int(f.dropFirst(5)), b.kind == .text, let text = b.text, !b.needsRead {
-                return NoteOutlineMarkdown.section(of: text.text.string, line: n)
-            }
+            return NoteOutlineMarkdown.section(of: text.text.string, line: at!.line ?? 1)
+        case nil:
+            break
         }
         return try await contents(of: b, view: view, all: true)
     }
@@ -1352,7 +1365,7 @@ final class ManiDesk {
         }
         shown(t.block, line: r.flags["line"], scope: scope)
         // A reference's place in it: gone to.
-        if r.flags["line"] == nil, let f = t.fragment { wc.goTo(f, in: t.block) }
+        if r.flags["line"] == nil, let at = t.at { wc.goTo(at, in: t.block) }
         return ""
     }
 

@@ -40,16 +40,6 @@ public struct Anchor: Codable, Equatable, Hashable, Sendable, Identifiable {
         }
     }
 
-    /// The legible place an anchor at a command or a page is (`command=7`,
-    /// `page=3`), for what reads places so; nil for one in a text.
-    public var legibleFragment: String? {
-        switch at {
-        case let .command(n): "command=\(n)"
-        case let .page(n): "page=\(n)"
-        default: nil
-        }
-    }
-
     /// Whether a reference's fragment names an anchor (an id), not one of
     /// the legible places written before anchors (`line=12`, `page=3`).
     public static func isAnchor(_ fragment: String) -> Bool { !fragment.isEmpty && !fragment.contains("=") }
