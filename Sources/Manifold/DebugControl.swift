@@ -1034,6 +1034,8 @@ enum DebugControl {
             // This client's focus history; "history back|forward" goes along it.
             guard let wc else { return "no window" }
             if arg == "back" { wc.navigateBack(nil) } else if arg == "forward" { wc.navigateForward(nil) }
+            // "history close": the versions browser (⌘Y's) put away.
+            if arg == "close" { wc.debugHideVersions(); return "closed" }
             return wc.debugHistory()
         case "links":
             // ⌘ held over the focused editor: the names shown as links.

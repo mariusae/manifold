@@ -158,12 +158,14 @@ final class TextView: NSView, NSTextInputClient {
     var isEditable = true
     static let insets = NSEdgeInsets(top: 10, left: 8, bottom: 40, right: 20)
     /// The gutter: room for the line count's digits, the numbers set at
-    /// its left, then the git marks' lane, then a place's link mark or a
-    /// diagnostic's dot, so the text has the rest.
+    /// its left, then lanes of their own, none over another — the git
+    /// marks' (textLeft − 25), a place's thread bubble or link mark
+    /// (− 21.5 to − 11.5), a diagnostic's dot (− 11.5 to − 6.5), the bar of
+    /// the definition the caret's in (− 5 to − 3) — so the text has the rest.
     var gutterWidth: CGFloat {
         guard showsLineNumbers else { return 0 }
         let digits = max(2, String(max(text.lineCount, 1)).count)
-        return blameWidth + CGFloat(digits) * gutterDigitWidth + 26
+        return blameWidth + CGFloat(digits) * gutterDigitWidth + 32
     }
 
     // MARK: Blame
@@ -210,7 +212,13 @@ final class TextView: NSView, NSTextInputClient {
         // Its run's first line, or the first one drawn: who, and when — a
         // hairline over it where another run ends (two runs of one author
         // and age read as one, else).
-        guard n == first || blameIndex(n - 1) != idx, let b = blame else { return }
+        guard n == first || blameIndex(n - 1) != idx, let b = blame else {
+            // A line of a run already said: a rule down its left, the run
+            // read as one, its words once.
+            (idx < 0 ? Theme.secondaryText : gutterColor).withAlphaComponent(0.45).setFill()
+            NSRect(x: x0 + 5, y: lineTop, width: 1.5, height: height).fill()
+            return
+        }
         if n > 0, n != first {
             Theme.divider.setFill()
             NSRect(x: x0, y: lineTop, width: w, height: 1).fill()
@@ -269,7 +277,7 @@ final class TextView: NSView, NSTextInputClient {
     /// the tile's edge (where, an outline shown, a file's bar read as a
     /// border) — 5 points after the widest number, clear of a digit and of
     /// the marks by the text.
-    private var markX: CGFloat { textLeft - 19 }
+    private var markX: CGFloat { textLeft - 25 }
     /// A digit's width in the gutter's font: read at every layout and
     /// draw, so measured once a size.
     private var gutterDigitWidth: CGFloat {
@@ -993,11 +1001,13 @@ final class TextView: NSView, NSTextInputClient {
             let color = place.unseen ? Theme.accent : open ? Theme.accent.withAlphaComponent(0.7) : Theme.tertiaryText
             if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Thread")?
                 .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [color]))) {
-                let x = showsLineNumbers ? textLeft - 15 : max(2, textLeft - 15)
-                image.draw(in: NSRect(x: x, y: lineTop + (lineHeight - 11) / 2, width: 12, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                // In its lane (see `gutterWidth`), touching no other mark.
+                let x = showsLineNumbers ? textLeft - 21.5 : max(2, textLeft - 16.5)
+                image.draw(in: NSRect(x: x, y: lineTop + (lineHeight - 9) / 2, width: 10, height: 9), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
         } else if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
-            let mark = NSRect(x: textLeft - 12, y: lineTop + lineHeight / 2 - 3.5, width: 7, height: 7)
+            // In its lane (see `gutterWidth`), touching no other mark.
+            let mark = NSRect(x: textLeft - 20, y: (lineTop + lineHeight / 2 - 3.5).rounded(), width: 7, height: 7)
             Theme.accent.setStroke()
             let path = NSBezierPath(roundedRect: mark, xRadius: 2, yRadius: 2)
             path.lineWidth = 1.2
@@ -1395,7 +1405,7 @@ final class TextView: NSView, NSTextInputClient {
                 underline(range, from: first, to: last)
                 if showsLineNumbers {
                     let n = text.line(at: d.range.start)
-                    NSBezierPath(ovalIn: NSRect(x: textLeft - 10, y: top(ofLine: n) + lineHeight / 2 - 2.5, width: 5, height: 5)).fill()
+                    NSBezierPath(ovalIn: NSRect(x: textLeft - 11.5, y: top(ofLine: n) + lineHeight / 2 - 2.5, width: 5, height: 5)).fill()
                 }
             }
         }
@@ -2741,7 +2751,7 @@ final class TextView: NSView, NSTextInputClient {
         pressedInSelection = nil
         // A click on a place's mark in the gutter: what links to it, and from it.
         if let pressed = pressedInGutter, let place = placeByLine[pressed.line], place.threads > 0, let onThreads {
-            onThreads(place.line, NSRect(x: textLeft - 16, y: top(ofLine: place.line), width: 14, height: lineHeight))
+            onThreads(place.line, NSRect(x: textLeft - 22, y: top(ofLine: place.line), width: 12, height: lineHeight))
         } else if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
             showLinks(of: place, at: convert(event.locationInWindow, from: nil))
         }
@@ -3345,7 +3355,7 @@ extension TextView {
             if b > a, b >= first, a <= last {
                 let y0 = top(ofLine: a), y1 = top(ofLine: b) + CGFloat(layout(line: b).rows.count) * lineHeight
                 textColor.withAlphaComponent(0.2).setFill()
-                NSRect(x: textLeft - 6, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
+                NSRect(x: textLeft - 5, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
             }
         }
     }

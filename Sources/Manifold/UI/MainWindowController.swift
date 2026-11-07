@@ -8270,6 +8270,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return h
     }
 
+    func debugHideVersions() { hideHistory() }
+
     private func hideHistory() {
         history?.removeFromSuperview()
         history = nil
