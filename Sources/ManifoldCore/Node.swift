@@ -234,7 +234,7 @@ extension ArrangementState {
     /// Events that bring `block` into column `column`, as acme places a
     /// new window: below the column's biggest tile, taking its lower half
     /// (or below `below`, when given); a column past the end is a new
-    /// one. A tile of the block here already is focused instead.
+    /// one. A tile of the block here already (docked too) is gone to instead.
     public func bringing(_ block: BlockID, lens: Lens, inColumn column: Int, below: PlacementID? = nil, exact: Bool = false,
                          newPlacement: () -> PlacementID) -> [Event] {
         if let t = tile(of: block, lens: lens, exact: exact) { return revealing(t.id) }
@@ -244,9 +244,7 @@ extension ArrangementState {
         }
         let anchor = below.flatMap { id in columns[c].firstIndex { $0.id == id } }
             ?? biggestTile(inColumn: c).flatMap { b in columns[c].firstIndex { $0.id == b.id } }
-        // After the anchor's stack, not inside it: placed straight after
-        // the top, the new tile would take the stack behind it as its own.
-        let at = anchor.map { $0 + 1 + followers(of: columns[c][$0].id).count } ?? columns[c].count
+        let at = anchor.map { $0 + 1 } ?? columns[c].count
         return [.place(Placement(id: newPlacement(), block: block, lens: lens), column: c, at: at)]
     }
 
@@ -259,18 +257,16 @@ extension ArrangementState {
     }
 
     /// Heights after a tile grows (acme's colgrow): by `step` of the column
-    /// taken from its shown neighbors nearest first, or, with `whole`, the
-    /// whole column, every other tile stashed (§3.1).
+    /// taken from its neighbors nearest first; or, with `whole`, the whole
+    /// column, the column's other tiles docked (§3.1), their room its.
     public func growing(_ id: PlacementID, step: Double = 0.15, whole: Bool = false) -> [Event] {
         guard let (c, i) = locate(id), columns[c].count > 1 else { return [] }
         let column = columns[c]
+        if whole {
+            return column.filter { $0.id != id }.map { Event.dock($0.id, heir: nil) } + [.focus(id)]
+        }
         var h = column.reduce(into: [PlacementID: Double]()) { $0[$1.id] = height(of: $1.id) }
         let sliver = 0.04
-        if whole {
-            for p in column where p.id != id { h[p.id] = 0 }
-            h[id] = 1
-            return [.heights(h)]
-        }
         var want = step
         // Nearest neighbors first, below then above, each giving down to a sliver.
         var order: [Int] = []
@@ -280,7 +276,7 @@ extension ArrangementState {
             if i - d >= 0 { order.append(i - d) }
             d += 1
         }
-        for j in order where want > 0 && !isStashed(column[j].id) {
+        for j in order where want > 0 {
             let pid = column[j].id
             let give = min(want, max(0, (h[pid] ?? 0) - sliver))
             h[pid] = (h[pid] ?? 0) - give
@@ -290,107 +286,54 @@ extension ArrangementState {
         return [.heights(h)]
     }
 
-    /// Heights after a tile is stashed: its share to the column's biggest
-    /// other tile. Nothing, for the last shown tile of a column.
-    public func stashing(_ id: PlacementID) -> [Event] {
-        guard let (c, _) = locate(id), !isStashed(id) else { return [] }
-        let others = shownTiles(inColumn: c).filter { $0.id != id }
-        guard let heir = others.max(by: { height(of: $0.id) < height(of: $1.id) }) else { return [] }
-        return [.heights([id: 0, heir.id: height(of: heir.id) + height(of: id)])]
+    /// A tile docked (⌘M, §3.1): out of the grid, its room back where it
+    /// came from; still in the space.
+    public func docking(_ id: PlacementID) -> [Event] {
+        locate(id) == nil ? [] : [.dock(id, heir: nil)]
     }
 
     /// Events that bring a tile into view and focus, as going to its
-    /// block does (a link, the finder, the sidebar, ⌘J, Back): a maximized
-    /// other tile gives way, a stashed one comes to the top of its stack
-    /// (the rest of the stack behind it, as it was), and it's focused.
+    /// block does (a link, the finder, the sidebar, ⌃⇥, Back): a maximized
+    /// other tile gives way, a docked one goes back where it was, and it's
+    /// focused.
     public func revealing(_ id: PlacementID) -> [Event] {
-        var events: [Event] = isStashed(id) ? toppingStack(id) : [.focus(id)]
+        var events: [Event] = isDocked(id) ? [.undock(id), .focus(id)] : [.focus(id)]
         if let full, full != id { events.insert(.full(nil), at: 0) }
         return events
     }
 
-    /// A stashed tile to the top of its stack, in the stack's place and
-    /// room; the tile that was on top, and its stack, behind it.
-    public func toppingStack(_ id: PlacementID) -> [Event] {
-        guard isStashed(id), let top = tile(behind: id) else { return isStashed(id) ? unstashing(id) : [.focus(id)] }
-        return unstashing(id) + [.stash(top.id, behind: id), .focus(id)]
+    /// A tile in another's place (⌥-dropped on it, or opened over it):
+    /// that one docked, its room the tile's — so taking the tile away
+    /// again (⌘W, docking it) and going back to the other puts things as
+    /// they were.
+    public func replacing(_ target: PlacementID, with id: PlacementID) -> [Event] {
+        guard id != target, let (c, i) = locate(target), locate(id) != nil || isDocked(id) else { return [] }
+        // Just under it, the room from it, then it docked to the tile.
+        var spot = i + 1
+        if let (c2, j) = locate(id), c2 == c, j < i { spot -= 1 }
+        return [.move(id, column: c, at: spot), .dock(target, heir: id), .focus(id)]
     }
 
-    /// A stack walked with ⌥ held (⌥-clicks): `order` is the stack as it
-    /// was when the walk began, its top first; the tile at `index` comes to
-    /// the top, and the rest go behind it in that order, the one that
-    /// showed first — so the tiles passed on the way are as they were, and
-    /// where the walk stops is what one ⌥-click there would have made.
-    public func walkingStack(_ order: [PlacementID], to index: Int) -> [Event] {
-        guard order.indices.contains(index), locate(order[index]) != nil else { return [] }
-        let chosen = order[index]
-        var events = isStashed(chosen) ? toppingStack(chosen) : [Event]()
-        // Each put straight behind the top, the last first.
-        for id in order.reversed() where id != chosen && locate(id) != nil { events.append(.stash(id, behind: chosen)) }
-        events.append(.focus(chosen))
-        return events
+    /// A tile moved to a spot in a column, as dropped there.
+    public func moving(_ id: PlacementID, column: Int, at: Int) -> [Event] {
+        [.move(id, column: column, at: at)]
     }
 
-    /// Heights after a stashed tile comes back on its own: the lower half
-    /// of the tile it was behind.
-    public func unstashing(_ id: PlacementID) -> [Event] {
-        guard let (c, i) = locate(id), isStashed(id) else { return [] }
-        guard let top = tile(behind: id) else { return [.heights([id: 1])] }
-        // Out on its own, under the stack it was in: the rest stay behind
-        // the tile that showed, not behind the one that came out.
-        var rest = columns[c]
-        rest.remove(at: i)
-        var j = (rest.firstIndex { $0.id == top.id } ?? 0) + 1
-        while j < rest.count, isStashed(rest[j].id) { j += 1 }
-        let h = height(of: top.id) / 2
-        return [.move(id, column: c, at: j), .heights([id: h, top.id: h]), .focus(id)]
-    }
-
-    /// Events before a shown tile leaves its stack alone (⌘-drag): the
-    /// first behind it takes its place and room, so the rest stay there;
-    /// the tile, stashed for the moment, then moves with no followers.
-    public func leavingAlone(_ id: PlacementID) -> [Event] {
-        guard !isStashed(id), let first = followers(of: id).first else { return [] }
-        return [.heights([first.id: height(of: id), id: 0])]
-    }
-
-    /// A tile moved to a spot in a column, as dropped there: with `alone`,
-    /// without its stack (`leavingAlone`). Never into another's stack: a
-    /// spot among the stashed tiles under a shown one is past them — else
-    /// the moved tile would show with that stack behind it, the tile above
-    /// left without (a tile dragged out of a stack, dropped just under it,
-    /// took the rest of the stack along).
-    public func moving(_ id: PlacementID, column: Int, at: Int, alone: Bool) -> [Event] {
-        var spot = at
-        if column < columns.count, let (c, _) = locate(id) {
-            // The column as the move finds it: the tile (and the stack it
-            // takes) gone from it; leaving alone, the first behind it shows.
-            let heir = alone && !isStashed(id) ? followers(of: id).first?.id : nil
-            let taken = alone || isStashed(id) ? [] : followers(of: id).map(\.id)
-            var col = columns[column]
-            if c == column { col.removeAll { $0.id == id || taken.contains($0.id) } }
-            while spot < col.count, isStashed(col[spot].id), col[spot].id != heir { spot += 1 }
-        }
-        return (alone ? leavingAlone(id) : []) + [.move(id, column: column, at: spot)]
-    }
-
-    /// A tile moved one step a way (⌥⇧⌘ and an arrow), its stack along:
-    /// up or down past the shown tile beside it in its column; left or
-    /// right into the next column, about as far down as it was, or — at
-    /// the edge, with others still in its column — a new column of its
-    /// own there. Nil where it can go no further.
+    /// A tile moved one step a way (⌥⇧⌘ and an arrow): up or down past the
+    /// tile beside it in its column; left or right into the next column,
+    /// about as far down as it was, or — at the edge, with others still in
+    /// its column — a new column of its own there. Nil where it can go no
+    /// further.
     public func nudging(_ id: PlacementID, _ way: ManiLayout.Direction) -> [Event]? {
-        guard let (c, i) = locate(id), !isStashed(id) else { return nil }
-        let taken = Set(([id] + followers(of: id).map(\.id)))
-        let rest = columns[c].filter { !taken.contains($0.id) }
+        guard let (c, i) = locate(id) else { return nil }
+        let rest = columns[c].filter { $0.id != id }
         switch way {
         case .above:
-            guard let k = rest[..<i].lastIndex(where: { !isStashed($0.id) }) else { return nil }
-            return moving(id, column: c, at: k, alone: false) + [.focus(id)]
+            guard i > 0 else { return nil }
+            return [.move(id, column: c, at: i - 1), .focus(id)]
         case .below:
-            guard let k = rest[i...].firstIndex(where: { !isStashed($0.id) }) else { return nil }
-            let end = rest[(k + 1)...].prefix { isStashed($0.id) }.count + k + 1
-            return [.move(id, column: c, at: end), .focus(id)]
+            guard i < rest.count else { return nil }
+            return [.move(id, column: c, at: i + 1), .focus(id)]
         case .left, .right:
             let t = way == .left ? c - 1 : c + 1
             guard columns.indices.contains(t) else {
@@ -403,21 +346,14 @@ extension ArrangementState {
             // is below this one's.
             func middles(_ col: [Placement]) -> [(Int, Double)] {
                 var y = 0.0
-                return col.enumerated().compactMap { j, p in
-                    guard !isStashed(p.id) else { return nil }
+                return col.enumerated().map { j, p in
                     defer { y += height(of: p.id) }
                     return (j, y + height(of: p.id) / 2)
                 }
             }
             let mine = middles(columns[c]).first { columns[c][$0.0].id == id }?.1 ?? 0
             let spot = middles(columns[t]).first { $0.1 > mine }?.0 ?? columns[t].count
-            return moving(id, column: t, at: spot, alone: false) + [.focus(id)]
+            return [.move(id, column: t, at: spot), .focus(id)]
         }
-    }
-
-    /// A tile dropped on another's pill: into the stack behind it.
-    public func stashing(_ id: PlacementID, behind target: PlacementID) -> [Event] {
-        guard id != target, locate(id) != nil, locate(target) != nil, !isStashed(target) else { return [] }
-        return [.stash(id, behind: target)]
     }
 }

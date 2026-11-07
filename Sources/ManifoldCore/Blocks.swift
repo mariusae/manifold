@@ -853,19 +853,53 @@ public enum ArrangementLayout: String, Codable, Sendable {
     case stacks, tiling, list
 }
 
+/// A tile **docked** (§3.1): out of the grid, still in its space (and
+/// running), listed in the sidebar under it, until it's gone to again —
+/// and where it was, to go back there: its column, the tiles it was
+/// between, its share, and which tiles took that share as it went.
+public struct DockedTile: Codable, Equatable, Sendable {
+    public var placement: Placement
+    public var column: Int
+    public var above: PlacementID?
+    public var below: PlacementID?
+    public var height: Double
+    /// Its room, as it went: to whom, how much — taken back as it returns.
+    public var gave: [PlacementID: Double]
+    /// Its column's share of the width, if the column went with it.
+    public var width: Double?
+    public var at: Stamp?
+    /// The tile that took its place (opened over it, ⌥-dropped on it):
+    /// taken off, this one comes back in its place — a terminal, when the
+    /// `$EDITOR` over it is done.
+    public var under: PlacementID?
+
+    public init(placement: Placement, column: Int, above: PlacementID?, below: PlacementID?, height: Double,
+                gave: [PlacementID: Double] = [:], width: Double? = nil, at: Stamp? = nil, under: PlacementID? = nil) {
+        self.placement = placement
+        self.column = column
+        self.above = above
+        self.below = below
+        self.height = height
+        self.gave = gave
+        self.width = width
+        self.at = at
+        self.under = under
+    }
+}
+
 /// A grid (§3.1): columns of tiles, every tile a placement and all of
-/// them visible, as acme tiles its windows. (Older logs' layouts and a
-/// column's `shown` are decoded and ignored.)
+/// them visible, as acme tiles its windows; and the tiles docked out of
+/// it. (Older logs' layouts and a column's `shown` are decoded and
+/// ignored; their stacks' tiles, a share of 0, are docked.)
 public struct ArrangementState: Codable, Equatable, Sendable {
     public var title: String?
     public var columns: [[Placement]] = []
     /// Each column's share of the width; sums to 1.
     public var fractions: [Double] = []
-    /// Each tile's share of its column's height; a column's shown tiles'
-    /// sum to 1. A share of 0 is a **stashed** tile (§3.1): not laid out,
-    /// its pill bunched under the tile that fills the column, until it is
-    /// unstashed.
+    /// Each tile's share of its column's height; a column's tiles' sum to 1.
     public var heights: [PlacementID: Double] = [:]
+    /// Tiles out of the grid, still in the space: the latest docked last.
+    public var docked: [DockedTile] = []
     public var focused: PlacementID?
     /// A tile **maximized** over the whole arrangement (§3.1), the rest
     /// hidden behind it until it is restored.
@@ -877,7 +911,7 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     /// hand forgives the loans of the tiles it sets.
     public var loans: [PlacementID: [PlacementID: Double]] = [:]
 
-    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused, full, loans }
+    enum CodingKeys: String, CodingKey { case title, columns, fractions, heights, focused, full, loans, docked }
 
     public init() {}
 
@@ -890,14 +924,20 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         focused = try c.decodeIfPresent(PlacementID.self, forKey: .focused)
         full = try? c.decodeIfPresent(PlacementID.self, forKey: .full)
         loans = (try? c.decodeIfPresent([PlacementID: [PlacementID: Double]].self, forKey: .loans)) ?? [:]
+        docked = (try? c.decodeIfPresent([DockedTile].self, forKey: .docked)) ?? []
         normalize()
     }
 
     /// Named arrangements are kept (§3.3).
     public var isNamed: Bool { !(title ?? "").isEmpty }
 
-    public var placements: [Placement] { columns.flatMap { $0 } }
-    public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) }
+    /// Every tile of the space: the grid's, in column order, then the docked.
+    public var placements: [Placement] { columns.flatMap { $0 } + docked.map(\.placement) }
+    /// The grid's tiles, in column order, top to bottom.
+    public var gridPlacements: [Placement] { columns.flatMap { $0 } }
+    public var isEmpty: Bool { columns.allSatisfy(\.isEmpty) && docked.isEmpty }
+    /// Nothing in the grid (some may be docked).
+    public var gridIsEmpty: Bool { columns.allSatisfy(\.isEmpty) }
 
     public func placement(_ id: PlacementID) -> Placement? { placements.first { $0.id == id } }
 
@@ -911,11 +951,11 @@ public struct ArrangementState: Codable, Equatable, Sendable {
 
     public func columnIndex(of id: PlacementID) -> Int? { locate(id)?.column }
 
-    /// What shows: everything, in column order, top to bottom.
-    public var visible: [Placement] { placements }
+    /// What shows: the grid's tiles, in column order, top to bottom.
+    public var visible: [Placement] { gridPlacements }
 
     public var focusedPlacement: Placement? {
-        placements.first { $0.id == focused } ?? placements.first
+        gridPlacements.first { $0.id == focused } ?? gridPlacements.first
     }
 
     /// The column the focus is in (acme's active column), else the last.
@@ -936,20 +976,9 @@ public struct ArrangementState: Codable, Equatable, Sendable {
         return columns[c].max { height(of: $0.id) < height(of: $1.id) }
     }
 
-    /// Stashed: not laid out, its pill bunched under the column's filling tile.
-    public func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
-
-    /// The shown tile a stashed one is behind: the nearest shown above it
-    /// in its column, else the column's first shown tile.
-    public func tile(behind id: PlacementID) -> Placement? {
-        guard let (c, i) = locate(id) else { return nil }
-        if let above = columns[c][..<i].last(where: { !isStashed($0.id) }) { return above }
-        return columns[c].first { !isStashed($0.id) }
-    }
-
-    /// A column's tiles that show, and those stashed, in order.
-    public func shownTiles(inColumn c: Int) -> [Placement] { columns[c].filter { !isStashed($0.id) } }
-    public func stashedTiles(inColumn c: Int) -> [Placement] { columns[c].filter { isStashed($0.id) } }
+    /// Docked: out of the grid, still in the space.
+    public func isDocked(_ id: PlacementID) -> Bool { docked.contains { $0.placement.id == id } }
+    public func dockedTile(_ id: PlacementID) -> DockedTile? { docked.first { $0.placement.id == id } }
 
     public func placements(of block: BlockID) -> [Placement] { placements.filter { $0.block == block } }
 
@@ -958,12 +987,12 @@ public struct ArrangementState: Codable, Equatable, Sendable {
     }
 
     public mutating func normalize() {
+        dockLegacyStacks()
         columns.removeAll(where: \.isEmpty)
         if fractions.count != columns.count || fractions.contains(where: { !($0 > 0) }) {
             fractions = Self.equalFractions(columns.count)
         }
-        // Every tile has a share, and each column's shown ones sum to 1;
-        // stashed tiles (0) stay so, unless a column is all stashed.
+        // Every tile has a share, and each column's sum to 1.
         var fixed: [PlacementID: Double] = [:]
         for column in columns {
             let shares: [Double?] = column.map { heights[$0.id].flatMap { $0 >= 0 ? $0 : nil } }
@@ -977,12 +1006,33 @@ public struct ArrangementState: Codable, Equatable, Sendable {
             for (p, h) in zip(column, out) { fixed[p.id] = h }
         }
         heights = fixed
-        if let f = focused, placement(f) == nil { focused = nil }
-        if focused == nil { focused = placements.first?.id }
-        if let f = full, placement(f) == nil { full = nil }
+        if let f = focused, locate(f) == nil { focused = nil }
+        if focused == nil { focused = gridPlacements.first?.id }
+        if let f = full, locate(f) == nil { full = nil }
         if !loans.isEmpty {
             let here = Set(fixed.keys)
             loans = loans.filter { here.contains($0.key) }.mapValues { $0.filter { here.contains($0.key) } }.filter { !$0.value.isEmpty }
+        }
+    }
+}
+
+extension ArrangementState {
+    /// Older logs' stacks: a tile with a share of 0 was stashed behind the
+    /// one above it that showed — docked now, to come back under it. (A
+    /// column all of 0 shows, as it did.)
+    mutating func dockLegacyStacks() {
+        guard heights.values.contains(0) else { return }
+        for c in columns.indices {
+            let column = columns[c]
+            guard column.contains(where: { heights[$0.id] == 0 }), column.contains(where: { heights[$0.id] != 0 }) else { continue }
+            for (i, p) in column.enumerated() where heights[p.id] == 0 {
+                let above = column[..<i].last { heights[$0.id] != 0 }?.id
+                let below = above == nil ? column[(i + 1)...].first { heights[$0.id] != 0 }?.id : nil
+                docked.append(DockedTile(placement: p, column: c, above: above, below: below, height: 0))
+                heights.removeValue(forKey: p.id)
+                loans.removeValue(forKey: p.id)
+            }
+            columns[c].removeAll { p in docked.contains { $0.placement.id == p.id } }
         }
     }
 }

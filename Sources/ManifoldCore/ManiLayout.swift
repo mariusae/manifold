@@ -17,7 +17,7 @@ public struct ManiLayout {
     }
 
     public let arrangement: ArrangementState
-    /// Shown tiles' frames; a stashed tile has none (it's behind another).
+    /// The grid's tiles' frames; a docked tile has none.
     public private(set) var frames: [PlacementID: Frame] = [:]
     /// Shown tiles in reading order: columns left to right, each top down.
     public private(set) var order: [PlacementID] = []
@@ -28,7 +28,7 @@ public struct ManiLayout {
         for (c, column) in arrangement.columns.enumerated() {
             let w = c < arrangement.fractions.count ? arrangement.fractions[c] : 1 / Double(arrangement.columns.count)
             var y = 0.0
-            for p in column where !arrangement.isStashed(p.id) {
+            for p in column {
                 let h = arrangement.height(of: p.id)
                 frames[p.id] = Frame(x: x, y: y, width: w, height: h)
                 order.append(p.id)
@@ -39,12 +39,6 @@ public struct ManiLayout {
     }
 
     private static let eps = 0.002
-
-    /// The tiles stacked behind a shown one, nearest first.
-    public func stack(behind id: PlacementID) -> [PlacementID] {
-        guard let (c, _) = arrangement.locate(id) else { return [] }
-        return arrangement.stashedTiles(inColumn: c).filter { arrangement.tile(behind: $0.id)?.id == id }.map(\.id)
-    }
 
     /// The shown tiles wholly to one side of `id`, nearest first: by the
     /// gap to them, then by how far their middle is from its, across.
@@ -112,7 +106,6 @@ public struct ManiLayout {
         var out: [String] = []
         if let from {
             for d in Direction.allCases where toward(d, of: from).first == id { out.append("@" + d.rawValue) }
-            if stack(behind: from).first == id { out.append("@under") }
         }
         for (name, d) in Self.outermostNames.sorted(by: { $0.key < $1.key }) where outermost(d, from: from) == id { out.append("@" + name) }
         if let n = order.firstIndex(of: id), n < 9 { out.append("@\(n + 1)") }
@@ -125,7 +118,7 @@ public struct ManiLayout {
         case ambiguous([PlacementID])
     }
 
-    /// A position (`left`, `rightmost`, `under`, `3`, or "" for anywhere)
+    /// A position (`left`, `rightmost`, `3`, or "" for anywhere)
     /// from `from`, among tiles that `matches` (a kind asked for).
     public func resolve(_ position: String, from: PlacementID?, matches: (PlacementID) -> Bool = { _ in true }) -> Resolved {
         if let d = Direction(rawValue: position) {
@@ -135,22 +128,18 @@ public struct ManiLayout {
         if let d = Self.outermostNames[position] {
             return outermost(d, from: from, among: order.filter(matches)).map { .tile($0) } ?? .none("nothing there")
         }
-        if position == "under" {
-            guard let from else { return .none("there's no tile to be under") }
-            return stack(behind: from).first(where: matches).map { .tile($0) } ?? .none("nothing is stacked under it")
-        }
         if let n = Int(position) {
             let pool = order.filter(matches)
             return n >= 1 && n <= pool.count ? .tile(pool[n - 1]) : .none("there's no tile \(n)")
         }
         if position.isEmpty {
-            // Anywhere: one shown, else one stacked away.
+            // Anywhere: one in the grid, else one docked.
             let shown = order.filter(matches)
             if shown.count == 1 { return .tile(shown[0]) }
             if shown.count > 1 { return .ambiguous(shown) }
-            let stashed = arrangement.placements.map(\.id).filter { frames[$0] == nil && matches($0) }
-            if stashed.count == 1 { return .tile(stashed[0]) }
-            return stashed.isEmpty ? .none("there's none") : .ambiguous(stashed)
+            let docked = arrangement.docked.map(\.placement.id).filter(matches)
+            if docked.count == 1 { return .tile(docked[0]) }
+            return docked.isEmpty ? .none("there's none") : .ambiguous(docked)
         }
         return .none("no position @\(position)")
     }

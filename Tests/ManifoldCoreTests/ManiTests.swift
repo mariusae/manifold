@@ -57,24 +57,26 @@ import Testing
 
 @Test func positionsAreTakenFromTheLayout() {
     // Two columns: a diff at the left over its whole height; at the right
-    // a terminal (60%) over an editor (40%), a note stacked under the
-    // terminal.
+    // a terminal (60%) over an editor (40%); a note docked from between
+    // them.
     let h = HostID("h")
     func p(_ id: String) -> Placement { Placement(id: id, block: BlockID(host: h), lens: .editor) }
     let diff = p("diff"), term = p("term"), note = p("note"), editor = p("editor")
     var a = ArrangementState()
-    a.columns = [[diff], [term, note, editor]]
+    a.columns = [[diff], [term, editor]]
+    a.docked = [DockedTile(placement: note, column: 1, above: "term", below: "editor", height: 0.2)]
     a.fractions = [0.4, 0.6]
-    a.heights = ["diff": 1, "term": 0.6, "note": 0, "editor": 0.4]
+    a.heights = ["diff": 1, "term": 0.6, "editor": 0.4]
     let layout = ManiLayout(a)
     #expect(layout.order == ["diff", "term", "editor"])
     #expect(layout.frames["editor"] == ManiLayout.Frame(x: 0.4, y: 0.6, width: 0.6, height: 0.4))
     #expect(layout.frames["note"] == nil)
-    #expect(layout.stack(behind: "term") == ["note"])
     // From the terminal.
     #expect(layout.resolve("left", from: "term") == .tile("diff"))
     #expect(layout.resolve("below", from: "term") == .tile("editor"))
-    #expect(layout.resolve("under", from: "term") == .tile("note"))
+    #expect(layout.resolve("under", from: "term") == .none("no position @under"))
+    // Anywhere, among notes: none in the grid, the docked one.
+    #expect(layout.resolve("", from: "term") { $0 == "note" } == .tile("note"))
     #expect(layout.resolve("right", from: "term") == .none("nothing to the right of it"))
     #expect(layout.resolve("2", from: "term") == .tile("term"))
     #expect(layout.resolve("rightmost", from: "editor") == .tile("editor"))

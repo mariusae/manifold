@@ -534,6 +534,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ⌥⇥: the same trail, tile by tile, in every space.
         item(go, "Switch to Recent Tile", #selector(MainWindowController.walkTiles(_:)), "\t", [.option])
         item(go, "Switch to Recent Tile, Backward", #selector(MainWindowController.walkTilesBack(_:)), "\t", [.option, .shift])
+        // ⌃⇥, as ⌃⇥ goes round a browser's tabs: this space's tiles, those
+        // docked too (§3.1).
+        item(go, "Switch to Recent Tile in Space", #selector(MainWindowController.walkSpaceTiles(_:)), "\t", [.control])
+        item(go, "Switch to Recent Tile in Space, Backward", #selector(MainWindowController.walkSpaceTilesBack(_:)), "\t", [.control, .shift])
         for n in 1...9 {
             item(go, n == 9 ? "Select Last Space" : "Select Space \(n)", #selector(MainWindowController.selectTabByNumber(_:)), "\(n)").tag = n
         }
@@ -555,7 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Next Step", #selector(MainWindowController.nextStep(_:)), "]", [.command, .control])
         item(go, "Previous Step", #selector(MainWindowController.previousStep(_:)), "[", [.command, .control])
 
-        // Tile: the focused tile — its size, its stack, its keeping.
+        // Tile: the focused tile — its size, docking it, its keeping.
         let tile = submenu(main, "Tile")
         item(tile, "Close Tile", #selector(MainWindowController.closePaneOrTab(_:)), "w")
         item(tile, "Reopen Closed", #selector(MainWindowController.reopenClosed(_:)), "t", [.command, .shift])
@@ -575,8 +579,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
         item(tile, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
-        item(tile, "Stash", #selector(MainWindowController.stashTile(_:)), "m")
-        // ⌥⇧⌘ and an arrow: the tile a step that way, its stack along.
+        item(tile, "Dock", #selector(MainWindowController.dockTile(_:)), "m")
+        // ⌥⇧⌘ and an arrow: the tile a step that way.
         let moveMenu = NSMenu(title: "Move")
         for (title, sel, key) in [("Left", #selector(MainWindowController.moveTileLeft(_:)), left), ("Right", #selector(MainWindowController.moveTileRight(_:)), right),
                                   ("Up", #selector(MainWindowController.moveTileUp(_:)), up), ("Down", #selector(MainWindowController.moveTileDown(_:)), down)] {
@@ -586,11 +590,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         moveItem.submenu = moveMenu
         tile.addItem(moveItem)
         tile.addItem(.separator())
-        // ⌃⇥, as ⌃⇥ goes round a browser's tabs: a stack's tiles.
-        item(tile, "Next in Stack", #selector(MainWindowController.walkStack(_:)), "\t", [.control])
-        item(tile, "Previous in Stack", #selector(MainWindowController.walkStackBack(_:)), "\t", [.control, .shift])
-        item(tile, "Unstack", #selector(MainWindowController.unstackFocused(_:)), "")
-        item(tile, "Close Stack", #selector(MainWindowController.closeFocusedStack(_:)), "")
         tile.addItem(.separator())
         // ⌘., the system's cancel: a notebook's running cell.
         item(tile, "Interrupt", #selector(MainWindowController.interruptTile(_:)), ".")
@@ -613,7 +612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(space, "Remove Space", #selector(MainWindowController.closeTab(_:)), "w", [.command, .shift])
 
         let window = submenu(main, "Window")
-        // ⌘M is Stash: Minimize from the menu alone.
+        // ⌘M is Dock (§3.1): Minimize from the menu alone.
         item(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "")
         item(window, "Zoom", #selector(NSWindow.performZoom(_:)), "")
         window.addItem(.separator())

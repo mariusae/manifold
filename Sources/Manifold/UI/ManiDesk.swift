@@ -764,8 +764,10 @@ final class ManiDesk {
             out["names"] = layout.names(of: p.id, from: scope.reference)
             out["adjacent"] = Dictionary(uniqueKeysWithValues: layout.adjacent(p.id).map { ($0.key.rawValue, $0.value) })
         }
-        let stack = layout.stack(behind: p.id).compactMap { layout.arrangement.placement($0) }
-        if !stack.isEmpty { out["stack"] = stack.map { tile($0, layout: layout, scope: scope, deep: false) } }
+        if let d = layout.arrangement.dockedTile(p.id) {
+            out["docked"] = true
+            if let above = d.above { out["dockedUnder"] = above }
+        }
         return out
     }
 
@@ -780,8 +782,10 @@ final class ManiDesk {
         out["columns"] = a.columns.enumerated().map { c, column -> [String: Any] in
             let w = c < a.fractions.count ? a.fractions[c] : 0
             return ["width": Self.decimal(w),
-                    "tiles": column.filter { !a.isStashed($0.id) }.map { tile($0, layout: layout, scope: scope) }]
+                    "tiles": column.map { tile($0, layout: layout, scope: scope) }]
         }
+        // Docked (§3.1): out of the grid, still in the space, the latest first.
+        if !a.docked.isEmpty { out["docked"] = a.docked.reversed().map { tile($0.placement, layout: layout, scope: scope) } }
         let pins = wc.pins(of: ws).map(\.to).map { b -> [String: Any] in
             let blk = hosts.block(b)
             return ["block": b.description, "kind": kindName(blk, lens: Lens.default(for: blk?.kind ?? .text, path: blk?.path)), "title": blk?.displayTitle ?? ""]
@@ -817,11 +821,15 @@ final class ManiDesk {
                 var lines = [row.joined(separator: "  ")]
                 if let summary = summaryLine(p.block, view: wc.views[id]) { lines.append("      " + String(summary.prefix(140))) }
                 if let a = b?.annotations, !a.isEmpty { lines.append("      " + a.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")) }
-                for s in layout.stack(behind: id).compactMap({ a.placement($0) }) {
-                    let sb = hosts.block(s.block)
-                    lines.append("      under: \(kindName(sb, lens: s.lens)) \(sb?.displayTitle ?? "")  \(s.block)")
-                }
                 return lines
+            } + docked(a)
+        }
+        /// What's docked, under the grid's rows: a row each, the latest first.
+        func docked(_ a: ArrangementState) -> [String] {
+            guard !a.docked.isEmpty else { return [] }
+            return ["  docked:"] + a.docked.reversed().map { d in
+                let b = hosts.block(d.placement.block)
+                return "      \(kindName(b, lens: d.placement.lens).padding(toLength: 9, withPad: " ", startingAt: 0))  \(b?.displayTitle ?? "")  \(d.placement.block)"
             }
         }
         func heading(_ ws: BlockID, _ a: ArrangementState) -> String {
@@ -1215,7 +1223,7 @@ final class ManiDesk {
         guard let a = hosts.arrangement(ws),
               let p = a.tile(of: block, lens: lens) ?? a.placements.first(where: { $0.block == block }),
               let (c, _) = a.locate(p.id) else { return }
-        let shown = a.shownTiles(inColumn: c)
+        let shown = a.columns[c]
         if shown.count == 1, a.columns.count > 1 {
             let n = a.columns.count
             let fractions = a.fractions.count == n ? a.fractions : Array(repeating: 1 / Double(n), count: n)

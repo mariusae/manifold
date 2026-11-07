@@ -60,7 +60,7 @@ public enum Mani {
         Flag(name: "right", help: "in the column to its right (a new one, if it's the last)"),
         Flag(name: "left", help: "in the column to its left (a new one, if it's the first)"),
         Flag(name: "column", help: "in a new column, right of it"),
-        Flag(name: "over", help: "stacked over it, as ⌥ stacks"),
+        Flag(name: "over", help: "in its place, it docked, as ⌥ opens over"),
         Flag(name: "at", value: "name", help: "the tile it goes by"),
         Flag(name: "size", value: "share", help: "its share of its column, 0 to 1 (of the width, in a column of its own)"),
     ]
@@ -82,7 +82,7 @@ public enum Mani {
                  path, frame (x, y, width, height as shares of the window, from
                  the top left), the tiles sharing each of its edges (adjacent),
                  the names it answers to, its summary (title, place, lines, note,
-                 tone), and the tiles stacked under it.
+                 tone); and the tiles docked, with where each was.
                  """, inApp: true),
         Verb(words: ["info"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Describe a block, as JSON",
@@ -478,7 +478,7 @@ public enum Mani {
             - `mani ls --json` — every tile: its block id, kind, title, path, frame (x, y, width,
               height as shares of the window, from the top left), the tiles on each edge
               (adjacent), the names it answers to (@left, @2, …), a summary of each (its
-              last command and how it ended, its first lines), what's stacked under it.
+              last command and how it ended, its first lines), and what's docked.
             - `mani read <name>` — what a block holds, as text; `mani info <name>` — about it (JSON).
 
             ## Naming
@@ -580,7 +580,7 @@ public enum Mani {
 
             ## Conventions
             - What you make goes below this terminal unless told: --right, --left, --above,
-              --column (a new one), --over (stacked), by --at another tile; --size gives it a share
+              --column (a new one), --over (in its place, it docked), by --at another tile; --size gives it a share
               of its column. `@last` is what mani last made. --space (or $MANI_SPACE) acts in
               another space, without showing it.
             - `new`, `open` and `show` move the user's focus; prefer `read`, `info`, `ls` to look.
@@ -600,7 +600,7 @@ public enum Mani {
           @last        the block mani last made         @space     the space shown
           @left @right @above @below   the nearest tile that way from @here
           @leftmost @rightmost @top @bottom   the outermost tile that way
-          @under       the tile stacked under @here     @1 … @9   tiles in order
+          @1 … @9      tiles in order
         Or by what it's annotated with (mani annotate): key=value, 'key=*' for
         any value — the one block (or space) with it, in the space shown first.
         A kind narrows one: @right:diff, @:pdf (the one PDF shown). Kinds:

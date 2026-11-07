@@ -68,8 +68,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     /// The places settled on in this window, the latest first: the trail
     /// as this window has it, which every switcher walks at its own scale —
-    /// ⌘` its spaces, ⌥⇥ its tiles, ⌃⇥ a stack's (whose order is the
-    /// trail's already, the tile settled on brought to its top). Those
+    /// ⌘` its spaces, ⌥⇥ its tiles, ⌃⇥ the space's (its docked tiles
+    /// too). Those
     /// only passed on a walk aren't in it, and it doesn't wait on a host to
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
@@ -82,8 +82,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌥⇥'s cards, once they show, and their pictures on their way.
     private var tileSwitcher: (frame: NSView, column: StackColumnView)?
     private var tileFlights: [CALayer] = []
-    /// ⌃⇥'s switcher, while control is held: what ends it.
-    private var stackMonitors: [Any] = []
     let sidebar = SidebarView()
     /// What the window shows with no space at all.
     private var emptyState: EmptyStateView?
@@ -445,7 +443,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     // was, leaves the keyboard there.
                 } else if focused == lastFocused, let responder,
                    let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
-                   a.placement(typing) != nil, !a.isStashed(typing) {
+                   a.locate(typing) != nil {
                     // The tile focus didn't move but the keyboard is in
                     // another tile (typing went on there): the focus follows
                     // it, rather than the keyboard being taken from under
@@ -1452,12 +1450,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Whether a block is in sight: Manifold in front, its window shown
     /// and not covered (by another's window), the screen awake and not
-    /// locked, and a tile of it showing in the workspace (not stashed, not
+    /// locked, and a tile of it showing in the workspace (not docked, not
     /// behind a maximized one).
     func inSight(_ block: BlockID) -> Bool {
         guard NSApp.isActive, let window, window.isVisible, !window.isMiniaturized, window.occlusionState.contains(.visible),
               !Self.screenAway(window.screen), stateView == nil, let a = arrangement else { return false }
-        return a.placements(of: block).contains { !a.isStashed($0.id) && (a.full == nil || a.full == $0.id) }
+        return a.placements(of: block).contains { a.locate($0.id) != nil && (a.full == nil || a.full == $0.id) }
     }
 
     /// The screen locked, or the window's display asleep: what's in front
@@ -1735,7 +1733,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugTileHeight(_ title: String, _ points: CGFloat) -> String {
         guard let a = arrangement else { return "no workspace" }
         for (c, column) in a.columns.enumerated() {
-            guard let p = column.first(where: { !a.isStashed($0.id) && hosts.block($0.block)?.displayTitle == title }) else { continue }
+            guard let p = column.first(where: { hosts.block($0.block)?.displayTitle == title }) else { continue }
             guard let events = settingHeight(of: p.id, points: points, in: a) else { return "alone" }
             appendToSelected(events)
             return "ok"
@@ -1774,22 +1772,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugFollowLink(toPlacementEndingIn suffix: String, modifiers: NSEvent.ModifierFlags = []) -> String {
         guard let a = arrangement, let f = a.focused, let t = a.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return "no \(suffix)" }
         gridOpenLink(t.block, from: f, modifiers: modifiers)
-        return debugStack(swap: false)
+        return debugDock("")
     }
     func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
     func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
     func debugSwitcherPointer() -> String { content.debugSwitcherPointer() }
-    /// ⌃⇥ with control held, as far as the fan and its watching for its release.
-    func debugWalkStack() {
-        guard let a = arrangement, let f = a.focused, content.stepStackSwitcher(f, back: false) else { return }
-        watchStackWalk()
-    }
-    /// Control let go, as the walk's monitor sees it (if it's still watching).
-    func debugReleaseCommand() -> String {
-        guard !stackMonitors.isEmpty else { return "not watching control" }
-        endStackWalk(settling: true)
-        return "settled"
-    }
 
     var debugSurface: NSView? { content }
 
@@ -1819,15 +1806,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return true
     }
 
-    func debugStack(swap: Bool, index: Int = 0) -> String {
-        guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return "nothing focused" }
-        // The stack as the fan shows it: those stashed above the first
-        // shown tile count as behind it, then those under the tile.
-        let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
-        if swap, index >= 0, index < behind.count { gridSwap(behind[index].id) }
-        if swap, index < 0, let next = behind.first { gridSwap(next.id) }
-        guard let b = arrangement else { return "gone" }
-        return b.columns[c].map { "\($0.id == b.focused ? "*" : " ")\(hosts.block($0.block)?.displayTitle ?? "?")#\($0.id.suffix(4)) \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ")
+    /// Debugging docking (§3.1): `dock` the space as it is; `dock it`, the
+    /// focused tile docked; `dock back <suffix>`, that tile gone to.
+    func debugDock(_ arg: String) -> String {
+        let w = arg.split(separator: " ").map(String.init)
+        if w.first == "it" { dockTile(nil) }
+        if w.first == "back", w.count > 1, let p = arrangement?.placements.first(where: { $0.id.hasSuffix(w[1]) }) { focus(p.id) }
+        guard let b = arrangement else { return "no space" }
+        func name(_ p: Placement) -> String { "\(hosts.block(p.block)?.displayTitle ?? "?")#\(p.id.suffix(4))" }
+        let grid = b.columns.map { col in col.map { "\($0.id == b.focused ? "*" : " ")\(name($0)) \(Int((b.heights[$0.id] ?? 0) * 100))%" }.joined(separator: " | ") }
+        let docked = b.docked.map { d in
+            "\(name(d.placement)) (col \(d.column), under \(d.above.map { String($0.suffix(4)) } ?? "-"), \(Int(d.height * 100))%\(d.under.map { ", over it \($0.suffix(4))" } ?? ""))"
+        }
+        return grid.enumerated().map { "col \($0.offset): \($0.element)" }.joined(separator: "\n") + "\ndocked: " + (docked.isEmpty ? "none" : docked.joined(separator: "; "))
     }
 
     func debugDescribe() -> String {
@@ -3012,10 +3003,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.title = on ? "Unpin" : "Pin in Space"
             item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
             return true
-        case #selector(unstackFocused(_:)), #selector(closeFocusedStack(_:)):
-            // Only for a tile with a stack behind it.
-            guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return false }
-            return a.columns[c].contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
         case #selector(setTerminalDormancy(_:)):
             item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
@@ -3082,13 +3069,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return focusedShown.map { $0.block?.kind == .text } ?? false
         case #selector(deleteFocusedBlock(_:)):
             return focusedShown.map { $0.block?.kind != .arrangement } ?? false
-        case #selector(stashTile(_:)):
-            // As the tile's menu: not for a tile alone in its column.
-            guard let a = arrangement, let f = a.focused, let c = a.columnIndex(of: f), !a.isStashed(f) else { return false }
-            return a.shownTiles(inColumn: c).count > 1
-        case #selector(walkStack(_:)), #selector(walkStackBack(_:)):
-            guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f) else { return false }
-            return content.isSwitching || a.columns[c].contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }
+        case #selector(dockTile(_:)):
+            guard let a = arrangement, let f = a.focused else { return false }
+            return a.locate(f) != nil
+        case #selector(walkSpaceTiles(_:)), #selector(walkSpaceTilesBack(_:)):
+            return (arrangement?.placements.count ?? 0) > 1
         case #selector(reopenClosed(_:)):
             return !closedStack.isEmpty
         case #selector(navigateBack(_:)):
@@ -3285,12 +3270,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func walkTiles(_ sender: Any?) { walkTiles(back: false) }
     @objc func walkTilesBack(_ sender: Any?) { walkTiles(back: true) }
 
+    /// The key a tile walk is held on: option (⌥⇥, every space), control
+    /// (⌃⇥, this space's).
+    private var tileWalkKey: NSEvent.ModifierFlags = .option
+
     /// The tiles of the trail, the latest first, from where the window is:
     /// those settled on here, then the hosts' trail, then the rest of this
-    /// space. Each tile once, and only one still on the desk.
-    private func tileTrail() -> [Settled] {
+    /// space — its grid's, then its docked, the latest docked first. Each
+    /// tile once, and only one still on the desk; with `space`, only its.
+    private func tileTrail(space: BlockID? = nil) -> [Settled] {
         var home: [PlacementID: BlockID] = [:]
-        for w in allWorkspaces {
+        for w in allWorkspaces where space == nil || space == w {
             for p in hosts.arrangement(w)?.placements ?? [] where !recentlyClosed.contains(p.block) { home[p.id] = w }
         }
         var out: [Settled] = []
@@ -3303,17 +3293,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for s in settled { add(s.tile) }
         for s in trailSteps().reversed() { add(s.placement) }
         for c in arrangement?.columns ?? [] { for p in c { add(p.id) } }
+        for d in (arrangement?.docked ?? []).reversed() { add(d.placement.id) }
         return Array(out.prefix(Self.tileWalkLimit))
     }
 
     static let tileWalkLimit = 24
 
-    private func walkTiles(back: Bool) {
+    private func walkTiles(back: Bool, inSpace: Bool = false) {
         let pressed = Date()
         let step = back ? -1 : 1
         if var w = tileWalk {
-            // Option let go unheard (the app left meanwhile): over.
-            if tileMonitors.isEmpty || (!NSEvent.modifierFlags.contains(.option) && !debugHeld) { endTileWalk(settling: true) } else {
+            // Its key let go unheard (the app left meanwhile): over.
+            if tileMonitors.isEmpty || (!NSEvent.modifierFlags.contains(tileWalkKey) && !debugHeld) { endTileWalk(settling: true) } else {
                 let n = w.places.count
                 w.index = ((w.index + step) % n + n) % n
                 tileWalk = w
@@ -3329,13 +3320,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
         }
-        let places = tileTrail()
+        tileWalkKey = inSpace ? .control : .option
+        let places = tileTrail(space: inSpace ? selected : nil)
         // Where the walk begins: the focused tile, or (none) before the first.
         let start = places.first.map { $0.tile == arrangement?.focused } == true ? 0 : -1
         guard places.count > (start == 0 ? 1 : 0) else { return NSSound.beep() }
         let n = places.count
         let index = ((start + step) % n + n) % n
-        guard NSEvent.modifierFlags.contains(.option) || debugHeld else { return go(to: places[index]) }
+        guard NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return go(to: places[index]) }
         // As ⌃⇥'s: the cards made now, out of sight, shown in a moment if
         // option's still held, and in place when the wait's done.
         let work = DispatchWorkItem { [weak self] in self?.revealTileSwitcher(settledBy: pressed + Self.switcherSettled) }
@@ -3354,7 +3346,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func watchTileWalk() {
         tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.option) { self?.endTileWalk(settling: true) }
+            guard let self else { return event }
+            if !event.modifierFlags.contains(self.tileWalkKey) { self.endTileWalk(settling: true) }
             return event
         } as Any)
         tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -3483,13 +3476,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         tileSwitcher?.column.cardsShown = true
     }
 
-    /// Goes to a place: its space shown, its tile out of its stack (from
-    /// behind a maximized one) and focused, the pointer on it.
+    /// Goes to a place: its space shown, its tile back from the dock (or
+    /// from behind a maximized one) and focused, the pointer on it.
     private func go(to p: Settled) {
         guard let t = p.tile, let a = hosts.arrangement(p.space), a.placement(t) != nil else { return NSSound.beep() }
         if stateView != nil { hideStateView() }
         if selected != p.space { hosts.select(p.space) }
-        if a.focused != t || a.isStashed(t) || (a.full != nil && a.full != t) {
+        if a.focused != t || a.isDocked(t) || (a.full != nil && a.full != t) {
             hosts.append(arriving(t, in: a), to: .block(p.space))
         }
         render()
@@ -3621,10 +3614,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugTileWalk(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         switch w.first ?? "" {
-        case "step", "back":
+        case "step", "back", "space", "spaceback":
+            // "space", "spaceback": ⌃⇥'s, among this space's tiles.
             debugHeld = true
             if tileWalk == nil { debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil }
-            walkTiles(back: w.first == "back")
+            walkTiles(back: w.first == "back" || w.first == "spaceback", inSpace: w.first?.hasPrefix("space") == true)
         case "again":
             // "tilewalk again <seconds>": ⌥⇥ pressed, then ⇥ again that much later.
             debugHeld = true
@@ -3657,104 +3651,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return t + (p.space == selected ? "" : "@" + String(p.space.ulid.suffix(4)))
         }
         let here = selected.map { name(Settled(space: $0, tile: arrangement?.focused)) } ?? "-"
-        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(name).joined(separator: ",") } ?? "-") cards=\(tileSwitcher != nil) order=\(tileTrail().prefix(8).map(name).joined(separator: ","))"
+        let docked = Set(arrangement?.docked.map(\.placement.id) ?? [])
+        func named(_ p: Settled) -> String { name(p) + (p.tile.map(docked.contains) == true ? "(docked)" : "") }
+        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") } ?? "-") cards=\(tileSwitcher != nil) order=\(tileTrail().prefix(8).map(named).joined(separator: ",")) space=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
     }
 
     // MARK: ⌃⇥
 
-    /// ⌃⇥ (⌃⇧⇥ back): with control held, the focused tile's stack as a file
-    /// of cards over its tile — the top drops flat to the bottom and the
-    /// one beneath stands up in front, leaning back, the title bars of the
-    /// rest behind it; each ⇥ flips the next one down, scrolling works
-    /// too, and letting go of control brings the chosen one forward to the
-    /// top (Escape leaves things be). From the menu it's one step.
-    @objc func walkStack(_ sender: Any?) { walkStack(back: false) }
-    @objc func walkStackBack(_ sender: Any?) { walkStack(back: true) }
+    /// ⌃⇥ (⌃⇧⇥ back): ⌥⇥'s walk, held on control, among this space's
+    /// tiles — those in the grid and those docked (§3.1), the latest
+    /// settled on first. A tap goes back and forth between two; a docked
+    /// one settled on goes back where it was.
+    @objc func walkSpaceTiles(_ sender: Any?) { walkTiles(back: false, inSpace: true) }
+    @objc func walkSpaceTilesBack(_ sender: Any?) { walkTiles(back: true, inSpace: true) }
 
-    private func walkStack(back: Bool) {
-        guard let a = arrangement, let f = a.focused else { return NSSound.beep() }
-        if content.isSwitching {
-            _ = content.stepStackSwitcher(f, back: back)
-            // Made ahead, not yet seen: ⇥ again is no tap — seen at once.
-            if madeAhead != nil {
-                madeAhead = nil
-                content.revealStackSwitcher(settledBy: Date() + Self.switcherHurried)
-            }
-            return
-        }
-        // Pressed again before the cards show: no quick switch, then — the
-        // cards at once, the steps taken, unfolding quicker.
-        if var q = quickWalk {
-            q.steps += back ? -1 : 1
-            quickWalk = q
-            q.show.cancel()
-            showQuickWalk(now: true)
-            return
-        }
-        if NSEvent.modifierFlags.contains(.control) {
-            // As ⌘⇥ is: let go quickly, and it's gone to the tile behind
-            // (⌃⇧⇥, the farthest) with nothing shown; held a moment, the
-            // cards come, the steps taken meanwhile already taken.
-            guard !a.isStashed(f), let (c, _) = a.locate(f),
-                  a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return NSSound.beep() }
-            let now = Date()
-            watchStackWalk()
-            // The cards made now, out of sight, and shown in a moment if
-            // control's still held — made meanwhile, they're in place when
-            // it's done, not starting.
-            if !content.stackSwitcherNeedsRoom(f),
-               content.openStackSwitcher(f, steps: back ? -1 : 1, settledBy: now + Self.switcherSettled, revealAt: now + Self.switcherDelay) {
-                madeAhead = (f, back ? -1 : 1)
-                return
-            }
-            // A stack that has to grow first: that once they're wanted.
-            let work = DispatchWorkItem { [weak self] in self?.showQuickWalk() }
-            quickWalk = (f, back ? -1 : 1, work, now)
-            content.pictureAhead(f)
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.switcherDelay, execute: work)
-            return
-        }
-        guard !a.isStashed(f), content.stepStackSwitcher(f, back: back) else { return NSSound.beep() }
-        // From the menu: one step, seen, then settled on.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.content.settleStackSwitcher() }
-    }
-
-    private func watchStackWalk() {
-        stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.control) { self?.endStackWalk(settling: true) }
-            return event
-        } as Any)
-        stackMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else { return event }
-            self?.endStackWalk(settling: false)
-            return nil
-        } as Any)
-    }
-
-    private func endStackWalk(settling: Bool) {
-        stackMonitors.forEach(NSEvent.removeMonitor)
-        stackMonitors = []
-        // Let go before the cards made ahead were in place: a tap — put
-        // away (unseen, or as they are), the tile stepped to brought up.
-        if let m = madeAhead {
-            madeAhead = nil
-            if content.abandonStackSwitcher(then: { [weak self] in if settling { self?.quickStep(m.top, steps: m.steps) } }) { return }
-        }
-        // Let go before the cards showed: the tile stepped to comes up.
-        if let q = quickWalk {
-            q.show.cancel()
-            quickWalk = nil
-            if settling { quickStep(q.top, steps: q.steps) }
-            return
-        }
-        content.settleStackSwitcher(cancel: !settling)
-    }
-
-    /// ⌃⇥ pressed, the cards not shown yet: the tile, the steps taken, and
-    /// what shows them if control is still held.
-    private var quickWalk: (top: PlacementID, steps: Int, show: DispatchWorkItem, at: Date)?
-    /// ⌃⇥ pressed, its cards made out of sight: the tile and the step.
-    private var madeAhead: (top: PlacementID, steps: Int)?
     /// ⌃⇥ (⌥⇥) held, its cards are in place this long after it's pressed:
     /// settled by then, not starting — but long enough that they're seen
     /// coming out of where they are, which says what they are.
@@ -3766,59 +3676,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⇥ pressed again before they showed: no quick switch wanted — they
     /// come at once, in place this long after.
     static let switcherHurried: TimeInterval = 0.06
-
-    /// Held past the wait (or ⇥ pressed again, `now`): the cards, at the
-    /// step reached, opened there in one go.
-    private func showQuickWalk(now: Bool = false) {
-        guard let q = quickWalk else { return }
-        quickWalk = nil
-        guard NSEvent.modifierFlags.contains(.control) || now else { return endStackWalk(settling: false) }
-        let by = now ? Date() + Self.switcherHurried : q.at + Self.switcherSettled
-        guard content.openStackSwitcher(q.top, steps: q.steps == 0 ? 1 : q.steps, settledBy: by) else { return endStackWalk(settling: false) }
-    }
-
-    /// A quick ⌃⇥: the tile `steps` down the stack (round it; negative,
-    /// up from the farthest) brought to the top, nothing shown.
-    private func quickStep(_ top: PlacementID, steps: Int) {
-        guard let a = arrangement, let (c, _) = a.locate(top) else { return }
-        let order = [top] + a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }.map(\.id)
-        let k = ((steps % order.count) + order.count) % order.count
-        guard k != 0 else { return }
-        gridSwap(order[k])
-    }
-
-    /// Debugging: ⌃⇥ pressed with control held, then let go after `hold` seconds.
-    func debugQuickWalk(steps: Int, hold: TimeInterval, again: TimeInterval? = nil) -> String {
-        guard let a = arrangement, let f = a.focused, let (c, _) = a.locate(f),
-              a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == f }) else { return "no stack" }
-        let pressed = Date()
-        content.debugUnfolded = nil
-        content.debugUnfoldStarted = nil
-        content.debugUnfoldAsked = nil
-        guard content.openStackSwitcher(f, steps: steps, settledBy: pressed + Self.switcherSettled, revealAt: pressed + Self.switcherDelay) else { return "not opened" }
-        madeAhead = (f, steps)
-        // ⇥ again after `again` seconds.
-        if let again {
-            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + again).timeIntervalSinceNow)) { [weak self] in
-                guard let self, self.madeAhead != nil else { return }
-                _ = self.content.stepStackSwitcher(f, back: false)
-                self.madeAhead = nil
-                self.content.revealStackSwitcher(settledBy: Date() + Self.switcherHurried)
-            }
-        }
-        // (From the press, as a key let go is, not from when the cards are made.)
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + hold).timeIntervalSinceNow)) { [weak self] in self?.endStackWalk(settling: true) }
-        // How long till the cards were in place, told once they are.
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(hold, 0.5)) { [weak self] in
-            guard let self else { return }
-            let ms = { (d: Date?) in d.map { String(Int($0.timeIntervalSince(pressed) * 1000)) } ?? "-" }
-            self.debugWalkSettled = "asked \(ms(self.content.debugUnfoldAsked)) started \(ms(self.content.debugUnfoldStarted)) settled \(ms(self.content.debugUnfolded)) ms"
-        }
-        return "pressed"
-    }
-
-    /// Debugging: from the last `quickwalk`'s press till its cards were in place, in ms.
-    var debugWalkSettled: String?
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window
     /// (or, backward, its previous) — Settings, another window.
@@ -3986,7 +3843,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Tile ▸ Move ▸ (⌥⇧⌘ and an arrow): the focused tile a step that
-    /// way, its stack along (`ArrangementState.nudging`).
+    /// way (`ArrangementState.nudging`).
     @objc func moveTileLeft(_ sender: Any?) { moveTile(.left) }
     @objc func moveTileRight(_ sender: Any?) { moveTile(.right) }
     @objc func moveTileUp(_ sender: Any?) { moveTile(.above) }
@@ -4006,18 +3863,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Focuses a tile of the selected arrangement.
     func focus(_ placement: PlacementID) {
-        guard let a = arrangement, a.placement(placement) != nil, a.focused != placement || a.isStashed(placement) else { return }
+        guard let a = arrangement, a.placement(placement) != nil, a.focused != placement || a.isDocked(placement) else { return }
         appendToSelected(revealing(placement, in: a))
     }
 
     /// What brings a tile into view and focus: a maximized other tile
-    /// gives way, a stashed one comes back (as its tile's lower half),
-    /// and it is focused.
+    /// gives way, a docked one goes back where it was, and it is focused.
     private func revealing(_ placement: PlacementID, in a: ArrangementState) -> [Event] { a.revealing(placement) }
 
     /// Going to a tile of the workspace shown (⌘P's outline): revealed —
-    /// to the top of its stack, if it's in one — grown a little if it's
-    /// down to its bar, and the pointer on it.
+    /// back from the dock, if it's there — grown a little if it's down to
+    /// its bar, and the pointer on it.
     func arrive(atTile placement: PlacementID) {
         guard let a = arrangement, a.placement(placement) != nil else { return }
         appendToSelected(arriving(placement, in: a))
@@ -4048,8 +3904,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil, _ reveal: Reveal = .glimpse) -> [Event] {
         var after = a
         for e in events { after.apply(e) }
-        guard let f = placement ?? after.focused, after.full == nil, !after.isStashed(f), let (c, _) = after.locate(f) else { return events }
-        let shown = after.shownTiles(inColumn: c)
+        guard let f = placement ?? after.focused, after.full == nil, let (c, _) = after.locate(f) else { return events }
+        let shown = after.columns[c]
         guard shown.count > 1 else { return events }
         let sum = shown.reduce(0.0) { $0 + after.height(of: $1.id) }
         let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
@@ -4697,8 +4553,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         layout.append(row("\(a.placements.count)", "tiles", "rectangle.split.3x1"))
         let widths = a.fractions.map { String(format: "%.0f%%", $0 * 100) }.joined(separator: " · ")
         layout.append(row("\(a.columns.count)" + (widths.isEmpty ? "" : " (\(widths))"), "columns", "rectangle.split.3x1"))
-        let stacked = a.placements.filter { a.isStashed($0.id) }.count
-        if stacked > 0 { layout.append(row("\(stacked)", "stacked", "square.stack")) }
+        if !a.docked.isEmpty { layout.append(row("\(a.docked.count)", "docked", "dock.arrow.down.rectangle")) }
         if let full = a.full, let p = a.placement(full), let fb = hosts.block(p.block) { layout.append(row(Self.linkTitle(fb), "maximized", "arrow.up.left.and.arrow.down.right")) }
         if let p = a.focusedPlacement, let fb = hosts.block(p.block) {
             let n = row(Self.linkTitle(fb), "focused", Theme.symbolName(for: fb))
@@ -5086,9 +4941,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let height = a.height(of: f.id)
             tile.append(row(String(format: "%.0f%% wide, %.0f%% of its column", width * 100, height * 100), "size", "arrow.up.left.and.arrow.down.right"))
             if a.full == f.id { tile.append(row("Maximized", "", "arrow.up.left.and.arrow.down.right")) }
-            if a.isStashed(f.id) { tile.append(row("Stacked behind another", "", "square.stack")) }
-            let behind = ManiLayout(a).stack(behind: f.id).count
-            if behind > 0 { tile.append(row("\(behind)", "behind it", "square.stack")) }
+            if a.isDocked(f.id) { tile.append(row("Docked", "", "dock.arrow.down.rectangle")) }
             if let at = f.placement.placedAt { tile.append(row(Age.ago(at), "placed", "calendar")) }
             // What the lens keeps for it: its scroll, selection, mode…
             for (k, v) in (b.views?[f.id] ?? [:]).sorted(by: { $0.key < $1.key }) {
@@ -5228,7 +5081,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 for p in column {
                     guard let o = hosts.block(p.block) else { continue }
                     var how = "column \(c + 1)"
-                    if a.full == p.id { how += ", maximized" } else if a.isStashed(p.id) { how += ", stacked" }
+                    if a.full == p.id { how += ", maximized" }
                     if a.focused == p.id { how += ", focused" }
                     if o.id.host != b.id.host { how += ", on \(hosts.label(of: o.id.host))" }
                     let n = node(for: o, id: "insp/tile/\(p.id)", detail: how)
@@ -5236,6 +5089,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.placement = p.id
                     tiles.append(n)
                 }
+            }
+            for d in a.docked.reversed() {
+                guard let o = hosts.block(d.placement.block) else { continue }
+                let n = node(for: o, id: "insp/tile/\(d.placement.id)", detail: "docked" + (d.at.map { " " + Age.ago($0) } ?? ""))
+                n.arrangement = b.id
+                n.placement = d.placement.id
+                tiles.append(n)
             }
             section("Tiles", "rectangle.split.3x1", Array(tiles.prefix(60)), id: "space-tiles")
             let pinned = pins(of: b.id).compactMap { e -> OrgNode? in
@@ -5252,7 +5112,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let a = hosts.arrangement(w) else { continue }
             for p in a.placements where p.block == b.id {
                 placedIn += 1
-                let how = a.isStashed(p.id) ? "in a stack" : a.full == p.id ? "maximized" : w == selected && a.focused == p.id ? "this tile" : "a tile"
+                let how = a.isDocked(p.id) ? "docked" : a.full == p.id ? "maximized" : w == selected && a.focused == p.id ? "this tile" : "a tile"
                 let n = row(title(of: a), how, Theme.spaceSymbol)
                 n.arrangement = w
                 n.placement = p.id
@@ -5385,22 +5245,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Workspaces (§3.6): every attached host's, under its host when there
     /// is more than one, each expanding to its tiles in order (by column,
-    /// top to bottom), the selected one open and the focused tile marked:
-    /// the table of contents of the screen.
-    /// A workspace's rows as they're listed: each run of a tile and those
-    /// behind it in its column (in a run, as listed) sharing a ground.
-    private static func markStacks(_ rows: [OrgNode]) {
-        var i = 0
-        while i < rows.count {
-            var j = i + 1
-            while j < rows.count, rows[j].behind, rows[j].column == rows[i].column, rows[j].style == .row { j += 1 }
-            if j - i > 1 || rows[i].behind {
-                for k in i..<j { rows[k].stack = SelectionRowView.Grouped(first: k == i, last: k == j - 1) }
-            }
-            i = j
-        }
-    }
-
+    /// top to bottom), then those docked, the selected one open and the
+    /// focused tile marked: the table of contents of the screen.
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
         func workspace(_ id: BlockID) -> OrgNode? {
@@ -5410,19 +5256,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // closed by its chevron stays closed.
             var tiles: [OrgNode] = []
             let pinned = pins(of: id).map(\.to)
-            for (c, column) in a.columns.enumerated() {
-                // A stack's tiles under its top, nearest first, as it fans
-                // (any stashed before the column's first shown tile are its).
-                let lead = column.prefix { a.isStashed($0.id) }
-                var ordered = Array(column.dropFirst(lead.count))
-                if !ordered.isEmpty { ordered.insert(contentsOf: lead, at: 1) } else { ordered = Array(lead) }
-                for p in ordered {
+            // The grid's tiles, column by column; then, under a hairline,
+            // those docked (§3.1), the latest first.
+            let docked = a.docked.reversed().map(\.placement)
+            for (c, column) in (a.columns + (docked.isEmpty ? [] : [docked])).enumerated() {
+                let isDock = !docked.isEmpty && c == a.columns.count
+                if isDock {
+                    let rule = OrgNode(id: "\(aid)/docked", title: "", symbol: "", detail: "")
+                    rule.style = .divider
+                    tiles.append(rule)
+                }
+                for p in column {
                     let b = hosts.block(p.block)
                     // An untitled note by its first words, as its links name it.
                     let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
                     guard matches(filter, [title, b?.path]) else { continue }
                     // What its status says beyond its glyph (not "Done"); else
-                    // its state — stashed, maximized — as a small symbol. Edits
+                    // its state — docked, maximized — as a small symbol. Edits
                     // unsaved: the bar's dot after its name.
                     var notes: [String] = []
                     if let status = StatusGlyph.remark(b) { notes.append(status) }
@@ -5433,11 +5283,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.dirty = b?.text?.isDirty == true
                     n.stale = b?.text?.stale == true
                     n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
-                    if a.isStashed(p.id) { n.behind = true } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
+                    if isDock {
+                        n.detailSymbol = "dock.arrow.down.rectangle"
+                        n.docked = true
+                        n.tooltip = (n.tooltip.map { $0 + "\n" } ?? "") + "Docked — click to put it back where it was (⌃⇥ goes to it too)"
+                    } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
                     n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
                     n.trailing = StatusGlyph.at(of: b).map(Age.short)
                     n.arrangement = id
-                    n.column = c
+                    n.column = isDock ? nil : c
                     n.placement = p.id
                     n.emphasis = id == selected && p.id == a.focused
                     tiles.append(n)
@@ -5447,25 +5301,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // or, closed, a row to recall it here — then a hairline, then
             // the rest.
             if !pinned.isEmpty {
-                // A pinned tile in a stack is in both places: at the top, and
-                // in its stack — the two rows lighting together on hover.
-                let stacked = Set(a.placements.filter { p in
-                    a.isStashed(p.id) || a.columns.contains { col in col.contains { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == p.id } }
-                }.map(\.id))
                 var top: [OrgNode] = []
-                var twinned: Set<PlacementID> = []
                 for block in pinned {
                     let open = tiles.filter { $0.block == block }
-                    for t in open {
-                        guard let p = t.placement, stacked.contains(p) else { top.append(t); continue }
-                        let copy = OrgNode(id: "\(aid)/pinned/\(p)", title: t.title, symbol: t.symbol)
-                        copy.take(t)
-                        copy.behind = false
-                        copy.twin = p
-                        t.twin = p
-                        twinned.insert(p)
-                        top.append(copy)
-                    }
+                    top += open
                     if !open.isEmpty { continue }
                     guard let b = hosts.block(block) else { continue }
                     let title = Self.linkTitle(b)
@@ -5477,14 +5316,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     n.action = { [weak self] in self?.recallPinned(block, in: id) }
                     top.append(n)
                 }
-                let rest = tiles.filter { t in !pinned.contains { $0 == t.block } || t.placement.map(twinned.contains) == true }
+                var rest = tiles.filter { t in !pinned.contains { $0 == t.block } }
+                // No hairline left over the dock with nothing docked under it.
+                if rest.last?.style == .divider { rest.removeLast() }
                 if !top.isEmpty {
                     let rule = OrgNode(id: "\(aid)/pins", title: "", symbol: "", detail: "")
                     rule.style = .divider
                     tiles = top + (rest.isEmpty ? [] : [rule]) + rest
                 }
             }
-            Self.markStacks(tiles)
             let titleMatches = matches(filter, [title(of: a)])
             guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
             let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
@@ -5912,7 +5752,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var target: PlacementID?
         if let pid = e.placement, let w = e.workspace, allWorkspaces.contains(w), let a = hosts.arrangement(w), a.placement(pid) != nil {
             if selected != w { hosts.select(w) }
-            if a.focused != pid || a.isStashed(pid) || (a.full != nil && a.full != pid) {
+            if a.focused != pid || a.isDocked(pid) || (a.full != nil && a.full != pid) {
                 hosts.append(arriving(pid, in: a), to: .block(w))
             }
             target = pid
@@ -5993,8 +5833,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.setString(id.description, forType: .manifoldBlock)
             return item
         }
-        // ⌃- and ⌃⇧- go back and forward, ⌃⇥ and ⌃⇧⇥ walk the focused
-        // tile's stack, ⌘` and ⇧⌘` the workspaces, here, before anything
+        // ⌃- and ⌃⇧- go back and forward, ⌃⇥ and ⌃⇧⇥ walk the space's
+        // tiles, ⌘` and ⇧⌘` the workspaces, here, before anything
         // else sees them — whatever has the keyboard, or nothing (a
         // workspace's row clicked, its tile not taking it, where AppKit's
         // own going round the views took ⌃⇥ before the menu).
@@ -6015,7 +5855,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // ⌃- in a terminal is the terminal's (undo, to a shell or Emacs).
             if event.keyCode == 27, self.window?.firstResponder is TerminalView { return event }
             if event.keyCode == 48 {
-                if mods.contains(.shift) { self.walkStackBack(nil) } else { self.walkStack(nil) }
+                if mods.contains(.shift) { self.walkSpaceTilesBack(nil) } else { self.walkSpaceTiles(nil) }
             } else if mods.contains(.shift) {
                 self.navigateForward(nil)
             } else {
@@ -6725,12 +6565,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
     }
 
-    /// Of a block's tiles, the one nearest `near`: in its stack, then its
-    /// column, then the first.
+    /// Of a block's tiles, the one nearest `near`: in its column, then the
+    /// first in the grid, then the first.
     private func nearest(_ tiles: [Placement], to near: PlacementID?, in a: ArrangementState) -> Placement? {
         guard let near, tiles.count > 1 else { return tiles.first }
-        let top = a.isStashed(near) ? a.tile(behind: near)?.id : near
-        if let t = tiles.first(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }) { return t }
         if let c = a.locate(near)?.column, let t = tiles.first(where: { a.locate($0.id)?.column == c }) { return t }
         return tiles.first
     }
@@ -6913,15 +6751,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !linked { hosts.link(from: from, to: block, kind: kind, context: context ?? "followed") }
     }
 
-    /// A tile over another (⌥-drag, ⌥-click): moved to just after it, the
-    /// other stashed behind it, and focused; out of its own stack first.
-    func cover(_ tile: PlacementID, over target: PlacementID, alone: Bool = false) {
-        guard let a = arrangement, tile != target, let (c, _) = a.locate(target) else { return }
-        var events: [Event] = a.isStashed(tile) ? a.unstashing(tile) : alone ? a.leavingAlone(tile) : []
-        var column = a.columns[c]
-        column.removeAll { $0.id == tile }
-        guard let i = column.firstIndex(where: { $0.id == target }) else { return }
-        events += [.move(tile, column: c, at: i + 1), .stash(target, behind: tile), .focus(tile)]
+    /// A tile over another (⌥-drag, ⌥-click): in its place and room, the
+    /// other docked under it (back when it's taken off), and focused.
+    func cover(_ tile: PlacementID, over target: PlacementID) {
+        guard let a = arrangement, tile != target, a.locate(target) != nil else { return }
+        var events = a.replacing(target, with: tile)
         if a.full == target { events.append(.full(tile)) }
         appendToSelected(events)
         warpPointerToFocus()
@@ -6976,7 +6810,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A block **over** a tile (§3.1): placed where the tile is, with the
-    /// tile stashed behind it, so it takes the tile's room until it is
+    /// tile docked under it, so it takes the tile's room until it is
     /// taken off (⌘W), when the tile comes back — `$EDITOR` over the
     /// terminal that ran it, a preview over its editor. A tile of the
     /// block already there is focused instead, unless `again`: then the
@@ -6995,7 +6829,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return t.id
         }
         let p = Placement(block: block, lens: lens)
-        var events: [Event] = [.place(p, column: c, at: i + 1), .stash(opener, behind: p.id), .focus(p.id)]
+        var events: [Event] = [.place(p, column: c, at: i + 1), .dock(opener, heir: p.id), .focus(p.id)]
         // Over a maximized tile, it's the maximized one now.
         if a.full == opener { events.append(.full(p.id)) }
         appendToSelected(events)
@@ -7457,7 +7291,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 let id = p.id
                 var notes: [String] = []
                 if a.columns.count > 1 { notes.append("column \(c + 1)") }
-                if a.isStashed(p.id) { notes.append("stashed") }
+                if a.isDocked(p.id) { notes.append("docked") }
                 if p.id == a.focused { notes.append("focused") }
                 // Where it is; and for a terminal, what runs in it and what
                 // that reports — searched by too.
@@ -8544,10 +8378,10 @@ extension MainWindowController: GridDelegate {
     }
 
     /// A shown tile's content height, as the grid lays it out; nil for one
-    /// stashed, or alone in its column.
+    /// docked, or alone in its column.
     private func contentHeight(of placement: PlacementID, in a: ArrangementState) -> CGFloat? {
-        guard !a.isStashed(placement), let (c, _) = a.locate(placement) else { return nil }
-        let shown = a.shownTiles(inColumn: c)
+        guard let (c, _) = a.locate(placement) else { return nil }
+        let shown = a.columns[c]
         let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
         let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
         guard shown.count > 1, sum > 0, usable > 0 else { return nil }
@@ -8559,8 +8393,8 @@ extension MainWindowController: GridDelegate {
     /// content (below, then above), what it takes from the biggest other
     /// in its column.
     private func settingHeight(of placement: PlacementID, points: CGFloat? = nil, share: Double? = nil, in a: ArrangementState) -> [Event]? {
-        guard !a.isStashed(placement), let (c, _) = a.locate(placement) else { return nil }
-        let shown = a.shownTiles(inColumn: c)
+        guard let (c, _) = a.locate(placement) else { return nil }
+        let shown = a.columns[c]
         let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
         let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
         let want = share ?? points.map { Double(($0 + GridView.barHeight) / usable) * sum } ?? a.height(of: placement)
@@ -8574,23 +8408,9 @@ extension MainWindowController: GridDelegate {
         return [.heights([placement: want, other.id: a.height(of: other.id) - delta])]
     }
 
-    func gridSwitcherFollowsPointer() {
-        stackMonitors.forEach(NSEvent.removeMonitor)
-        stackMonitors = []
-    }
-
-    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool {
-        guard let a = arrangement else { return false }
-        return !showingSome([], in: a, placement: top, .fan).isEmpty
-    }
-    func gridRoomForFan(_ top: PlacementID) -> Bool {
-        guard let a = arrangement else { return false }
-        let events = showingSome([], in: a, placement: top, .fan)
-        guard !events.isEmpty else { return false }
-        appendToSelected(events)
-        render()
-        return true
-    }
+    func gridSwitcherFollowsPointer() {}
+    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool { false }
+    func gridRoomForFan(_ top: PlacementID) -> Bool { false }
     func gridCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
     /// Another arrangement dropped on this one: its columns come over.
@@ -8606,17 +8426,18 @@ extension MainWindowController: GridDelegate {
         guard let a = arrangement else { return }
         if a.placement(placement) == nil { return bringFromElsewhere(placement, column: column, at: at, newColumn: newColumn) }
         if newColumn || column >= a.columns.count {
-            movePlacement(placement, toNewColumn: column, in: a, alone: alone)
+            movePlacement(placement, toNewColumn: column, in: a)
         } else {
-            appendToSelected(a.moving(placement, column: column, at: at, alone: alone))
+            appendToSelected(a.moving(placement, column: column, at: at))
         }
     }
 
     /// A tile dragged here from another workspace (one sprung open from
     /// the sidebar under the drag): its block placed where it was dropped,
-    /// stacked behind `behind` if it was dropped on a tile, and taken from
-    /// the workspace it came from — unless ⌥ copies it, shown in both.
-    private func bringFromElsewhere(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, behind: PlacementID? = nil,
+    /// in `over`'s place (that one docked) if it was dropped on a tile, and
+    /// taken from the workspace it came from — unless ⌥ copies it, shown in
+    /// both.
+    private func bringFromElsewhere(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, over: PlacementID? = nil,
                                     copy: Bool = NSEvent.modifierFlags.contains(.option)) {
         guard let a = arrangement, let id = selected, let (block, from) = dragged(.placement(placement)), let from else { return }
         let lens = from.placement.lens
@@ -8631,8 +8452,8 @@ extension MainWindowController: GridDelegate {
                 let below = at > 0 && at - 1 < a.columns[column].count ? a.columns[column][at - 1].id : nil
                 appendToSelected(below.map { a.bringing(block, lens: lens, inColumn: column, below: $0, newPlacement: { new }) }
                                  ?? [.place(Placement(id: new, block: block, lens: lens), column: column, at: 0)])
-                if let behind, let now = hosts.arrangement(id), now.placement(new) != nil {
-                    appendToSelected(now.stashing(new, behind: behind))
+                if let over, let now = hosts.arrangement(id), now.placement(new) != nil {
+                    appendToSelected(now.replacing(over, with: new))
                 }
             }
         }
@@ -8667,73 +8488,25 @@ extension MainWindowController: GridDelegate {
         }
     }
 
-    func gridUnstash(_ placement: PlacementID) {
-        guard let a = arrangement else { return }
-        appendToSelected(a.unstashing(placement))
-    }
+    func gridUnstash(_ placement: PlacementID) { focus(placement) }
+    func gridSwap(_ placement: PlacementID) { focus(placement) }
 
-    /// A tile behind another brought to the top of its stack (a peek's tab,
-    /// a fanned card, a bar peeking out above it clicked), the rest in
-    /// their order behind it.
-    func gridSwap(_ placement: PlacementID) {
-        guard let a = arrangement, a.isStashed(placement), let top = a.tile(behind: placement) else { return gridUnstash(placement) }
-        guard let order = stackOrder(of: top.id, in: a), let k = order.firstIndex(of: placement) else { return }
-        appendToSelected(a.walkingStack(order, to: k))
-    }
-
-    /// A shown tile and the tiles behind it, in order (those stashed above
-    /// a column's first shown tile are behind it too).
-    private func stackOrder(of top: PlacementID, in a: ArrangementState) -> [PlacementID]? {
-        guard let (c, _) = a.locate(top), !a.isStashed(top) else { return nil }
-        return [top] + a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == top }.map(\.id)
-    }
-
-
-    /// ⌥-drag: the dragged tile takes a tile's place, that tile and its
-    /// stack going behind it.
+    /// ⌥-drag: the dragged tile takes a tile's place, that one docked.
     func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool) {
         if let a = arrangement, a.placement(placement) == nil, let (c, i) = a.locate(target) {
-            return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, behind: target)
+            return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, over: target)
         }
-        cover(placement, over: target, alone: alone)
+        cover(placement, over: target)
     }
 
-    /// Close Stack: this tile and every one behind it are taken off the
-    /// workspace (as ⌘W takes one; the blocks keep). Maximized, its stack
-    /// is its whole column, which goes.
-    func gridCloseStack(_ placement: PlacementID) {
+    /// Close Column, on a maximized tile's menu: it and every tile in its
+    /// column taken off the space (as ⌘W takes one; the blocks keep).
+    func gridCloseColumn(_ placement: PlacementID) {
         guard let a = arrangement, let id = selected, let (c, _) = a.locate(placement) else { return }
-        let stack = a.full == placement
-            ? a.columns[c]
-            : a.columns[c].filter { $0.id == placement || (a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement) }
         let before = hosts.reachable()
-        for p in stack { noteClosing(p.id, in: id) }
-        var events: [Event] = a.full == placement ? [.full(nil)] : []
-        events += stack.map { .remove($0.id) }
-        appendToSelected(events)
+        for p in a.columns[c] { noteClosing(p.id, in: id) }
+        appendToSelected((a.full == placement ? [Event.full(nil)] : []) + a.columns[c].map { .remove($0.id) })
         afterClosing(reachedBefore: before)
-    }
-
-    /// Unstack: every tile behind this one shows, sharing its room.
-    /// Tile ▸ Unstack, Close Stack: the focused tile's stack.
-    @objc func unstackFocused(_ sender: Any?) {
-        guard let f = arrangement?.focused else { return NSSound.beep() }
-        gridUnstackAll(f)
-    }
-
-    @objc func closeFocusedStack(_ sender: Any?) {
-        guard let f = arrangement?.focused else { return NSSound.beep() }
-        gridCloseStack(f)
-    }
-
-    func gridUnstackAll(_ placement: PlacementID) {
-        guard let a = arrangement, let (c, _) = a.locate(placement) else { return }
-        let behind = a.columns[c].filter { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }
-        guard !behind.isEmpty else { return }
-        let share = a.height(of: placement) / Double(behind.count + 1)
-        var heights: [PlacementID: Double] = [placement: share]
-        for t in behind { heights[t.id] = share }
-        appendToSelected([.heights(heights)])
     }
 
     /// A pill clicked: its tile grows a step, as acme's does.
@@ -8742,19 +8515,13 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement))
     }
 
-    /// A pill ⌘-clicked: its tile fills the column, the others stashed.
+    /// A pill ⌘-clicked: its tile fills the column, the others docked.
     func gridFill(_ placement: PlacementID) {
         guard let a = arrangement else { return }
         appendToSelected(a.growing(placement, whole: true))
     }
 
-    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool) {
-        guard let a = arrangement else { return }
-        if a.placement(placement) == nil, let (c, i) = a.locate(behind) {
-            return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, behind: behind)
-        }
-        appendToSelected((alone ? a.leavingAlone(placement) : []) + a.stashing(placement, behind: behind))
-    }
+    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool) { gridCover(placement, over: behind, alone: alone) }
 
     func gridToggleFull(_ placement: PlacementID) {
         guard let a = arrangement else { return }
@@ -8764,11 +8531,19 @@ extension MainWindowController: GridDelegate {
     /// ⌘M: the focused tile into the stack behind its nearest tile — the
     /// shown one above it in the column, else the column's first — as
     /// Stash in a pill's menu does; the focus goes to that tile.
-    @objc func stashTile(_ sender: Any?) {
-        guard let a = arrangement, let f = a.focused, let (c, i) = a.locate(f), !a.isStashed(f) else { return NSSound.beep() }
-        let others = a.columns[c].enumerated().filter { $0.element.id != f && !a.isStashed($0.element.id) }
-        guard let heir = others.last(where: { $0.offset < i })?.element ?? others.first?.element else { return NSSound.beep() }
-        appendToSelected(a.stashing(f) + [.focus(heir.id)])
+    /// ⌘M: the focused tile docked (§3.1) — out of the grid, its room
+    /// back where it came from, listed under its space in the sidebar;
+    /// gone to again (⌃⇥, its row, a link), it goes back where it was.
+    @objc func dockTile(_ sender: Any?) {
+        guard let a = arrangement, let f = a.focused, a.locate(f) != nil else { return NSSound.beep() }
+        dock(f)
+    }
+
+    func dock(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        // Out of sight: pictured now, for a card of it (⌃⇥) to come from.
+        if let v = views[placement] { picture([v]) }
+        appendToSelected((a.full == placement ? [Event.full(nil)] : []) + a.docking(placement))
     }
 
     /// ⇧⌘↩: the focused tile over the whole arrangement, or back.
@@ -8780,8 +8555,11 @@ extension MainWindowController: GridDelegate {
     func gridResized(fractions: [Double]) { appendToSelected([.fractions(fractions)]) }
     /// Debugging: the columns' widths set, as a divider dragged sets them.
     func debugSetFractions(_ f: [Double]) { gridResized(fractions: f) }
+    /// A line between tiles dragged: the shares as it left them; a tile
+    /// pushed to nothing, docked (its room to the tile that pushed it).
     func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)]) {
-        appendToSelected(stashed.map { Event.stash($0.0, behind: $0.1) } + [.heights(heights)])
+        let gone = heights.filter { $0.value == 0 }.map(\.key).sorted()
+        appendToSelected(gone.map { Event.dock($0, heir: nil) } + [.heights(heights.filter { $0.value > 0 })])
     }
     func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
 
@@ -8914,12 +8692,9 @@ extension MainWindowController: GridDelegate {
         let maximized = a.full == placement
         menu.addItem(ClosureMenuItem(maximized ? "Restore" : "Maximize", symbol: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") { [weak self] in self?.gridToggleFull(placement) })
         menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
-        if let c = a.columnIndex(of: placement), a.columns[c].contains(where: { a.isStashed($0.id) && a.tile(behind: $0.id)?.id == placement }) {
-            menu.addItem(ClosureMenuItem("Unstack", symbol: "square.stack.3d.up.slash") { [weak self] in self?.gridUnstackAll(placement) })
-            menu.addItem(ClosureMenuItem("Close Stack", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
-        } else if maximized, let c = a.columnIndex(of: placement), a.columns[c].count > 1 {
-            // Maximized, the column behind it is its stack: closed with it.
-            menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseStack(placement) })
+        if maximized, let c = a.columnIndex(of: placement), a.columns[c].count > 1 {
+            // Maximized, the column behind it: closed with it.
+            menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseColumn(placement) })
         }
         menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
         if !maximized, contentHeight(of: placement, in: a) != nil {
@@ -8951,12 +8726,8 @@ extension MainWindowController: GridDelegate {
                 self.searchOutline(of: placement)
             })
         }
-        if let c = a.columnIndex(of: placement), a.shownTiles(inColumn: c).count > 1 {
-            menu.addItem(ClosureMenuItem("Stash", symbol: "tray.and.arrow.down", key: "m") { [weak self] in
-                guard let self else { return }
-                self.focus(placement)
-                self.stashTile(nil)
-            })
+        if a.locate(placement) != nil {
+            menu.addItem(ClosureMenuItem("Dock", symbol: "dock.arrow.down.rectangle", key: "m") { [weak self] in self?.dock(placement) })
         }
         menu.addItem(.separator())
         if let own = views[placement]?.pillItems, !own.isEmpty {
@@ -9297,12 +9068,12 @@ extension MainWindowController: GridDelegate {
     }
 
     /// Moves a placement into a new column at `index`.
-    private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState, alone: Bool = false) {
+    private func movePlacement(_ placement: PlacementID, toNewColumn index: Int, in a: ArrangementState) {
         guard let (sc, _) = a.locate(placement) else { return }
         let only = a.columns[sc].count == 1
         if only, index == sc || index == sc + 1 { return }
         // Past the end makes a new column; then it's moved into place.
-        appendToSelected((alone ? a.leavingAlone(placement) : []) + [.move(placement, column: a.columns.count, at: 0)])
+        appendToSelected([.move(placement, column: a.columns.count, at: 0)])
         guard let now = arrangement else { return }
         let from = now.columns.count - 1
         var to = index

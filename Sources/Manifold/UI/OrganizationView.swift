@@ -99,7 +99,8 @@ final class OrgNode {
     /// In a stack (on the desk): its rows share a faint ground, the top's
     /// first; and one behind the top, set in and dimmer, as out of sight.
     var stack: SelectionRowView.Grouped?
-    var behind = false
+    /// A docked tile's row (§3.1): its name quieter, out of the grid.
+    var docked = false
     /// The same tile shown twice (pinned at the top, and in its stack):
     /// the placement both rows are for, so the one lights with the other.
     var twin: PlacementID?
@@ -216,7 +217,7 @@ final class OrgNode {
             guard let s = stackOf[i] else { continue }
             let first = k == 0 || stackOf[out[k - 1]] != s
             let last = k == out.count - 1 || stackOf[out[k + 1]] != s
-            nodes[i].stack = first && last && !nodes[i].behind ? nil : SelectionRowView.Grouped(first: first, last: last)
+            nodes[i].stack = first && last && !nodes[i].docked ? nil : SelectionRowView.Grouped(first: first, last: last)
         }
         return out.map { nodes[$0] }
     }
@@ -236,7 +237,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && behind == o.behind && twin == o.twin
+            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && docked == o.docked && twin == o.twin
     }
 
     /// Takes another's values (the same row made again), its children
@@ -245,7 +246,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; behind = o.behind; twin = o.twin
+        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; docked = o.docked; twin = o.twin
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -1044,7 +1045,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.stack.map { " [stack\($0.first ? " first" : "")\($0.last ? " last" : "")]" } ?? "")\(n.behind ? " [behind]" : "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.stack.map { " [stack\($0.first ? " first" : "")\($0.last ? " last" : "")]" } ?? "")\(n.docked ? " [docked]" : "")"
         }.joined(separator: "\n")
     }
 
@@ -1348,7 +1349,7 @@ final class OrgRowView: NSTableCellView {
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-            name.textColor = node.dimmed || node.behind || mark.dim ? Theme.secondaryText : Theme.text
+            name.textColor = node.dimmed || node.docked || mark.dim ? Theme.secondaryText : Theme.text
         }
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {

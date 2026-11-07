@@ -119,17 +119,21 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     // Growing takes from the neighbors, nearest first; filling leaves slivers.
     for ev in a.growing(n.id, step: 0.1) { a.apply(ev) }
     #expect(abs(a.heights[n.id]! - 0.35) < 1e-9 && abs(a.heights[e.id]! - 0.4) < 1e-9)
-    // Filling the column stashes the others (a share of 0); unstashing one
-    // gives it the lower half of the biggest shown tile.
+    // Filling the column docks the others, their room its; gone to again,
+    // one comes back where it was, its room back from the tile that took it.
+    let eHeight = a.heights[e.id]!
     for ev in a.growing(n.id, whole: true) { a.apply(ev) }
-    #expect(a.heights[n.id] == 1 && a.isStashed(t2.id) && a.isStashed(e.id))
-    #expect(a.stashedTiles(inColumn: 1).map(\.id) == [t2.id, e.id])
-    for ev in a.unstashing(e.id) { a.apply(ev) }
-    #expect(a.heights[n.id] == 0.5 && a.heights[e.id] == 0.5 && a.isStashed(t2.id))
-    #expect(a.focused == e.id)
-    for ev in a.stashing(e.id) { a.apply(ev) }
-    #expect(a.heights[n.id] == 1 && a.isStashed(e.id))
-    for ev in a.unstashing(e.id) { a.apply(ev) }
+    #expect(abs(a.heights[n.id]! - 1) < 1e-9 && a.isDocked(t2.id) && a.isDocked(e.id))
+    #expect(a.columns[1].map(\.id) == [n.id] && a.docked.map(\.placement.id) == [t2.id, e.id])
+    for ev in a.revealing(e.id) { a.apply(ev) }
+    #expect(a.columns[1].map(\.id) == [n.id, e.id] && a.isDocked(t2.id))
+    #expect(abs(a.heights[e.id]! - eHeight) < 1e-9 && a.focused == e.id)
+    for ev in a.docking(e.id) { a.apply(ev) }
+    #expect(abs(a.heights[n.id]! - 1) < 1e-9 && a.isDocked(e.id) && a.focused == n.id)
+    for ev in a.revealing(e.id) { a.apply(ev) }
+    // Docked from the column's top: back over the tile it was over.
+    for ev in a.revealing(t2.id) { a.apply(ev) }
+    #expect(a.columns[1].map(\.id) == [t2.id, n.id, e.id] && a.docked.isEmpty)
     // Maximized over the whole arrangement, until restored or gone.
     a.apply(.full(n.id))
     #expect(a.full == n.id && a.focused == n.id)
@@ -140,7 +144,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     a.apply(.remove(n.id))
     #expect(a.full == nil)
     #expect(a.columns[1].map(\.id) == [t2.id, e.id])
-    #expect(abs(a.heights[t2.id]! + a.heights[e.id]! - 1) < 1e-9 && a.heights[e.id]! > 0.9)
+    #expect(abs(a.heights[t2.id]! + a.heights[e.id]! - 1) < 1e-9)
     #expect(a.focused == e.id)
     // A new column beside; layouts from older logs are read and ignored.
     for ev in a.bringing(n.block, lens: .preview, inNewColumnAt: 1, newPlacement: { n.id }) { a.apply(ev) }
@@ -871,26 +875,6 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(ShellCommand.output("fish: Unknown command: 'x'\ns/manifold[127]› ls", prompt: "s/manifold›") == "fish: Unknown command: 'x'")
 }
 
-@Test func aTileMovedUnderAStackDoesntTakeIt() {
-    var a = ArrangementState()
-    let top = Placement(block: BlockID(), lens: .terminal), x = Placement(block: BlockID(), lens: .terminal)
-    let y = Placement(block: BlockID(), lens: .terminal), below = Placement(block: BlockID(), lens: .terminal)
-    for (i, p) in [top, x, y, below].enumerated() { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.stash(x.id, behind: top.id))
-    a.apply(.stash(y.id, behind: top.id))
-    #expect(a.columns[0].map(\.id) == [top.id, y.id, x.id, below.id])
-    // x, from the stack, dropped just under its top (between top and y):
-    // past the stack, which stays behind top.
-    for e in a.moving(x.id, column: 0, at: 1, alone: true) { a.apply(e) }
-    #expect(a.columns[0].map(\.id) == [top.id, y.id, x.id, below.id])
-    #expect(!a.isStashed(x.id) && a.isStashed(y.id))
-    #expect(a.tile(behind: y.id)?.id == top.id)
-    // The top dragged out alone, dropped under its own spot: y shows in its
-    // place, and the top lands under it, not in front of it.
-    for e in a.moving(top.id, column: 0, at: 1, alone: true) { a.apply(e) }
-    #expect(a.columns[0].first?.id == y.id && !a.isStashed(y.id) && !a.isStashed(top.id))
-}
-
 @Test func roomGoesBackWhereItCameFrom() {
     let p = { Placement(block: BlockID(), lens: .terminal) }
     func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.001 }
@@ -914,7 +898,7 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     b.apply(.place(w, column: 1, at: 1))
     b.apply(.heights([z.id: 0.8, w.id: 0.2]))
     b.apply(.place(y, column: 0, at: 1))
-    for e in b.moving(y.id, column: 1, at: 1, alone: false) { b.apply(e) }
+    for e in b.moving(y.id, column: 1, at: 1) { b.apply(e) }
     #expect(near(b.height(of: x.id), 1) && near(b.height(of: z.id), 0.4))
     b.apply(.remove(y.id))
     #expect(near(b.height(of: z.id), 0.8) && near(b.height(of: w.id), 0.2))
@@ -939,33 +923,34 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(d.loans.isEmpty)
     d.apply(.remove(t2.id))
     #expect(near(d.height(of: t1.id), 0.5) && near(d.height(of: t3.id), 0.5))
-    // Closed with a stack behind it: the next takes its room and its debt.
+    // Docked to an heir: the heir takes its room and its debt.
     var e = ArrangementState()
     let base = p(), front = p(), back = p()
     e.apply(.place(base, column: 0, at: 0))
     e.apply(.place(front, column: 0, at: 1))
-    e.apply(.place(back, column: 1, at: 0))
-    e.apply(.stash(back.id, behind: front.id))
-    e.apply(.remove(front.id))
+    e.apply(.place(back, column: 0, at: 2))
+    e.apply(.dock(front.id, heir: back.id))
     #expect(e.loans[back.id]?[base.id] != nil)
+    // The heir taken off: the docked one back in its place, with the debt.
     e.apply(.remove(back.id))
+    #expect(!e.isDocked(front.id) && e.loans[front.id]?[base.id] != nil)
+    e.apply(.remove(front.id))
     #expect(near(e.height(of: base.id), 1))
 }
 
-@Test func aTileNudgedGoesOneStepItsStackAlong() {
+@Test func aTileNudgedGoesOneStep() {
     var a = ArrangementState()
     let p = { Placement(block: BlockID(), lens: .terminal) }
-    let top = p(), behind = p(), mid = p(), low = p(), other = p()
-    for (i, t) in [top, behind, mid, low].enumerated() { a.apply(.place(t, column: 0, at: i)) }
+    let top = p(), mid = p(), low = p(), other = p()
+    for (i, t) in [top, mid, low].enumerated() { a.apply(.place(t, column: 0, at: i)) }
     a.apply(.place(other, column: 1, at: 0))
-    a.apply(.stash(behind.id, behind: top.id))
-    // Down past mid, the stack along.
+    // Down past mid.
     for e in a.nudging(top.id, .below)! { a.apply(e) }
-    #expect(a.columns[0].map(\.id) == [mid.id, top.id, behind.id, low.id])
-    #expect(a.isStashed(behind.id) && a.focused == top.id)
+    #expect(a.columns[0].map(\.id) == [mid.id, top.id, low.id])
+    #expect(a.focused == top.id)
     // Up again; nothing above the top.
     for e in a.nudging(top.id, .above)! { a.apply(e) }
-    #expect(a.columns[0].map(\.id) == [top.id, behind.id, mid.id, low.id])
+    #expect(a.columns[0].map(\.id) == [top.id, mid.id, low.id])
     #expect(a.nudging(top.id, .above) == nil)
     #expect(a.nudging(low.id, .below) == nil)
     // Right, into the other column, about as far down: low under other.
@@ -981,44 +966,18 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(a.columns.count == 2 && a.columns[0].contains { $0.id == mid.id })
 }
 
-@Test func aTileStashedBehindAnotherComesBackUnderIt() {
-    var a = ArrangementState()
-    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)
-    a.apply(.place(x, column: 0, at: 0))
-    a.apply(.place(y, column: 0, at: 1))
-    a.apply(.place(z, column: 1, at: 0))
-    // z, from the other column, dropped on x's pill: behind x, in x's column, taking no room; its column gone.
-    a.apply(.stash(z.id, behind: x.id))
-    #expect(a.columns.count == 1)
-    #expect(a.columns[0].map(\.id) == [x.id, z.id, y.id])
-    #expect(a.isStashed(z.id))
-    #expect(a.tile(behind: z.id)?.id == x.id)
-    #expect(abs(a.height(of: x.id) + a.height(of: y.id) - 1) < 0.001)
-    // Back: the lower half of x, the tile it was behind.
-    for e in a.unstashing(z.id) { a.apply(e) }
-    #expect(!a.isStashed(z.id))
-    #expect(abs(a.height(of: z.id) - a.height(of: x.id)) < 0.001)
-    #expect(a.focused == z.id)
-    // A stashed tile before every shown one is behind the first shown.
-    var b = ArrangementState()
-    b.apply(.place(x, column: 0, at: 0))
-    b.apply(.place(y, column: 0, at: 1))
-    b.apply(.heights([x.id: 0, y.id: 1]))
-    #expect(b.tile(behind: x.id)?.id == y.id)
-}
-
 @Test func aWorkspaceRestoredIsAsItWas() {
     var a = ArrangementState()
     let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .editor)
     a.apply(.place(x, column: 0, at: 0))
     a.apply(.place(y, column: 0, at: 1))
     let before = a
-    a.apply(.stash(y.id, behind: x.id))
+    a.apply(.dock(y.id, heir: nil))
     a.apply(.full(x.id))
-    #expect(a.isStashed(y.id) && a.full == x.id)
+    #expect(a.isDocked(y.id) && a.full == x.id)
     // Undo: the state before, in one entry; the log went on.
     a.apply(.restore(before))
-    #expect(!a.isStashed(y.id))
+    #expect(!a.isDocked(y.id))
     #expect(a.full == nil)
     #expect(a.columns[0].map(\.id) == [x.id, y.id])
     #expect(abs(a.height(of: x.id) + a.height(of: y.id) - 1) < 0.001)
@@ -1060,40 +1019,6 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
 }
 
 
-@Test func aStackMovesWholeAndNeverComesOutByAccident() {
-    var a = ArrangementState()
-    let web = Placement(block: BlockID(), lens: .web), t1 = Placement(block: BlockID(), lens: .terminal)
-    let t2 = Placement(block: BlockID(), lens: .terminal), dir = Placement(block: BlockID(), lens: .directory)
-    let other = Placement(block: BlockID(), lens: .editor)
-    a.apply(.place(web, column: 0, at: 0))
-    a.apply(.place(t1, column: 0, at: 1))
-    a.apply(.place(t2, column: 0, at: 2))
-    a.apply(.place(dir, column: 0, at: 3))
-    a.apply(.place(other, column: 1, at: 0))
-    for p in [t1, t2, dir] { a.apply(.stash(p.id, behind: web.id)) }
-    // The last stashed is nearest behind.
-    #expect(a.columns[0].map(\.id) == [web.id, dir.id, t2.id, t1.id])
-    // ⇧-click on dir's pill: dir takes web's place whole, the rest of the
-    // stack (and web) behind it — nothing stashed comes out.
-    for e in a.unstashing(dir.id) + [.stash(web.id, behind: dir.id), .focus(dir.id)] { a.apply(e) }
-    #expect(a.shownTiles(inColumn: 0).map(\.id) == [dir.id])
-    #expect(abs(a.height(of: dir.id) - 1) < 0.001)
-    #expect(a.stashedTiles(inColumn: 0).count == 3)
-    #expect(a.focused == dir.id)
-    // dir's pill dropped on other's: dir and its whole stack go behind other.
-    a.apply(.stash(dir.id, behind: other.id))
-    #expect(a.columns.count == 1)
-    #expect(a.columns[0].first?.id == other.id)
-    #expect(a.stashedTiles(inColumn: 0).count == 4)
-    #expect(a.columns[0].map(\.id).firstIndex(of: dir.id) == 1)
-    #expect(abs(a.height(of: other.id) - 1) < 0.001)
-    // Moved to a column of its own, the stack follows.
-    a.apply(.move(other.id, column: 1, at: 0))
-    #expect(a.columns.count == 1)
-    #expect(a.columns[0].count == 5)
-}
-
-
 @Test func aBlockLinkInATextIsAMention() {
     let id = BlockID(host: HostID("h4z3gpme3et"))
     let found = Mention.find(in: "See [the terminal](manifold:\(id.description)) and [a file](notes/plan.md) and [[Ideas]].")
@@ -1105,45 +1030,6 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
 }
 
 
-@Test func aTileClickedOutOfAStackComesOutAloneUnderIt() {
-    var a = ArrangementState()
-    let top = Placement(block: BlockID(), lens: .editor)
-    let t1 = Placement(block: BlockID(), lens: .terminal), t2 = Placement(block: BlockID(), lens: .terminal), t3 = Placement(block: BlockID(), lens: .terminal)
-    a.apply(.place(top, column: 0, at: 0))
-    for (i, t) in [t1, t2, t3].enumerated() { a.apply(.place(t, column: 0, at: i + 1)) }
-    for t in [t1, t2, t3] { a.apply(.stash(t.id, behind: top.id)) }
-    // The stack is [t3, t2, t1] behind top; t2 clicked comes out under
-    // the stack, which stays behind top.
-    for e in a.unstashing(t2.id) { a.apply(e) }
-    #expect(a.shownTiles(inColumn: 0).map(\.id) == [top.id, t2.id])
-    #expect(a.columns[0].map(\.id) == [top.id, t3.id, t1.id, t2.id])
-    #expect(a.tile(behind: t3.id)?.id == top.id && a.tile(behind: t1.id)?.id == top.id)
-    #expect(abs(a.height(of: top.id) - a.height(of: t2.id)) < 0.001)
-    #expect(a.focused == t2.id)
-}
-
-
-@Test func aTileDraggedOverAnotherCoversItWithItsStackBehind() {
-    var a = ArrangementState()
-    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .editor)
-    let z = Placement(block: BlockID(), lens: .web), w = Placement(block: BlockID(), lens: .terminal)
-    a.apply(.place(x, column: 0, at: 0))
-    a.apply(.place(y, column: 0, at: 1))
-    a.apply(.place(z, column: 1, at: 0))
-    a.apply(.place(w, column: 1, at: 1))
-    a.apply(.stash(w.id, behind: z.id))
-    // z (with w behind it) ⌥-dragged over y: z takes y's place and room, y behind it, w still behind z.
-    var column = a.columns[0]
-    column.removeAll { $0.id == z.id }
-    let i = column.firstIndex { $0.id == y.id }!
-    for e in [Event.move(z.id, column: 0, at: i + 1), .stash(y.id, behind: z.id), .focus(z.id)] { a.apply(e) }
-    #expect(a.columns.count == 1)
-    #expect(a.shownTiles(inColumn: 0).map(\.id) == [x.id, z.id])
-    #expect(a.stashedTiles(inColumn: 0).map(\.id).sorted() == [y.id, w.id].sorted())
-    #expect(abs(a.height(of: x.id) - 0.5) < 0.001 && abs(a.height(of: z.id) - 0.5) < 0.001)
-    #expect(a.focused == z.id)
-}
-
 @Test func anOldAboutLinkDecodesAsLinked() throws {
     // Logs written before links by hand had `about` edges, from a note to its subject.
     let json = #"{"id":"L1","from":"h/01ABC","to":"h/01DEF","kind":"about","at":{"wall":1,"seq":0}}"#
@@ -1153,56 +1039,6 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     // Every kind by the way there once was reads as opened now.
     let kind = try JSONDecoder().decode([LinkKind].self, from: Data(#"["about","linked","mention","found","opened"]"#.utf8))
     #expect(kind == [.linked, .linked, .opened, .opened, .opened])
-}
-
-@Test func bringingAStashedTileRevealsIt() {
-    // ⌥⌘G with the project's git tile stashed behind another: it comes back, not just "focused" out of sight.
-    var a = ArrangementState()
-    let x = Placement(id: "x", block: BlockID(host: .local), lens: .terminal)
-    let g = Placement(id: "g", block: BlockID(host: .local), lens: .git)
-    a.apply(.place(x, column: 0, at: 0))
-    a.apply(.place(g, column: 0, at: 1))
-    a.apply(.heights(["x": 1, "g": 0]))
-    a.apply(.focus("x"))
-    #expect(a.isStashed("g"))
-    for e in a.bringing(g.block, lens: .git, inColumn: 0, newPlacement: { "new" }) { a.apply(e) }
-    #expect(!a.isStashed("g"))
-    #expect(a.focused == "g")
-}
-
-@Test func removingAStacksTopRevealsTheNextBehindIt() {
-    // ⌘W on an $EDITOR over a terminal: the terminal comes back in its place, its own stack still behind it.
-    var a = ArrangementState()
-    let w = Placement(id: "w", block: BlockID(host: .local), lens: .process)
-    let x = Placement(id: "x", block: BlockID(host: .local), lens: .editor)
-    let y = Placement(id: "y", block: BlockID(host: .local), lens: .terminal)
-    let z = Placement(id: "z", block: BlockID(host: .local), lens: .git)
-    for (i, p) in [w, x, y, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.heights(["w": 0.5, "x": 0.5, "y": 0, "z": 0]))
-    a.apply(.focus("x"))
-    a.apply(.remove("x"))
-    #expect(!a.isStashed("y"))
-    #expect(a.isStashed("z"))
-    #expect(a.tile(behind: "z")?.id == "y")
-    #expect(abs(a.height(of: "w") - 0.5) < 0.001 && abs(a.height(of: "y") - 0.5) < 0.001)
-    #expect(a.focused == "y")
-}
-
-@Test func aTopLeavingAloneLeavesItsStackWhereItWas() {
-    // ⌘-drag of a stack's top to another column: the next behind comes out in its place; the rest stay behind that.
-    var a = ArrangementState()
-    let x = Placement(id: "x", block: BlockID(host: .local), lens: .editor)
-    let y = Placement(id: "y", block: BlockID(host: .local), lens: .terminal)
-    let z = Placement(id: "z", block: BlockID(host: .local), lens: .git)
-    let o = Placement(id: "o", block: BlockID(host: .local), lens: .terminal)
-    for (i, p) in [x, y, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.place(o, column: 1, at: 0))
-    a.apply(.heights(["x": 1, "y": 0, "z": 0]))
-    for e in a.leavingAlone("x") + [.move("x", column: 1, at: 1)] { a.apply(e) }
-    #expect(a.columns[0].map(\.id) == ["y", "z"])
-    #expect(!a.isStashed("y") && a.isStashed("z"))
-    #expect(a.columns[1].map(\.id) == ["o", "x"])
-    #expect(!a.isStashed("x"))
 }
 
 @Test func aFolderBlocksPlaceIsItsOwnFolder() {
@@ -1425,22 +1261,6 @@ private final class Seen: @unchecked Sendable {
     #expect(a.bringing(block, lens: .preview, inColumn: 0, exact: true, newPlacement: { "x" }).contains { if case .place = $0 { return true } else { return false } })
     // Not for other lenses: a terminal isn't its block's other tile.
     #expect(a.tile(of: block, lens: .terminal) == nil)
-}
-
-@Test func aTilePushedDownGoesIntoTheStackOfTheTileBelowIt() {
-    var a = ArrangementState()
-    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal), z = Placement(block: BlockID(), lens: .terminal)
-    let behindY = Placement(block: BlockID(), lens: .terminal)
-    for (i, p) in [x, y, behindY, z].enumerated() { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.heights([x.id: 0.4, y.id: 0.3, behindY.id: 0, z.id: 0.3]))
-    #expect(a.tile(behind: behindY.id)?.id == y.id)
-    // As the grid tells it when a line's drag pushes y down to nothing.
-    a.apply(.stash(y.id, behind: z.id))
-    a.apply(.heights([x.id: 0.7, y.id: 0, behindY.id: 0, z.id: 0.3]))
-    #expect(a.columns[0].map(\.id) == [x.id, z.id, y.id, behindY.id])
-    #expect(a.tile(behind: y.id)?.id == z.id)
-    #expect(a.tile(behind: behindY.id)?.id == z.id)
-    #expect(a.shownTiles(inColumn: 0).map(\.id) == [x.id, z.id])
 }
 
 @Test func theAgentsAHostHasAreOfferedInTheCatalogsOrder() throws {
@@ -1792,65 +1612,6 @@ private final class Seen: @unchecked Sendable {
 
 // MARK: Going to a block
 
-@Test func aNewTileGoesAfterAStackNotIntoIt() {
-    // A file opened with a stack's top focused: a tile of its own, the stack untouched.
-    var a = ArrangementState()
-    let top = Placement(id: "top", block: BlockID(host: .local), lens: .editor)
-    let s1 = Placement(id: "s1", block: BlockID(host: .local), lens: .editor)
-    let s2 = Placement(id: "s2", block: BlockID(host: .local), lens: .editor)
-    let other = Placement(id: "other", block: BlockID(host: .local), lens: .terminal)
-    for (p, i) in [(other, 0), (top, 1), (s1, 2), (s2, 3)] { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.heights(["other": 0.3, "top": 0.7, "s1": 0, "s2": 0]))
-    a.apply(.focus("top"))
-    let file = BlockID(host: .local)
-    for e in a.bringing(file, lens: .preview, inColumn: 0, newPlacement: { "new" }) { a.apply(e) }
-    #expect(a.columns[0].map(\.id) == ["other", "top", "s1", "s2", "new"])
-    #expect(a.tile(behind: "s1")?.id == "top" && a.tile(behind: "s2")?.id == "top")
-    #expect(!a.isStashed("new") && a.focused == "new")
-    // Its room from the stack's top (the tile that shows above it), halved.
-    #expect(abs(a.height(of: "new") - a.height(of: "top")) < 0.001)
-    #expect(abs(a.height(of: "other") / (a.height(of: "other") + a.height(of: "top") + a.height(of: "new")) - 0.3) < 0.001)
-}
-
-@Test func goingToAStackedTileBringsItToTheTop() {
-    // ⌘J, a link, the finder: a tile in a stack comes to its top, the rest behind it.
-    var a = ArrangementState()
-    let top = Placement(id: "top", block: BlockID(host: .local), lens: .editor)
-    let s1 = Placement(id: "s1", block: BlockID(host: .local), lens: .editor)
-    let s2 = Placement(id: "s2", block: BlockID(host: .local), lens: .editor)
-    let other = Placement(id: "other", block: BlockID(host: .local), lens: .terminal)
-    for (p, i) in [(top, 0), (s1, 1), (s2, 2), (other, 3)] { a.apply(.place(p, column: 0, at: i)) }
-    a.apply(.heights(["top": 0.6, "s1": 0, "s2": 0, "other": 0.4]))
-    a.apply(.focus("other"))
-    for e in a.revealing("s2") { a.apply(e) }
-    #expect(a.focused == "s2" && !a.isStashed("s2"))
-    #expect(a.isStashed("top") && a.isStashed("s1"))
-    #expect(a.tile(behind: "top")?.id == "s2" && a.tile(behind: "s1")?.id == "s2")
-    #expect(a.shownTiles(inColumn: 0).map(\.id) == ["s2", "other"])
-    // In the stack's place and room.
-    #expect(abs(a.height(of: "s2") / (a.height(of: "s2") + a.height(of: "other")) - 0.6) < 0.001)
-    // The tile already showing: focused, nothing moved.
-    #expect(a.revealing("other") == [.focus("other")])
-}
-
-@Test func aStackWalkedWithOptionHeldKeepsItsOrderUntilLetGo() {
-    // ⌥-clicks with ⌥ held: each brings the next up; the ones passed stay where they were.
-    var a = ArrangementState()
-    let ids: [PlacementID] = ["a", "b", "c", "d"]
-    for (i, id) in ids.enumerated() { a.apply(.place(Placement(id: id, block: BlockID(host: .local), lens: .editor), column: 0, at: i)) }
-    a.apply(.place(Placement(id: "other", block: BlockID(host: .local), lens: .terminal), column: 0, at: 4))
-    a.apply(.heights(["a": 0.6, "b": 0, "c": 0, "d": 0, "other": 0.4]))
-    func stack() -> [PlacementID] { a.columns[0].map(\.id).filter { $0 != "other" } }
-    for (k, want) in [(1, ["b", "a", "c", "d"]), (2, ["c", "a", "b", "d"]), (3, ["d", "a", "b", "c"]), (0, ["a", "b", "c", "d"])] {
-        for e in a.walkingStack(ids, to: k) { a.apply(e) }
-        #expect(stack() == want)
-        #expect(a.focused == want[0] && !a.isStashed(want[0]))
-        #expect(want.dropFirst().allSatisfy { a.isStashed($0) && a.tile(behind: $0)?.id == want[0] })
-        #expect(a.shownTiles(inColumn: 0).map(\.id) == [want[0], "other"])
-        #expect(abs(a.height(of: want[0]) / (a.height(of: want[0]) + a.height(of: "other")) - 0.6) < 0.001)
-    }
-}
-
 @Test func anImageShownInATextIsEmbeddedAndKeptByIt() {
     // `![](…)` embeds (a strong edge, keeping the image); `[](…)` only mentions.
     let id = BlockID(host: HostID("h"), ulid: "01IMAGE")
@@ -2187,4 +1948,120 @@ private final class Seen: @unchecked Sendable {
     let parsed = Mani.parse(["annotate", "@last", "task=T-1", "role=log"])
     guard case let .success(.run(i)) = parsed else { Issue.record("not a run: \(parsed)"); return }
     #expect(i.verb == "annotate" && i.args == ["@last", "task=T-1", "role=log"])
+}
+
+// MARK: Docking (§3.1)
+
+@Test func aDockedTileGoesBackWhereItWas() {
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.001 }
+    var a = ArrangementState()
+    let p = { Placement(block: BlockID(), lens: .terminal) }
+    let x = p(), y = p(), z = p(), w = p()
+    for (i, t) in [x, y, z].enumerated() { a.apply(.place(t, column: 0, at: i)) }
+    a.apply(.place(w, column: 1, at: 0))
+    a.apply(.heights([x.id: 0.5, y.id: 0.3, z.id: 0.2]))
+    a.apply(.focus(y.id))
+    // Docked: out of the grid, still in the space; its room to the tile
+    // above (nothing owed by hand-set heights); the focus there.
+    a.apply(.dock(y.id, heir: nil))
+    #expect(a.columns[0].map(\.id) == [x.id, z.id] && a.isDocked(y.id))
+    #expect(a.placements.contains { $0.id == y.id } && !a.visible.contains { $0.id == y.id })
+    #expect(near(a.height(of: x.id), 0.8) && a.focused == x.id)
+    #expect(a.locate(y.id) == nil && a.placement(y.id) != nil)
+    // Gone to: back under x, its room back from x.
+    for e in a.revealing(y.id) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [x.id, y.id, z.id] && !a.isDocked(y.id))
+    #expect(near(a.height(of: x.id), 0.5) && near(a.height(of: y.id), 0.3) && near(a.height(of: z.id), 0.2))
+    #expect(a.focused == y.id)
+    // The tile above gone meanwhile: over the tile it was over.
+    a.apply(.dock(y.id, heir: nil))
+    a.apply(.remove(x.id))
+    for e in a.revealing(y.id) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [y.id, z.id])
+    // Alone in its column: the column goes, its width with it, and comes
+    // back where it was, as wide.
+    a.apply(.fractions([0.3, 0.7]))
+    a.apply(.dock(w.id, heir: nil))
+    #expect(a.columns.count == 1 && near(a.fractions[0], 1))
+    for e in a.revealing(w.id) { a.apply(e) }
+    #expect(a.columns.count == 2 && a.columns[1].map(\.id) == [w.id] && near(a.fractions[1], 0.7))
+    // Maximized over the rest: going to a docked tile restores, then undocks.
+    a.apply(.dock(z.id, heir: nil))
+    a.apply(.full(y.id))
+    let back = a.revealing(z.id)
+    #expect(back.first == .full(nil) && back.contains(.undock(z.id)))
+    // Removed while docked: gone from the space.
+    a.apply(.remove(z.id))
+    #expect(a.docked.isEmpty && a.placement(z.id) == nil)
+    // Every tile docked: the grid's empty, the space isn't.
+    a.apply(.dock(y.id, heir: nil))
+    a.apply(.dock(w.id, heir: nil))
+    #expect(a.gridIsEmpty && !a.isEmpty && a.focused == nil)
+    for e in a.revealing(y.id) { a.apply(e) }
+    #expect(a.columns.map { $0.map(\.id) } == [[y.id]] && a.focused == y.id)
+}
+
+@Test func aDockedTileDroppedInTheGridComesOutThere() {
+    var a = ArrangementState()
+    let p = { Placement(block: BlockID(), lens: .terminal) }
+    let x = p(), y = p(), d = p()
+    for (i, t) in [x, y, d].enumerated() { a.apply(.place(t, column: 0, at: i)) }
+    a.apply(.dock(d.id, heir: nil))
+    for e in a.moving(d.id, column: 0, at: 0) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [d.id, x.id, y.id] && !a.isDocked(d.id))
+    #expect(abs(a.columns[0].map { a.height(of: $0.id) }.reduce(0, +) - 1) < 1e-9)
+}
+
+@Test func aTileOverAnotherTakesItsPlaceAndDocksIt() {
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.001 }
+    var a = ArrangementState()
+    let p = { Placement(block: BlockID(), lens: .terminal) }
+    let top = p(), target = p(), low = p(), over = p()
+    for (i, t) in [top, target, low].enumerated() { a.apply(.place(t, column: 0, at: i)) }
+    a.apply(.place(over, column: 1, at: 0))
+    a.apply(.heights([top.id: 0.5, target.id: 0.3, low.id: 0.2]))
+    // ⌥-dropped on target: in its place and room; target docked.
+    for e in a.replacing(target.id, with: over.id) { a.apply(e) }
+    #expect(a.columns.count == 1 && a.columns[0].map(\.id) == [top.id, over.id, low.id])
+    #expect(near(a.height(of: over.id), 0.3) && near(a.height(of: top.id), 0.5) && a.isDocked(target.id))
+    #expect(a.focused == over.id)
+    // Taken off (⌘W, an `$EDITOR` done): target back in its place, as it was.
+    a.apply(.remove(over.id))
+    #expect(!a.isDocked(target.id) && a.focused == target.id)
+    #expect(a.columns[0].map(\.id) == [top.id, target.id, low.id])
+    #expect(near(a.height(of: top.id), 0.5) && near(a.height(of: target.id), 0.3) && near(a.height(of: low.id), 0.2))
+}
+
+@Test func olderLogsStacksAreDocked() throws {
+    // A `stash` replayed: docked, its room to the tile it went behind.
+    var a = ArrangementState()
+    let x = Placement(block: BlockID(), lens: .terminal), y = Placement(block: BlockID(), lens: .terminal)
+    a.apply(.place(x, column: 0, at: 0))
+    a.apply(.place(y, column: 0, at: 1))
+    a.apply(.stash(y.id, behind: x.id))
+    #expect(a.isDocked(y.id) && a.columns[0].map(\.id) == [x.id] && abs(a.height(of: x.id) - 1) < 1e-9)
+    // Gone to: back under x.
+    for e in a.revealing(y.id) { a.apply(e) }
+    #expect(a.columns[0].map(\.id) == [x.id, y.id])
+    // A saved state with a share of 0 (a stack): those docked, under the
+    // tile they were behind; a column all of 0 shows, as it did.
+    let b1 = BlockID(), b2 = BlockID(), b3 = BlockID(), b4 = BlockID()
+    let json = """
+    {"columns":[[{"id":"p1","block":"\(b1)","lens":"terminal"},{"id":"p2","block":"\(b2)","lens":"terminal"}],
+                [{"id":"p3","block":"\(b3)","lens":"terminal"},{"id":"p4","block":"\(b4)","lens":"terminal"}]],
+     "fractions":[0.5,0.5],"heights":{"p1":1,"p2":0,"p3":0,"p4":0},"focused":"p2"}
+    """
+    let s = try JSONDecoder().decode(ArrangementState.self, from: Data(json.utf8))
+    #expect(s.columns.map { $0.map(\.id) } == [["p1"], ["p3", "p4"]])
+    #expect(s.docked.map(\.placement.id) == ["p2"] && s.docked.first?.above == "p1")
+    #expect(s.focused == "p1")
+    // Kept as it is, docked tiles and all.
+    let again = try JSONDecoder().decode(ArrangementState.self, from: JSONEncoder().encode(s))
+    #expect(again == s)
+    // Filling a column replayed from an older log (others set to 0): docked.
+    var c = ArrangementState()
+    c.apply(.place(x, column: 0, at: 0))
+    c.apply(.place(y, column: 0, at: 1))
+    c.apply(.heights([x.id: 1, y.id: 0]))
+    #expect(c.isDocked(y.id) && c.columns[0].map(\.id) == [x.id])
 }

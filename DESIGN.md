@@ -357,8 +357,7 @@ docs/ of generated pages, megabytes each, had made a Rust project 86%
 HTML. They're drawn as shares (`LanguageShare`, a language's colour as code
 hosts colour it), and its Here Now the client's own reading of the
 host's blocks (`Presence`): terminals and agents whose directory is in
-it, notes linked to a file of it — each as its card, as a stack has it
-(`SummaryCard`), those placed in the space shown first and the rest
+it, notes linked to a file of it — each as its card (`SummaryCard`), those placed in the space shown first and the rest
 under Other spaces. A project's root's other spelling is
 the file system's (`realpath`: /private/tmp), not Foundation's, which
 gives /tmp back — a terminal's directory says the former.
@@ -371,8 +370,8 @@ gives /tmp back — a terminal's directory says the former.
 
 A space is **human-constructed**: what is in it is what you put there,
 and it stays until you take it off. Nothing in it is tidied away,
-nothing hides beneath anything but what you stacked, and nothing is
-placed for you by a heuristic except where in the grid a new tile lands.
+nothing is out of sight but what you docked, and nothing is placed for
+you by a heuristic except where in the grid a new tile lands.
 
 A space is a **grid**, apex's tiling (apex §11, *Tiling, as built*),
 which is acme's: columns, each a stack of **tiles** top to bottom,
@@ -383,15 +382,15 @@ lines, as big as can be, or to the whole column; the divider between
 columns sets widths. **Room goes back where it came from**: a tile
 keeps what it borrowed as it came — opened, or moved in — from the
 tiles that made room for it (`ArrangementState.loans`: each lender and
-how much), and as it goes — closed, moved away, stacked — pays each
+how much), and as it goes — closed, moved away, docked — pays each
 back that's still beside it, so a tile opened and closed again leaves
 its column as it was, and one moved elsewhere and closed there leaves
 both as they were. A height set by hand (a divider dragged, a tile
 grown) forgives the loans of the tiles it sets; what isn't owed goes to
 the tile above, else below — where a new tile would have taken it from.
-A tile covered by one dragged over it (stashed behind it in its own
-column) hands that one its room and its debt; one closed with a stack
-behind it, to the next in the stack. Columns likewise: a new column
+A tile covered by one dragged over it (docked under it) hands that one
+its room and its debt, and has them back when that one's taken off.
+Columns likewise: a new column
 takes a fair share of the width from every column in proportion, and
 gives it back in proportion when it goes — the widths as they were, not
 made equal. Every copy of the space works the loans out alike from the
@@ -403,7 +402,7 @@ in the accent) when that isn't the space's host — the last thing the
 bar gives up as it narrows — its **links** (the linked blocks' faces,
 stacked), its status's
 pill (§3.7, the program it names in the tooltip), and maximize and
-close; tiles stacked behind it show as its sheets. The bar is the
+close. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌘-click
 fills its column, ⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
@@ -414,12 +413,30 @@ title is cut.
 A tile **shrinks along one ladder**, by the room it has, not by a state:
 its content; then, under a few lines' room, its **summary card** (the
 block in a few lines, §3.5, shaped as the tile, joined to its bar); then
-its bar alone, rounded all round; then stashed behind its neighbour.
-Shrink to Summary (⇧⌘M) only sets a height on that ladder, and every
-step comes back by resizing; Maximize stands apart. The content runs
-beneath the bar, never under it, with room between tiles and the
-window's wash — a few pools of colour placed afresh each day over
-what's behind the window, blurred — showing through.
+its bar alone, rounded all round; pushed past that (a divider dragged
+over it), docked. Shrink to Summary (⇧⌘M) only sets a height on that
+ladder, and every step comes back by resizing; Maximize stands apart.
+The content runs beneath the bar, never under it, with room between
+tiles and the window's wash — a few pools of colour placed afresh each
+day over what's behind the window, blurred — showing through.
+
+A tile is **docked** (⌘M) to be out of the way and kept going: out of
+the grid, its room back where it came from, still in its space (and
+running) — listed under the space in the sidebar, after a hairline, the
+latest docked first, and among ⌃⇥'s cards. Gone to again (⌃⇥, its row,
+a link, ⌘O), it goes back where it was: under the tile it was under
+(else over the one it was over, else a column of its own where its
+was, as wide), its room taken back from the tiles that took it
+(`DockedTile`: its column, its neighbours, its share, who took it). A
+tile opened over another (⌥, an `$EDITOR` over the terminal that ran
+it) or ⌥-dropped on it takes its place and docks it *under* itself:
+taken off, the one under comes back in its place and room. Docking is
+not pinning: a pin keeps a block in the space for good and says where
+it sits among the space's rows; a docked tile is only out of the grid
+for now. (Docking took the place of stacks — tiles stashed behind
+another in its column, shown as sheets over its bar and fanned out —
+which were used only to put a tile away for a while. Older logs' stacks
+replay as docked: a share of 0, a `stash`.)
 
 Two verbs, and no others, put a block in front of you:
 
@@ -442,9 +459,9 @@ is in a menu (Rex's discipline). ⇧ is the bigger thing or the way back
 ⇧⌘/ the window's; ⌘G, ⇧⌘G). Brackets walk a sequence, the modifier
 naming which (⌘ a tile's history, ⌥⌘ the tiles, ⇧⌘ the spaces). ⌥⌘ and
 an arrow moves the focus that way, as `mani`'s @left and @below name
-tiles (`ManiLayout`); ⌥⇧⌘ and an arrow moves the tile a step that way,
-its stack along (`ArrangementState.nudging`: up or down past the shown
-tile beside it, left or right into the next column about as far down,
+tiles (`ManiLayout`); ⌥⇧⌘ and an arrow moves the tile a step that way
+(`ArrangementState.nudging`: up or down past the tile beside it, left
+or right into the next column about as far down,
 a column of its own at the edge). ⌃⌘↑ ⌃⌘↓ moves the item you're on — a
 line, an outline's row, a notebook's cell. ↩ is how the tile shows: ⌘↩
 its own action (Edit or View, Run Cell, Toggle Checkbox — the Tile
@@ -454,8 +471,8 @@ only (AppKit clears it from the next), so no two commands share one,
 even where they'd never both apply; `menukeys` (debug) lists them all.
 
 The space's log holds `Place{placement, column, at}`, `Move`, `Remove`,
-`Focus`, `Fractions`, `Heights`, `MoveColumn`, `Stash`, `Full` and
-`Title`.
+`Focus`, `Fractions`, `Heights`, `MoveColumn`, `Dock`, `Undock`, `Full`
+and `Title`.
 
 **Retired:** the column's past of §3.1's first simplification (a column
 of one with a hidden history was still something hidden), tiling as a
@@ -566,8 +583,9 @@ destination:
    in place (a page, a preview, a listing).
 3. **The switchers are the trail at three scales**, as ⌘⇥ and ⌘` are
    the Mac's at two: ⌘` walks its spaces, ⌥⇥ its tiles in every space,
-   ⌃⇥ one stack's (whose order is the trail's already, the tile settled
-   on brought to its top). Each walks while its modifier is held and
+   ⌃⇥ this space's — its docked tiles too, a card each (out of its row
+   in the sidebar, and back), one settled on going back where it was.
+   Each walks while its modifier is held and
    settles where it's let go, so a tap goes back and forth between two;
    only what's settled on goes on the trail, and settling on a tile
    settles its space. Back and forward are the other reading of the same
@@ -586,7 +604,6 @@ destination:
    they've got to, no jump), then it comes up. ⇥ again before they show
    is no tap, and they come at once, in place 60 ms on; ⇥ while they
    unfold sends them the rest of the way four times as fast.
-   A stack that has to grow to fan out does that once they're wanted.
 4. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
    is found. With nothing typed, the focused block's neighborhood,
    nearest first; typed, what the query names best first — its title,
@@ -602,7 +619,7 @@ destination:
    pressed twice; ⌘P stops at the space. Where it looks is always shown,
    at the field's end: the reaches as words, the one it's at on the
    accent's pill (a click goes to another). The space's is its tiles
-   (stashed ones too), its pins, what was closed from it, its agents'
+   (docked ones too), its pins, what was closed from it, its agents'
    turns, the files of every project its tiles are in, and the desk's
    other spaces themselves — places to go, found by name only (whole,
    its start, a word's), not what they hold; all spaces is
@@ -617,7 +634,7 @@ destination:
    it ended, a note its first lines, a diff its files and lines changed
    (`BlockSummary`, from its state alone, so a block off screen or on
    another host has one too). A tile short of room shows its summary
-   card; so do Open Quickly's rows, a stack fanned out, a link's face
+   card; so do Open Quickly's rows, ⌃⇥'s cards, a link's face
    rested on, Overview past ten blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
    never the live view. With a stamp, a summary could show the node *as
    it was then*, which Prism cannot.
@@ -692,7 +709,7 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, a stack's tiles in a dotted outline | the spaces |
+| **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, its docked tiles after a hairline, quieter | the spaces |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
 Two — and the space's threads (§3.12), which are other things than
@@ -702,8 +719,7 @@ and a filter over either tree (`SidebarFilter`, ⌥⌘., the lighthouse
 beside them): a test of each block — the first, blocks with a status,
 working, needing you, done or failed — that keeps the rows it admits
 and the way to each (`OrgNode.filtered`: a row stays if it or anything
-under it is admitted; a tile behind in a stack keeps its stack's top,
-the two outlined as the stack is; counts are of what's admitted), every
+under it is admitted; counts are of what's admitted), every
 row on the way open, what was open and closed by hand kept aside and
 put back. It knows nothing of the trees, so a filter more is a case
 more. The links live on the tile's bar and in the neighborhood map
@@ -827,7 +843,8 @@ card in Overview, an Open Quickly row chosen with ⏎: plain **goes to**
 it where a tile shows it, in any space (beside, if none does); **⌘
 means beside** — below the tile clicked in, taking its lower half; **⌥
 means over** — the block goes over the tile clicked in, which is
-stashed behind it (`showOver`), as ⌥-drag stacks a tile over another;
+docked under it until it's taken off (`showOver`), as ⌥-drag puts a
+tile over another;
 **⇧⌘** gives it to the system's app. ⇧ alone is about the path: ⇧-click
 a bar for where the block is, ⇧-drag a bar to link. One `Disposition`
 carries each, read off the click (or ⏎) wherever a view opens, and
@@ -2271,12 +2288,10 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   tiling — columns of tiles with `heights`, a new tile taking the lower
   half of the column's biggest (`bringing(_:lens:inColumn:below:)`),
   `growing(_:step:whole:)` for colgrow, a removed tile's height to its
-  neighbor; a share of 0 is a stashed tile, a sheet behind its
-  stack's top, fanned out from the stack button (`stashing`,
-  `unstashing`; `revealing`, what going to a tile does, brings a
-  stashed one to the top of its stack, `toppingStack`, and a new tile
-  goes after its anchor's stack, never inside it); `full` a tile
-  maximized over the space;
+  neighbor; `docked`, tiles out of the grid and where each was
+  (`docking`, `revealing` — what going to a tile does, a docked one
+  back where it was — and `replacing`, a tile over another, that one
+  docked under it); `full` a tile maximized over the space;
   `GridView` with each tile's bar (`TilePill`: symbol, title, place,
   links, status glyph, maximize and close; drag to move, click to grow),
   dividers, drops between tiles and beside columns; `goTo(_:)` and `show(_:lens:_:)` (Bring
@@ -2296,7 +2311,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
   summaries; the blocks' views under `state:` placement ids, kept while
   it's up; ⎋ leaves it.
 - Summaries (§3.5): `BlockSummary` in the core; `SummaryCard` for a
-  tile short of room, a fanned stack, Open Quickly's rows, Overview.
+  tile short of room, Open Quickly's rows, Overview.
 - History of a text: `Block.replaying(_:upTo:)` rebuilds a block from its
   log at a moment; the history view (⌥⌘Y) scrubs a text block through
   its changes, and a diff block can compare a text block at two moments
@@ -2755,9 +2770,10 @@ purpose — set down so a later audit reads them as choices, not slips.
   said, not silent: a toast with Undo, ⇧⌘T, Recently Closed, and
   Open Quickly's *recent* rows.
 - **Size is presentation, not state.** A tile shrinks along one ladder —
-  content, summary card, bar, stashed — by the room it has; there is no
-  minimized or collapsed state to get stuck in, and every step comes
-  back by resizing. Shrink to Summary (⇧⌘M) only sets a height.
+  content, summary card, bar — by the room it has; there is no collapsed
+  state to get stuck in, and every step comes back by resizing. Out of
+  the way is docking (⌘M), one state, listed in the sidebar and a ⌃⇥
+  away. Shrink to Summary (⇧⌘M) only sets a height.
   Maximize stands apart, a layout of its own.
 - **Overview is the one view across spaces.** Agents is a filter of it
   (⌃⌘A), and past ten blocks it shows summaries rather than live tiles.
@@ -2784,7 +2800,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   (or ⇥) widens it to the space; ⇧⌘P filters the tile's own outline and doesn't forget
   its filter, and pressed again leaves it. Print stays in the File menu,
   keyless: rare in a tiling tool.
-- **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
+- **⌘M is Dock,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
   the step above it. Minimize stays in the Window menu, keyless.
 - **⌥⌘M is Comment** (§3.12), taking macOS's Minimize All; ⇧⌥⌘M the
   neighborhood map.
@@ -2799,8 +2815,9 @@ purpose — set down so a later audit reads them as choices, not slips.
   space's part of the sidebar, with a tile or without.
 - **⌘` walks spaces,** the app's windows; with one space it walks
   windows.
-- **⌃⇥ walks a stack** as a browser's tabs, in every view, a terminal's
-  too; a quick release switches without showing cards, as ⌘⇥ does.
+- **⌃⇥ walks the space's tiles,** docked ones too, as a browser's tabs,
+  in every view, a terminal's too; a quick release switches without
+  showing cards, as ⌘⇥ does.
 - **⌥⇥ walks the trail's tiles,** across spaces, as ⌘` walks its
   spaces: free on the Mac, and taken from a terminal as ⌃⇥ is (Meta-Tab,
   with Option as Meta). ⌃\` was the other choice, but a terminal's ⌃\` is
@@ -2831,8 +2848,7 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **The bar:** a click grows the tile a step (acme's colgrow — clicks
   build up; no double-click), ⌘-click fills the column, ⌃-click or the icon
   opens the tile's menu, ⇧-click the path menu.
-- **In a stack** a click brings a tile to the top and ⌘-click takes it
-  out, as ⌘-drag takes the top alone.
+- **A docked tile's row** clicked puts it back where it was.
 - **The map** is a graph browser: a click re-centres, double-click or ↩
   goes.
 - **Reset Graph is only on the host's own row,** not in every menu as
@@ -2840,9 +2856,7 @@ purpose — set down so a later audit reads them as choices, not slips.
 
 ### Look
 
-- **Open Quickly's field is 22 points,** the one big field; the stack
-  button's count is 8-point bold on a 5-point radius, a badge on a
-  button.
+- **Open Quickly's field is 22 points,** the one big field.
 - **Colours that say something keep their own:** the diff's, a find
   match's, the terminal's palette, the code page's (go.dev's), a remote
   host's chip in the accent, the summary card's fill lifted above the
@@ -2872,9 +2886,9 @@ purpose — set down so a later audit reads them as choices, not slips.
   to the other's, what it shows scaled to its width from its top (cut,
   never stretched) and changing on the way — shrinking to some 60% of
   that, for a card about as wide as its tile (⌃⇥'s, ⌥⇥'s), so the tile
-  is seen to shrink into it rather than only be cut off from below, and a tile in a stack comes
-  out of its sheet and goes back into it (⌃⇥'s rest slide out from under
-  its top, whole cards, and back) — nothing just fades in; the
+  is seen to shrink into it rather than only be cut off from below, and a
+  docked tile's card comes out of its row in the sidebar and goes back
+  into it — nothing just fades in; the
   next ⌃⇥ puts away whatever's still on its way. Layout is done once, where things end, and only layers travel —
   a terminal resized once, not at every step. Focus, typing, a divider
   dragged and the palettes don't move at all.

@@ -39,12 +39,10 @@ parts from the Mac's conventions on purpose.
   the header showing a back button, the list's name and what it holds,
   as Safari's Bookmarks does; it isn't in
   the tree itself. Under **Spaces**, the sidebar is
-  the table of contents of the screen: a space's tiles in order,
-  a stack's tiles together under its top — nearest first, as it fans,
-  the titles of those behind a step dimmer, a dotted rounded line round
-  the stack's rows. A pinned tile in a stack is listed both at the top
-  and in its stack; the pointer on either lights the other too. Click a tile to focus it (one behind comes to the top
-  of its stack), a space to go to it, double-click
+  the table of contents of the screen: a space's tiles in order, then,
+  after a hairline, those **docked**, the latest first, their names a
+  step dimmer. Click a tile to focus it (a docked one goes back where it
+  was), a space to go to it, double-click
   one to name it; drag a block from anywhere in the sidebar onto a tile
   to bring it in beside, onto a space for its active column, or
   between spaces for one of its own, and drag spaces to
@@ -62,47 +60,26 @@ parts from the Mac's conventions on purpose.
   them meanwhile; a new column takes its width from every column in
   proportion and gives it back the same way;
   Tile ▸ Grow (⌃⌘=) takes a step from its neighbors; Fill
-  the Column (⌃⇧⌘=) gives it the whole column and **stashes** the
-  others. A stash is a stack behind any tile: the sheets behind it peek
-  out above its card, as a stack of paper — each a card of its own, with
-  an edge and a shadow, stepped in further the deeper it is, within the
-  gap between tiles, so a stacked tile takes no more room than a tile
-  alone — and its bar's stack button wears how many are behind. A stack
-  just made (or grown) has its sheets drop into place; the pointer on
-  the stack button raises them into tabs at once — on the sheets, once
-  it rests there a moment with no button down, as the sheets are in the
-  gap where a drag resizes the tiles (passing through, or pressing, they
-  stay down, and a press in the gap always resizes) — one for each tile
-  behind, its symbol and
-  title, over whatever is above (or, at the top of a column, below the
-  bar), staying while the pointer is on them: click one to bring its tile
-  to the top, or drag it out to put the tile anywhere, as a fanned card
-  is dragged (past four, the count fans the stack). **Click those sheets**, or
-  the stack button on the tile's bar (beside maximize), or press ⌃⇥, and
-  in the tile's place the stack opens as a column of **summary cards**,
-  as iOS opens a stack of notifications: the top first, then those behind
-  it, nearest first, each its symbol, title and where it is, when it last
-  did something (or its state, in its color), and two or three lines of
-  what it holds — a terminal its last command and the last lines of its
-  screen, an agent what it was asked and what it said, a note its first
-  lines, a diff its files and lines changed, a search its hits — with a
-  picture of a page, a PDF or an image. Scroll through them; the one
-  chosen is ringed. With ⌃⇥, each ⇥ moves the choice a card down (⌃⇧⇥
-  back up), and letting go of control brings it to the top (Escape leaves
-  things be; ⌃⇥ is the stack's in every tile, a terminal's too, so
-  tmux and Emacs don't get it) — and as with ⌘⇥, a ⌃⇥ let go quickly (within some 150 ms,
-  a touch before macOS's switcher would appear; ⌥⇥ the same) goes to the tile
-  behind with no cards shown at all (⌃⇧⇥, the farthest), the cards
-  coming only for a ⌃⇥ held; move the pointer over the cards and the card under it is
-  chosen from then on, a click bringing it to the top and a ⌘-click
-  taking it out of the stack, beside it (as ⌘ takes a stack's top alone
-  when dragged). A click away from the cards leaves things be. Either way, **drag a card** to take that tile out of the stack:
-  the cards fold away, the stack as it was, and the tile goes where it's
-  dropped as a tile dragged does (between tiles, onto one, ⌥ over one),
-  on its own — the top dragged out, the next behind it shows.
+  the Column (⌃⇧⌘=) gives it the whole column and **docks** the
+  others. **Dock** (⌘M, or Dock in a bar's menu) takes a tile out of the
+  grid to have it out of the way and still going: its room goes back
+  where it came from, and it's listed under its space in the sidebar,
+  after a hairline, the latest docked first. Go to it again — ⌃⇥, its
+  row, a link, ⌘O — and it goes back where it was: under the tile it was
+  under (else over the one it was over, else a column of its own where
+  its was, as wide), taking its room back from the tiles that took it.
+  **⌃⇥** walks the space's tiles, docked ones too, the latest settled on
+  first, as ⌥⇥ walks every space's: let go quickly and it goes to the
+  one before, so a tap goes back and forth between two (⌃⇧⇥, the
+  farthest); held a moment, their summary cards come, a docked one's out
+  of its row in the sidebar, each ⇥ a card further, and letting go goes
+  to the one chosen (Escape leaves things be). ⌃⇥ is the space's in
+  every tile, a terminal's too, so tmux and Emacs don't get it. Docking
+  isn't pinning: a pin keeps a block in the space for good; a docked
+  tile is only out of the grid for now.
   The same summary is everywhere a block is shown small. **A tile shrinks
-  in steps**, one ladder — its content, its summary card, its bar alone,
-  stashed behind another — as a presentation of the room it has, not a
+  in steps**, one ladder — its content, its summary card, its bar alone
+  — as a presentation of the room it has, not a
   state of its own (Maximize stands apart): under 80 points of content, its summary stands in for it
   in its body, under its bar — its lines, as many as fit, when at the
   right (a click goes to it and grows it a little), squared off under
@@ -114,20 +91,13 @@ parts from the Mac's conventions on purpose.
   exit 2 · 4m"); a sidebar row's hover card has it
   under its picture; in ⌘O a block's row is its card, and what it says
   is found;
-  `mani ls`, `info` and `context` print it. A bar peeking out above its
-  stack, clicked, comes to the top; ⌘-clicked, it comes out of the
-  stack. The peek's tabs go the same way. A stack is one
-  thing: drop its top tile's bar on another's and the whole stack goes
-  behind that tile; move the top tile and the stack moves with it.
-  Unstack in the bar's menu (or Tile ▸ Unstack) lays the whole stack out in the column;
-  Close Stack takes the tile and its stack off the space (from a
-  maximized tile, Close Column takes the column).
+  `mani ls`, `info` and `context` print it. From a maximized tile's
+  menu, Close Column takes its column off the space.
   Opening a block that isn't in the space always makes it a tile of
-  its own (below the biggest tile, after that tile's stack, never into
-  it); going to one that is — a link, the sidebar, Open Quickly, ⌘J,
-  ⌘P, Back, a found line, opening it again — goes there: a tile on its
-  own is focused, one in a stack comes to the top of it (the rest
-  behind it, as they were), and the pointer follows (only while
+  its own (below the biggest tile); going to one that is — a link, the
+  sidebar, Open Quickly, ⌘J, ⌘P, Back, a found line, opening it again —
+  goes there: a tile in the grid is focused, a docked one goes back
+  where it was, and the pointer follows (only while
   Manifold is the app in front: in the background, or switched away
   from before it moves, the pointer is left alone). Going to a tile
   squeezed down to its bar — by a link, the sidebar, Open Quickly, ⌘J,
@@ -136,13 +106,14 @@ parts from the Mac's conventions on purpose.
   points, or a quarter of the column), taken from its neighbours as
   growing takes it, and the pointer goes to it, as apex does. **⌥ with any
   click that opens something** puts what opens over the tile clicked
-  in, that tile going behind it (as ⌥-drag stacks): a link or a
+  in, in its place and room, that tile docked under it until it's taken
+  off — when it comes back where it was (an `$EDITOR` over the terminal
+  that ran it, done): a link or a
   block's link in a note, a bar's link, a sidebar row, a listing's
   file or folder, ⌘⌥-click on a terminal's link, a page's, or a symbol in an
-  editor (its definition stacked over the editor). Drop a bar on
-  another's to stash it there; ⌥-drag it instead and it goes on top,
-  the target (and whatever was behind it) stashed behind — the outline
-  while you drag is the target tile's shape, to say so; ⇧-drag a bar,
+  editor (its definition over the editor). ⌥-drag a bar onto another
+  tile and it takes that tile's place, the target docked under it — the
+  outline while you drag is the target tile's shape, to say so; ⇧-drag a bar,
   or drag it by its icon (the pointer on the icon swings it out of the
   bar toward you, hinged at its left edge, growing a little so it shows
   past the hand, to be taken — a terminal's prompt stepping into a window
@@ -206,12 +177,8 @@ parts from the Mac's conventions on purpose.
   is — a file's or note's text, a terminal's whole history, a page's
   or PDF's text, a diff's patch, a listing, a search's hits, a
   notebook's cells — as `mani read` prints it.
-  Stash (⌘M, or Stash in a bar's menu) puts the
-  focused tile behind its nearest tile — the one above it, else the
-  column's first — and focuses that one. Dragging the line between two tiles past one's least
-  height stashes it, in the direction it was pushed (pushed up, behind
-  the tile above it; pushed down, behind the tile below it), and goes
-  on against the next, until all above or below are put away.
+  Dragging the line between two tiles past one's least height docks it,
+  and goes on against the next, until all above or below are put away.
   Double-click the line between two tiles, or two columns, and the two
   share their room evenly, the line gliding there with the pointer on
   it. Maximize (⇧⌘↩, or the ⤢ at the right of a
@@ -233,7 +200,7 @@ parts from the Mac's conventions on purpose.
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
   The focused tile has a ring around it. **⌘Z undoes** the space's
-  last change at your hand (a tile placed, taken off, moved, stashed,
+  last change at your hand (a tile placed, taken off, moved, docked,
   resized, maximized), ⇧⌘Z redoes, a hundred deep per space, when
   nothing else takes the key (an editor undoes its own text). Undo
   doesn't rewind the log, which only grows: it appends the earlier state
@@ -261,7 +228,7 @@ parts from the Mac's conventions on purpose.
   that folder here, as ⌘-clicking a document's title does in the
   Finder. ⌥⌘ and an arrow moves the focus to the tile that way (Go ▸
   Focus), ⌥⌘[ and ⌥⌘] to the next and previous; ⌥⇧⌘ and an arrow moves
-  the focused tile a step that way (Tile ▸ Move), its stack along: up or
+  the focused tile a step that way (Tile ▸ Move): up or
   down past the tile beside it, left or right into the next column about
   as far down as it was, or into a column of its own at the edge.
 - **Keys mean the same thing everywhere.** ⇧ is the bigger one or the
@@ -301,7 +268,7 @@ parts from the Mac's conventions on purpose.
   buttons) go along every place you've been — the tiles focused and,
   within a block, where a jump took you from: a definition gone to, a
   found line, a heading, a command, an outline's entry, a PDF's page —
-  back to the tile in its space (brought out if it was stashed) and
+  back to the tile in its space (back from the dock if it was docked) and
   the line, command, scroll or page it was at, the pointer with it.
   Going somewhere new from back there drops what was forward, as in VS
   Code. ⌘[ and ⌘] are for what has a history of its own: a web page's,
@@ -329,15 +296,15 @@ parts from the Mac's conventions on purpose.
   the one before, so a tap goes back and forth between two (⌥⇧⇥, the
   farthest); held a moment, the tiles come as a column of their summary
   cards over the space — the focused tile becoming the first, the rest
-  coming out of their tiles here, their stacks' sheets, or — in another
-  space — their rows in the sidebar, each one elsewhere naming its
+  coming out of their tiles here, or — docked, or in another space —
+  their rows in the sidebar, each one elsewhere naming its
   space — each ⇥ a card further, and letting go goes to the one chosen:
   its space comes in if it's another, its card becomes its tile there,
-  and the rest go back to their tiles, sheets and rows (Escape, or a click away, leaves things be; a card clicked
+  and the rest go back to their tiles and rows (Escape, or a click away, leaves things be; a card clicked
   goes there). Tiles only passed on the way don't count as gone to, and
   one settled on settles its space for ⌘\` too: the switchers are one
-  trail at three scales — ⌘\` its spaces, ⌥⇥ its tiles, ⌃⇥ a stack's
-  (whose order is the trail's, the tile settled on brought to its top).
+  trail at three scales — ⌘\` its spaces, ⌥⇥ its tiles, ⌃⇥ the space's
+  (its docked tiles too).
   Back (⌃-) is the other way over it: a stack of every place, within
   blocks too, walked one step at a time. ⌥⇥ is taken from a terminal
   too, as ⌃⇥ is (Meta-Tab, with Option as Meta).
@@ -352,10 +319,8 @@ parts from the Mac's conventions on purpose.
   drag, as a folder in the Finder springs open, to drop it exactly where
   it should go there (after the system's spring-loading delay,
   Accessibility ▸ Pointer Control, and not with it turned off); one left empty by a move stays,
-  as every space does until it's removed. A stack's top takes the
-  stack along; ⌘-drag it to take it alone, the next behind coming out in its place — a fanned-out card
-  drags its tile out alone the same way. ⌘W on a stack's top takes it
-  off and the next comes out. Spaces drag from the sidebar onto the grid the same
+  as every space does until it's removed. A docked tile's row dragged
+  onto the grid comes out where it's dropped. Spaces drag from the sidebar onto the grid the same
   way, their columns coming over.
 - **Links by hand**: ⇧-drag any block's bar onto any tile and the
   dragged block *links* to the tile's block — one edge, read both
@@ -424,8 +389,7 @@ parts from the Mac's conventions on purpose.
   the lighthouse at the sidebar's foot, or its counts) narrows the
   sidebar, whichever way it's organized, to the blocks that are working,
   need you, or are done or failed — and the way to each: its host and
-  space in Spaces (a tile behind in a stack with the stack's top, the
-  two in the stack's outline), its folders in Files — every row on the
+  space in Spaces, its folders in Files — every row on the
   way open, each count of what's shown. The lighthouse fills, lit, while
   it's on; ⌥⌘. again, or a click, shows everything as it was, what you
   had open and closed kept. Nothing to show says so. The filter is one
@@ -488,7 +452,7 @@ parts from the Mac's conventions on purpose.
   right (the row clicked copies it too; a check says it's copied); its
   **status** as its record has it (state, what it's blocked on,
   progress, who said, message, since, read); **this tile** — its lens,
-  column and place, size, when placed, stacked or maximized, what the
+  column and place, size, when placed, docked or maximized, what the
   lens keeps for it (scroll, selection, a mode) and where its caret is;
   what only its kind has (a text's lines, words, size, language,
   version and unsaved edits, places referred to; a terminal's process,
@@ -518,7 +482,7 @@ parts from the Mac's conventions on purpose.
   host's menu, which opens the window too), it shows the space, until the
   focus moves — and a space with nothing in it is shown by itself: its
   name, where it is among its host's spaces, whether it's shown; its
-  columns and their widths, what's stacked, maximized and focused; what
+  columns and their widths, what's docked, maximized and focused; what
   it holds by kind ("4 terminals, 2 notes"), from which other hosts,
   what's unsaved, running, and the statuses; its **tiles**, column by
   column, a click going to one; what's pinned in it; its reference, id
@@ -576,7 +540,7 @@ around it, and comes back with its history.
   ⌘]); **Go**, finding a place and getting there (Open Quickly, the
   outline, Back and Forward through the places you've been, the Inbox,
   the spaces, the tiles); **Tile**, the focused tile (close, grow, fill,
-  maximize, shrink, stash, its stack, its pin); **Space**, the space
+  maximize, shrink, dock, its pin); **Space**, the space
   (name, overview, remove); **Window**, the window and Agents. **Help ▸
   Search** finds any menu command by name, as in every Mac app.
 - **Open Quickly** (⌘O) finds what's in the space shown — its tiles,
@@ -856,7 +820,7 @@ around it, and comes back with its history.
   gone to lands below what's pinned over the top, not behind it; ⌥↑ ⌥↓
   page up and down. Edit ▸ Code: Complete (⌃Space, or ⌥⎋ where
   ⌃Space switches the keyboard), Go to
-  Definition (⌃⌘J, or ⌘-click — ⌘⌥-click stacks it over the editor: with ⌘ held, everything there's somewhere
+  Definition (⌃⌘J, or ⌘-click — ⌘⌥-click opens it over the editor: with ⌘ held, everything there's somewhere
   to go to — by the server's semantic tokens — shows in go.dev's link
   color, glowing softly in it, the one under the pointer on a soft band — a step in lightness,
   not a hue, as a chosen row's), Find References (⌃⇧⌘R: a
@@ -1372,7 +1336,7 @@ around it, and comes back with its history.
   rest the pointer for a card — after a moment, a picture of the block,
   as Safari previews a tab (out of sight, as it was last seen; a
   terminal, its screen as it holds it) — and under the picture, the block's
-  **summary card**, as a stack's column has it (its title, where it is,
+  **summary card**, as ⌃⇥'s cards have it (its title, where it is,
   when it last did something, its few lines). The card is drawn in the window, and
   goes when Manifold isn't in front;
   right-click for Go To, Show Beside, Show
@@ -1399,7 +1363,8 @@ around it, and comes back with its history.
   listing's entry, a card in Overview, a row of Open Quickly chosen
   with ⏎ (⌘⏎, ⌥⏎ and ⇧⌘⏎ alike): plain **goes to** it where a tile
   shows it, in any space (or opens it beside, if none does); **⌥ puts it over** the tile you
-  clicked in, which goes behind it, as ⌥-drag stacks; **⌘ puts it
+  clicked in, which is docked under it until it's taken off, as ⌥-drag
+  does; **⌘ puts it
   beside** that tile; **⇧⌘ gives it to the system** (the browser, the
   file's app). ⇧ alone is about the path: ⇧-click a bar for where the
   block is, folder by folder; ⇧-drag a bar to link. In a terminal, ⌘ is
@@ -1668,12 +1633,13 @@ has its focus ring swell and glow a moment; one too short for its
 content crosses over to its summary card, and back; Maximize slides the
 tile's edges out from its place over the rest, Restore back in — what
 any tile shows held still as its edges pass, never stretched; with ⌃⇥ the
-tile becomes its card, shrinking as it goes, and the rest of its stack
-slide out from under it, each a whole card, down to their places; the
-one chosen becomes its tile again as the rest slide back up under it
-(a quick ⌃⇥, let go at once, just swaps);
+tile becomes its card, shrinking as it goes, and the rest of the
+space's come out of their tiles (a docked one out of its row in the
+sidebar), each a whole card, down to their places; the
+one chosen becomes its tile again as the rest go back to theirs
+(a quick ⌃⇥, let go at once, just goes there);
 Overview turns each tile into its card where the card is, as Mission
-Control sends windows, those in stacks pulled out of their sheets, and
+Control sends windows, and
 back; a toast rises from the window's foot (and shakes
 when it's said again to what didn't take); a block just finished has
 its glyph land and settle; hover cards fade in; segments slide their
@@ -1895,7 +1861,7 @@ is migrated into logs on first run.
   once your rc files have run, in fish, zsh and bash, so one that sets
   `EDITOR` for other terminals doesn't take it (set `MANIFOLD_KEEP_EDITOR`
   in your environment to keep yours): `git commit` and friends edit in an
-  editor over the terminal that ran them, the terminal stashed behind
+  editor over the terminal that ran them, the terminal docked under
   it, and return when the editor is taken off (⌘W) and the terminal
   comes back — **⇧⌘S** (File ▸ Save and Close, in any editor) saves and
   then closes, once the file is written, so the command reads what you
@@ -1921,7 +1887,7 @@ is migrated into logs on first run.
     says where: block, path, lines, page), `@last` (what `mani` last
     made), `@space`; `@left`, `@right`, `@above`, `@below` (the
     nearest tile that way from `@here`), `@leftmost`, `@rightmost`,
-    `@top`, `@bottom`, `@under` (stacked under `@here`), `@1`…`@9`
+    `@top`, `@bottom`, `@1`…`@9`
     (columns left to right, each top down). A kind narrows any of them:
     `@right:diff`, `@:pdf` (the one PDF shown). A name that could be
     more than one is an error that lists them, ids and all.
@@ -1929,7 +1895,7 @@ is migrated into logs on first run.
     space, and the blocks pinned in each); `--json` gives the whole layout — columns of tiles, each
     with its block, kind, title, path, frame (x, y, width, height as
     shares of the window), the tiles sharing each of its edges, the
-    names it answers to, the tiles stacked under it, and its summary
+    names it answers to, whether it's docked, and its summary
     (title, place, lines, note — what a summary card shows; `mani ls`
     prints the lines under each tile). `mani info`
     describes a block (its summary, commands, links, outline); `mani read` prints

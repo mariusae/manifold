@@ -543,25 +543,18 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
-        case "stack":
-            // "stack": the focused tile's column, each tile with its share
-            // (0: stashed); "stack swap": the first stashed tile behind the
-            // focused one takes the top, as ⇧-click on its pill does.
-            // "stack next": ⌥-click on the focused tile's pill; "stack hold"
-            // and "stack release": ⌥ taken as held, or let go.
+        case "dock":
+            // "dock": the space's columns, each tile with its share, and what's
+            // docked, with where each was; "dock it": the focused tile docked
+            // (⌘M); "dock back <placement suffix>": that one gone to.
+            // "dock golink <placement suffix> [over|beside]": that tile's block
+            // followed from the focused tile's links, as a badge's link clicked.
+            // "dock focus <placement suffix>": that tile focused.
             guard let wc else { return "no window" }
             let a = arg.split(separator: " ").map(String.init)
-            // "stack golink <placement suffix>": that tile's block followed
-            // from the focused tile's links, as a badge's link clicked.
-            // ("stack golink <suffix> over": ⌥-clicked, shown over the focused tile.)
             if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1], modifiers: a.dropFirst(2).first == "over" ? .option : a.dropFirst(2).first == "beside" ? .command : []) }
-            // "stack sheets": where each stack's sheets take a click.
-            if a.first == "sheets" { return wc.debugSheetTargets }
-            // "stack sheetclick [drag]": the first stack's sheets clicked, or dragged.
-            if a.first == "sheetclick" { return wc.debugClickSheets(drag: a.count > 1) }
-            // "stack focus <placement suffix>": that tile focused.
             if a.first == "focus", a.count > 1, !wc.debugFocus(placementEndingIn: a[1]) { return "no \(a[1])" }
-            return wc.debugStack(swap: a.first == "swap" || a.first == "next", index: a.first == "next" ? -1 : a.count > 1 ? Int(a[1]) ?? 0 : 0)
+            return wc.debugDock(arg)
         case "type":
             // "type <text>": into the focused editor.
             return wc?.debugType(arg.replacingOccurrences(of: "\\n", with: "\n")) ?? "no window"
@@ -654,13 +647,6 @@ enum DebugControl {
             // "outlinesearch open": ⇧⌘P on the focused tile; "outlinesearch
             // <words>|down|up|return|escape": typed or keyed in its field.
             return wc?.debugOutlineSearch(arg) ?? "no window"
-        case "quickwalk":
-            // "quickwalk <steps> <hold seconds>": ⌃⇥ pressed (steps of it),
-            // control let go after that long — under the wait, nothing shows.
-            // "quickwalk <steps> <hold> <again>": ⇥ pressed again after <again>.
-            let w = arg.split(separator: " ").compactMap { Double($0) }
-            guard w.count == 2 || w.count == 3 else { return "usage: quickwalk <steps> <hold> [again]" }
-            return wc?.debugQuickWalk(steps: Int(w[0]), hold: w[1], again: w.count == 3 ? w[2] : nil) ?? "no window"
         case "arrivalpicture":
             // "arrivalpicture <path.png>": the last tile arrived at's picture, as it flew.
             guard let any = wc?.content.debugArrival else { return "none" }
@@ -668,9 +654,6 @@ enum DebugControl {
             guard let cg, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return "not an image (a surface?)" }
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(cg.width)x\(cg.height)"
-        case "walksettled":
-            // From the last quickwalk's press till its cards were in place.
-            return wc?.debugWalkSettled ?? "not settled"
         case "flights":
             // ⌃⇥'s pictures on their way, this moment.
             return wc?.debugFlights ?? "no window"
@@ -1080,10 +1063,6 @@ enum DebugControl {
             let a = arg.split(separator: " ")
             // "switcher pointer": the pointer moved over the cards (from ⌃⇥).
             if a.first == "pointer" { return wc?.debugSwitcherPointer() ?? "no window" }
-            // "switcher walk": ⌃⇥ as typed with control held (its letting go watched).
-            if a.first == "walk" { wc?.debugWalkStack(); return "ok" }
-            // "switcher release": ⌘ let go.
-            if a.first == "release" { return wc?.debugReleaseCommand() ?? "no window" }
             guard a.first == "hover" || a.first == "pick", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover|pick <i>" }
             return a.first == "pick" ? wc.debugSwitcherPick(i) : wc.debugSwitcherHover(i)
         case "badge":
