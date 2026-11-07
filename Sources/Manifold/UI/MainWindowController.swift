@@ -317,7 +317,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         renderNow()
+        // When the focus last moved to another tile (or space): an arrival
+        // marks the tile only then, not a move within the one it's on.
+        let now = (selected, arrangement?.focused)
+        if now.0 != focusWas.0 || now.1 != focusWas.1 {
+            focusWas = now
+            focusMovedAt = Date()
+        }
     }
+
+    private var focusWas: (BlockID?, PlacementID?) = (nil, nil)
+    private var focusMovedAt = Date.distantPast
 
     private func renderNow() {
         guard let window else { return }
@@ -6600,8 +6610,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, let a = self.arrangement, let f = a.focused, let view = self.views[f] else { return }
                 self.warpPointer(to: view)
-                // Arrived: the tile marked, once.
-                if delay < 0.1 { self.content.markArrival(f) }
+                // Arrived at another tile: it's marked, once. (Gone somewhere
+                // in the tile already focused, it isn't.)
+                if delay < 0.1, Date().timeIntervalSince(self.focusMovedAt) < 0.6 { self.content.markArrival(f) }
             }
         }
     }
