@@ -313,6 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A terminal's (an agent's): a path from where its shell is, typed at the cursor.
         item(edit, "Insert Path…", #selector(TerminalView.insertPath(_:)), "i", [.command, .control])
         edit.addItem(.separator())
+        // A thread about where you are (§3.12): the selection, the rows
+        // chosen, the caret's place — a comment, to yourself or an agent.
+        item(edit, "Comment", #selector(MainWindowController.commentHere(_:)), "m", [.command, .option])
+        edit.addItem(.separator())
         let find = NSMenu(title: "Find")
         for (title, action, key, mods) in [
             ("Find…", NSTextFinder.Action.showFindInterface, "f", NSEvent.ModifierFlags.command),
@@ -590,7 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // space's part of the sidebar, tile or not.
         item(tile, "Pin in Space", #selector(MainWindowController.togglePinInWorkspace(_:)), "t", [.command, .control])
         item(tile, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
-        item(tile, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "m", [.command, .option])
+        item(tile, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "m", [.command, .option, .shift])
 
         // Space: the space itself.
         let space = submenu(main, "Space")

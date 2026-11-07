@@ -544,7 +544,7 @@ destination:
    first), and resting on one shows its summary card beneath — one card
    at a time, so many links cost no room. More than fit, the last is a
    stack of the rest, scrubbed through by the pointer across the title.
-   Clicked by the one rule; and the **neighborhood map** (⌥⌘M) as the one big view of the
+   Clicked by the one rule; and the **neighborhood map** (⇧⌥⌘M) as the one big view of the
    focused block's surroundings, two steps out. (This was a Links
    organization in the sidebar, and before it the foot under every
    sheet.)
@@ -692,7 +692,7 @@ the two outlined as the stack is; counts are of what's admitted), every
 row on the way open, what was open and closed by hand kept aside and
 put back. It knows nothing of the trees, so a filter more is a case
 more. The links live on the tile's bar and in the neighborhood map
-(⌥⌘M, or a link's menu) as the one big view of them; what's working,
+(⇧⌥⌘M, or a link's menu) as the one big view of them; what's working,
 done or needing you is the counts at the sidebar's foot, which turn the
 filter on, and Overview; and time is ⌘O with nothing typed, which is the
 trail.
@@ -1293,7 +1293,7 @@ its entries, authors fenced, `.seen`; places in text and diffs, and the
 chat in place; the overlay; the timeline and the inbox's rule; agents
 (asking, following, Address These, the skill); `mani`; then the other
 places (commits' lines, web quotes, image regions, turns), and edits to
-places as events. ⌥⌘M is the Neighborhood Map's now; it moves to ⇧⌥⌘M.
+places as events. ⌥⌘M was the Neighborhood Map's; it moved to ⇧⌥⌘M.
 
 ---
 
@@ -2211,7 +2211,7 @@ Milestones 1, 2 and the first parts of 3, 5 and 6 (§9) are in:
 - The neighborhood (§3.5): a tile's links on its bar (`LinkBadge`);
   Go Back and Go Forward (⌃- ⌃⇧-) walk the trail; Open Quickly ranked by
   graph distance; `NeighborhoodView`, the neighborhood to distance 2 in
-  graph form, walked by re-centering (⌥⌘M).
+  graph form, walked by re-centering (⇧⌥⌘M).
 - The surface (§3.1, milestones 14–18): `ArrangementState` as acme's
   tiling — columns of tiles with `heights`, a new tile taking the lower
   half of the column's biggest (`bringing(_:lens:inColumn:below:)`),
@@ -2731,7 +2731,8 @@ purpose — set down so a later audit reads them as choices, not slips.
   keyless: rare in a tiling tool.
 - **⌘M is Stash,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
   the step above it. Minimize stays in the Window menu, keyless.
-- **⌥⌘M is the map,** taking macOS's Minimize All.
+- **⌥⌘M is Comment** (§3.12), taking macOS's Minimize All; ⇧⌥⌘M the
+  neighborhood map.
 - **⌘D deletes a block,** where the Finder duplicates: deleting is
   common, and its toast undoes it. Add Next Occurrence, Sublime's ⌘D,
   is Xcode's ⌥⌘E.

@@ -93,6 +93,10 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             guard let self, let i = self.rowsView.rows.firstIndex(of: row), let path = self.filePath(ofRow: i) else { return nil }
             return self.delegate?.diffView(self, menuFor: path)
         }
+        rowsView.onThreads = { [weak self] line, rect in
+            guard let self, let first = self.rowsView.rows(onLines: line...line).first else { return }
+            self.onThreads?(first, self.convert(rect, from: self.rowsView))
+        }
         scroll.documentView = rowsView
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
@@ -284,6 +288,45 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
 
+    // MARK: Threads (§3.12)
+
+    /// Threads at rows (by index): whether open, whether not seen.
+    var threadRows: [Int: (open: Bool, unseen: Bool)] {
+        get { rowsView.threadMarks }
+        set { rowsView.threadMarks = newValue }
+    }
+    /// A row's thread mark clicked: the first row there, and where the mark is (in this view).
+    var onThreads: ((Int, NSRect) -> Void)?
+
+    var rows: [DiffRow] { rowsView.rows }
+
+    /// The rows chosen to comment on, by index; none, the row under the
+    /// top of the view.
+    var chosenRows: [Int] {
+        guard let c = rowsView.chosen else { return [] }
+        return rowsView.rows(onLines: c).filter {
+            switch rowsView.rows[$0].kind {
+            case .added, .removed, .context: true
+            default: false
+            }
+        }
+    }
+
+    /// Where the rows chosen are, in this view.
+    var chosenRect: NSRect? {
+        guard let c = rowsView.chosen else { return nil }
+        let a = rowsView.rect(ofRow: rowsView.rows(onLines: c.lowerBound...c.lowerBound).first ?? 0)
+        return convert(NSRect(x: 0, y: a.minY, width: 40, height: CGFloat(c.count) * a.height), from: rowsView)
+    }
+
+    func clearChosen() { rowsView.chosen = nil }
+    func debugChoose(_ lines: ClosedRange<Int>) { rowsView.chosen = lines }
+    /// Where a row is, in this view.
+    func rect(ofRow i: Int) -> NSRect { convert(rowsView.rect(ofRow: i), from: rowsView) }
+
+    /// The rows on a line on screen.
+    func rowsOnLine(_ line: Int) -> [Int] { rowsView.rows(onLines: line...line) }
+
     /// The file a row is in, as a path on the diff's host.
     func filePath(ofRow i: Int) -> String? {
         guard let subject = source()?.diff?.subject, rowsView.rows.indices.contains(i) else { return nil }
@@ -359,8 +402,62 @@ final class DiffRowsView: NSView {
     /// A row right-clicked: its menu.
     var onMenu: ((DiffRow) -> NSMenu?)?
 
+    // MARK: Rows chosen, and threads (§3.12)
+
+    /// Lines on screen chosen — clicked, dragged across, ⇧-clicked — to
+    /// comment on.
+    var chosen: ClosedRange<Int>? { didSet { if chosen != oldValue { needsDisplay = true } } }
+    private var chooseFrom: Int?
+    /// Threads at rows (by index): whether one's open, and whether one has
+    /// something not seen — drawn on the rows' lines as they're laid out now.
+    var threadMarks: [Int: (open: Bool, unseen: Bool)] = [:] { didSet { needsDisplay = true } }
+    private var threadLines: [Int: (open: Bool, unseen: Bool)] {
+        var byLine: [Int: (open: Bool, unseen: Bool)] = [:]
+        for (i, m) in threadMarks where i < rows.count {
+            let l = line(ofRow: i), old = byLine[l]
+            byLine[l] = (m.open || old?.open == true, m.unseen || old?.unseen == true)
+        }
+        return byLine
+    }
+    /// A line's thread mark clicked: the line, and where the mark is.
+    var onThreads: ((Int, NSRect) -> Void)?
+
+    /// The line on screen a row is on.
+    func line(ofRow i: Int) -> Int { sideBySide ? (i < rowLines.count ? rowLines[i] : 0) : i }
+
+    /// The rows on lines on screen, in order.
+    func rows(onLines r: ClosedRange<Int>) -> [Int] {
+        sideBySide ? rows.indices.filter { r.contains(rowLines[$0]) } : Array(max(0, r.lowerBound)...min(rows.count - 1, r.upperBound))
+    }
+
+    /// What's drawn under a chosen line, and a thread's mark at its left.
+    private func drawChosenAndThreads(line i: Int, y: CGFloat) {
+        if chosen?.contains(i) == true {
+            Theme.accent.withAlphaComponent(0.16).setFill()
+            NSRect(x: 0, y: y, width: bounds.width, height: rowHeight).fill()
+            Theme.accent.setFill()
+            NSRect(x: 0, y: y, width: 2, height: rowHeight).fill()
+        }
+        if let m = threadLines[i] {
+            let color = m.unseen ? Theme.accent : m.open ? Theme.accent.withAlphaComponent(0.7) : Theme.tertiaryText
+            if let image = NSImage(systemSymbolName: m.open ? "text.bubble.fill" : "text.bubble", accessibilityDescription: "Thread")?
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [color]))) {
+                image.draw(in: NSRect(x: 3, y: y + (rowHeight - 11) / 2, width: 12, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let from = chooseFrom else { return }
+        let i = max(0, min(lineCount - 1, Int(convert(event.locationInWindow, from: nil).y / rowHeight)))
+        chosen = min(from, i)...max(from, i)
+        autoscroll(with: event)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let line = Int(convert(event.locationInWindow, from: nil).y / rowHeight)
+        // Right-clicked outside the rows chosen: that row chosen, for Comment.
+        if !(chosen?.contains(line) ?? false), line >= 0, line < lineCount { chosen = line...line }
         let row: DiffRow?
         if sideBySide {
             row = pairs.indices.contains(line) ? (pairs[line].right ?? pairs[line].left ?? pairs[line].span) : nil
@@ -467,6 +564,7 @@ final class DiffRowsView: NSView {
             case .context: break
             }
             if found.contains(i) { markRow(y: y, current: i == current) }
+            drawChosenAndThreads(line: i, y: y)
             let textY = y + (rowHeight - font.pointSize * 1.2) / 2 - 1
             switch r.kind {
             case let .file(name):
@@ -547,6 +645,7 @@ final class DiffRowsView: NSView {
                 side(pair.left, x: 0, width: half, y: y, number: pair.left?.oldLine)
                 side(pair.right, x: half, width: bounds.width - half, y: y, number: pair.right?.newLine)
             }
+            drawChosenAndThreads(line: i, y: y)
         }
         Theme.divider.setFill()
         NSRect(x: half - 0.5, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
@@ -556,6 +655,18 @@ final class DiffRowsView: NSView {
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
         let i = Int(p.y / rowHeight)
+        // A thread's mark: its thread. Else the row chosen (⇧: the rows to it).
+        if p.x < 16, threadLines[i] != nil, let onThreads {
+            return onThreads(i, NSRect(x: 0, y: CGFloat(i) * rowHeight, width: 16, height: rowHeight))
+        }
+        if i >= 0, i < lineCount, event.clickCount == 1 {
+            if event.modifierFlags.contains(.shift), let c = chosen {
+                chosen = min(c.lowerBound, i)...max(c.upperBound, i)
+            } else {
+                chosen = i...i
+                chooseFrom = i
+            }
+        }
         let row: DiffRow?
         if sideBySide {
             guard i >= 0, i < pairs.count else { return }

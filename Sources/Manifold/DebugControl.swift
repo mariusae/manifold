@@ -408,6 +408,8 @@ enum DebugControl {
             let h = arg.isEmpty ? wc.hosts.local.host : HostID(arg)
             wc.hosts.deleteSession(h)
             return "asked \(h.raw)"
+        case "threads":
+            return wc?.debugThreads(arg) ?? "no window"
         case "filehistory":
             // "filehistory": the focused editor's history (⌥⌘Y) and what it
             // shows; "filehistory go <i>|now|older|newer|blame|close|click <line>".

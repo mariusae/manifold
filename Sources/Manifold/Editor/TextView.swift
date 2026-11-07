@@ -912,6 +912,13 @@ final class TextView: NSView, NSTextInputClient {
         var line: Int
         var links: [Link]
         var note: Note?
+        /// Threads about it (§3.12): how many, how many open, and whether
+        /// any has something not seen.
+        var threads = 0
+        var openThreads = 0
+        var unseen = false
+        /// The lines it covers, for a thread's place to be tinted.
+        var lines: ClosedRange<Int>? = nil
     }
 
     var places: [Place] = [] {
@@ -926,6 +933,8 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
     private var placeByLine: [Int: Place] = [:]
+    /// A place's thread mark clicked (§3.12): its line, and where the mark is.
+    var onThreads: ((Int, NSRect) -> Void)?
     /// Its sections fold by its Markdown headings (a note, a Markdown file).
     var markdownHeadings = false
     /// Notes about places shown under their lines (else only marked).
@@ -976,7 +985,18 @@ final class TextView: NSView, NSTextInputClient {
             label.draw(at: NSPoint(x: chip.minX + 6, y: rowTop + (lineHeight - size.height) / 2))
             foldChips[n] = (chip, i)
         }
-        if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
+        if let place = placeByLine[n], place.threads > 0 {
+            // A thread about it: a bubble in the gutter — filled while one is
+            // open, the accent's while one has something not seen.
+            let open = place.openThreads > 0
+            let symbol = open ? "text.bubble.fill" : "text.bubble"
+            let color = place.unseen ? Theme.accent : open ? Theme.accent.withAlphaComponent(0.7) : Theme.tertiaryText
+            if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Thread")?
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [color]))) {
+                let x = showsLineNumbers ? textLeft - 15 : max(2, textLeft - 15)
+                image.draw(in: NSRect(x: x, y: lineTop + (lineHeight - 11) / 2, width: 12, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        } else if showsLineNumbers, placeByLine[n]?.links.isEmpty == false {
             let mark = NSRect(x: textLeft - 12, y: lineTop + lineHeight / 2 - 3.5, width: 7, height: 7)
             Theme.accent.setStroke()
             let path = NSBezierPath(roundedRect: mark, xRadius: 2, yRadius: 2)
@@ -1329,7 +1349,7 @@ final class TextView: NSView, NSTextInputClient {
                 ctx.saveGState()
                 ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             }
-            if noteLayouts[n] != nil || foldStarts[n] != nil || placeByLine[n]?.links.isEmpty == false {
+            if noteLayouts[n] != nil || foldStarts[n] != nil || placeByLine[n]?.links.isEmpty == false || (placeByLine[n]?.threads ?? 0) > 0 {
                 ctx.restoreGState()
                 drawPlace(ofLine: n, layout: l, top: lineTop)
                 ctx.saveGState()
@@ -2720,7 +2740,9 @@ final class TextView: NSView, NSTextInputClient {
         if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
         pressedInSelection = nil
         // A click on a place's mark in the gutter: what links to it, and from it.
-        if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
+        if let pressed = pressedInGutter, let place = placeByLine[pressed.line], place.threads > 0, let onThreads {
+            onThreads(place.line, NSRect(x: textLeft - 16, y: top(ofLine: place.line), width: 14, height: lineHeight))
+        } else if let pressed = pressedInGutter, let place = placeByLine[pressed.line], !place.links.isEmpty {
             showLinks(of: place, at: convert(event.locationInWindow, from: nil))
         }
         pressedInGutter = nil
@@ -2867,6 +2889,9 @@ final class TextView: NSView, NSTextInputClient {
             menu.addItem(withTitle: "New Note from Selection", action: #selector(MainWindowController.newNoteFromSelection(_:)), keyEquivalent: "")
         }
         menu.addItem(withTitle: "Copy Link to This Line", action: #selector(MainWindowController.copyLinkToLine(_:)), keyEquivalent: "")
+        // A thread about it (§3.12): the selection, else the caret's place.
+        let comment = menu.addItem(withTitle: "Comment…", action: #selector(MainWindowController.commentHere(_:)), keyEquivalent: "m")
+        comment.keyEquivalentModifierMask = [.command, .option]
         // The file's history and blame (an editor's, of a file).
         var holder = superview
         while let v = holder, !(v is EditorView) { holder = v.superview }

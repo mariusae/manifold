@@ -91,6 +91,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var views: [PlacementID: PaneContent] = [:]
     /// `mani`'s commands, done here.
     lazy var maniDesk = ManiDesk(self)
+    /// Threads' cards and chats on screen (§3.12).
+    let threadUI = ThreadUI()
     private var seenTimer: Timer?
     private var lastSeenSent = Date.distantPast
     private var lastSeenSet: Set<BlockID> = []
@@ -299,6 +301,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// so it would be made again, and again, until the stack ran out.
     func render() {
         maniDesk.modelChanged()
+        threadsChanged()
         guard !rendering else {
             renderAgain = true
             return
@@ -632,7 +635,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 e.undoLimit = desk.settings.undoDepth
                 e.viewing = p.lens == .preview
             }
-            if let d = v as? DiffView { d.theme = hosts.state.appearance.theme }
+            if let d = v as? DiffView {
+                d.theme = hosts.state.appearance.theme
+                // Its rows may have come again (reloaded): the marks put on them again.
+                markThreads(in: d)
+            }
             if let t = v as? TerminalView {
                 t.commands = hosts.block(p.block)?.terminal?.commands ?? []
                 t.isAgent = isAgent(p)
@@ -736,6 +743,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // The host's smartlog may have stopped since (a restart): asked for.
             smartlogStart(s)
             v = s
+        case .thread:
+            let t = ThreadTileView(placement: p.id, block: p.block)
+            t.chat.threadID = p.block
+            t.chat.show(chatModel(thread: hosts.block(p.block), place: nil, inTile: true))
+            watch(t.chat)
+            v = t
         case .ui:
             let panel = PanelView(placement: p.id, block: p.block)
             panel.delegate = self
@@ -771,6 +784,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let d = DiffView(placement: p.id, block: p.block, theme: hosts.state.appearance.theme)
             d.delegate = self
             d.source = { [weak self] in self?.hosts.block(p.block) }
+            d.onThreads = { [weak self, weak d] row, rect in
+                guard let self, let d else { return }
+                self.diffThreadsClicked(d, row: row, rect: rect)
+            }
+            markThreads(in: d)
             v = d
         case .search:
             let s = SearchView(placement: p.id, block: p.block)
@@ -801,6 +819,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                font: editorFont(for: p, path: shown.path),
                                theme: hosts.state.appearance.theme)
             e.delegate = self
+            e.textView.onThreads = { [weak self, weak e] line, rect in
+                guard let self, let e else { return }
+                self.editorThreadsClicked(e, line: line, rect: rect)
+            }
             e.onToggleFont = { [weak self] kind in self?.keepViewState(["font": kind.rawValue], of: p) }
             e.showsNotes = viewState(of: p)["notes"] != "hidden"
             e.opensFolded = viewState(of: p)["folded"] == "1"
@@ -907,7 +929,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case workspace(BlockID, index: Int)
     }
     private var closedStack: [Closed] = []
-    private let toast = ToastView()
+    let toast = ToastView()
     /// The space a ⌘` walk is at, named while ⌘ is held and the sidebar's away.
     private let spaceHUD = SpaceHUD()
     /// A walk through code under way (§2.5): ⌃⌘] and ⌃⌘[ step along it.
@@ -5290,7 +5312,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.action = { c.perform() }
             actions.append(n)
         }
-        actions.append(row("Show the Neighborhood Map", "⌥⌘M", "point.3.connected.trianglepath.dotted") { [weak self] in self?.showNeighborhood(around: b.id) })
+        actions.append(row("Show the Neighborhood Map", "⇧⌥⌘M", "point.3.connected.trianglepath.dotted") { [weak self] in self?.showNeighborhood(around: b.id) })
         if let w = selected, b.kind != .arrangement {
             let pinnedHere = isPinned(b.id, in: w)
             actions.append(row(pinnedHere ? "Unpin from This Space" : "Pin in This Space", "⌃⌘T", "pin") { [weak self] in self?.setPinned(b.id, in: w, !pinnedHere) })
@@ -5605,7 +5627,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private var neighborhoodView: NeighborhoodView?
 
-    /// ⌥⌘M: the neighborhood map, around the focused block.
+    /// ⇧⌥⌘M: the neighborhood map, around the focused block.
     @objc func showNeighborhood(_ sender: Any?) { showNeighborhood(around: nil) }
 
     /// The neighborhood map: a block's neighborhood to distance 2 as a
@@ -9302,8 +9324,12 @@ extension MainWindowController: EditorViewDelegate {
         var out: [TextView.Place] = []
         for a in anchors.values {
             guard let r = a.range, r.start <= rope.count else { continue }
-            let to = inbound.filter { $0.toAnchor == a.id }, from = outbound.filter { $0.fromAnchor == a.id }
+            var to = inbound.filter { $0.toAnchor == a.id }
+            let from = outbound.filter { $0.fromAnchor == a.id }
             guard !to.isEmpty || !from.isEmpty else { continue }
+            // Threads about it (§3.12): marked as threads, not among its links.
+            let threads = to.filter { $0.relation == ThreadText.annotates }.compactMap { hosts.block($0.from) }.filter { $0.kind == .thread }
+            to.removeAll { e in threads.contains { $0.id == e.from } }
             var links: [TextView.Place.Link] = []
             var seen = Set<String>()
             for e in to {
@@ -9327,9 +9353,25 @@ extension MainWindowController: EditorViewDelegate {
                 note = .init(title: nb.displayTitle, text: body, relation: relation, target: Self.address(e.from))
                 break
             }
-            out.append(.init(line: rope.line(at: r.start), links: links, note: note))
+            var place = TextView.Place(line: rope.line(at: r.start), links: links, note: note)
+            place.threads = threads.count
+            place.openThreads = threads.filter { $0.thread?.resolved != true }.count
+            place.unseen = threads.contains { !hosts.unseen($0).isEmpty }
+            place.lines = rope.line(at: r.start)...rope.line(at: max(r.start, r.end))
+            out.append(place)
         }
-        return out.sorted { $0.line < $1.line }
+        // Two places on a line: one, their links and threads together.
+        var byLine: [Int: TextView.Place] = [:]
+        for p in out {
+            guard var q = byLine[p.line] else { byLine[p.line] = p; continue }
+            q.links += p.links
+            q.note = q.note ?? p.note
+            q.threads += p.threads
+            q.openThreads += p.openThreads
+            q.unseen = q.unseen || p.unseen
+            byLine[p.line] = q
+        }
+        return byLine.values.sorted { $0.line < $1.line }
     }
 
     func editor(_ view: EditorView, lsp request: LSPRequest, done: @escaping (LSPResult) -> Void) {
@@ -10414,6 +10456,12 @@ extension MainWindowController: GitViewDelegate {
         default: break
         }
         let menu = NSMenu()
+        // The rows chosen (or the one right-clicked) commented on (§3.12).
+        let comment = ClosureMenuItem("Comment on These Rows…", symbol: "text.bubble") { [weak self] in self?.commentHere(nil) }
+        comment.keyEquivalent = "m"
+        comment.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(comment)
+        menu.addItem(.separator())
         if let s = sides {
             for (rev, label) in [(s.new, "Open This Version"), (s.old, "Open the Version Before")] {
                 guard let rev else { continue }
