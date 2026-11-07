@@ -1109,6 +1109,192 @@ target itself, whatever is under it, and its lit row, with its symbol,
 is what a drop does. What a view doesn't take goes on to the grid
 behind it.
 
+### 3.12 Threads
+
+A **thread** is a conversation about something: a line, a declaration,
+a diff's rows, a terminal's command, a PDF's page, a quote on a web
+page — any place (§2.5) — or a whole space. You leave one anywhere
+(⌥⌘M), to yourself or to an agent; an agent joins when tagged, and
+leaves them too. They are notes to self while working (resolved when
+fixed, in place of a `bugs.md`), a question to an agent asked where the
+question is, an agent's "I assumed this", and a review: rows selected in
+a diff, commented on, and later handed to an agent to address. Every
+thread of a space, and of a project, is on one **timeline** with
+everything that happened to them, read as Quip's updates are: what
+you've seen kept, what you haven't marked.
+
+**A thread is a block** (`BlockKind.thread`), so it is placed, linked,
+dragged, kept and collected (§4) as every block is, and `mani` reads it.
+Its log is its entries, in order; its state, open or resolved. It is
+*about* one thing: one `annotates` link (§2.5's relation, a link by
+hand, so it keeps what it's about and the place's anchor with it) from
+the thread to a place, or to a space with no place in it — so no thread
+is about nothing, and one about a space is the space's. It is the
+space's it was made in: a `thread` link from the space to it, strong,
+which keeps it (§4) and makes the space's timeline one lookup. It lives
+on the space's host, written by the host (clients and `mani` propose),
+whatever host what it's about is on.
+
+**Entries, and who made them.** Each entry has an author, first-class in
+the model and on screen:
+
+- *You* — one author, the same on every Mac (the Mac it came from kept,
+  said on hover).
+- *An agent* — its block (the terminal it runs in), its kind (Claude,
+  Codex, …), and the turn that wrote it (`captureTurn`'s), so an
+  agent's comment leads back to the turn.
+- *Manifold* — what no one typed: its place moved, its lines deleted.
+
+An entry is a **comment** (Markdown, its references as a note's), or an
+**event**: resolved, reopened, its place edited (by whom: you, an agent
+— below) or gone, an agent asked, asking stopped. Authorship is
+*fenced*, not claimed: it's set from how the entry came. From the app,
+typed, it's yours; from `mani`, the host the command ran on asks the
+socket for its caller (`LOCAL_PEERPID`, Linux's `SO_PEERCRED`) and walks
+up its processes to the terminal they run under — an agent's (as its
+hooks say, §3.7), the agent's; else yours, typed in a shell — and puts
+that on the request before passing it on. No flag says who; an agent
+can't write as you by clearing its environment.
+
+**Places.** Every place a block kind knows (§2.5), and these, new:
+
+- *A diff's rows* — what was seen (the rows and their hunk, as they
+  were, kept in the anchor: what the comment means), and where that is
+  now: new lines anchored in the file (as it is, or as the commit left
+  it), removed lines at where they were removed — a place in the file,
+  moved through its edits as any anchor is. So a thread made in a diff
+  is shown in the file's editor too, at its lines, and outlives the
+  diff. The commit, if the diff is one, kept as context; in Sapling a
+  rewritten commit is followed to its successor, in git it's said
+  rewritten.
+- *A commit's line* — from the history strip (§7.1): the file as that
+  commit left it.
+- *A quote on a web page*, by its words and what's around them.
+- *A region of an image.*
+- *An agent's turn.*
+
+A place may drift. Each thread says where its place is now and what it
+was written against: "written at line 40, now 52", or gone, the context
+then all there is — whatever its kind, not a diff's alone.
+
+**References.** A thread takes what a note takes: a tile's pill, a line,
+rows, a command, a page dragged into the composer, a `manifold:…#place`
+pasted — each a capsule in the comment's text, and, as a note's
+mentions are (§3.10), a `mention` edge from the thread to the place. So
+a thread has two kinds of edge out: the one it's *about* (`annotates`:
+it shows there — in place, in the gutter, on the timelines) and those it
+*mentions* (shown among links both ways — "mentioned in a thread" at
+the place — but no card there). Threads cross-correlate without a
+mention scattering cards about.
+
+**The chat.** A thread reads as a chat, the same wherever it's drawn:
+at its head, what it's about (the excerpt; drifted, said so); then its
+entries, each comment with its author's **pill** before it — *You* in
+plain ink on the right, an agent's face, name and colour on the left,
+the pill clicked going to the agent and the turn — and each event a
+hairline sentence ("Resolved by Claude · 2m"); an agent at work on it
+shows working, as its tile does; at its foot the composer (↩ sends,
+⇧↩ a line, `@` an agent, drops take references) and Resolve. Replying to
+a resolved thread reopens it.
+
+**Where threads show.** One thread, several lenses (presentation is a
+projection, §2.5):
+
+- *In place*: a mark in the tile's gutter or margin at its place (the
+  editor's place marks, §2.5), a diff's at its rows; clicked, the chat
+  as a card under the line. Resolved ones hidden there, unless asked.
+- *As a tile*, for a long conversation — it's a block.
+- *The timeline*: the sidebar's Threads (§3.6's filter row: by space,
+  by project), or a tile of its own.
+- *The overlay*, anywhere (below).
+
+**The timeline.** All the activity that's relevant, newest last, as a
+running chat: every entry of every thread of the space (or project —
+the threads whose place is in it, by the project of the place's file or
+the terminal's directory, §2.6), interleaved by time, each run headed by
+its place. Relevant is: a thread's comments and events, a thread made,
+the edits to a thread's place (attributed: an editor's are yours; a
+file written by an agent's Edit or Write, its `PostToolUse` hook naming
+the path, that agent's; else "changed on disk"), an agent asked from a
+thread and its answer. Activity that touches nothing a thread is about
+isn't there (a finished turn is the inbox's, §3.9). Edits to a place
+are written into the thread as events by the host as it moves the
+anchor through them (`edit`, `content`), so the timeline is the merge of
+thread logs, nothing else. Filters: open only, mine, an agent's,
+resolved too. Replying in the timeline replies in the thread.
+
+**What you've seen** is kept as Quip keeps it: per thread, the last of
+its entries you've seen — a mark in the host's desk (`.seen(thread,
+upTo)`, the greatest kept, so every Mac's attached app moves it and
+none undoes another; shared across Macs, as you are one). An entry is
+seen once it has been on screen a moment (about a second, the window
+key) in any of the lenses — the card, the tile, the timeline, the
+overlay. Opening the timeline goes to the first entry not seen, a
+**New** rule above it that stays while you're there; a thread with
+entries not seen is bold in lists, with how many; Mark All Read. Only
+others' entries count: what you wrote is seen.
+
+**The inbox** (§3.9) gains a rule, a derivation still: a thread with
+entries you haven't seen, not yours, is in it — an agent's answer, an
+agent's question — gone through with ⌘J with the rest, and seeing them
+takes it out.
+
+**The overlay** (⌥⌘M), over the window from anywhere, as the switcher
+floats, taking no tile. With a selection, or a place under the caret
+(the declaration, the command, the page), on that place: its threads,
+or the composer for a new one about it. With none, on the space's
+timeline, its composer making a thread about the space. A place in it,
+clicked, is gone to with the overlay kept; ⎋ closes it.
+
+**Agents.** `@` and an agent — its pill, dropped or picked — asks it.
+`@claude` alone picks one: the project's agent if there's one, else a
+new one in the thread's project, the thread its first prompt. Asked, an
+agent is sent a short prompt typed into its terminal — the thread's
+reference, the comment, and `mani thread read`/`reply` — at once if
+idle, else when its turn ends (its hooks, §3.7). An agent that has
+written in a thread **follows** it: your comments there ask it again.
+Agents' comments never ask another agent unless they tag it, and a
+thread asks agents at most a few times in a row without you (a loop
+stopped, said in the thread). **Ask @agent to address these**, on any
+set of threads — a diff's, a project's open ones, the timeline's
+filter — hands it them all at once; that is how a review is handed
+over. The agent skill teaches the rest: reply on the thread, not in the
+terminal; resolve only what you did; a question is a reply left open,
+and the work goes on; a place gone is read by what it was written
+against; agents start threads of their own where they're unsure.
+
+**`mani`.** `mani threads [--space|--project|--place ref] [--all]
+[--json]` (each thread: its place now, the text it was written against,
+moved or gone, its entries with their authors); `mani thread read`,
+`new <place> <text>`, `reply [--resolve] <thread> [text]`, `resolve`,
+`reopen`. Text omitted is read from the input. The app answers them, as
+it does every command that reads the screen — it has every host's
+threads, and what each is about — with the author the command's host
+put on it.
+
+**The graph's indexes** (§3.5). `Graph` indexes edges by their ends and
+kind; threads need, besides, edges by *relation* and by *(block,
+anchor)* (a place's threads, for the gutter), blocks by *kind*, each
+block's *project* (kept as its path or place is set — the nearest root
+of the few, by walking up its folders — and for the blocks under a root
+when a project is made or unmade), and threads by last activity and
+what's not seen, per space and per project. Over them, a few composable
+steps rather than a query language — `blocks(kind:).in(project:)`,
+`edges(to:anchor:relation:)`, `walk(from:over:relation:depth:)` (what
+`reachable` is, generalized) — the same in the app and the host, so
+the sidebar, `mani threads` and agents' following ask alike. Measured
+before tuned: a synthetic graph of 100k blocks and 1M edges, a
+project's timeline under a millisecond, a two-step walk under five, the
+whole rebuilt in under a second; if not, interned ids and packed
+adjacency.
+
+To build, in order: the indexes and their benchmark; the `thread` block,
+its entries, authors fenced, `.seen`; places in text and diffs, and the
+chat in place; the overlay; the timeline and the inbox's rule; agents
+(asking, following, Address These, the skill); `mani`; then the other
+places (commits' lines, web quotes, image regions, turns), and edits to
+places as events. ⌥⌘M is the Neighborhood Map's now; it moves to ⇧⌥⌘M.
+
 ---
 
 ## 4. Keeping and collection
