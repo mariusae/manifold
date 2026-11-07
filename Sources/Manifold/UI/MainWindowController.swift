@@ -2082,11 +2082,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let placement = f.id
         Task { @MainActor in
             do {
-                let scope = ManiDesk.Scope(maniDesk, ManiRequest(verb: "callers", flags: [:], args: [], cwd: path.deletingLastPathComponent, here: nil), ManiDesk.Asker(host: b.id.host, id: 0, client: 0))
-                let (name, markdown) = try await maniDesk.callers(of: b, at: at, depth: 2, scope)
-                let note = (hosts.client(b.id.host) ?? host).newNote(home: path.deletingLastPathComponent, text: markdown)
-                hosts.link(from: note, to: b.id, kind: .linked, context: "callers of \(name)")
-                show(note, lens: .preview, .besideOpener(placement), context: "callers")
+                // The symbol's search, its callers asked — the same browser
+                // as its references, asked another way there.
+                let (symbol, name) = try await maniDesk.symbolAt(b, offset: at)
+                showRelation("callers", symbol: symbol, name: name, path: path, on: b.id.host, from: placement)
             } catch {
                 toast.show("\(error is ManiDesk.Failure ? (error as! ManiDesk.Failure).message : "\(error)")", action: "OK", for: 6) {}
             }
@@ -9698,10 +9697,24 @@ extension MainWindowController: EditorViewDelegate {
             }
             let root = self.projectRoot(from: view.path.deletingLastPathComponent, on: view.block.host)
             let id = BlockID(host: view.block.host)
+            var q = SearchQuery(text: word, caseSensitive: true, root: root)
+            q.relation = "references"
+            q.symbolPath = view.path
             client.append([.create(kind: .search, title: "References to “\(word)”", path: nil),
-                           .search(SearchQuery(text: word, caseSensitive: true, root: root), at: client.clock.now()),
+                           .search(q, at: client.clock.now()),
                            .hits(hits, done: true, truncated: false, error: nil)], to: .block(id))
             self.show(id, lens: .search, .besideOpener(view.placement), context: "references to “\(word)”")
+            // The index's name for it, when it has one: the browser can be
+            // asked another way (its callers, its name as text).
+            if let b = self.hosts.block(view.block) {
+                let at = view.textView.primarySelection.head
+                Task { @MainActor [weak self] in
+                    guard let self, let s = try? await self.maniDesk.symbolAt(b, offset: at),
+                          var now = self.hosts.block(id)?.search?.query, now == q else { return }
+                    now.symbol = s.symbol
+                    client.append([.search(now, at: client.clock.now()), .hits(hits, done: true, truncated: false, error: nil)], to: .block(id))
+                }
+            }
         }
     }
 
@@ -10659,7 +10672,47 @@ extension MainWindowController: DiffViewDelegate {
 
 extension MainWindowController: SearchViewDelegate {
     func searchView(_ view: SearchView, run query: SearchQuery) {
+        if query.relation != nil { return runRelation(query, in: view.block) }
+        if query.symbol != nil, let client = hosts.client(view.block.host) {
+            client.append([.title("“\(query.text)”")], to: .block(view.block))
+        }
         hosts.propose(.search(block: view.block, query: query))
+    }
+
+    /// A symbol's search asked as a relation (§2.5) — its references, or
+    /// its callers — of the project's index, here; the hits written into
+    /// the search block, as the host writes a text search's.
+    func runRelation(_ q: SearchQuery, in block: BlockID) {
+        guard let client = hosts.client(block.host), let relation = q.relation, let symbol = q.symbol, let path = q.symbolPath else { return }
+        let title = (relation == "callers" ? "Callers of" : "References to") + " “\(q.text)”"
+        client.append([.title(title), .search(q, at: client.clock.now())], to: .block(block))
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let scope = ManiDesk.Scope(self.maniDesk, ManiRequest(verb: relation, flags: [:], args: [], cwd: path.deletingLastPathComponent, here: nil),
+                                       ManiDesk.Asker(host: block.host, id: 0, client: 0))
+            do {
+                let hits = try await self.maniDesk.relationHits(relation, symbol: symbol, path: path, host: block.host, scope)
+                // Still what was asked (not asked again meanwhile).
+                guard self.hosts.block(block)?.search?.query == q else { return }
+                client.append([.hits(hits, done: true, truncated: false, error: nil)], to: .block(block))
+            } catch {
+                let message = (error as? ManiDesk.Failure)?.message ?? "\(error)"
+                client.append([.hits([], done: true, truncated: false, error: message)], to: .block(block))
+            }
+        }
+    }
+
+    /// A symbol's search, made and shown beside a tile: its relation asked.
+    func showRelation(_ relation: String, symbol: String, name: String, path: String, on host: HostID, from placement: PlacementID) {
+        guard let client = hosts.client(host) else { return }
+        var q = SearchQuery(text: name, caseSensitive: true, root: projectRoot(from: path.deletingLastPathComponent, on: host))
+        q.relation = relation
+        q.symbol = symbol
+        q.symbolPath = path
+        let id = BlockID(host: host)
+        client.append([.create(kind: .search, title: nil, path: nil)], to: .block(id))
+        runRelation(q, in: id)
+        show(id, lens: .search, .besideOpener(placement), context: (relation == "callers" ? "callers of " : "references to ") + name)
     }
 
     func searchView(_ view: SearchView, open hit: SearchHit) {

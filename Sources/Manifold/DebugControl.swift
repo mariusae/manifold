@@ -419,6 +419,12 @@ enum DebugControl {
             // <side> <line> <col> <line> <col>": text selected; "diffview across <dx>";
             // "diffview copy"; "diffview drag": what dragging the selection writes.
             return wc?.debugDiffView(arg) ?? "no window"
+        case "searchrelation":
+            // "searchrelation [0|1|2]": the focused search asked as text,
+            // references or callers; what it holds.
+            guard let wc, let v = wc.arrangement?.focused.flatMap({ wc.views[$0] }) as? SearchView, let b = wc.hosts.block(v.block), let s = b.search else { return "no search focused" }
+            if let i = Int(arg) { v.debugRelation(i); return "asked" }
+            return "\(b.displayTitle) · \(s.query?.relation ?? "text") · symbol \(s.query?.symbol ?? "none")\n" + s.hits.map { "\($0.path.lastPathComponent):\($0.line) \($0.text.trimmingCharacters(in: .whitespaces)) \($0.context ?? "")" }.joined(separator: "\n")
         case "scopebar":
             // "scopebar": the focused editor's definition bar, and what dragging it writes.
             guard let e = wc?.debugFocusedEditor else { return "no editor focused" }

@@ -633,6 +633,55 @@ final class ManiDesk {
         return (s.name, "# \(title)\n\n" + (lines.isEmpty ? "Nothing in the project calls it (as of its index)." : lines.joined(separator: "\n")) + "\n")
     }
 
+    /// A symbol's relation as hits (§2.5), for the search lens:
+    /// "references", where it's used; "callers", each use that's in a
+    /// definition, said as in it — and, `depth` deep, theirs ("in main →
+    /// serve"). From the project's index, as `mani refs` and `mani callers`
+    /// have them.
+    func relationHits(_ relation: String, symbol: String, path: String, host: HostID, depth: Int = 2, _ scope: Scope) async throws -> [SearchHit] {
+        if relation == "references" {
+            guard case .locations(let places) = await scip(.references(symbol: symbol, path: path), on: host) else {
+                throw Failure(message: "the index couldn't say where it's used")
+            }
+            return places.map { p in
+                var h = SearchHit(path: p.path, line: p.line + 1, column: p.character + 1, text: p.text)
+                if p.isDefinition { h.context = "definition" }
+                return h
+            }
+        }
+        var hits: [SearchHit] = []
+        var seen: Set<String> = [symbol]
+        func up(_ symbol: String, in path: String, through: [String]) async throws {
+            guard case .locations(let places) = await scip(.references(symbol: symbol, path: path), on: host) else { return }
+            var inner: [(Block, Declaration)] = []
+            for p in places where !p.isDefinition {
+                let fb = try await textBlock(p.path, scope)
+                guard let rope = fb.text?.text, p.line < rope.lineCount else { continue }
+                let lineStart = rope.offset(ofLine: p.line)
+                let decls = fb.path.flatMap(SyntaxLanguage.forPath).map { SyntaxTree($0, text: rope, background: false).declarations() } ?? []
+                let decl = decls.last { $0.range.start <= lineStart && $0.range.end > lineStart }
+                var h = SearchHit(path: p.path, line: p.line + 1, column: p.character + 1, text: p.text.isEmpty ? rope.lineText(p.line) : p.text)
+                h.context = "in " + ([decl?.path ?? "the top of \(fb.displayTitle)"] + through).joined(separator: " → ")
+                hits.append(h)
+                if let decl, !inner.contains(where: { $0.0.id == fb.id && $0.1.path == decl.path }) { inner.append((fb, decl)) }
+            }
+            // Their own callers, a level up.
+            guard through.count + 1 < depth else { return }
+            for (fb, d) in inner {
+                guard let p = fb.path, let s = try? await indexSymbol(in: fb, at: d.nameRange.start), seen.insert(s.symbol).inserted else { continue }
+                try await up(s.symbol, in: p, through: [d.path] + through)
+            }
+        }
+        try await up(symbol, in: path, through: [])
+        return hits
+    }
+
+    /// The index's name for the symbol at a place in a text, and what it's called.
+    func symbolAt(_ b: Block, offset: Int) async throws -> (symbol: String, name: String) {
+        let s = try await indexSymbol(in: b, at: offset)
+        return (s.symbol, s.name)
+    }
+
     /// `mani refs`: where a symbol is used across its project.
     private func refs(_ r: ManiRequest, _ scope: Scope) async throws -> String {
         let b = try await textBlock(r.args[0], scope)

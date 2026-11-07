@@ -428,6 +428,16 @@ public struct SearchQuery: Codable, Equatable, Sendable {
     /// What's looked for (§2.6): the files' text, and symbols and files
     /// by name ("symbols", "files", "text"); nil, the text alone.
     public var kinds: [String]?
+    /// A symbol's places, not the words (§2.5): "references" (where it's
+    /// used) or "callers" (the definitions that call it, and theirs) —
+    /// asked of the project's index by the app, not grepped by the host.
+    /// nil, the text.
+    public var relation: String?
+    /// The symbol a relation is of (the index's name for it), and a file
+    /// of its project, to find the index by: kept, so the search can be
+    /// asked again another way (its references, its callers, its name as text).
+    public var symbol: String?
+    public var symbolPath: String?
 
     public init(text: String, regex: Bool = false, caseSensitive: Bool = false, root: String, glob: String? = nil) {
         self.text = text
@@ -444,6 +454,9 @@ public struct SearchHit: Codable, Equatable, Sendable {
     public var line: Int
     public var column: Int
     public var text: String
+    /// Where it is, said (a relation's hit): the definition it's in — "in
+    /// serve", or, a caller's caller, "in main → serve".
+    public var context: String?
 
     public init(path: String, line: Int, column: Int, text: String) {
         self.path = path

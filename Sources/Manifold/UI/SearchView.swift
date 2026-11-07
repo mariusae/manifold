@@ -30,6 +30,9 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let fieldBox = FlatFieldBox()
     private var field: FlatField { fieldBox.field }
     private let caseButton = FlatButton("Aa", toggles: true, font: .systemMono(ofSize: 11, weight: .medium))
+    /// A symbol's search (§2.5): its name as text, its references, or its
+    /// callers — the one query, asked another way.
+    private let relationControl = FlatSegments(titles: ["Text", "References", "Callers"], font: UIType.detail)
     private let regexButton = FlatButton(".*", toggles: true, font: .systemMono(ofSize: 11, weight: .medium))
     /// The folder searched under: typed (↩ searches there), or widened.
     private let pathBox = FlatFieldBox(symbol: "folder", clears: false, fontSize: 12)
@@ -113,7 +116,12 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         status.font = UIType.detail
         status.textColor = Theme.secondaryText
         status.lineBreakMode = .byTruncatingTail
-        for v in [fieldBox, caseButton, regexButton, pathBox, projectButton, status] { addSubview(v) }
+        relationControl.isHidden = true
+        relationControl.onChange = { [weak self] i in self?.relationChosen(i) }
+        relationControl.setToolTip("The name, as text, under the folder", forSegment: 0)
+        relationControl.setToolTip("Where the symbol is used (the project's index)", forSegment: 1)
+        relationControl.setToolTip("The definitions that call it, and theirs", forSegment: 2)
+        for v in [fieldBox, caseButton, regexButton, pathBox, projectButton, status, relationControl] { addSubview(v) }
 
         let column = NSTableColumn(identifier: .init("hit"))
         column.resizingMask = .autoresizingMask
@@ -202,6 +210,12 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
                                      width: projectButton.frame.width, height: Flat.buttonHeight)
         pathBox.frame = NSRect(x: 12, y: pathY - Flat.fieldHeight / 2, width: max(60, w - 24 - pw), height: Flat.fieldHeight)
         status.frame = NSRect(x: 12, y: pathBox.frame.minY - 22, width: w - 24, height: 16)
+        if !relationControl.isHidden {
+            relationControl.sizeToFit()
+            let rw = relationControl.frame.width
+            relationControl.frame = NSRect(x: w - 12 - rw, y: status.frame.midY - Flat.buttonHeight / 2, width: rw, height: Flat.buttonHeight)
+            status.frame.size.width = max(0, relationControl.frame.minX - 8 - 12)
+        }
         // The preview beside the hits when there's width for both, else
         // beneath them when there's height, else not at all.
         let area = NSRect(x: 0, y: 0, width: w, height: max(0, status.frame.minY - 6))
@@ -241,6 +255,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
                 regexButton.state = q.regex ? .on : .off
             }
             if pathField.currentEditor() == nil { pathBox.stringValue = s.query?.root.abbreviatingHome ?? "" }
+            // A symbol's: asked as text, its references, or its callers.
+            let hasSymbol = s.query?.symbol != nil
+            if relationControl.isHidden == hasSymbol { relationControl.isHidden = !hasSymbol; needsLayout = true }
+            relationControl.selectedSegment = ["references": 1, "callers": 2][s.query?.relation ?? ""] ?? 0
             // Widened already, or in no repository: nothing to expand to.
             let canExpand = s.query.map { q in q.project.map { $0 != q.root } ?? false } ?? false
             if projectButton.isHidden == canExpand {
@@ -329,8 +347,26 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
                             root: query?.root ?? "", glob: query?.glob)
         // A project's search asks for its names again too.
         q.kinds = query?.kinds
+        // A symbol's, its symbol kept — asked again as it was, unless the name typed is another.
+        if let old = query, old.symbol != nil {
+            q.symbol = old.symbol
+            q.symbolPath = old.symbolPath
+            if field.stringValue == old.text { q.relation = old.relation }
+        }
         return q
     }
+
+    /// A symbol's search asked another way: its name as text, its
+    /// references, its callers.
+    private func relationChosen(_ i: Int) {
+        guard var q = query, q.symbol != nil else { return }
+        q.relation = [nil, "references", "callers"][max(0, min(i, 2))]
+        if q.relation == nil { q.caseSensitive = true }
+        delegate?.searchView(self, run: q)
+    }
+
+    /// Debugging: the relation chosen (0 text, 1 references, 2 callers).
+    func debugRelation(_ i: Int) { relationChosen(i) }
 
     /// A folder typed: the search asked again under it (`~` as home, a
     /// relative path from the folder it was under).
@@ -529,6 +565,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
                 body.addAttribute(.backgroundColor, value: TextView.matchColor, range: r)
             }
             s.append(body)
+            // Where it is, said: the definition it's in (a relation's hit).
+            if let c = h.context { s.append(NSAttributedString(string: "  " + c, attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])) }
             f.attributedStringValue = s.truncatingTail()
         case let .section(words):
             f.attributedStringValue = NSAttributedString(string: words, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.secondaryText])
