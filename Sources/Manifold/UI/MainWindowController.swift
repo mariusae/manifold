@@ -439,6 +439,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
                 if focused == lastFocused, let responder,
+                   ([threadUI.overlay, sidebar] as [NSView?]).contains(where: { $0.map(responder.isDescendant(of:)) ?? false }) {
+                    // Typing in the threads' overlay or the sidebar (its
+                    // composer, its filter): a refresh, the focus where it
+                    // was, leaves the keyboard there.
+                } else if focused == lastFocused, let responder,
                    let typing = views.first(where: { $0.value.superview != nil && !$0.value.isHidden && responder.isDescendant(of: $0.value) })?.key,
                    a.placement(typing) != nil, !a.isStashed(typing) {
                     // The tile focus didn't move but the keyboard is in

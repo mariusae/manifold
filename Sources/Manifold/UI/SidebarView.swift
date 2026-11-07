@@ -472,6 +472,9 @@ final class FootRowView: NSView {
 
     init(title: String, symbol: String) {
         super.init(frame: .zero)
+        // Put away as no room (the sidebar's other lists showing): nothing
+        // of it drawn below the bar.
+        clipsToBounds = true
         icon.image = Theme.symbol(symbol, size: 11)
         icon.contentTintColor = Theme.secondaryText
         label.stringValue = title
