@@ -119,3 +119,27 @@ extension MainWindowController {
         return "list · " + nodes.map { n in n.title + (n.children.isEmpty ? "" : ": " + n.children.map { c in c.title + " [" + c.detail + "]" + (c.count.map { " (\($0))" } ?? "") + " " + (c.trailing ?? "") }.joined(separator: "; ")) }.joined(separator: "\n")
     }
 }
+
+extension MainWindowController {
+    /// Debugging the focused diff: folding, selecting, scrolling across, copying, dragging.
+    func debugDiffView(_ arg: String) -> String {
+        guard let f = arrangement?.focused, let d = views[f] as? DiffView else { return "no diff focused" }
+        let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        switch w.first {
+        case "fold": return d.debugFold(w.count > 1 ? w[1] : nil)
+        case "select":
+            let n = (w.count > 1 ? w[1] : "").split(separator: " ").compactMap { Int($0) }
+            guard n.count == 5 else { return "usage: select <side> <line> <col> <line> <col>" }
+            return d.debugSelect(side: n[0], from: (n[1], n[2]), to: (n[3], n[4]))
+        case "across": return d.debugScrollAcross(CGFloat(Double(w.count > 1 ? w[1] : "0") ?? 0))
+        case "copy":
+            NSApp.sendAction(#selector(DiffRowsView.copy(_:)), to: d.focusView, from: nil)
+            return NSPasteboard.general.string(forType: .string) ?? "nothing"
+        case "drag":
+            guard let item = d.selectionDrag as? NSPasteboardItem else { return "no reference yet" }
+            let thing = item.data(forType: .manifoldThing).flatMap { String(data: $0, encoding: .utf8) } ?? "-"
+            return "string: \(item.string(forType: .string) ?? "-")\nthing: \(thing)"
+        default: return d.debugFold(nil)
+        }
+    }
+}

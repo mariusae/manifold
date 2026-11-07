@@ -414,6 +414,11 @@ enum DebugControl {
             return wc?.debugTimeline(arg) ?? "no window"
         case "threadoverlay":
             return wc?.debugOverlay(arg) ?? "no window"
+        case "diffview":
+            // "diffview fold <file>": a file folded or unfolded; "diffview select
+            // <side> <line> <col> <line> <col>": text selected; "diffview across <dx>";
+            // "diffview copy"; "diffview drag": what dragging the selection writes.
+            return wc?.debugDiffView(arg) ?? "no window"
         case "sidebarthreads":
             return wc?.debugSidebarThreads(arg) ?? "no window"
         case "filehistory":

@@ -381,7 +381,16 @@ extension MainWindowController: ThreadChatDelegate {
     /// are chosen), anchored there once its text is in; with the rows as
     /// they were.
     func threadPlace(in d: DiffView, done: @escaping (ThreadPlace?) -> Void) {
-        var rows = d.chosenRows
+        diffPlace(d, rows: d.chosenRows, done: done)
+    }
+
+    /// The place a diff's rows are in their file (§3.12): anchored at the
+    /// lines of the side they're on (removed lines alone, where they
+    /// were), found again by their words when they're a commit's or an
+    /// older version's; the diff and its rows kept with it. A comment on
+    /// rows is about it; lines selected, dragged out, are a reference to it.
+    func diffPlace(_ d: DiffView, rows: [Int], done: @escaping (ThreadPlace?) -> Void) {
+        var rows = rows
         if rows.isEmpty { return done(nil) }
         guard let path = d.filePath(ofRow: rows[0]), let diff = hosts.block(d.block) else { return done(nil) }
         rows = rows.filter { d.filePath(ofRow: $0) == path }

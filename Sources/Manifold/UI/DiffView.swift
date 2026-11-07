@@ -41,6 +41,16 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     private var unfolded = false
     /// A commit's heading, over its rows: its message rendered.
     private var commitHeader: CommitHeaderView?
+    /// Files folded to their heading, by name (kept with the tile).
+    private var collapsed: Set<String> = []
+    /// The heading of the file the top of the view is in, kept at the top
+    /// while its own row's scrolled past; clicked, the file folded.
+    private let sticky = StickyFileHeading()
+    /// What the lines selected carry dragged out, once found (a reference
+    /// to them in their file); till then, the file at their line.
+    var selectionDrag: NSPasteboardWriting?
+    /// Text selected (let go): for the window to find a reference to it.
+    var onSelected: (() -> Void)?
 
     var focusView: NSView { rowsView }
     var isDead: Bool { false }
@@ -97,12 +107,25 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             guard let self, let first = self.rowsView.rows(onLines: line...line).first else { return }
             self.onThreads?(first, self.convert(rect, from: self.rowsView))
         }
+        rowsView.onToggleFile = { [weak self] name in self?.toggleFile(name) }
+        rowsView.onSelected = { [weak self] in
+            self?.selectionDrag = nil
+            self?.onSelected?()
+        }
+        rowsView.dragOut = { [weak self] in self?.selectionDrag ?? self?.fileAtSelection() }
         scroll.documentView = rowsView
         scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = true
+        // Across, the rows' text scrolls under their numbers (DiffRowsView).
+        scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        sticky.rows = rowsView
+        sticky.isHidden = true
+        sticky.onClick = { [weak self] in if let name = self?.sticky.name { self?.toggleFile(name) } }
+        addSubview(sticky)
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.updateSticky() }
         scroll.watchScrolling { [weak self] x, y in self?.keeper.note(["scrollX": "\(x)", "scroll": "\(y)"]) }
         documentChanged()
     }
@@ -117,6 +140,10 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         if keeper.value("outline") == "1", !sidebarShown { toggleSidebar() }
         if keeper.value("unfolded") == "1", !unfolded {
             unfolded = true
+            rebuild()
+        }
+        if let c = keeper.value("collapsed"), !c.isEmpty, collapsed.isEmpty {
+            collapsed = Set(c.components(separatedBy: "\n"))
             rebuild()
         }
         let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
@@ -139,6 +166,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             top -= h
         }
         scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: top)
+        sticky.frame = NSRect(x: left, y: top - rowsView.rowHeightShown, width: bounds.width - left, height: rowsView.rowHeightShown)
         waiting.frame = scroll.frame
         rowsView.minWidth = scroll.contentSize.width
         rowsView.relayout()
@@ -202,14 +230,88 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             let added = rows.filter { $0.kind == .added }.count, removed = rows.filter { $0.kind == .removed }.count
             note.stringValue = added + removed == 0 ? "No difference" : "+\(added) −\(removed)"
         }
+        // Files folded: their heading alone.
+        if !collapsed.isEmpty {
+            var kept: [DiffRow] = [], skipping = false
+            for r in rows {
+                if case let .file(name) = r.kind { skipping = collapsed.contains(name); kept.append(r) } else if !skipping { kept.append(r) }
+            }
+            rows = kept
+        }
+        rowsView.collapsedFiles = collapsed
         let t1 = CACurrentMediaTime()
         rowsView.rows = rows
         rowsView.relayout()
         let t2 = CACurrentMediaTime()
         if d.loadedAt != nil { restoreState() }
         fillOutline()
+        updateSticky()
         let t3 = CACurrentMediaTime()
         Self.debugTiming = String(format: "%d rows: rows %.0f ms, layout %.0f ms, outline %.0f ms", rows.count, (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000)
+    }
+
+    // MARK: Files folded, and the heading kept at the top
+
+    /// A file folded to its heading, or unfolded: the heading kept where
+    /// it was on screen (at the top, if it had scrolled past).
+    func toggleFile(_ name: String) {
+        func headingY() -> CGFloat? {
+            rowsView.rows.firstIndex { $0.kind == .file(name) }.map { rowsView.rect(ofRow: $0).minY }
+        }
+        let was = headingY().map { max(0, $0 - scroll.contentView.bounds.minY) } ?? 0
+        if collapsed.contains(name) { collapsed.remove(name) } else { collapsed.insert(name) }
+        keeper.note(["collapsed": collapsed.sorted().joined(separator: "\n")])
+        rebuild()
+        if let y = headingY() {
+            let top = max(0, rowsView.frame.height - scroll.contentView.bounds.height)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: min(max(0, y - was), top)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        updateSticky()
+    }
+
+    private func updateSticky() {
+        let top = scroll.contentView.bounds.minY, h = rowsView.rowHeightShown
+        guard top > 0.5, let f = rowsView.file(atLine: Int(top / h)), CGFloat(f.line) * h < top - 0.5 else {
+            sticky.isHidden = true
+            return
+        }
+        if sticky.name != f.name { sticky.name = f.name; sticky.needsDisplay = true }
+        sticky.isHidden = false
+    }
+
+    /// Debugging: a file folded or unfolded, and what's shown.
+    func debugFold(_ name: String?) -> String {
+        if let name { toggleFile(name) }
+        let files = rowsView.rows.indices.compactMap { i -> String? in if case let .file(n) = rowsView.rows[i].kind { "\(n)@\(i)" } else { nil } }
+        return "collapsed \(collapsed.sorted()) · \(rowsView.rows.count) rows · files \(files) · sticky \(sticky.isHidden ? "hidden" : sticky.name ?? "?")"
+    }
+
+    // MARK: Selection
+
+    var selectedRows: [Int] { rowsView.selectedRows }
+    var selectedText: String? { rowsView.selectedText }
+
+    /// Till a reference is found: the file, at the selection's first line, with its words.
+    private func fileAtSelection() -> NSPasteboardWriting? {
+        guard let first = selectedRows.first, let path = filePath(ofRow: first) else { return nil }
+        let r = rowsView.rows[first]
+        let line = r.kind == .removed ? r.oldLine : r.newLine
+        return Drags.item(DragThing(fragment: line.map { "line=\($0)" }, title: path.lastPathComponent,
+                                    file: .init(host: block.host, path: path, isDirectory: false), text: selectedText ?? path))
+    }
+
+    /// Debugging: text selected from (line, offset) to (line, offset) on a side; what it says.
+    func debugSelect(side: Int, from: (Int, Int), to: (Int, Int)) -> String {
+        rowsView.selection = (side, .init(line: from.0, col: from.1), .init(line: to.0, col: to.1))
+        rowsView.chosen = min(from.0, to.0)...max(from.0, to.0)
+        rowsView.onSelected?()
+        return "rows \(selectedRows) text \(selectedText.map { "“\($0)”" } ?? "none")"
+    }
+
+    func debugScrollAcross(_ dx: CGFloat) -> String {
+        rowsView.hOffset = max(0, rowsView.hOffset + dx)
+        return "across \(Int(rowsView.hOffset))"
     }
 
     // MARK: The outline (§7.5)
@@ -346,7 +448,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
 /// The rows, drawn: two line-number gutters, then the text; colored by
 /// kind.
-final class DiffRowsView: NSView {
+final class DiffRowsView: NSView, NSDraggingSource {
     var rows: [DiffRow] = [] { didSet { (pairs, rowLines) = Self.pair(rows) } }
     /// Rows found (⌘F), by index into `rows`, and the one gone to.
     var found: Set<Int> = [] { didSet { foundLines = Dictionary(found.map { ($0 < rowLines.count ? rowLines[$0] : $0, $0) }, uniquingKeysWith: { a, _ in a }); needsDisplay = true } }
@@ -360,6 +462,12 @@ final class DiffRowsView: NSView {
     private var rowLines: [Int] = []
     var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { relayout() } }
     var minWidth: CGFloat = 0
+    /// How far the lines' text is scrolled across, under line numbers that
+    /// stay (a side by side's two sides together).
+    var hOffset: CGFloat = 0 { didSet { if hOffset != oldValue { needsDisplay = true } } }
+    /// Files folded to their heading row, by name; a heading clicked folds or unfolds its file.
+    var collapsedFiles: Set<String> = [] { didSet { needsDisplay = true } }
+    var onToggleFile: ((String) -> Void)?
     var onFold: (() -> Void)?
     var onOpen: ((DiffRow) -> Void)?
     private let rowHeight: CGFloat = 19
@@ -432,7 +540,7 @@ final class DiffRowsView: NSView {
 
     /// What's drawn under a chosen line, and a thread's mark at its left.
     private func drawChosenAndThreads(line i: Int, y: CGFloat) {
-        if chosen?.contains(i) == true {
+        if chosen?.contains(i) == true, ordered == nil {
             Theme.accent.withAlphaComponent(0.16).setFill()
             NSRect(x: 0, y: y, width: bounds.width, height: rowHeight).fill()
             Theme.accent.setFill()
@@ -447,11 +555,180 @@ final class DiffRowsView: NSView {
         }
     }
 
+    // MARK: Selecting text
+
+    /// A place in the text: a line on screen, and an offset (UTF-16) in its text.
+    struct Spot: Comparable {
+        var line: Int
+        var col: Int
+        static func < (a: Spot, b: Spot) -> Bool { (a.line, a.col) < (b.line, b.col) }
+    }
+    /// Text selected — on one side, side by side (1 old, 2 new; 0 unified)
+    /// — from where it began to where it's been dragged.
+    var selection: (side: Int, anchor: Spot, head: Spot)? { didSet { needsDisplay = true } }
+    private var selectFrom: (side: Int, spot: Spot)?
+    /// A press in the text selected: dragged, the lines go out (a
+    /// reference to them); let go, the selection's gone.
+    private var pressInSelection: NSEvent?
+    /// Text selected, once let go: for a reference to it to be found ahead of a drag.
+    var onSelected: (() -> Void)?
+    /// What the lines selected carry dragged out.
+    var dragOut: (() -> NSPasteboardWriting?)?
+
+    private var ordered: (side: Int, from: Spot, to: Spot)? {
+        guard let s = selection, s.anchor != s.head else { return nil }
+        return (s.side, min(s.anchor, s.head), max(s.anchor, s.head))
+    }
+
+    /// A line's text on a side (0 unified, 1 old, 2 new): a context,
+    /// added or removed line's; nil for headings, hunks and folds.
+    func text(line: Int, side: Int) -> String? {
+        if !sideBySide {
+            guard rows.indices.contains(line) else { return nil }
+            switch rows[line].kind {
+            case .added, .removed, .context: return rows[line].text
+            default: return nil
+            }
+        }
+        guard pairs.indices.contains(line) else { return nil }
+        let p = pairs[line]
+        if let span = p.span { if case .context = span.kind { return span.text } else { return nil } }
+        return side == 1 ? p.left?.text : p.right?.text
+    }
+
+    /// Where a side's text begins, scrolled across.
+    private func textX(side: Int) -> CGFloat {
+        switch side {
+        case 1: sideGutter - hOffset
+        case 2: (bounds.width / 2).rounded() + sideGutter - hOffset
+        default: gutter - hOffset
+        }
+    }
+
+    private func ctLine(_ text: String) -> CTLine {
+        CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+    }
+
+    /// The side a point's over: in the text (or its numbers) on the left or right.
+    private func side(at p: NSPoint) -> Int { sideBySide ? (p.x < bounds.width / 2 ? 1 : 2) : 0 }
+
+    /// The spot under a point, on a side.
+    private func spot(at p: NSPoint, side: Int) -> Spot {
+        let line = max(0, min(lineCount - 1, Int(p.y / rowHeight)))
+        guard let t = text(line: line, side: side), !t.isEmpty else { return Spot(line: line, col: 0) }
+        let i = CTLineGetStringIndexForPosition(ctLine(t), CGPoint(x: p.x - textX(side: side), y: 0))
+        return Spot(line: line, col: max(0, min(i == kCFNotFound ? 0 : i, t.utf16.count)))
+    }
+
+    /// What's selected drawn under a line's text: from its offset to its
+    /// end (and a little past, where the selection goes on to the next).
+    private func drawSelection(line: Int, side: Int, text: String, origin: NSPoint, y: CGFloat) {
+        guard let s = ordered, s.side == side, line >= s.from.line, line <= s.to.line else { return }
+        let n = text.utf16.count, ct = ctLine(text)
+        let from = line == s.from.line ? min(s.from.col, n) : 0, to = line == s.to.line ? min(s.to.col, n) : n
+        let x0 = origin.x + CTLineGetOffsetForStringIndex(ct, from, nil)
+        var x1 = origin.x + CTLineGetOffsetForStringIndex(ct, to, nil)
+        if line < s.to.line { x1 += font.pointSize * 0.5 }
+        guard x1 > x0 else { return }
+        (window?.firstResponder === self ? NSColor.selectedTextBackgroundColor : NSColor.unemphasizedSelectedTextBackgroundColor).setFill()
+        NSRect(x: x0, y: y + 1, width: x1 - x0, height: rowHeight - 2).fill()
+    }
+
+    /// The text selected, a line a line; nil with none.
+    var selectedText: String? {
+        guard let s = ordered else { return nil }
+        var out: [String] = []
+        for line in s.from.line...s.to.line {
+            guard let t = text(line: line, side: s.side) else { continue }
+            let u = Array(t.utf16), n = u.count
+            let from = line == s.from.line ? min(s.from.col, n) : 0, to = line == s.to.line ? min(s.to.col, n) : n
+            out.append(String(utf16CodeUnits: Array(u[from..<max(from, to)]), count: max(0, to - from)))
+        }
+        return out.joined(separator: "\n")
+    }
+
+    /// The rows (by index) the selection is on, on its side.
+    var selectedRows: [Int] {
+        guard let s = ordered else { return [] }
+        if !sideBySide { return Array(s.from.line...s.to.line).filter { text(line: $0, side: 0) != nil } }
+        var out: [Int] = []
+        for line in s.from.line...s.to.line where pairs.indices.contains(line) {
+            let p = pairs[line]
+            let r = p.span ?? (s.side == 1 ? p.left : p.right)
+            if let r, let i = rowIndex(of: r, line: line) { out.append(i) }
+        }
+        return out
+    }
+
+    private func rowIndex(of r: DiffRow, line: Int) -> Int? {
+        rowLines.indices.first { rowLines[$0] == line && rows[$0] == r }
+    }
+
+    @objc func copy(_ sender: Any?) {
+        let text = selectedText ?? chosen.map { c in
+            rows(onLines: c).compactMap { i -> String? in
+                switch rows[i].kind {
+                case .added, .removed, .context: rows[i].text
+                default: nil
+                }
+            }.joined(separator: "\n")
+        }
+        guard let text, !text.isEmpty else { return NSSound.beep() }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    @objc override func selectAll(_ sender: Any?) {
+        guard lineCount > 0 else { return }
+        let side = sideBySide ? 2 : 0, last = lineCount - 1
+        selection = (side, Spot(line: 0, col: 0), Spot(line: last, col: text(line: last, side: side)?.utf16.count ?? 0))
+        chosen = 0...last
+    }
+
     override func mouseDragged(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if let press = pressInSelection {
+            // Dragged far enough: the lines selected go out, as a reference.
+            let start = convert(press.locationInWindow, from: nil)
+            guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
+            pressInSelection = nil
+            guard let w = dragOut?() ?? (selectedText.map { $0 as NSString }) else { return }
+            let item = NSDraggingItem(pasteboardWriter: w)
+            let label = NSAttributedString(string: selectedText?.components(separatedBy: "\n").first ?? "", attributes: [.font: font, .foregroundColor: Theme.text])
+            let image = NSImage(size: NSSize(width: min(320, label.size().width + 12), height: rowHeight), flipped: false) { r in
+                Theme.panel.setFill(); NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4).fill()
+                label.draw(at: NSPoint(x: 6, y: 3))
+                return true
+            }
+            item.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - rowHeight / 2, width: image.size.width, height: image.size.height), contents: image)
+            beginDraggingSession(with: [item], event: event, source: self)
+            return
+        }
+        if let from = selectFrom {
+            let head = spot(at: p, side: from.side)
+            selection = (from.side, from.spot, head)
+            chosen = min(from.spot.line, head.line)...max(from.spot.line, head.line)
+            autoscroll(with: event)
+            return
+        }
         guard let from = chooseFrom else { return }
-        let i = max(0, min(lineCount - 1, Int(convert(event.locationInWindow, from: nil).y / rowHeight)))
+        let i = max(0, min(lineCount - 1, Int(p.y / rowHeight)))
         chosen = min(from, i)...max(from, i)
         autoscroll(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if pressInSelection != nil {
+            // A click in what's selected, not a drag: it's let go.
+            pressInSelection = nil
+            selection = nil
+            chosen = Int(convert(event.locationInWindow, from: nil).y / rowHeight)...Int(convert(event.locationInWindow, from: nil).y / rowHeight)
+        }
+        if selectFrom != nil {
+            selectFrom = nil
+            if ordered == nil { selection = nil } else { onSelected?() }
+        }
+        chooseFrom = nil
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -511,8 +788,83 @@ final class DiffRowsView: NSView {
 
     private var lineCount: Int { sideBySide ? pairs.count : rows.count }
 
+    /// How far the text can scroll across: the widest line past the room for it.
+    private var maxOffset: CGFloat {
+        let room = sideBySide ? (bounds.width / 2).rounded() - sideGutter - 8 : bounds.width - gutter - 12
+        return max(0, widest + 24 - room)
+    }
+
+    /// Across, the text scrolls under the line numbers (a mouse's wheel
+    /// with ⇧, or a trackpad sideways); up and down, the rows as ever.
+    override func scrollWheel(with event: NSEvent) {
+        let dx = event.scrollingDeltaX * (event.hasPreciseScrollingDeltas ? 1 : 10)
+        if dx != 0, abs(event.scrollingDeltaX) >= abs(event.scrollingDeltaY) {
+            hOffset = min(max(0, hOffset - dx), maxOffset)
+            return
+        }
+        super.scrollWheel(with: event)
+    }
+
+    /// The arrows scroll a line (up, down) or a few characters (left,
+    /// right); Page Up and Down a page; Home and End to either end.
+    override func keyDown(with event: NSEvent) {
+        let line = rowHeight, page = max(line, (enclosingScrollView?.contentSize.height ?? 200) - 2 * line)
+        let advance = ("M" as NSString).size(withAttributes: [.font: font]).width
+        switch event.keyCode {
+        case 126: scrollBy(-line)
+        case 125: scrollBy(line)
+        case 116: scrollBy(-page)
+        case 121: scrollBy(page)
+        case 115: scrollBy(-.greatestFiniteMagnitude)
+        case 119: scrollBy(.greatestFiniteMagnitude)
+        case 123: hOffset = max(0, hOffset - 4 * advance)
+        case 124: hOffset = min(maxOffset, hOffset + 4 * advance)
+        default: super.keyDown(with: event)
+        }
+    }
+
+    private func scrollBy(_ dy: CGFloat) {
+        guard let clip = enclosingScrollView?.contentView else { return }
+        let top = max(0, bounds.height - clip.bounds.height)
+        let y = min(max(0, clip.bounds.minY + (dy.isFinite ? dy : dy > 0 ? top : -top)), top)
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: y))
+        enclosingScrollView?.reflectScrolledClipView(clip)
+    }
+
+    /// The file heading the line on screen is under: its name, and its line.
+    func file(atLine line: Int) -> (name: String, line: Int)? {
+        var l = min(line, lineCount - 1)
+        while l >= 0 {
+            let r = sideBySide ? pairs[l].span : rows[l]
+            if case let .file(name)? = r?.kind { return (name, l) }
+            l -= 1
+        }
+        return nil
+    }
+
+    var rowHeightShown: CGFloat { rowHeight }
+
+    /// A file's heading row: a chevron (folded or not), its name in the heading face.
+    func drawFileHeading(_ name: String, in band: NSRect, textY: CGFloat) {
+        Theme.hover.setFill(); band.fill()
+        let folded = collapsedFiles.contains(name)
+        if let image = NSImage(systemSymbolName: folded ? "chevron.right" : "chevron.down", accessibilityDescription: folded ? "Unfold" : "Fold")?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [Theme.secondaryText]))) {
+            image.draw(in: NSRect(x: band.minX + 12, y: band.minY + (rowHeight - 10) / 2, width: 10, height: 10), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: font.pointSize, weight: .semibold), .foregroundColor: Theme.text]
+        (name as NSString).draw(at: NSPoint(x: band.minX + 28, y: textY), withAttributes: attrs)
+    }
+
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+
+    override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+    override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
 
     func relayout() {
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
@@ -521,7 +873,9 @@ final class DiffRowsView: NSView {
             widest = max(widest, (r.text as NSString).size(withAttributes: attrs).width)
         }
         sideBySide = minWidth >= 2 * (sideGutter + min(widest, 300) + 16) && minWidth >= 700
-        let w = sideBySide ? minWidth : max(minWidth, gutter + widest + 40)
+        // As wide as the tile: what's wider scrolls across under the numbers.
+        let w = minWidth
+        hOffset = min(hOffset, max(0, widest + 24 - (sideBySide ? (w / 2).rounded() - sideGutter - 8 : w - gutter - 12)))
         frame = NSRect(x: 0, y: 0, width: w, height: max(CGFloat(lineCount) * rowHeight + 20, minWidth > 0 ? (enclosingScrollView?.contentSize.height ?? 0) : 0))
         needsDisplay = true
     }
@@ -557,9 +911,7 @@ final class DiffRowsView: NSView {
             case .added: Self.addedBackground.setFill(); band.fill(); marker = "+"
             case .removed: Self.removedBackground.setFill(); band.fill(); marker = "−"
             case .hunk: Self.hunkBackground.setFill(); band.fill(); attrs[.foregroundColor] = Theme.secondaryText
-            case .file:
-                Theme.hover.setFill(); band.fill()
-                attrs[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+            case .file: break
             case .fold: attrs[.foregroundColor] = Theme.secondaryText
             case .context: break
             }
@@ -568,7 +920,7 @@ final class DiffRowsView: NSView {
             let textY = y + (rowHeight - font.pointSize * 1.2) / 2 - 1
             switch r.kind {
             case let .file(name):
-                (name as NSString).draw(at: NSPoint(x: 12, y: textY), withAttributes: attrs)
+                drawFileHeading(name, in: band, textY: textY)
             case let .fold(n):
                 ("⋯ \(n) unchanged line\(n == 1 ? "" : "s")" as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
             case .hunk:
@@ -583,8 +935,14 @@ final class DiffRowsView: NSView {
                     s.draw(at: NSPoint(x: 76 - s.size().width, y: textY + 1))
                 }
                 (marker as NSString).draw(at: NSPoint(x: gutter - 12, y: textY), withAttributes: attrs)
-                if found.contains(i) { markMatches(in: r.text, at: NSPoint(x: gutter, y: textY), attrs: attrs, current: i == current) }
-                (r.text as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
+                // The text scrolled across, under the numbers that stay.
+                NSGraphicsContext.current?.saveGraphicsState()
+                NSBezierPath(rect: NSRect(x: gutter - 2, y: y, width: bounds.width - gutter + 2, height: rowHeight)).addClip()
+                let at = NSPoint(x: gutter - hOffset, y: textY)
+                drawSelection(line: i, side: 0, text: r.text, origin: at, y: y)
+                if found.contains(i) { markMatches(in: r.text, at: at, attrs: attrs, current: i == current) }
+                (r.text as NSString).draw(at: at, withAttributes: attrs)
+                NSGraphicsContext.current?.restoreGraphicsState()
             }
         }
     }
@@ -597,6 +955,7 @@ final class DiffRowsView: NSView {
         let half = (bounds.width / 2).rounded()
         let textY = { (y: CGFloat) in y + (self.rowHeight - self.font.pointSize * 1.2) / 2 - 1 }
         var marking: Bool? = nil
+        var lineNow = 0
         func side(_ row: DiffRow?, x: CGFloat, width: CGFloat, y: CGFloat, number: Int?) {
             guard let row else { return }
             let band = NSRect(x: x, y: y, width: width, height: rowHeight)
@@ -614,11 +973,14 @@ final class DiffRowsView: NSView {
             (marker as NSString).draw(at: NSPoint(x: x + sideGutter - 12, y: textY(y)), withAttributes: textAttrs)
             NSGraphicsContext.current?.saveGraphicsState()
             NSBezierPath(rect: NSRect(x: x + sideGutter, y: y, width: max(0, width - sideGutter - 8), height: rowHeight)).addClip()
-            if let current = marking { markMatches(in: row.text, at: NSPoint(x: x + sideGutter, y: textY(y)), attrs: textAttrs, current: current) }
-            (row.text as NSString).draw(at: NSPoint(x: x + sideGutter, y: textY(y)), withAttributes: textAttrs)
+            let at = NSPoint(x: x + sideGutter - hOffset, y: textY(y))
+            drawSelection(line: lineNow, side: x == 0 ? 1 : 2, text: row.text, origin: at, y: y)
+            if let current = marking { markMatches(in: row.text, at: at, attrs: textAttrs, current: current) }
+            (row.text as NSString).draw(at: at, withAttributes: textAttrs)
             NSGraphicsContext.current?.restoreGraphicsState()
         }
         for i in first...last {
+            lineNow = i
             marking = foundLines[i] != nil ? (i == currentLine) : nil
             let pair = pairs[i]
             let y = CGFloat(i) * rowHeight
@@ -630,9 +992,7 @@ final class DiffRowsView: NSView {
                     Self.hunkBackground.setFill(); band.fill(); attrs[.foregroundColor] = Theme.secondaryText
                     ("@@ −\(r.oldLine ?? 0) +\(r.newLine ?? 0) @@ \(r.text)" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
                 case let .file(name):
-                    Theme.hover.setFill(); band.fill()
-                    attrs[.font] = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
-                    (name as NSString).draw(at: NSPoint(x: 12, y: textY(y)), withAttributes: attrs)
+                    drawFileHeading(name, in: band, textY: textY(y))
                 case let .fold(n):
                     attrs[.foregroundColor] = Theme.secondaryText
                     ("⋯ \(n) unchanged line\(n == 1 ? "" : "s")" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
@@ -655,14 +1015,35 @@ final class DiffRowsView: NSView {
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
         let i = Int(p.y / rowHeight)
-        // A thread's mark: its thread. Else the row chosen (⇧: the rows to it).
+        // A thread's mark: its thread.
         if p.x < 16, threadLines[i] != nil, let onThreads {
             return onThreads(i, NSRect(x: 0, y: CGFloat(i) * rowHeight, width: 16, height: rowHeight))
         }
+        // A file's heading: its file folded or unfolded.
+        if i >= 0, i < lineCount, event.clickCount == 1, case let .file(name)? = (sideBySide ? pairs[i].span : rows[i])?.kind {
+            onToggleFile?(name)
+            return
+        }
+        let side = side(at: p)
+        let inText = p.x >= textX(side: side) + hOffset - 4
         if i >= 0, i < lineCount, event.clickCount == 1 {
+            if inText, let s = ordered, s.side == side, Spot(line: i, col: spot(at: p, side: side).col) >= s.from,
+               Spot(line: i, col: spot(at: p, side: side).col) <= s.to, !event.modifierFlags.contains(.shift) {
+                // In what's selected: dragged, the lines go out.
+                pressInSelection = event
+                return
+            }
             if event.modifierFlags.contains(.shift), let c = chosen {
                 chosen = min(c.lowerBound, i)...max(c.upperBound, i)
+                if let s = selection, s.side == side { selection = (side, s.anchor, spot(at: p, side: side)) }
+            } else if inText {
+                // In the text: a selection begun (the line chosen too, to comment on).
+                chosen = i...i
+                selection = nil
+                selectFrom = (side, spot(at: p, side: side))
             } else {
+                // On the numbers: rows chosen, dragged across.
+                selection = nil
                 chosen = i...i
                 chooseFrom = i
             }
@@ -925,4 +1306,26 @@ final class CommitHeaderView: NSView {
         text.frame.size.width = scroll.contentSize.width
         rule.frame = NSRect(x: 0, y: 0, width: w, height: 1)
     }
+}
+
+
+/// The heading of the file the top of a diff is in, over its rows while
+/// the file's own heading row has scrolled past: drawn as that row is;
+/// clicked, the file folded.
+final class StickyFileHeading: NSView {
+    var name: String?
+    weak var rows: DiffRowsView?
+    var onClick: (() -> Void)?
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let name, let rows else { return }
+        Theme.windowBackground.withAlphaComponent(1).setFill()
+        bounds.fill()
+        rows.drawFileHeading(name, in: bounds, textY: (bounds.height - rows.font.pointSize * 1.2) / 2 - 1)
+        Theme.divider.setFill()
+        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+    }
+
+    override func mouseDown(with event: NSEvent) { onClick?() }
 }

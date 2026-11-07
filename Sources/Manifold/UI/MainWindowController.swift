@@ -807,6 +807,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 guard let self, let d else { return }
                 self.diffThreadsClicked(d, row: row, rect: rect)
             }
+            // Lines selected: a reference to them in their file found, for
+            // when they're dragged out — the place a comment on them has.
+            d.onSelected = { [weak self, weak d] in
+                guard let self, let d else { return }
+                let text = d.selectedText
+                self.diffPlace(d, rows: d.selectedRows) { [weak self, weak d] place in
+                    guard let self, let d, let place, d.selectedText == text else { return }
+                    var t = self.dragThing(place.block, fragment: place.anchor, title: place.name ?? place.title)
+                    t.text = text
+                    t.selection = true
+                    d.selectionDrag = Drags.item(t)
+                }
+            }
             markThreads(in: d)
             v = d
         case .search:
