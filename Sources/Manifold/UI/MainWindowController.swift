@@ -84,7 +84,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var tileFlights: [CALayer] = []
     /// ⌃⇥'s switcher, while control is held: what ends it.
     private var stackMonitors: [Any] = []
-    private let sidebar = SidebarView()
+    let sidebar = SidebarView()
     /// What the window shows with no space at all.
     private var emptyState: EmptyStateView?
     /// Each placement's view, for every arrangement on the desk.
@@ -3091,6 +3091,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = organization == .desk ? .on : .off
         case #selector(organizeByFiles(_:)):
             item.state = organization == .files ? .on : .off
+        case #selector(organizeByThreads(_:)):
+            item.state = organization == .threads ? .on : .off
         case #selector(toggleInspector(_:)):
             item.state = inspector?.isVisible == true ? .on : .off
         case #selector(toggleSidebarFilter(_:)):
@@ -4075,6 +4077,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         refreshInspector(now: true)
     }
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
+    @objc func organizeByThreads(_ sender: Any?) { setOrganization(.threads) }
 
     /// What the sidebar is narrowed to (§3.6), whichever organization
     /// shows: only the rows the filter admits, and the way to each.
@@ -4095,6 +4098,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         state.organization = org.rawValue
         if state != hosts.state.window { hosts.setWindow(state) }
         sidebar.setOrganization(org)
+        // The timeline's New rule where it is now, coming to it.
+        if org == .threads { sidebar.timeline.marksWhenOpened = nil }
         if show, !sidebarShown { showSidebar(animated: true) }
         refreshOrganization(now: true)
     }
@@ -4127,6 +4132,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
             let reachable = self.hosts.reachable()
             self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
+            self.refreshSidebarThreads()
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
@@ -4151,7 +4157,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "arr/\(id)"
     }
 
-    private static func age(_ stamp: Stamp?) -> Double? {
+    static func age(_ stamp: Stamp?) -> Double? {
         guard let stamp else { return nil }
         let hours = Date().timeIntervalSince(stamp.date) / 3600
         return min(1, max(0, (hours - 1) / 167))
@@ -4500,6 +4506,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .files: return filesTree(filter)
         case .closed: return closedTree(filter)
         case .inspector: return inspectorTree()
+        case .threads: return threadsTree()
         }
     }
 
@@ -8290,6 +8297,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 extension MainWindowController: SidebarDelegate {
 
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
+    func sidebarThreadsMode(timeline: Bool) { setThreadsMode(timeline: timeline) }
     func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
     func sidebarFilter(_ filter: SidebarFilter?) { setSidebarFilter(filter) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }

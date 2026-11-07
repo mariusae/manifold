@@ -57,7 +57,12 @@ final class ThreadTimelineView: NSView {
     private(set) var chosen: BlockID?
     /// What had been seen of each thread when it was first shown: the New
     /// rule stays where it was while it's open, as Quip's does.
-    var marksWhenOpened: [BlockID: Stamp]?
+    var marksWhenOpened: [BlockID: Stamp]? { didSet { if marksWhenOpened == nil { arriving = true } } }
+    /// Come to (shown first, or opened again): to the New rule, as Quip
+    /// opens a conversation at what you haven't read — else the end —
+    /// once it's laid out at its size.
+    private var arriving = true
+    private weak var ruleView: NSView?
     /// The space it's of.
     var space: BlockID?
 
@@ -65,6 +70,18 @@ final class ThreadTimelineView: NSView {
     private let scopeControl = NSSegmentedControl()
     private let filterControl = NSSegmentedControl(labels: ["All", "Open", "Unread"], trackingMode: .selectOne, target: nil, action: nil)
     private let readAll = FlatButton("Mark All Read", font: UIType.detail)
+    /// Narrow (the sidebar's): no title — the sidebar's header has it —
+    /// Mark All Read a glyph, the scope on a row of its own.
+    var compact = false {
+        didSet {
+            titleLabel.isHidden = compact
+            readAll.isHidden = compact
+            readAllGlyph.isHidden = !compact
+            list.spacing = compact ? 10 : 14
+            needsLayout = true
+        }
+    }
+    private let readAllGlyph = IconButton(symbol: "checkmark.circle", size: 12, target: nil, action: nil)
     private let handOver = FlatButton("Hand to Agent", symbol: "sparkle", font: UIType.detail)
     private let scroll = NSScrollView()
     private let list = FlippedStack()
@@ -92,6 +109,10 @@ final class ThreadTimelineView: NSView {
         filterControl.action = #selector(filterChosen)
         readAll.target = self
         readAll.action = #selector(markAllRead)
+        readAllGlyph.target = self
+        readAllGlyph.action = #selector(markAllRead)
+        readAllGlyph.toolTip = "Mark All Read"
+        readAllGlyph.isHidden = true
         handOver.toolTip = "Ask an agent to address the open threads shown"
         handOver.onClick = { [weak self] in
             guard let self else { return }
@@ -138,8 +159,9 @@ final class ThreadTimelineView: NSView {
         composerScroll.layer?.cornerRadius = 6
         composerScroll.layer?.borderWidth = 1
         placeholder.font = UIType.body
+        placeholder.lineBreakMode = .byTruncatingTail
         placeholder.textColor = Theme.tertiaryText
-        for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
+        for v in [titleLabel, scopeControl, filterControl, readAll, readAllGlyph, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
         themed { v in
             v.composerScroll.layer?.borderColor = Theme.divider.cgColor
             v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
@@ -188,8 +210,24 @@ final class ThreadTimelineView: NSView {
         updateReplying()
         needsLayout = true
         layoutSubtreeIfNeeded()
-        if first || atEnd { scrollToEnd() }
+        if first || arriving {
+            arriving = true
+            needsLayout = true
+        } else if atEnd {
+            scrollToEnd()
+        }
         watchSeen()
+    }
+
+    /// To the New rule, a little room above it; none, the end.
+    private func arrive() {
+        guard let doc = scroll.documentView else { return }
+        doc.layoutSubtreeIfNeeded()
+        guard let rule = ruleView, rule.isDescendant(of: list) else { return scrollToEnd() }
+        let top = list.convert(rule.bounds, from: rule).minY - 24
+        let y = min(max(0, top), max(0, doc.frame.height - scroll.contentView.bounds.height))
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     func scrollToEnd() {
@@ -204,7 +242,9 @@ final class ThreadTimelineView: NSView {
         seenTimer?.invalidate()
         guard model.unseen > 0 else { return }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
-            guard let self, let w = self.window, w.isVisible, !self.isHiddenOrHasHiddenAncestor else { return }
+            guard let self, let w = self.window, w.isVisible, w.isKeyWindow || w.isMainWindow || (w as? NSPanel) != nil, !self.isHiddenOrHasHiddenAncestor,
+                  // On screen: not in a sidebar slid out of the window.
+                  let content = w.contentView, content.bounds.intersects(self.convert(self.bounds, to: content)) else { return }
             self.delegate?.timeline(self, seen: self.model.runs.filter { $0.firstUnseen != nil }.map(\.thread.id))
         }
     }
@@ -218,8 +258,14 @@ final class ThreadTimelineView: NSView {
             guard let self else { return }
             self.delegate?.timeline(self, goToPlaceOf: run.thread.id)
         }
-        let reply = FlatButton(chosen == run.thread.id ? "Replying" : "Reply", font: UIType.footnote)
-        let resolve = FlatButton(resolved ? "Reopen" : "Resolve", font: UIType.footnote)
+        let replyWord = chosen == run.thread.id ? "Replying" : "Reply", resolveWord = resolved ? "Reopen" : "Resolve"
+        // Narrow, glyphs: the place has the room.
+        let reply = compact ? FlatButton("", symbol: "arrowshape.turn.up.left", font: UIType.footnote) : FlatButton(replyWord, font: UIType.footnote)
+        let resolve = compact ? FlatButton("", symbol: resolved ? "arrow.uturn.backward" : "checkmark", font: UIType.footnote)
+            : FlatButton(resolveWord, font: UIType.footnote)
+        reply.toolTip = replyWord
+        resolve.toolTip = resolveWord
+        if compact, chosen == run.thread.id { reply.contentTintColor = Theme.accent }
         let head = NSStackView(views: [place, NSView(), reply, resolve])
         head.spacing = 6
         let id = run.thread.id
@@ -295,6 +341,7 @@ final class ThreadTimelineView: NSView {
         let line = NSStackView(views: [left, label, right])
         line.spacing = 6
         left.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true
+        ruleView = line
         return line
     }
 
@@ -373,13 +420,25 @@ final class ThreadTimelineView: NSView {
         readAll.sizeToFit()
         filterControl.sizeToFit()
         scopeControl.sizeToFit()
-        readAll.frame = NSRect(x: bounds.width - pad - readAll.frame.width, y: y - rowH, width: readAll.frame.width, height: rowH)
-        filterControl.frame = NSRect(x: readAll.frame.minX - 8 - filterControl.frame.width, y: y - rowH, width: filterControl.frame.width, height: rowH)
-        let scopeW = scopeControl.isHidden ? 0 : scopeControl.frame.width
-        scopeControl.frame = NSRect(x: filterControl.frame.minX - 8 - scopeW, y: y - rowH, width: scopeW, height: rowH)
-        let titleRight = (scopeControl.isHidden ? filterControl.frame.minX : scopeControl.frame.minX) - 8
-        titleLabel.frame = NSRect(x: pad, y: y - rowH + 2, width: max(0, titleRight - pad), height: 18)
-        y -= rowH + 8
+        if compact {
+            // The scope (when there's a project) on its own row, then the
+            // filter, Mark All Read at its right.
+            if !scopeControl.isHidden {
+                scopeControl.frame = NSRect(x: pad, y: y - rowH, width: min(w, scopeControl.frame.width), height: rowH)
+                y -= rowH + 6
+            }
+            filterControl.frame = NSRect(x: pad, y: y - rowH, width: min(w - 26, filterControl.frame.width), height: rowH)
+            readAllGlyph.frame = NSRect(x: bounds.width - pad - 20, y: y - rowH + 1, width: 20, height: 20)
+            y -= rowH + 4
+        } else {
+            readAll.frame = NSRect(x: bounds.width - pad - readAll.frame.width, y: y - rowH, width: readAll.frame.width, height: rowH)
+            filterControl.frame = NSRect(x: readAll.frame.minX - 8 - filterControl.frame.width, y: y - rowH, width: filterControl.frame.width, height: rowH)
+            let scopeW = scopeControl.isHidden ? 0 : scopeControl.frame.width
+            scopeControl.frame = NSRect(x: filterControl.frame.minX - 8 - scopeW, y: y - rowH, width: scopeW, height: rowH)
+            let titleRight = (scopeControl.isHidden ? filterControl.frame.minX : scopeControl.frame.minX) - 8
+            titleLabel.frame = NSRect(x: pad, y: y - rowH + 2, width: max(0, titleRight - pad), height: 18)
+            y -= rowH + 8
+        }
         let ch: CGFloat = {
             guard let lm = composer.layoutManager, let tc = composer.textContainer else { return 30 }
             lm.ensureLayout(for: tc)
@@ -390,6 +449,7 @@ final class ThreadTimelineView: NSView {
         composer.frame.size.width = composerScroll.contentSize.width
         placeholder.sizeToFit()
         placeholder.frame.origin = NSPoint(x: pad + 9, y: composerScroll.frame.maxY - placeholder.frame.height - 6)
+        placeholder.frame.size.width = min(placeholder.frame.width, w - 18)
         replyingTo.frame = NSRect(x: pad, y: composerScroll.frame.maxY + 4, width: w - 20, height: 16)
         clearReply.frame = NSRect(x: pad + min(w - 20, replyingTo.intrinsicContentSize.width) + 4, y: composerScroll.frame.maxY + 4, width: 16, height: 16)
         handOver.sizeToFit()
@@ -397,6 +457,11 @@ final class ThreadTimelineView: NSView {
         replyingTo.frame.size.width = max(0, handOver.frame.minX - pad - 8)
         let bottom = replyingTo.frame.maxY + 6
         scroll.frame = NSRect(x: pad, y: bottom, width: w, height: max(0, y - bottom))
+        if arriving, scroll.frame.height > 40, !model.runs.isEmpty {
+            arriving = false
+            // After the runs' widths are set (a turn of the loop later).
+            DispatchQueue.main.async { [weak self] in self?.arrive() }
+        }
         empty.frame = NSRect(x: pad + 20, y: scroll.frame.midY - 30, width: w - 40, height: 60)
     }
 }

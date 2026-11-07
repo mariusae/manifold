@@ -67,6 +67,7 @@ extension Server {
     /// reopens it first.
     func addThreadEntry(_ block: BlockID, _ entry: ThreadEntry) -> String? {
         guard let t = node.block(block)?.thread else { return "not a thread" }
+        if let c = entry.comment, c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "nothing to say" }
         var e = entry
         e.at = clock.now()
         if t.resolved, e.comment != nil {

@@ -414,6 +414,8 @@ enum DebugControl {
             return wc?.debugTimeline(arg) ?? "no window"
         case "threadoverlay":
             return wc?.debugOverlay(arg) ?? "no window"
+        case "sidebarthreads":
+            return wc?.debugSidebarThreads(arg) ?? "no window"
         case "filehistory":
             // "filehistory": the focused editor's history (⌥⌘Y) and what it
             // shows; "filehistory go <i>|now|older|newer|blame|close|click <line>".

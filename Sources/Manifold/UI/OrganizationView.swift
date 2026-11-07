@@ -12,6 +12,9 @@ enum Organization: String, CaseIterable {
     /// The focused block's properties (⌥⌘I): what it is, where it is,
     /// what keeps it, its links and history, and what can be done with it.
     case inspector
+    /// The space's threads (§3.12): its timeline, over the tree — or its
+    /// project's.
+    case threads
 
     var title: String {
         switch self {
@@ -19,6 +22,7 @@ enum Organization: String, CaseIterable {
         case .files: "Files"
         case .closed: "Recently Closed"
         case .inspector: "Inspector"
+        case .threads: "Threads"
         }
     }
 
@@ -28,6 +32,7 @@ enum Organization: String, CaseIterable {
         case .files: "folder"
         case .closed: "clock.arrow.circlepath"
         case .inspector: "info.circle"
+        case .threads: "bubble.left.and.bubble.right"
         }
     }
 }

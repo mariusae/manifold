@@ -1204,8 +1204,13 @@ projection, §2.5):
   editor's place marks, §2.5), a diff's at its rows; clicked, the chat
   as a card under the line. Resolved ones hidden there, unless asked.
 - *As a tile*, for a long conversation — it's a block.
-- *The timeline*: the sidebar's Threads (§3.6's filter row: by space,
-  by project), or a tile of its own.
+- *The sidebar's Threads* (⌥⌘3, a row at its foot with how many have
+  something not seen): the space's threads listed by title — the open
+  by what was said last, newest first, then the resolved, closed; each
+  with where it's about and how long since, a count of what's not
+  seen — or, by the switch in its header, the timeline. A row clicked
+  is read in the overlay; ⌘, a tile beside; ⌥, its place.
+- *The timeline*, in the sidebar or a tile of its own.
 - *The overlay*, anywhere (below).
 
 **The timeline.** All the activity that's relevant, newest last, as a
@@ -1296,7 +1301,7 @@ threadSeen, threadSpace proposals; mentions; a mani command's author by
 the socket's peer process); `ThreadChatView` (the chat), cards in place
 (`ThreadCardView`, a popover) from an editor's gutter or a diff's rows,
 `ThreadTileView` (lens `thread`), `ThreadTimelineView` (lens `threads`
-on the space, Show Threads), `ThreadOverlayView` (⌥⌘M elsewhere; ⌘J to a
+on the space, Show Threads; narrow, the sidebar's), the sidebar's Threads (`Organization.threads`: the list, `threadsTree`, or the timeline), `ThreadOverlayView` (⌥⌘M elsewhere; ⌘J to a
 thread); the inbox's rule and the Dock's count; agents asked, followed,
 delivered to when idle, stopped after three asks in a row, handed a set
 (`ThreadAgents`); `mani threads`, `mani thread …` (`ManiThreads`), and

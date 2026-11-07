@@ -463,7 +463,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sidebar.allowsKeyEquivalentWhenHidden = true
         view.addItem(.separator())
         let organize = NSMenu(title: "Organize By")
-        for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2")] {
+        for (title, sel, key) in [("Spaces", #selector(MainWindowController.organizeByDesk(_:)), "1"), ("Files", #selector(MainWindowController.organizeByFiles(_:)), "2"),
+                                 ("Threads", #selector(MainWindowController.organizeByThreads(_:)), "3")] {
             item(organize, title, sel, key, [.command, .option])
         }
         let organizeItem = NSMenuItem(title: "Organize By", action: nil, keyEquivalent: "")
