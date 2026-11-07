@@ -4,8 +4,8 @@ import AppKit
 /// be undone (§4): a block deleted, or closed with unsaved edits or a job
 /// running, which collection will end. A line of text and one action,
 /// gone after a while or when the action is taken. With a countdown, the
-/// time left runs down as a bar along its foot — held while the pointer
-/// is on it, so there's time to take its action — and what waits on it
+/// time left is its own shading, drawing back from its right edge to its
+/// left — held while the pointer is on it, so there's time to take its action — and what waits on it
 /// (a deletion, `then`) is done when it runs out, or at once if the toast
 /// is put away or another takes its place.
 final class ToastView: NSView {
@@ -15,7 +15,9 @@ final class ToastView: NSView {
     private var action: (() -> Void)?
     /// Done once its time is up and its action wasn't taken.
     private var then: (() -> Void)?
-    /// The time left, along its foot.
+    /// The time left: a shading behind its words, as wide as what's left
+    /// (in `track`, its shape, which clips it to the rounded corners).
+    private let track = CALayer()
     private let bar = CALayer()
     private var counting = false
     private var total: Double = 0
@@ -24,15 +26,11 @@ final class ToastView: NSView {
     private var pointerOn = false
     /// Gone (its time up, its action taken, put away): for a stack of them to let it go.
     var onGone: (() -> Void)?
-    /// In the sidebar's foot (§4): as wide as the sidebar, its words
-    /// wrapped (three lines at most), its action under them at the right.
+    /// In the sidebar's foot (§4): as wide as the sidebar, one line, its
+    /// words cut short at their end (all of them its tooltip).
     var compact = false {
         didSet {
-            label.lineBreakMode = compact ? .byWordWrapping : .byTruncatingMiddle
-            label.maximumNumberOfLines = compact ? 3 : 1
-            label.usesSingleLineMode = !compact
-            label.cell?.wraps = compact
-            label.cell?.truncatesLastVisibleLine = compact
+            label.lineBreakMode = compact ? .byTruncatingTail : .byTruncatingMiddle
             label.font = .systemFont(ofSize: compact ? 12 : 12.5)
             needsLayout = true
         }
@@ -49,10 +47,14 @@ final class ToastView: NSView {
         addSubview(label)
         addSubview(button)
         bar.anchorPoint = NSPoint(x: 0, y: 0.5)
-        bar.cornerRadius = 1
-        bar.isHidden = true
-        layer?.addSublayer(bar)
-        themed { $0.bar.backgroundColor = Theme.secondaryText.withAlphaComponent(0.45).cgColor }
+        track.cornerRadius = Radius.surface
+        track.cornerCurve = .continuous
+        track.masksToBounds = true
+        track.isHidden = true
+        track.addSublayer(bar)
+        // Under its words and its action.
+        layer?.insertSublayer(track, at: 0)
+        themed { $0.bar.backgroundColor = Theme.text.withAlphaComponent(0.1).cgColor }
         isHidden = true
     }
 
@@ -79,7 +81,7 @@ final class ToastView: NSView {
         superview?.needsLayout = true
         if arriving { rise() }
         counting = countdown
-        bar.isHidden = !countdown
+        track.isHidden = !countdown
         total = seconds
         remaining = seconds
         layoutSubtreeIfNeeded()
@@ -95,7 +97,7 @@ final class ToastView: NSView {
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
         guard counting else { return }
-        // As a share of the foot (laid out at whatever width the toast
+        // As a share of its width (laid out at whatever width the toast
         // takes), from what's left to none.
         let shrink = CABasicAnimation(keyPath: "transform.scale.x")
         shrink.fromValue = remaining / max(total, 0.01)
@@ -123,7 +125,7 @@ final class ToastView: NSView {
         CATransaction.commit()
     }
 
-    private var barWidth: CGFloat { max(0, bounds.width - 2 * Radius.surface) }
+    private var barWidth: CGFloat { bounds.width }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
@@ -216,39 +218,24 @@ final class ToastView: NSView {
         return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
     }
 
-    /// Its height, compact, at a width: its words wrapped, its action under them.
-    func compactHeight(width: CGFloat) -> CGFloat {
-        let w = max(40, width - 24)
-        let text = NSAttributedString(string: label.stringValue, attributes: [.font: label.font ?? .systemFont(ofSize: 12)])
-        let lineH = ceil((label.font ?? .systemFont(ofSize: 12)).boundingRectForFont.height)
-        let h = min(ceil(text.boundingRect(with: NSSize(width: w, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading]).height), lineH * 3)
-        return 10 + h + (button.isHidden ? 10 : 6 + Flat.buttonHeight + 8)
-    }
+    /// Its height, compact: one line, its action beside its words.
+    func compactHeight(width: CGFloat) -> CGFloat { Flat.buttonHeight + 8 }
 
     override func layout() {
         super.layout()
-        if compact {
-            let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
-            button.frame = NSRect(x: bounds.width - 10 - bw, y: 8, width: bw, height: Flat.buttonHeight)
-            let top: CGFloat = button.isHidden ? 10 : 8 + Flat.buttonHeight + 6
-            label.frame = NSRect(x: 12, y: top, width: bounds.width - 24, height: max(0, bounds.height - top - 10))
-            label.toolTip = label.stringValue
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            bar.position = NSPoint(x: Radius.surface, y: 2.5)
-            bar.bounds.size = NSSize(width: barWidth, height: 2)
-            CATransaction.commit()
-            return
-        }
         let h = bounds.height
+        let inset: CGFloat = compact ? 4 : 10
         let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
-        button.frame = NSRect(x: bounds.width - 10 - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
-        label.frame = NSRect(x: 14, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - 10 : button.frame.minX - 12) - 14), height: 17)
-        // Along its foot, in from the rounded corners.
+        button.frame = NSRect(x: bounds.width - inset - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
+        let left: CGFloat = compact ? 10 : 14
+        label.frame = NSRect(x: left, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - inset : button.frame.minX - 8) - left), height: 17)
+        label.toolTip = compact ? label.stringValue : nil
+        // The whole of it, the shading's room.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        bar.position = NSPoint(x: Radius.surface, y: isFlipped ? h - 2.5 : 2.5)
-        bar.bounds.size = NSSize(width: barWidth, height: 2)
+        track.frame = bounds
+        bar.position = NSPoint(x: 0, y: h / 2)
+        bar.bounds.size = NSSize(width: barWidth, height: h)
         CATransaction.commit()
     }
 

@@ -1390,8 +1390,8 @@ from, which every made block has, and nothing unsaved; it goes at once,
 ⇧⌘T bringing it back while it's kept) at the foot of the
 window names each of them and offers Undo, which reopens what was closed
 and so reaches them all again. A toast that can be undone counts down:
-a bar along its foot runs out over its time, held while the pointer is
-on it; what waits on it (a deletion) is done when it runs out, when the
+its shading draws back from right to left over its time, held while
+the pointer is on it; what waits on it (a deletion) is done when it runs out, when the
 toast is put away, or when another takes its place.
 
 **Holds, across hosts.** A host sees only its own shards, so a reference
