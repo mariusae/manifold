@@ -160,7 +160,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         stage.addSubview(content)
         root.addSubview(stage)
         root.addSubview(sidebar)
-        root.addSubview(toast)
+        root.addSubview(toast.window)
+        toast.stack = sidebar.toasts
+        toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
         root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
@@ -935,9 +937,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let s = transfersBadge.wantedSize
             transfersBadge.frame = NSRect(x: 14, y: 14, width: s.width, height: s.height)
         }
-        if !toast.isHidden {
-            let s = toast.wantedSize
-            toast.frame = NSRect(x: stage.frame.minX + (stage.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
+        if !toast.window.isHidden {
+            let s = toast.window.wantedSize
+            toast.window.frame = NSRect(x: stage.frame.minX + (stage.frame.width - s.width) / 2, y: 14, width: s.width, height: s.height).integral
         }
     }
 
@@ -961,7 +963,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case workspace(BlockID, index: Int)
     }
     private var closedStack: [Closed] = []
-    let toast = ToastView()
+    let toast = Toasts()
     /// The space a ⌘` walk is at, named while ⌘ is held and the sidebar's away.
     private let spaceHUD = SpaceHUD()
     /// A walk through code under way (§2.5): ⌃⌘] and ⌃⌘[ step along it.

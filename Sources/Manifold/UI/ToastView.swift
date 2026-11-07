@@ -22,6 +22,21 @@ final class ToastView: NSView {
     private var remaining: Double = 0
     private var runningSince: Date?
     private var pointerOn = false
+    /// Gone (its time up, its action taken, put away): for a stack of them to let it go.
+    var onGone: (() -> Void)?
+    /// In the sidebar's foot (§4): as wide as the sidebar, its words
+    /// wrapped (three lines at most), its action under them at the right.
+    var compact = false {
+        didSet {
+            label.lineBreakMode = compact ? .byWordWrapping : .byTruncatingMiddle
+            label.maximumNumberOfLines = compact ? 3 : 1
+            label.usesSingleLineMode = !compact
+            label.cell?.wraps = compact
+            label.cell?.truncatesLastVisibleLine = compact
+            label.font = .systemFont(ofSize: compact ? 12 : 12.5)
+            needsLayout = true
+        }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -180,6 +195,7 @@ final class ToastView: NSView {
         }, completionHandler: { [weak self] in
             self?.isHidden = true
             self?.alphaValue = 1
+            self?.onGone?()
         })
     }
 
@@ -200,8 +216,30 @@ final class ToastView: NSView {
         return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
     }
 
+    /// Its height, compact, at a width: its words wrapped, its action under them.
+    func compactHeight(width: CGFloat) -> CGFloat {
+        let w = max(40, width - 24)
+        let text = NSAttributedString(string: label.stringValue, attributes: [.font: label.font ?? .systemFont(ofSize: 12)])
+        let lineH = ceil((label.font ?? .systemFont(ofSize: 12)).boundingRectForFont.height)
+        let h = min(ceil(text.boundingRect(with: NSSize(width: w, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading]).height), lineH * 3)
+        return 10 + h + (button.isHidden ? 10 : 6 + Flat.buttonHeight + 8)
+    }
+
     override func layout() {
         super.layout()
+        if compact {
+            let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
+            button.frame = NSRect(x: bounds.width - 10 - bw, y: 8, width: bw, height: Flat.buttonHeight)
+            let top: CGFloat = button.isHidden ? 10 : 8 + Flat.buttonHeight + 6
+            label.frame = NSRect(x: 12, y: top, width: bounds.width - 24, height: max(0, bounds.height - top - 10))
+            label.toolTip = label.stringValue
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            bar.position = NSPoint(x: Radius.surface, y: 2.5)
+            bar.bounds.size = NSSize(width: barWidth, height: 2)
+            CATransaction.commit()
+            return
+        }
         let h = bounds.height
         let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
         button.frame = NSRect(x: bounds.width - 10 - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
@@ -213,6 +251,8 @@ final class ToastView: NSView {
         bar.bounds.size = NSSize(width: barWidth, height: 2)
         CATransaction.commit()
     }
+
+    var text: String { label.stringValue }
 
     /// Debugging: what it says, if shown, and the time left of its countdown.
     var debugText: String? {
@@ -244,5 +284,88 @@ final class ToastView: NSView {
         guard !isHidden, !button.isHidden else { return "no toast" }
         act()
         return "acted"
+    }
+}
+
+
+/// The window's toasts (§4): while the sidebar's out, at its foot with
+/// what's under way (copies), as many as are up at once — each its own
+/// time, gone when it's up; else one at the window's foot, a new one
+/// taking its place as ever. Putting one away, or shaking it, is the
+/// newest's.
+final class Toasts {
+    /// The one at the window's foot.
+    let window = ToastView()
+    /// The sidebar's stack, and whether it's what shows them now.
+    weak var stack: ToastStackView?
+    var inSidebar: () -> Bool = { false }
+
+    private var sidebarToasts: [ToastView] { stack?.toasts.filter { !$0.isHidden } ?? [] }
+    /// The newest up.
+    private var latest: ToastView? { sidebarToasts.last ?? (window.isHidden ? nil : window) }
+
+    func show(_ text: String, action name: String = "Restore", for seconds: Double = 8, countdown: Bool = false,
+              then: (() -> Void)? = nil, _ action: @escaping () -> Void) {
+        guard inSidebar(), let stack else {
+            return window.show(text, action: name, for: seconds, countdown: countdown, then: then, action)
+        }
+        // The same words again, up already: that one's, not another.
+        if let same = sidebarToasts.first(where: { $0.text == text }) { same.hide() }
+        let t = ToastView()
+        t.compact = true
+        stack.add(t)
+        t.show(text, action: name, for: seconds, countdown: countdown, then: then, action)
+    }
+
+    var isHidden: Bool { latest == nil }
+    func hide() { latest?.hide() }
+    func nudge() { latest?.nudge() }
+    func finishPending() {
+        window.finishPending()
+        for t in stack?.toasts ?? [] { t.finishPending() }
+    }
+    var debugText: String? {
+        let all = (window.isHidden ? [] : [window]) + sidebarToasts
+        let texts = all.compactMap(\.debugText)
+        return texts.isEmpty ? nil : (sidebarToasts.isEmpty ? "" : "[sidebar] ") + texts.joined(separator: " | ")
+    }
+    func debugAct() -> String { latest?.debugAct() ?? "no toast" }
+    func debugPicture(to path: String) -> String { latest?.debugPicture(to: path) ?? "no toast" }
+}
+
+/// The sidebar's toasts, at its foot, oldest at the top: each as wide as
+/// the sidebar, gone from the stack as it goes.
+final class ToastStackView: NSView {
+    private(set) var toasts: [ToastView] = []
+    /// Its height changed: for the sidebar to lay its foot out again.
+    var onChange: (() -> Void)?
+    override var isFlipped: Bool { true }
+
+    func add(_ t: ToastView) {
+        toasts.append(t)
+        addSubview(t)
+        t.onGone = { [weak self, weak t] in
+            guard let self, let t else { return }
+            t.removeFromSuperview()
+            self.toasts.removeAll { $0 === t }
+            self.onChange?()
+        }
+        onChange?()
+    }
+
+    var wantedHeight: CGFloat {
+        let shown = toasts.filter { !$0.isHidden }
+        guard !shown.isEmpty else { return 0 }
+        return shown.reduce(0) { $0 + $1.compactHeight(width: bounds.width > 0 ? bounds.width : 220) } + CGFloat(shown.count - 1) * 6
+    }
+
+    override func layout() {
+        super.layout()
+        var y: CGFloat = 0
+        for t in toasts where !t.isHidden {
+            let h = t.compactHeight(width: bounds.width)
+            t.frame = NSRect(x: 0, y: y, width: bounds.width, height: h)
+            y += h + 6
+        }
     }
 }

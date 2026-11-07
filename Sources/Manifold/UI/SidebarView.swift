@@ -77,6 +77,8 @@ final class SidebarView: NSView {
     }
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
+    /// Toasts (§4), while it's out: above the copies, as many as are up.
+    let toasts = ToastStackView()
     static let footRowHeight: CGFloat = 22
 
     static let headerHeight: CGFloat = 40
@@ -133,7 +135,8 @@ final class SidebarView: NSView {
         filterButton.target = self
         filterButton.action = #selector(filterClicked)
         counts.onClick = { [weak self] in self?.delegate?.sidebarFilter(.status) }
-        for v in [byButton, filterButton, counts, closedRow, transfers] { card.addSubview(v) }
+        for v in [byButton, filterButton, counts, closedRow, transfers, toasts] { card.addSubview(v) }
+        toasts.onChange = { [weak self] in self?.needsLayout = true }
         setFilter(nil)
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         threadsRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .threads ? .desk : .threads) }
@@ -205,6 +208,10 @@ final class SidebarView: NSView {
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
         bottom += th > 0 ? th + 6 : 0
+        toasts.frame.size.width = bounds.width - 16
+        let toastH = toasts.wantedHeight
+        toasts.frame = NSRect(x: 8, y: bottom, width: bounds.width - 16, height: toastH)
+        bottom += toastH > 0 ? toastH + 8 : 0
         if !closedRow.isHidden, !pushed {
             closedRow.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
             bottom += Self.footRowHeight + 6
