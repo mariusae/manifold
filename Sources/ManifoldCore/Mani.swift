@@ -193,6 +193,46 @@ public enum Mani {
                  one (`mani ref` prints them): a note that describes a function is
                    mani link @last "$(mani ref Sources/App.swift --symbol App.run)" --as describes
                  """, inApp: true),
+        Verb(words: ["threads"], args: "", minArgs: 0, maxArgs: 0,
+             flags: [Flag(name: "project", help: "the project this folder is in, not the space"),
+                     Flag(name: "place", value: "reference", help: "only those about this place (or block)"),
+                     Flag(name: "all", help: "resolved ones too"), json, space],
+             summary: "List the space's threads: comments on places, yours and agents'",
+             details: """
+                 The open threads of the space mani runs in (else the one shown) — or
+                 of a project, or about a place — each: its reference, what it's
+                 about and where that is now (moved, or gone), the text it was
+                 written against, and its comments, each with who wrote it. Reply
+                 with `mani thread reply`, by the reference it prints.
+                 """, inApp: true),
+        Verb(words: ["thread", "read"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [json],
+             summary: "Print a thread: its place, what it was written against, its entries",
+             details: """
+                 Where the place is now (and the line it was written at, if it moved;
+                 "gone" if its lines were deleted — then the text it was written
+                 against is all there is), then every entry: comments, with who
+                 wrote each, and what happened (resolved, reopened, edited).
+                 """, inApp: true),
+        Verb(words: ["thread", "new"], args: "<place> [text]", minArgs: 1, maxArgs: 2, flags: [],
+             summary: "Start a thread about a place: a reference, a file, a block, or @selection",
+             details: """
+                 A thread about the place (`mani ref` prints one: a declaration, a
+                 line), its first comment the text (else the input). Written as you,
+                 or, run by an agent in its terminal, as that agent. Prints the
+                 thread's reference.
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["thread", "reply"], args: "<thread> [text]", minArgs: 1, maxArgs: 2,
+             flags: [Flag(name: "resolve", help: "and resolve it (only what you did)")],
+             summary: "Reply to a thread",
+             details: """
+                 A comment on the thread (the text, else the input) — as the agent
+                 whose terminal runs it, or as you. --resolve resolves it after:
+                 only when you did what it asked.
+                 """, inApp: true, readsInput: true),
+        Verb(words: ["thread", "resolve"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", inApp: true),
+        Verb(words: ["thread", "reopen"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
+             summary: "Reopen a resolved thread", details: "As Reopen in its chat.", inApp: true),
         Verb(words: ["symbols"], args: "<file>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "List a file's declarations (or a Markdown text's headings)",
              details: """

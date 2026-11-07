@@ -12,8 +12,8 @@ import ManifoldSyntax
 /// made last, the commands waiting on something.
 @MainActor
 final class ManiDesk {
-    private unowned let wc: MainWindowController
-    private var hosts: Hosts { wc.hosts }
+    unowned let wc: MainWindowController
+    var hosts: Hosts { wc.hosts }
 
     /// Who asked: the host the command came through, its id there, and
     /// which of the host's clients.
@@ -107,6 +107,8 @@ final class ManiDesk {
             hosts.link(from: from.block, to: to.block, kind: .linked, context: r.flags["note"],
                        fromAnchor: fromAnchor, toAnchor: toAnchor, relation: r.flags["as"])
             return ""
+        case "threads", "thread read", "thread new", "thread reply", "thread resolve", "thread reopen":
+            return try await threads(r, scope)
         case "symbols": return try await symbols(r, scope)
         case "index": return try await index(r, scope)
         case "project": return try await project(r, scope)
@@ -1598,7 +1600,7 @@ final class ManiDesk {
         NSDecimalNumber(string: String(format: "%.3f", d))
     }
 
-    private func json(_ object: Any) -> String {
+    func json(_ object: Any) -> String {
         guard let data = try? JSONSerialization.data(withJSONObject: PanelView.tidy(object), options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
