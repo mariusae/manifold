@@ -546,6 +546,12 @@ final class ComposerTextView: NSTextView {
     var onSend: (() -> Void)?
     var onChange: (() -> Void)?
     var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
+    /// ⎋: what it closes (a card, the overlay).
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
+    }
 
     override func keyDown(with event: NSEvent) {
         let returnKey = event.keyCode == 36 || event.keyCode == 76

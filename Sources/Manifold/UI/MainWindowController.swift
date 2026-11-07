@@ -12,7 +12,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     let hosts: Hosts
     /// This machine's host: the desk and settings are its.
     var host: HostClient { hosts.local }
-    private let root = RootView()
+    let root = RootView()
     private let glass = NSVisualEffectView()
     private let backdrop = BackdropView()
     /// The grid of the workspace shown. Each workspace used lately keeps its
@@ -1211,6 +1211,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             next = after
         }
         inboxWalk = order
+        // A thread: in the overlay, where it's read and answered (§3.12).
+        if hosts.block(next)?.kind == .thread { return showThreadOverlay(nil, thread: next) }
         goTo(next)
         hosts.propose(.attend(next))
     }

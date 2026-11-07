@@ -10,6 +10,8 @@ final class ThreadUI {
     var chats: [Weak<ThreadChatView>] = []
     /// Every timeline on screen.
     var timelines: [Weak<ThreadTimelineView>] = []
+    /// The overlay, while it's up.
+    var overlay: ThreadOverlayView?
     /// What each thread looked like when last shown, to show again only
     /// what changed.
     var shown: [ObjectIdentifier: String] = [:]
@@ -238,6 +240,7 @@ extension MainWindowController: ThreadChatDelegate {
         pop.contentViewController = vc
         threadUI.popover = pop
         threadUI.card = card
+        card.chat.composer.onCancel = { [weak pop] in pop?.close() }
         watch(card.chat)
         pop.contentSize = card.wantedSize
         pop.show(relativeTo: rect, of: view, preferredEdge: .maxX)
@@ -433,9 +436,11 @@ extension MainWindowController: ThreadChatDelegate {
     // MARK: Comment (⌥⌘M)
 
     /// A thread about where you are: the selection or the caret's place in
-    /// in.
+    /// in. Elsewhere, the overlay: on a page's words selected, a
+    /// terminal's command, a PDF's page, the tile; or the space.
     @objc func commentHere(_ sender: Any?) {
-        guard let f = focusedShown, let v = views[f.placement.id] else { return NSSound.beep() }
+        guard let f = focusedShown, let v = views[f.placement.id] else { return showThreadOverlay(nil) }
+        if threadUI.overlay?.superview != nil { return closeThreadOverlay() }
         if let e = v as? EditorView, hosts.block(e.block)?.text != nil, let place = threadPlace(in: e) {
             let existing = place.anchor.map { hosts.threads(about: e.block, anchor: $0).filter { $0.thread?.resolved != true }.map(\.id) } ?? []
             let rect = e.caretRectInWindow.map { e.convert($0, from: nil) } ?? NSRect(x: 40, y: e.bounds.midY, width: 10, height: 16)
@@ -450,7 +455,18 @@ extension MainWindowController: ThreadChatDelegate {
             }
             return
         }
-        NSSound.beep()
+        if f.block?.kind == .web {
+            // A page's words selected: the quote it's about.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let selected = await v.maniSelection()
+                var place = self.overlayPlace()
+                if let s = selected?.text, !s.isEmpty { place?.context = "“" + String(s.prefix(400)) + "”" }
+                self.showThreadOverlay(place)
+            }
+            return
+        }
+        showThreadOverlay(overlayPlace(), tab: overlayPlace() == nil ? 1 : nil)
     }
 }
 
