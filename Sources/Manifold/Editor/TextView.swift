@@ -290,7 +290,10 @@ final class TextView: NSView, NSTextInputClient {
     private static var digitWidths: [CGFloat: CGFloat] = [:]
 
     // Selection.
-    private(set) var selections: [Selection] = [Selection(at: 0)]
+    private(set) var selections: [Selection] = [Selection(at: 0)] {
+        // The definition's bar moves with the caret: its hand with it.
+        didSet { if selections.first?.head != oldValue.first?.head { window?.invalidateCursorRects(for: self) } }
+    }
     private var marked: TextRange?
     /// A line gone to, marked with a band until the caret leaves it.
     var highlightedLine: Int? { didSet { if highlightedLine != oldValue { needsDisplay = true } } }
@@ -2710,11 +2713,56 @@ final class TextView: NSView, NSTextInputClient {
     /// Where it went down in the gutter, and on which line.
     private var pressedInGutter: (at: NSPoint, line: Int)?
 
+    /// The bar beside the definition the caret's in (drawn when it spans
+    /// lines), as it's taken hold of — a little wider than it's drawn —
+    /// and the definition.
+    private var scopeBar: (rect: NSRect, range: TextRange)? {
+        guard showsLineNumbers, !structure.declarations.isEmpty else { return nil }
+        let head = primarySelection.head
+        guard let d = structure.declarations.last(where: { $0.range.start <= head && head <= $0.range.end }) else { return nil }
+        let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
+        guard b > a else { return nil }
+        let y0 = top(ofLine: a), y1 = top(ofLine: b) + CGFloat(layout(line: b).rows.count) * lineHeight
+        return (NSRect(x: textLeft - 8, y: y0 + 2, width: 7, height: y1 - y0 - 4), d.range)
+    }
+
+    /// The definition the bar's beside, dragged out: a reference to it
+    /// (as its name selected and dragged would be), shown as its first line.
+    private func dragDefinition(_ range: TextRange, _ event: NSEvent) -> Bool {
+        let words = text[range]
+        guard let writer = delegate?.textView(self, dragSelection: range, text: words) else { return false }
+        let drag = NSDraggingItem(pasteboardWriter: writer)
+        let first = text.lineText(text.line(at: range.start)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = NSAttributedString(string: String(first.prefix(80)), attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let size = NSSize(width: min(ceil(label.size().width) + 16, 420), height: ceil(label.size().height) + 8)
+        let image = NSImage(size: size, flipped: false) { r in
+            NSColor.windowBackgroundColor.withAlphaComponent(0.9).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            label.draw(in: r.insetBy(dx: 8, dy: 4))
+            return true
+        }
+        let p = convert(event.locationInWindow, from: nil)
+        drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
+        beginDraggingSession(with: [drag], event: event, source: self)
+        return true
+    }
+
+    /// Debugging: where the definition bar is, and what dragging it writes.
+    var debugScopeBar: String {
+        guard let bar = scopeBar else { return "no bar" }
+        let words = text[bar.range]
+        let item = delegate?.textView(self, dragSelection: bar.range, text: words) as? NSPasteboardItem
+        let thing = item?.data(forType: .manifoldThing).flatMap { String(data: $0, encoding: .utf8) } ?? "-"
+        return "bar \(NSStringFromRect(bar.rect)) · \(thing)"
+    }
+
     override func mouseDragged(with event: NSEvent) {
         if let pressed = pressedInGutter {
             let p = event.locationInWindow
             guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
             pressedInGutter = nil
+            // On the definition's bar: the definition.
+            if let bar = scopeBar, bar.rect.contains(convert(pressed.at, from: nil)), dragDefinition(bar.range, event) { return }
             if dragLine(pressed.line, event) { return }
         }
         if let pressed = pressedInSelection {
@@ -2815,6 +2863,8 @@ final class TextView: NSView, NSTextInputClient {
         let (gutter, rest) = bounds.divided(atDistance: min(textLeft, bounds.width), from: .minXEdge)
         if gutterWidth > 0 { addCursorRect(gutter, cursor: .arrow) }
         addCursorRect(gutterWidth > 0 ? rest : bounds, cursor: .iBeam)
+        // The definition's bar: taken hold of, to drag the definition out.
+        if let bar = scopeBar { addCursorRect(bar.rect, cursor: .openHand) }
     }
 
     /// The pointer over a link, or a name ⌘ shows as one: the pointing hand.

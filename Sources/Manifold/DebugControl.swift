@@ -419,6 +419,10 @@ enum DebugControl {
             // <side> <line> <col> <line> <col>": text selected; "diffview across <dx>";
             // "diffview copy"; "diffview drag": what dragging the selection writes.
             return wc?.debugDiffView(arg) ?? "no window"
+        case "scopebar":
+            // "scopebar": the focused editor's definition bar, and what dragging it writes.
+            guard let e = wc?.debugFocusedEditor else { return "no editor focused" }
+            return e.textView.debugScopeBar
         case "sidebarthreads":
             return wc?.debugSidebarThreads(arg) ?? "no window"
         case "filehistory":
