@@ -10618,6 +10618,25 @@ extension MainWindowController: DiffViewDelegate {
         diffReloaded[view.block] = Date()
         hosts.propose(.reloadDiff(block: view.block))
     }
+
+    /// A patch's file's new side: as its commit left it, else as it is in
+    /// the working tree — read from the diff's host.
+    func diffView(_ view: DiffView, textOf file: String, done: @escaping (String?) -> Void) {
+        guard let c = hosts.client(view.block.host), let subject = hosts.block(view.block)?.diff?.subject else { return done(nil) }
+        switch subject {
+        case let .commit(repo, sha):
+            c.fileHistory(.text(file: repo.appendingPathComponent(file), path: file, revision: sha)) { result in
+                if case let .text(t) = result { done(t) } else { done(nil) }
+            }
+        case let .uncommitted(root), let .patch(root, _), let .since(root, _, _), let .trees(root, _, nil, _):
+            var data = Data()
+            c.readFile(root.appendingPathComponent(file), limit: 8 << 20, onData: { data.append($0) }) { error in
+                done(error == nil ? String(decoding: data, as: UTF8.self) : nil)
+            }
+        default:
+            done(nil)
+        }
+    }
 }
 
 extension MainWindowController: SearchViewDelegate {

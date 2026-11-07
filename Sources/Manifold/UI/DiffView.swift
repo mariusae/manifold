@@ -7,6 +7,9 @@ protocol DiffViewDelegate: AnyObject {
     func diffViewReload(_ view: DiffView)
     /// A file's row right-clicked: its versions, its changes alone.
     func diffView(_ view: DiffView, menuFor path: String) -> NSMenu?
+    /// A file's new side, as the diff has it (a commit's, the working
+    /// tree's): for more of it around the changes; nil if it can't be had.
+    func diffView(_ view: DiffView, textOf file: String, done: @escaping (String?) -> Void)
 }
 
 /// The diff lens (DESIGN.md §7.5): a file at two points, or a commit, as
@@ -43,6 +46,14 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     private var commitHeader: CommitHeaderView?
     /// Files folded to their heading, by name (kept with the tile).
     private var collapsed: Set<String> = []
+    /// More of a patch's files around their changes: their new side's
+    /// lines, once had; how many more above each hunk (by the line its
+    /// header says) and below the last; each hunk row's header line.
+    private var fileLines: [String: [String]] = [:]
+    private var moreAbove: [String: [Int: Int]] = [:]
+    private var moreBelow: [String: Int] = [:]
+    private var hunkLines: [Int: Int] = [:]
+    static let moreLines = 20
     /// The heading of the file the top of the view is in, kept at the top
     /// while its own row's scrolled past; clicked, the file folded.
     private let sticky = StickyFileHeading()
@@ -81,10 +92,18 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         waiting.host = block.host
         addSubview(waiting)
         rowsView.font = theme.font(.monospaced, size: 12)
-        rowsView.onFold = { [weak self] in
-            self?.unfolded = true
-            self?.rebuild()
-            self?.keeper.note(["unfolded": "1"])
+        rowsView.onFold = { [weak self] row in
+            guard let self else { return }
+            if row.text == "below", let i = self.rowsView.rows.firstIndex(of: row), let file = self.rowsView.file(of: self.rowsView.rows[i]) {
+                return self.more(in: file) { self.moreBelow[file, default: 0] += Self.moreLines }
+            }
+            self.unfolded = true
+            self.rebuild()
+            self.keeper.note(["unfolded": "1"])
+        }
+        rowsView.onHunk = { [weak self] i in
+            guard let self, let n = self.hunkLines[i], let file = self.rowsView.file(of: self.rowsView.rows[i]) else { return }
+            self.more(in: file) { self.moreAbove[file, default: [:]][n, default: 0] += Self.moreLines }
         }
         rowsView.onOpen = { [weak self] row in
             guard let self, let b = self.source(), let subject = b.diff?.subject else { return }
@@ -201,6 +220,11 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             note.stringValue = e
         } else if let patch = d.patch {
             rows = DiffRows.patch(patch)
+            // More of each file around its changes, as asked for.
+            if canShowMore {
+                (rows, hunkLines) = DiffRows.withContext(rows, texts: fileLines, above: moreAbove, below: moreBelow)
+            }
+            rowsView.expandable = canShowMore
             // A commit's heading (its fields, its message) shown over the
             // rows, as a message's in a mail reader — the message as Markdown.
             if case .commit = d.subject {
@@ -248,6 +272,55 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         updateSticky()
         let t3 = CACurrentMediaTime()
         Self.debugTiming = String(format: "%d rows: rows %.0f ms, layout %.0f ms, outline %.0f ms", rows.count, (t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000)
+    }
+
+    // MARK: More of a file
+
+    /// Whether more of a patch's files can be had: its new side is a
+    /// commit's or the working tree's.
+    private var canShowMore: Bool {
+        switch source()?.diff?.subject {
+        case .commit?, .uncommitted?, .patch?, .since?: true
+        case let .trees(_, _, to, _)?: to == nil
+        default: false
+        }
+    }
+
+    /// More of a file shown (`ask`, once its text is had), the rows
+    /// where they were on screen kept there.
+    private func more(in file: String, _ ask: @escaping () -> Void) {
+        guard canShowMore else { return }
+        if fileLines[file] != nil {
+            ask()
+            return keepingPlace { rebuild() }
+        }
+        delegate?.diffView(self, textOf: file) { [weak self] text in
+            guard let self, let text else { return NSSound.beep() }
+            var lines = text.components(separatedBy: "\n")
+            if lines.last == "" { lines.removeLast() }
+            self.fileLines[file] = lines
+            ask()
+            self.keepingPlace { self.rebuild() }
+        }
+    }
+
+    /// The row at the top of the view kept where it is through a change of rows above it.
+    private func keepingPlace(_ change: () -> Void) {
+        let top = scroll.contentView.bounds.minY, h = rowsView.rowHeightShown
+        let rows = rowsView.rows, at = min(Int(top / h), rows.count - 1)
+        let anchor = at >= 0 ? rows[at] : nil
+        change()
+        guard let anchor, let now = rowsView.rows.firstIndex(of: anchor) else { return }
+        let y = rowsView.rect(ofRow: now).minY + (top - CGFloat(at) * h)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, min(y, rowsView.frame.height - scroll.contentView.bounds.height))))
+        scroll.reflectScrolledClipView(scroll.contentView)
+    }
+
+    /// Debugging: more above a hunk (by row) or below a file.
+    func debugMore(above row: Int?, below file: String?) -> String {
+        if let row { rowsView.onHunk?(row) }
+        if let file { more(in: file) { self.moreBelow[file, default: 0] += Self.moreLines } }
+        return "hunks at rows \(hunkLines.keys.sorted()) · \(rowsView.rows.count) rows"
     }
 
     // MARK: Files folded, and the heading kept at the top
@@ -468,7 +541,9 @@ final class DiffRowsView: NSView, NSDraggingSource {
     /// Files folded to their heading row, by name; a heading clicked folds or unfolds its file.
     var collapsedFiles: Set<String> = [] { didSet { needsDisplay = true } }
     var onToggleFile: ((String) -> Void)?
-    var onFold: (() -> Void)?
+    var onFold: ((DiffRow) -> Void)?
+    /// A hunk's header clicked (by row): more above it.
+    var onHunk: ((Int) -> Void)?
     var onOpen: ((DiffRow) -> Void)?
     private let rowHeight: CGFloat = 19
     private let gutter: CGFloat = 92
@@ -889,6 +964,22 @@ final class DiffRowsView: NSView, NSDraggingSource {
         return nil
     }
 
+    /// What a fold row says: the lines it hides, or (a patch's file's
+    /// end) that more of the file can be had below.
+    static func foldWords(_ n: Int, _ r: DiffRow) -> String {
+        r.text == "below" ? "⋯ More of the file below" : "⋯ \(n) unchanged line\(n == 1 ? "" : "s")"
+    }
+
+    /// Whether a hunk's header asks for more above it (it's clickable).
+    var expandable = false
+
+    /// A hunk's header that can show more above it: an arrow at its left.
+    private func drawMoreAbove(y: CGFloat) {
+        guard expandable, let image = NSImage(systemSymbolName: "arrow.up.to.line", accessibilityDescription: "More above")?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .medium).applying(.init(paletteColors: [Theme.secondaryText]))) else { return }
+        image.draw(in: NSRect(x: 22, y: y + (rowHeight - 11) / 2, width: 11, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+
     static let addedBackground = NSColor.themed { $0.diff.added }
     static let removedBackground = NSColor.themed { $0.diff.removed }
     static let hunkBackground = NSColor.themed { $0.diff.hunk }
@@ -922,8 +1013,9 @@ final class DiffRowsView: NSView, NSDraggingSource {
             case let .file(name):
                 drawFileHeading(name, in: band, textY: textY)
             case let .fold(n):
-                ("⋯ \(n) unchanged line\(n == 1 ? "" : "s")" as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
+                (Self.foldWords(n, r) as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
             case .hunk:
+                drawMoreAbove(y: y)
                 ("@@ −\(r.oldLine ?? 0) +\(r.newLine ?? 0) @@ \(r.text)" as NSString).draw(at: NSPoint(x: gutter, y: textY), withAttributes: attrs)
             default:
                 if let o = r.oldLine {
@@ -990,12 +1082,13 @@ final class DiffRowsView: NSView, NSDraggingSource {
                 switch r.kind {
                 case .hunk:
                     Self.hunkBackground.setFill(); band.fill(); attrs[.foregroundColor] = Theme.secondaryText
+                    drawMoreAbove(y: y)
                     ("@@ −\(r.oldLine ?? 0) +\(r.newLine ?? 0) @@ \(r.text)" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
                 case let .file(name):
                     drawFileHeading(name, in: band, textY: textY(y))
                 case let .fold(n):
                     attrs[.foregroundColor] = Theme.secondaryText
-                    ("⋯ \(n) unchanged line\(n == 1 ? "" : "s")" as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
+                    (Self.foldWords(n, r) as NSString).draw(at: NSPoint(x: sideGutter, y: textY(y)), withAttributes: attrs)
                 default:
                     // Context: the same line on both sides, numbered each way.
                     side(r, x: 0, width: half, y: y, number: r.oldLine)
@@ -1019,10 +1112,10 @@ final class DiffRowsView: NSView, NSDraggingSource {
         if p.x < 16, threadLines[i] != nil, let onThreads {
             return onThreads(i, NSRect(x: 0, y: CGFloat(i) * rowHeight, width: 16, height: rowHeight))
         }
-        // A file's heading: its file folded or unfolded.
-        if i >= 0, i < lineCount, event.clickCount == 1, case let .file(name)? = (sideBySide ? pairs[i].span : rows[i])?.kind {
-            onToggleFile?(name)
-            return
+        // A file's heading: its file folded or unfolded. A hunk's: more above it.
+        if i >= 0, i < lineCount, event.clickCount == 1, let r = sideBySide ? pairs[i].span : rows[i] {
+            if case let .file(name) = r.kind { onToggleFile?(name); return }
+            if r.kind == .hunk, let onHunk, let index = sideBySide ? rowIndex(of: r, line: i) : i { onHunk(index); return }
         }
         let side = side(at: p)
         let inText = p.x >= textX(side: side) + hOffset - 4
@@ -1058,7 +1151,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
             row = rows[i]
         }
         guard let row else { return }
-        if case .fold = row.kind { onFold?(); return }
+        if case .fold = row.kind { onFold?(row); return }
         if event.clickCount == 2 { onOpen?(row) }
     }
 }

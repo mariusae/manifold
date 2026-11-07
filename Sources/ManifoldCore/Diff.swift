@@ -196,6 +196,68 @@ public enum DiffRows {
 
     /// Rows for a unified patch (`git show`, `git diff`): what git chose to
     /// show, file by file.
+    /// A patch's rows with more of each file around its changes, from the
+    /// new side's text (`texts`, its lines, by file): `above` a hunk (by
+    /// the new line its header says, as the patch has it) that many lines
+    /// before it — a hunk that comes to meet the one before it joins it,
+    /// its header gone — and `below` the last, that many after it. Each
+    /// file ends in a row to ask for more below (a fold row saying
+    /// "below"), unless its text is known to end there or it's gone.
+    /// Each hunk row's header line as the patch said it, by row: to ask
+    /// for more above it again.
+    public static func withContext(_ rows: [DiffRow], texts: [String: [String]], above: [String: [Int: Int]],
+                                   below: [String: Int]) -> (rows: [DiffRow], hunks: [Int: Int]) {
+        var out: [DiffRow] = [], hunks: [Int: Int] = [:]
+        var file: String?, lastNew = 0, lastOld = 0, gone = false
+        func end() {
+            guard let f = file, !gone else { return }
+            let lines = texts[f]
+            let b = min(below[f] ?? 0, max(0, (lines?.count ?? 0) - lastNew))
+            if let lines, b > 0 {
+                for l in (lastNew + 1)...(lastNew + b) {
+                    out.append(DiffRow(kind: .context, oldLine: lastOld + (l - lastNew), newLine: l, text: lines[l - 1]))
+                }
+                lastNew += b
+                lastOld += b
+            }
+            if lines == nil || lastNew < lines!.count { out.append(DiffRow(kind: .fold(0), text: "below")) }
+        }
+        for r in rows {
+            if case let .file(name) = r.kind {
+                end()
+                file = name; lastNew = 0; lastOld = 0; gone = false
+                out.append(r)
+                continue
+            }
+            guard let f = file else { out.append(r); continue }
+            if r.kind == .hunk, let n = r.newLine, let o = r.oldLine {
+                if n == 0 { gone = true }
+                let lines = texts[f] ?? []
+                let k = min(above[f]?[n] ?? 0, max(0, n - 1 - lastNew), lines.count >= n - 1 ? n - 1 : 0)
+                if k > 0 {
+                    // Come to meet the hunk before: one with it.
+                    if !(k == n - 1 - lastNew && lastNew > 0) {
+                        var h = r
+                        h.newLine = n - k
+                        h.oldLine = o - k
+                        hunks[out.count] = n
+                        out.append(h)
+                    }
+                    for l in (n - k)..<n { out.append(DiffRow(kind: .context, oldLine: o - (n - l), newLine: l, text: lines[l - 1])) }
+                } else {
+                    hunks[out.count] = n
+                    out.append(r)
+                }
+                continue
+            }
+            if let l = r.newLine { lastNew = l }
+            if let l = r.oldLine { lastOld = l }
+            out.append(r)
+        }
+        end()
+        return (out, hunks)
+    }
+
     public static func patch(_ text: String) -> [DiffRow] {
         var rows: [DiffRow] = []
         var oldLine = 0, newLine = 0
