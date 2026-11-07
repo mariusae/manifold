@@ -26,20 +26,24 @@ final class ToastView: NSView {
     private var pointerOn = false
     /// Gone (its time up, its action taken, put away): for a stack of them to let it go.
     var onGone: (() -> Void)?
-    /// In the sidebar's foot (§4): as wide as the sidebar, one line, its
-    /// words cut short at their end (all of them its tooltip).
+    /// In the sidebar's foot (§4): as wide as the sidebar, its words cut
+    /// short at their end (all of them its tooltip); else as wide as its
+    /// words want, cut in the middle past that.
     var compact = false {
         didSet {
             label.lineBreakMode = compact ? .byTruncatingTail : .byTruncatingMiddle
-            label.font = .systemFont(ofSize: compact ? 12 : 12.5)
             needsLayout = true
         }
     }
+    /// One line, its action beside its words: the same at the window's
+    /// foot as in the sidebar's.
+    static let height = Flat.buttonHeight + 8
+    private static let font = NSFont.systemFont(ofSize: 12)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         Flat.float(self)
-        label.font = .systemFont(ofSize: 12.5)
+        label.font = Self.font
         label.textColor = Theme.text
         label.lineBreakMode = .byTruncatingMiddle
         button.target = self
@@ -212,24 +216,24 @@ final class ToastView: NSView {
     var wantedSize: NSSize {
         // The text measured as drawn, and the field's own inset: its
         // intrinsic size can lag what it was just given.
-        let text = NSAttributedString(string: label.stringValue, attributes: [.font: label.font ?? .systemFont(ofSize: 12.5)])
+        let text = NSAttributedString(string: label.stringValue, attributes: [.font: Self.font])
         let lw = min(ceil(text.size().width) + 6, 560)
         let bw = button.isHidden ? -12 : ceil(button.intrinsicContentSize.width)
-        return NSSize(width: 14 + lw + 12 + bw + 10, height: 36)
+        return NSSize(width: 10 + lw + 8 + bw + 4, height: Self.height)
     }
 
     /// Its height, compact: one line, its action beside its words.
-    func compactHeight(width: CGFloat) -> CGFloat { Flat.buttonHeight + 8 }
+    func compactHeight(width: CGFloat) -> CGFloat { Self.height }
 
     override func layout() {
         super.layout()
         let h = bounds.height
-        let inset: CGFloat = compact ? 4 : 10
+        let inset: CGFloat = 4
         let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
         button.frame = NSRect(x: bounds.width - inset - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
-        let left: CGFloat = compact ? 10 : 14
+        let left: CGFloat = 10
         label.frame = NSRect(x: left, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - inset : button.frame.minX - 8) - left), height: 17)
-        label.toolTip = compact ? label.stringValue : nil
+        label.toolTip = label.stringValue
         // The whole of it, the shading's room.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
