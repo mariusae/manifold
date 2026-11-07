@@ -92,6 +92,16 @@ extension MainWindowController {
             + "read it with `mani thread read \(ref)`, and answer in the thread with `mani thread reply \(ref) \"…\"` (--resolve only if you did what it asks)."
     }
 
+    /// Words typed into an agent's prompt and sent: the words, then
+    /// Return a moment after — in one write, an agent's prompt (Claude
+    /// Code's) takes it all as a paste, the Return a new line in it.
+    func say(_ text: String, to agent: BlockID) {
+        hosts.propose(.input(block: agent, text: text))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.hosts.propose(.input(block: agent, text: "\r"))
+        }
+    }
+
     /// An agent asked: now if it's idle, else when its turn ends.
     func ask(_ agent: BlockID, threads: [BlockID], prompt: String) {
         threadUI.asks.append(PendingAsk(agent: agent, threads: threads, prompt: prompt))
@@ -113,7 +123,7 @@ extension MainWindowController {
         threadUI.asks = waiting
         for (agent, asks) in byAgent {
             let text = asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: ")
-            hosts.propose(.input(block: agent, text: text + "\r"))
+            say(text, to: agent)
             let name = hosts.block(agent)?.agent?.name ?? "The agent"
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }
         }

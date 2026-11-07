@@ -2047,7 +2047,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 + "(mani ref <file> --symbol <Type.method>; mani refs for its callers) and a sentence — mani new note --title \"How \(name) works\" --text \"…\". I'll step through it with ⌃⌘]."
         }
         if let agent = agentForAsking() {
-            hosts.propose(.input(block: agent, text: prompt + "\r"))
+            say(prompt, to: agent)
             toast.show("Asked \(hosts.block(agent)?.displayTitle ?? "the agent") about \(name)", action: "Show", for: 4) { [weak self] in self?.arrive(agent, from: nil) }
         } else {
             guard let client = hosts.client(b.id.host) else { return NSSound.beep() }
