@@ -1508,7 +1508,7 @@ enum DebugControl {
                 }
                 key = String(key[key.index(after: plus)...])
             }
-            let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53), "space": (" ", 49),
+            let codes: [String: (String, UInt16)] = ["return": ("\r", 36), "tab": ("\t", 48), "escape": ("\u{1B}", 53), "space": (" ", 49), "backspace": ("\u{7F}", 51),
                                                      "pagedown": (String(UnicodeScalar(NSPageDownFunctionKey)!), 121),
                                                      "pageup": (String(UnicodeScalar(NSPageUpFunctionKey)!), 116),
                                                      "left": (String(UnicodeScalar(NSLeftArrowFunctionKey)!), 123),

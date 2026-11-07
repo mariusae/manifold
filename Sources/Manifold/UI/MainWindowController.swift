@@ -6438,6 +6438,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// from the focused block and how lately seen. Ranked off the main
     /// thread as you type (FinderRanking).
     /// What nothing keeps (§4) comes last, marked recent.
+    /// What `@` in a thread's composer can name: ⌘O's blocks (not agents' turns).
+    func finderCorpusForMentions() -> ([FinderCandidate], [() -> Void]) {
+        let (corpus, actions) = finderCorpus()
+        return (corpus.filter { $0.block != nil && !$0.kinds.contains("turn") }, actions)
+    }
+
     private func finderCorpus() -> ([FinderCandidate], [() -> Void]) {
         var corpus: [FinderCandidate] = []
         var actions: [() -> Void] = []

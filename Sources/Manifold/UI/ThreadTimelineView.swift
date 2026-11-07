@@ -140,7 +140,8 @@ final class ThreadTimelineView: NSView {
         clearReply.target = self
         clearReply.action = #selector(unchoose)
         composer.font = UIType.body
-        composer.isRichText = false
+        composer.isRichText = true
+        composer.importsGraphics = false
         composer.allowsUndo = true
         composer.drawsBackground = false
         composer.textContainerInset = NSSize(width: 4, height: 5)
@@ -387,9 +388,9 @@ final class ThreadTimelineView: NSView {
     }
 
     private func send() {
-        let text = composer.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = composer.message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, chosen != nil || model.composesNew else { return }
-        composer.string = ""
+        composer.clear()
         placeholder.isHidden = false
         delegate?.timeline(self, send: text, to: chosen)
     }

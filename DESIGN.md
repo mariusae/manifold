@@ -1274,7 +1274,13 @@ timeline, its composer making a thread about the space. A place in it,
 clicked, is gone to with the overlay kept; ⎋ closes it.
 
 **Agents.** `@` and an agent — its pill, dropped or picked — asks it.
-`@claude` alone picks one: the project's agent if there's one, else a
+`@` at a word's start in a composer opens a list at the caret: the
+agents at work (this space's first), then the words that ask one
+(`claude`, `codex`: with nothing typed, those at work and the one
+Settings names), then what ⌘O would find, ranked as it ranks (not
+threads). ↩ or ⇥ takes one — a block a pill, sent as its link; a word
+the word — ↑↓ move, ⎋ keeps what's typed, and ⌫ just after a pill puts
+back what was typed for it. `@claude` alone picks one: the project's agent if there's one, else a
 new one in the thread's project, the thread its first prompt. Asked, an
 agent is sent a short prompt typed into its terminal — the thread's
 reference, the comment, and `mani thread read`/`reply` — at once if

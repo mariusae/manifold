@@ -218,6 +218,7 @@ extension MainWindowController: ThreadChatDelegate {
     /// A chat kept up to date from now on.
     func watch(_ chat: ThreadChatView) {
         chat.delegate = self
+        chat.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
         if !threadUI.chats.contains(where: { $0.value === chat }) { threadUI.chats.append(Weak(chat)) }
         threadUI.shown.removeValue(forKey: ObjectIdentifier(chat))
         refresh(chat)
@@ -614,6 +615,7 @@ extension MainWindowController: ThreadTimelineDelegate {
 
     /// Timelines on screen, kept up to date.
     func watch(_ v: ThreadTimelineView) {
+        v.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
         if !threadUI.timelines.contains(where: { $0.value === v }) { threadUI.timelines.append(Weak(v)) }
         refresh(v)
     }

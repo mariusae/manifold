@@ -153,6 +153,12 @@ extension MainWindowController {
         switch w.first {
         case nil: commentHere(nil)
         case "close": closeThreadOverlay()
+        case "mentions", "message":
+            // The composer's `@` list, or what it would send.
+            guard let o = threadUI.overlay else { return "no overlay" }
+            let c = o.tab == 0 ? o.chat.composer : o.timeline.composer
+            if w[0] == "mentions", let path = w.dropFirst().first { return c.mentions.debugPicture(path) }
+            return w[0] == "mentions" ? c.mentions.debugRows : "“\(c.message)” · shown “\(c.string)”"
         case "thread":
             // "overlay thread <id's end>": that thread read in it.
             let end = w.dropFirst().first ?? ""

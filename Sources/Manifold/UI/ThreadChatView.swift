@@ -113,7 +113,8 @@ final class ThreadChatView: NSView {
         list.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
 
         composer.font = UIType.body
-        composer.isRichText = false
+        composer.isRichText = true
+        composer.importsGraphics = false
         composer.allowsUndo = true
         composer.drawsBackground = false
         composer.textContainerInset = NSSize(width: 4, height: 5)
@@ -320,9 +321,9 @@ final class ThreadChatView: NSView {
     @objc private func sendClicked() { send() }
 
     private func send() {
-        let text = composer.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = composer.message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        composer.string = ""
+        composer.clear()
         composerChanged()
         delegate?.threadChat(self, send: text)
     }
@@ -591,23 +592,99 @@ final class ComposerTextView: NSTextView {
     var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
     /// ⎋: what it closes (a card, the overlay).
     var onCancel: (() -> Void)?
+    /// What `@` offers (ThreadMentions.swift): asked for as its list opens.
+    var mentionSource: (() -> (String) -> [MentionChoice])?
+    private var mentionRanker: ((String) -> [MentionChoice])?
+    let mentions = MentionPopover()
+    /// The `@` whose list ⎋ put away: not offered again until another.
+    private var mentionDismissedAt: Int?
 
     override func cancelOperation(_ sender: Any?) {
+        if mentions.isShown { return dismissMentions() }
         if let onCancel { onCancel() } else { super.cancelOperation(sender) }
     }
 
     override func keyDown(with event: NSEvent) {
         let returnKey = event.keyCode == 36 || event.keyCode == 76
+        let plain = event.modifierFlags.intersection([.shift, .option, .control, .command]).isEmpty
+        if mentions.isShown, plain {
+            switch event.keyCode {
+            case 125: return mentions.move(1)
+            case 126: return mentions.move(-1)
+            case 36, 76, 48: return acceptMention()
+            case 53: return dismissMentions()
+            default: break
+            }
+        }
         if returnKey, event.modifierFlags.intersection([.shift, .option, .control]).isEmpty, !hasMarkedText() {
+            mentions.hide()
             onSend?()
             return
         }
         super.keyDown(with: event)
     }
 
+    override func deleteBackward(_ sender: Any?) {
+        if unpillBeforeCaret() { return }
+        super.deleteBackward(sender)
+    }
+
+    override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
+
     override func didChangeText() {
         super.didChangeText()
         onChange?()
+        updateMentions()
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        if !stillSelecting { updateMentions() }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        mentions.hide()
+        return super.resignFirstResponder()
+    }
+
+    /// The list for the `@word` at the caret, if there is one.
+    func updateMentions() {
+        guard let token = mentionToken, let window else {
+            mentionDismissedAt = nil
+            mentionRanker = nil
+            return mentions.hide()
+        }
+        guard mentionDismissedAt != token.range.location, let source = mentionSource else { return mentions.hide() }
+        if mentionRanker == nil { mentionRanker = source() }
+        let choices = mentionRanker?(token.query) ?? []
+        let caret = firstRect(forCharacterRange: token.range, actualRange: nil)
+        mentions.onChoose = { [weak self] c in self?.choose(c) }
+        mentions.show(choices, at: caret, in: window)
+    }
+
+    private func acceptMention() {
+        guard let c = mentions.selected else { return mentions.hide() }
+        choose(c)
+    }
+
+    private func choose(_ c: MentionChoice) {
+        guard let token = mentionToken else { return mentions.hide() }
+        mentions.hide()
+        mentionRanker = nil
+        insertMention(c, for: token)
+        window?.makeFirstResponder(self)
+    }
+
+    private func dismissMentions() {
+        mentionDismissedAt = mentionToken?.range.location
+        mentions.hide()
+    }
+
+    /// Cleared, as after sending: no pill's look left for what's typed next.
+    func clear() {
+        string = ""
+        typingAttributes = plainAttributes
+        mentions.hide()
     }
 
     override var readablePasteboardTypes: [NSPasteboard.PasteboardType] { [.manifoldThing] + super.readablePasteboardTypes }
