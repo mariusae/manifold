@@ -433,7 +433,18 @@ it) or ⌥-dropped on it takes its place and docks it *under* itself:
 taken off, the one under comes back in its place and room. Docking is
 not pinning: a pin keeps a block in the space for good and says where
 it sits among the space's rows; a docked tile is only out of the grid
-for now. (Docking took the place of stacks — tiles stashed behind
+for now. **The dock as a shelf** is a view option (View ▸ Show Dock
+Shelf), to try against the sidebar's list: the space's docked tiles in
+one short row along the grid's foot, the grid giving up its height
+while something's docked — first those whose status wants you (needs
+you, failed, done and not read), then as ⌃⇥ would reach them, the
+latest used first. They take the room there is, one size for all:
+cards (a title and a line), else chips (a title), else their symbols
+alone; a tile whose status wants you stays a card, edged and tinted in
+its status's colour. The pointer on one peeks at it — the tile itself,
+live, over its card, above the shelf — and moved along, scrubs through
+them; a click puts it back where it was, grown a little to show some.
+(Docking took the place of stacks — tiles stashed behind
 another in its column, shown as sheets over its bar and fanned out —
 which were used only to put a tile away for a while. Older logs' stacks
 replay as docked: a share of 0, a `stash`.)

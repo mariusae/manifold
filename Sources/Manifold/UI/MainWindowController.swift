@@ -29,7 +29,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the tiles' shadows fall past it, under the sidebar, as on one
     /// surface — clipped there, a column's shadow stopped in a line at
     /// the sidebar's edge, a band of another colour beside it.
-    private let stage: NSView = {
+    let stage: NSView = {
         let v = NSView()
         v.wantsLayer = true
         v.layer?.masksToBounds = false
@@ -62,7 +62,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var walkLeaving: NSObjectProtocol?
     /// A place settled on: a tile in its space (none, a space with
     /// nothing focused).
-    private struct Settled: Equatable {
+    struct Settled: Equatable {
         var space: BlockID
         var tile: PlacementID?
     }
@@ -398,7 +398,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let old = content
             let leaving = old.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
             content = grid(for: selected)
-            content.frame = stage.bounds
+            content.frame = gridFrame
             content.isHidden = stateView != nil
             if old !== content {
                 if let from = shownArrangement, let to = selected {
@@ -427,6 +427,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }.filter { !$0.isEmpty }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
+            refreshDockShelf()
             window.title = title(of: a)
             // The keyboard may be in no view at all (the window's, after
             // the view it was in went, as a closed editor's does).
@@ -903,6 +904,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// The dock as a shelf at the grid's foot (View ▸ Show Dock Shelf).
+    let dockShelf = DockShelfView()
+
     private let transfersBadge = TransfersBadge()
 
     private func transfersChanged() {
@@ -923,9 +927,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + inset : 0
         stage.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
-        content.frame = stage.bounds
+        layoutDockShelf()
+        content.frame = gridFrame
         stateView?.frame = stage.frame
-        slidingAway?.frame = stage.bounds
+        slidingAway?.frame = gridFrame
         emptyState?.frame = stage.frame
         history?.frame = b
         if !transfersBadge.isHidden {
@@ -3056,6 +3061,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return focusedShown.map { $0.block?.kind == .text } ?? false
         case #selector(deleteFocusedBlock(_:)):
             return focusedShown.map { $0.block?.kind != .arrangement } ?? false
+        case #selector(toggleDockShelf(_:)):
+            item.state = dockShelfOn ? .on : .off
+            return true
         case #selector(dockTile(_:)):
             guard let a = arrangement, let f = a.focused else { return false }
             return a.locate(f) != nil
@@ -3265,7 +3273,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// those settled on here, then the hosts' trail, then the rest of this
     /// space — its grid's, then its docked, the latest docked first. Each
     /// tile once, and only one still on the desk; with `space`, only its.
-    private func tileTrail(space: BlockID? = nil) -> [Settled] {
+    func tileTrail(space: BlockID? = nil) -> [Settled] {
         var home: [PlacementID: BlockID] = [:]
         for w in allWorkspaces where space == nil || space == w {
             for p in hosts.arrangement(w)?.placements ?? [] where !recentlyClosed.contains(p.block) { home[p.id] = w }
@@ -3749,7 +3757,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             setUp(g)
             stage.addSubview(g)
         }
-        g.frame = stage.bounds
+        g.frame = gridFrame
         grids[id] = g
         return g
     }
@@ -4096,7 +4104,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: State views (§3.6)
 
-    private var stateView: StateView?
+    private(set) var stateView: StateView?
     private var stateGroup: StatusGroup?
     private var stateMode: StateView.Mode = .list
 
@@ -10823,7 +10831,7 @@ extension MainWindowController: OrganizationViewDelegate {
 
     /// A block's card beside a rect (a sidebar row, ⌘O's list): a picture
     /// of its tile, or the block itself live, over its summary card.
-    func showBlockCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow, delay: TimeInterval = 0.45) {
+    func showBlockCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow, delay: TimeInterval = 0.45, above: Bool = false) {
         guard let b = hosts.block(id) else { return HoverCard.shared.hide() }
         var detail = b.path?.deletingLastPathComponent.abbreviatingHome ?? b.kind.defaultTitle
         if let seen = hosts.client(of: id)?.node.graph.seen(id) { detail += " · " + Age.ago(seen) }
@@ -10892,7 +10900,7 @@ extension MainWindowController: OrganizationViewDelegate {
         // (an arrangement, which has none, as it was).
         let summary = b.kind == .arrangement ? nil : cardContent(for: id)
         HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture,
-                              summary: summary, beside: rect, in: window, delay: delay)
+                              summary: summary, beside: rect, in: window, delay: delay, above: above)
     }
 
     /// `evenHidden`: in a grid kept hidden (a workspace just left), which

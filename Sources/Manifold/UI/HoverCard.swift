@@ -132,6 +132,9 @@ final class HoverCard: NSObject {
         var lend: (() -> LiveLoan?)?
         var rect: NSRect
         weak var window: NSWindow?
+        /// Over the rect rather than beside it (a shelf's card, at the
+        /// window's foot).
+        var above = false
     }
     private var card: Card?
 
@@ -139,18 +142,19 @@ final class HoverCard: NSObject {
     /// `lend`, asked then, lends the block's own view to show live.
     func show(key: String = "", title: String, detail: String, body: String, font: NSFont?, picture image: NSImage? = nil,
               summary: SummaryCardContent? = nil, lend: (() -> LiveLoan?)? = nil, beside rect: NSRect, in window: NSWindow,
-              delay: TimeInterval = 0.45) {
+              delay: TimeInterval = 0.45, above: Bool = false) {
         pendingShow?.cancel()
         // The same block's card, already up: left as it is.
         if card?.key == key, !key.isEmpty, !box.isHidden {
             card?.rect = rect
+            card?.above = above
             return
         }
         let quick = warm
         fadeIn = !quick
         // One up already stays up until the next takes its place.
         if box.isHidden { giveBack() }
-        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, window: window)
+        card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, window: window, above: above)
         let work = DispatchWorkItem { [weak self] in self?.present() }
         pendingShow = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (quick ? min(delay, 0.08) : delay), execute: work)
@@ -244,6 +248,10 @@ final class HoverCard: NSObject {
         var origin = NSPoint(x: rect.maxX + 8, y: rect.midY - height / 2)
         origin.y = max(8, min(origin.y, root.bounds.height - height - 8))
         if origin.x + width > root.bounds.width - 8 { origin.x = max(8, rect.minX - width - 8) }
+        if c.above {
+            origin = NSPoint(x: max(8, min(rect.midX - width / 2, root.bounds.width - width - 8)),
+                             y: min(rect.maxY + 8, root.bounds.height - height - 8))
+        }
         if box.superview !== root || root.subviews.last !== box { root.addSubview(box, positioned: .above, relativeTo: nil) }
         box.frame = NSRect(origin: origin, size: NSSize(width: width, height: height))
         if box.isHidden, fadeIn {
