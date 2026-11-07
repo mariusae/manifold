@@ -8,6 +8,8 @@ final class ThreadUI {
     var card: ThreadCardView?
     /// Every chat on screen, held weakly: a card's, a tile's, the overlay's.
     var chats: [Weak<ThreadChatView>] = []
+    /// Every timeline on screen.
+    var timelines: [Weak<ThreadTimelineView>] = []
     /// What each thread looked like when last shown, to show again only
     /// what changed.
     var shown: [ObjectIdentifier: String] = [:]
@@ -176,6 +178,8 @@ extension MainWindowController: ThreadChatDelegate {
         threadUI.chats.removeAll { $0.value == nil }
         guard sig != threadUI.lastSignature else { return }
         threadUI.lastSignature = sig
+        threadUI.timelines.removeAll { $0.value == nil }
+        for w in threadUI.timelines { if let t = w.value { refresh(t) } }
         for v in views.values {
             (v as? EditorView)?.refreshPills()
             if let d = v as? DiffView { markThreads(in: d) }
@@ -509,6 +513,13 @@ extension MainWindowController {
         case "seen":
             hosts.markSeen(hosts.threads)
             return "marked"
+        case "agentsay":
+            // An agent's comment on the newest thread, as if one wrote it
+            // (the first terminal here standing for it).
+            guard let t = hosts.threads.max(by: { $0.created < $1.created }) else { return "no threads" }
+            let term = hosts.blocks.first { $0.kind == .terminal }?.id ?? BlockID(host: host.host)
+            hosts.addToThread(t.id, .comment(rest), author: .agent(block: term, name: "Claude", turn: nil))
+            return "said on \(t.id.ulid.suffix(6))"
         case "choose":
             let n = rest.split(separator: " ").compactMap { Int($0) }
             guard let f = arrangement?.focused, let d = views[f] as? DiffView, n.count == 2 else { return "no diff focused, or not two lines" }
@@ -530,5 +541,198 @@ extension MainWindowController {
         default:
             return "threads [list|comment <text>|reply <text>|resolve|reopen|card|close|tile|seen|choose a b|places|mark <line>|diffmark <row>]"
         }
+    }
+}
+
+/// A space's threads as a tile of its own (§3.12): the timeline.
+final class ThreadsTimelineTileView: NSView, PaneContent {
+    let placement: PlacementID
+    let block: BlockID
+    let timeline = ThreadTimelineView()
+    var focusView: NSView { timeline.composer }
+    var isDead: Bool { false }
+
+    init(placement: PlacementID, block: BlockID) {
+        self.placement = placement
+        self.block = block
+        super.init(frame: .zero)
+        wantsLayer = true
+        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        timeline.space = block
+        addSubview(timeline)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func destroy() {}
+
+    override func layout() {
+        super.layout()
+        timeline.frame = bounds
+    }
+}
+
+extension MainWindowController: ThreadTimelineDelegate {
+    // MARK: The timeline
+
+    /// The project a space is about, for its timeline's second scope: the
+    /// focused tile's, else the one most of its tiles are in.
+    func project(ofSpace space: BlockID) -> (root: String, host: HostID)? {
+        guard let a = hosts.arrangement(space) else { return nil }
+        let order = (a.focusedPlacement.map { [$0] } ?? []) + a.placements
+        var counts: [String: (Int, HostID)] = [:]
+        for (i, p) in order.enumerated() {
+            guard let root = hosts.client(p.block.host)?.node.graph.project(of: p.block) else { continue }
+            if i == 0, a.focusedPlacement != nil { return (root, p.block.host) }
+            counts[root, default: (0, p.block.host)].0 += 1
+        }
+        return counts.max { $0.value.0 < $1.value.0 }.map { ($0.key, $0.value.1) }
+    }
+
+    /// A timeline's runs: every entry of the threads in its scope, by time,
+    /// a thread's entries that came together one run; the last 400.
+    func timelineModel(for v: ThreadTimelineView) -> TimelineModel {
+        var m = TimelineModel()
+        guard let space = v.space ?? selected else { return m }
+        let spaceTitle = hosts.arrangement(space).map(title(of:)) ?? "this space"
+        let project = project(ofSpace: space)
+        m.scopes = project.map { ["Space", $0.root.lastPathComponent] } ?? ["Space"]
+        m.scope = min(v.model.scope, m.scopes.count - 1)
+        var threads: [Block]
+        if m.scope == 1, let project {
+            threads = hosts.threads(inProject: project.root, on: project.host)
+            m.title = "Threads in " + project.root.lastPathComponent
+            m.composesNew = false
+        } else {
+            threads = hosts.threads(inSpace: space)
+            m.title = "Threads in " + spaceTitle
+        }
+        switch v.filter {
+        case .all: break
+        case .open: threads = threads.filter { $0.thread?.resolved != true }
+        case .unread: threads = threads.filter { !hosts.unseen($0).isEmpty }
+        }
+        if v.marksWhenOpened == nil {
+            v.marksWhenOpened = Dictionary(uniqueKeysWithValues: threads.compactMap { t in hosts.seenMark(t.id).map { (t.id, $0) } })
+        }
+        let marks = v.marksWhenOpened ?? [:]
+        var all: [(Block, ThreadEntry)] = []
+        for t in threads { for e in t.thread?.entries ?? [] { all.append((t, e)) } }
+        all.sort { $0.1.at < $1.1.at }
+        if all.count > 400 { all.removeFirst(all.count - 400) }
+        var described: [BlockID: (String, String?)] = [:]
+        for (t, e) in all {
+            if let last = m.runs.indices.last, m.runs[last].thread.id == t.id {
+                m.runs[last].entries.append(e)
+            } else {
+                let d = described[t.id] ?? t.thread?.about.map { p in let x = describe(p); return (x.title, x.drift) } ?? ("A thread", nil)
+                described[t.id] = d
+                m.runs.append(TimelineRun(thread: t, placeTitle: d.0, drift: d.1, entries: [e]))
+            }
+            let i = m.runs.count - 1
+            let mark = marks[t.id] ?? hosts.seenMark(t.id)
+            if m.runs[i].firstUnseen == nil, e.isNotable, mark.map({ e.at > $0 }) ?? true {
+                m.runs[i].firstUnseen = m.runs[i].entries.count - 1
+            }
+        }
+        m.unseen = threads.reduce(0) { $0 + hosts.unseen($1).count }
+        m.icon = { [weak self] id in
+            guard let a = self?.hosts.block(id)?.agent else { return nil }
+            return AgentIcons.image(a.command, size: 12)
+        }
+        return m
+    }
+
+    func refresh(_ v: ThreadTimelineView) {
+        v.delegate = self
+        v.show(timelineModel(for: v))
+    }
+
+    /// Timelines on screen, kept up to date.
+    func watch(_ v: ThreadTimelineView) {
+        if !threadUI.timelines.contains(where: { $0.value === v }) { threadUI.timelines.append(Weak(v)) }
+        refresh(v)
+    }
+
+    /// Show Threads: the space's timeline, as a tile beside.
+    @objc func showThreads(_ sender: Any?) {
+        guard let space = selected else { return NSSound.beep() }
+        show(space, lens: .threads, .beside, kind: .opened, context: "threads")
+    }
+
+    // MARK: ThreadTimelineDelegate
+
+    func timeline(_ view: ThreadTimelineView, send text: String, to thread: BlockID?) {
+        if let thread {
+            hosts.addToThread(thread, .comment(text))
+            return
+        }
+        guard let space = view.space ?? selected else { return }
+        let name = hosts.arrangement(space).map(title(of:))
+        hosts.newThread(about: ThreadPlace(block: space, title: name), space: space, text: text)
+    }
+
+    func timeline(_ view: ThreadTimelineView, resolve: Bool, _ thread: BlockID) {
+        hosts.addToThread(thread, resolve ? .resolved : .reopened)
+    }
+
+    func timeline(_ view: ThreadTimelineView, goToPlaceOf thread: BlockID) {
+        goToPlace(ofThread: thread)
+    }
+
+    func timeline(_ view: ThreadTimelineView, follow address: String) {
+        open(address, from: arrangement?.focused)
+    }
+
+    func timelineChanged(_ view: ThreadTimelineView) {
+        view.marksWhenOpened = nil
+        refresh(view)
+    }
+
+    func timeline(_ view: ThreadTimelineView, seen threads: [BlockID]) {
+        hosts.markSeen(threads.compactMap { hosts.block($0) })
+    }
+
+    func timeline(_ view: ThreadTimelineView, dropped: Dragged, done: @escaping (String?) -> Void) {
+        guard dropped.offers(.link) else { return done(nil) }
+        dropped.text(.link, separator: " ") { text, _ in done(text) }
+    }
+
+    /// A thread's place gone to: its block, at its anchor; a space's
+    /// thread, its tile.
+    func goToPlace(ofThread id: BlockID) {
+        guard let about = hosts.block(id)?.thread?.about else { return }
+        if hosts.block(about.block)?.kind == .arrangement {
+            return show(id, lens: .thread, .beside, kind: .opened, context: "a thread")
+        }
+        open(Self.address(about.block, anchor: about.anchor), from: arrangement?.focused)
+    }
+}
+
+extension MainWindowController {
+    /// Debugging the timeline: `timeline` (the space's, as a tile),
+    /// `timeline scope <n>|filter <all|open|unread>|read|choose <i>|send <text>`,
+    /// and what it shows.
+    func debugTimeline(_ arg: String) -> String {
+        let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        let tile = views.values.compactMap { $0 as? ThreadsTimelineTileView }.first
+        if w.first == "open" || (tile == nil && w.isEmpty) {
+            showThreads(nil)
+            return "opened"
+        }
+        guard let t = tile?.timeline else { return "no timeline tile" }
+        switch w.first {
+        case "scope":
+            refresh(t)
+            t.debugScope(Int(w.dropFirst().first ?? "0") ?? 0)
+        case "filter": t.filter = ["all": .all, "open": .open, "unread": .unread][w.dropFirst().first ?? "all"] ?? .all; timelineChanged(t)
+        case "read": timeline(t, seen: t.model.runs.map(\.thread.id))
+        case "choose": if let i = Int(w.dropFirst().first ?? ""), t.model.runs.indices.contains(i) { t.choose(t.model.runs[i].thread.id) }
+        case "send": timeline(t, send: w.dropFirst().first ?? "", to: t.chosen)
+        default: break
+        }
+        let m = t.model
+        let runs = m.runs.map { r in "[\(r.placeTitle)\(r.firstUnseen.map { " NEW@\($0)" } ?? "")] " + r.entries.map { e in e.author.name + ":" + (e.comment.map { String($0.prefix(30)) } ?? "\(e.kind)".prefix(20).description) }.joined(separator: ", ") }
+        return "\(m.title) · scopes \(m.scopes) at \(m.scope) · filter \(t.filter) · \(m.unseen) unseen · replying to \(t.chosen.map { String($0.ulid.suffix(6)) } ?? "none")\n" + runs.joined(separator: "\n")
     }
 }

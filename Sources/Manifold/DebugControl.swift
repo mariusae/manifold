@@ -410,6 +410,8 @@ enum DebugControl {
             return "asked \(h.raw)"
         case "threads":
             return wc?.debugThreads(arg) ?? "no window"
+        case "timeline":
+            return wc?.debugTimeline(arg) ?? "no window"
         case "filehistory":
             // "filehistory": the focused editor's history (⌥⌘Y) and what it
             // shows; "filehistory go <i>|now|older|newer|blame|close|click <line>".

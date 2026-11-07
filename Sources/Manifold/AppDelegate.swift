@@ -316,6 +316,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A thread about where you are (§3.12): the selection, the rows
         // chosen, the caret's place — a comment, to yourself or an agent.
         item(edit, "Comment", #selector(MainWindowController.commentHere(_:)), "m", [.command, .option])
+        // Every thread of the space (or its project) as one timeline, a tile beside.
+        item(edit, "Show Threads", #selector(MainWindowController.showThreads(_:)), "")
         edit.addItem(.separator())
         let find = NSMenu(title: "Find")
         for (title, action, key, mods) in [

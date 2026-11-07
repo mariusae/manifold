@@ -548,6 +548,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
         if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
         s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
+        // A space's timeline (§3.12): said so, not the space's name.
+        if p.lens == .threads {
+            let n = hosts.threads(inSpace: p.block).reduce(0) { $0 + hosts.unseen($1).count }
+            s.caption = "Threads" + (n > 0 ? " · \(n) new" : "")
+        }
         return s
     }
 
@@ -743,6 +748,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // The host's smartlog may have stopped since (a restart): asked for.
             smartlogStart(s)
             v = s
+        case .threads:
+            let t = ThreadsTimelineTileView(placement: p.id, block: p.block)
+            watch(t.timeline)
+            v = t
         case .thread:
             let t = ThreadTileView(placement: p.id, block: p.block)
             t.chat.threadID = p.block
@@ -1165,7 +1174,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             attended = (b, r.at)
             hosts.propose(.attend(b))
         }
-        let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count
+        // Threads with something not seen (§3.12) wait on you too.
+        let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count + hosts.unseenThreads.count
         let badge = waiting == 0 ? "" : "\(waiting)"
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
@@ -4191,7 +4201,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var nodes: [OrgNode] = []
         var open: Set<String> = []
         for c in hosts.all {
-            let blocks = c.node.blocks.filter { $0.needsAttention && matches(filter, [$0.displayTitle, $0.path, $0.statusRecord?.msg, $0.statusRecord?.app]) }
+            // A thread with something not seen (§3.12) is in it too.
+            let blocks = c.node.blocks.filter { b in
+                (b.needsAttention || (b.kind == .thread && !hosts.unseen(b).isEmpty))
+                    && matches(filter, [b.displayTitle, b.path, b.statusRecord?.msg, b.statusRecord?.app, b.thread?.lastComment?.comment])
+            }
             guard !blocks.isEmpty else { continue }
             // Which workspace holds each, the first that does; the rest elsewhere.
             var byWorkspace: [(BlockID?, [Block])] = []

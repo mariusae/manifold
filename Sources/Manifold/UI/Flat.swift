@@ -248,6 +248,16 @@ final class FlatButton: NSButton {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// What a click does, where there's no target to give (a closure).
+    var onClick: (() -> Void)? {
+        didSet {
+            target = self
+            action = #selector(clicked)
+        }
+    }
+
+    @objc private func clicked() { onClick?() }
+
     override var title: String { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
     override var isEnabled: Bool { didSet { needsDisplay = true } }
     override var state: NSControl.StateValue { didSet { needsDisplay = true } }
