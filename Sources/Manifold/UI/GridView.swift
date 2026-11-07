@@ -13,12 +13,7 @@ protocol GridDelegate: AnyObject {
     func gridKeptPicture(_ block: BlockID) -> NSImage?
     /// A block's picture, to keep.
     func gridKeep(_ picture: NSImage, of block: BlockID)
-    /// A stack about to fan out: its tile grown to hold the fan, if it's
-    /// short of it. True when it was (the fan waits for the tile to settle).
-    func gridRoomForFan(_ top: PlacementID) -> Bool
-    /// Whether `gridRoomForFan` would have to make room (nothing changed).
-    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool
-    /// A tile as its summary card shows it (a stack's column).
+    /// A tile as its summary card shows it.
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
     /// A linked block's summary card, under the bar's links.
     func gridLinkSummary(_ block: BlockID) -> SummaryCardContent?
@@ -27,12 +22,9 @@ protocol GridDelegate: AnyObject {
     func gridArrive(_ placement: PlacementID)
     /// A tile down to its summary, or, already there, back as it was.
     func gridShrinkToSummary(_ placement: PlacementID)
-    /// A fan opened from ⌃⇥ taken over by the pointer: letting go of control no
-    /// longer settles it (a click does).
-    func gridSwitcherFollowsPointer()
     /// A tile dropped at a place in the grid: into column `column` at
     /// index `at`, or a new column at `column`.
-    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool)
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool)
     /// A block from the sidebar dropped at a place in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool)
     /// Things dropped (§3.11) — files, a block, a page, a picture, words —
@@ -45,24 +37,16 @@ protocol GridDelegate: AnyObject {
     func gridDropArrangement(_ arrangement: BlockID, column: Int)
     func gridCanDrop(_ arrangement: BlockID) -> Bool
     func gridResized(fractions: [Double])
-    /// The lines between tiles dragged: the column's heights, after the
-    /// tiles pushed down to nothing went into the stacks of the tiles
-    /// below them (each `(tile, behind)`).
-    func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)])
+    /// The lines between tiles dragged: the column's heights, a tile
+    /// pushed to nothing at 0 (to be docked).
+    func gridResized(heights: [PlacementID: Double])
     func gridDragChanged(_ dragging: Bool)
     func gridDragAtLeftEdge()
     /// A tile's pill was clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
-    /// A stashed tile's pill was clicked: it comes back (§3.1).
-    func gridUnstash(_ placement: PlacementID)
-    /// Clicked where it peeks out (a tab, a card, its bar above the
-    /// stack): it takes the top of its stack, the tile that showed going
-    /// behind it.
-    func gridSwap(_ placement: PlacementID)
-    /// ⌥-drag: the dragged tile over another, which goes into the stack behind it.
-    /// `alone`: ⌘-drag, or a fanned pill's drag — the tile without its stack.
-    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool)
-    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool)
+    /// ⌥-drag (or a bar dropped on another's): the dragged tile in another's
+    /// place, that one docked under it.
+    func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
     /// ⌥-click: the block's path, folder by folder, each going there.
@@ -90,12 +74,10 @@ protocol GridDelegate: AnyObject {
 /// by side and each column's tiles top to bottom, every tile a block, all
 /// visible, as acme tiles its windows. Each tile wears a pill floating
 /// over its top, centered, to drag it by and to open its menu; the lines
-/// between tiles and columns resize them. A column one tile fills keeps
-/// the others **stashed**: not laid out, their pills bunched in a small
-/// stack under the filling tile's, fanned out while the pointer is over
-/// them, each clicked to come back.
+/// between tiles and columns resize them; one pushed to nothing is
+/// docked (§3.1).
 final class GridView: NSView, NSDraggingSource {
-    /// Told of a tile's view about to go out of sight — stacked, collapsed
+    /// Told of a tile's view about to go out of sight — collapsed
     /// to its bar, behind a maximized tile — while it still shows: for a
     /// picture of it to keep.
     var onHiding: ((PaneContent) -> Void)?
@@ -169,9 +151,6 @@ final class GridView: NSView, NSDraggingSource {
     private let focusRing = FocusRingView()
     /// The tile the focus ring was round at the last layout.
     private var ringFor: PlacementID?
-    /// The column whose stack of stashed pills is fanned out, under the pointer.
-    /// The shown tile whose stack is fanned out under its pill.
-    private var fanned: PlacementID? = nil
 
     /// What a tile's content leaves at its top: nothing — the bar is above
     /// it, not over it (kept for the views that asked).
@@ -204,9 +183,6 @@ final class GridView: NSView, NSDraggingSource {
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = .clear
-        // The sheets' layers take their colours as laid out: laid out again
-        // when light and dark switch.
-        themed { $0.needsLayout = true }
         dropOverlay.isHidden = true
         registerForDraggedTypes([.manifoldArrangement, .manifoldPlacement, .manifoldBlock] + Dragged.types)
     }
@@ -269,7 +245,7 @@ final class GridView: NSView, NSDraggingSource {
         var addedViews = false
         for column in columns {
             for tile in column {
-                if tile.view.superview !== self, !held(tile.shown.id) {
+                if tile.view.superview !== self {
                     Self.styleBody(tile.view)
                     addSubview(tile.view)
                     addedViews = true
@@ -281,8 +257,7 @@ final class GridView: NSView, NSDraggingSource {
                     return p
                 }()
                 let id = tile.shown.id
-                let stashed = isStashed(id)
-                pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full, stashed: stashed)
+                pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full)
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
@@ -300,15 +275,8 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onClose = { [weak self] in self?.delegate?.gridCloseClicked(id) }
                 // The bar clicked grows the tile, ⌘-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
-                // A bar peeking out above its stack, clicked, comes to the
-                // top; ⌘-clicked, it comes out of the stack.
                 pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
-                    if stashed {
-                        self.fanned = nil
-                        if mods.contains(.command) { self.delegate?.gridUnstash(id) } else { self.delegate?.gridSwap(id) }
-                        return
-                    }
                     if mods.contains(.control) {
                         self.delegate?.gridFocus(id)
                         self.showPillMenu(id)
@@ -333,45 +301,24 @@ final class GridView: NSView, NSDraggingSource {
                     self.delegate?.gridGrow(id)
                 }
                 pill.onPathClick = { [weak self] in
-                    guard let self, !stashed else { return }
+                    guard let self else { return }
                     self.delegate?.gridFocus(id)
                     if let menu = self.delegate?.gridPathMenu(for: id), let pill = self.pills[id] {
                         let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
                         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
                     }
                 }
-                pill.onIconClick = { [weak self] mods in
+                pill.onIconClick = { [weak self] _ in
                     guard let self else { return }
-                    if stashed {
-                        // As anywhere in a stack: to the top; ⌘, out of it.
-                        self.fanned = nil
-                        if mods.contains(.command) {
-                            self.delegate?.gridUnstash(id)
-                        } else {
-                            self.delegate?.gridSwap(id)
-                        }
-                        return
-                    }
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
                 }
                 // Right-clicked, the title calls up the tile's menu.
                 pill.onRightClick = { [weak self] _ in
-                    guard let self, !stashed else { return }
+                    guard let self else { return }
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
                 }
-                // Its stack's button (or its sheets, clicked): the stack
-                // behind it fanned out.
-                pill.onFan = { [weak self] in self?.fanOut(id) }
-                // Over its stack button, the tiles behind rise as tabs at once.
-                pill.onFanHover = { [weak self] inside in
-                    guard let self else { return }
-                    self.hoveringSheets = inside ? id : nil
-                    if inside { self.showPeek(id) } else { self.leavePeekSoon() }
-                }
-                // A fanned pill drags its tile out alone; the top's takes
-                // the stack along, unless ⌘ is held.
                 pill.onDragStart = { [weak self, weak pill] event, thing in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill, thing: thing)
@@ -422,8 +369,7 @@ final class GridView: NSView, NSDraggingSource {
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
                     if badge.superview !== self { addSubview(badge, positioned: .above, relativeTo: pill) }
                 }
-                // Not a view the switcher holds: it shows in its card. One
-                // collapsed to its bar stays out of sight, as layout left it:
+                // One collapsed to its bar stays out of sight, as layout left it:
                 // shown here, a sliver of it showed under its bar until the
                 // next layout (and blinked with each, typing in a note whose
                 // title is in its bar). Behind a maximized tile, out of sight
@@ -434,12 +380,11 @@ final class GridView: NSView, NSDraggingSource {
                 // are as the grid was laid out before it was maximized (its
                 // layout then doesn't make them again), so a tile maximized
                 // from its bar was hidden at the next render — an empty card.
-                if !held(id) { setHidden(tile.view, full != id && (stashed || collapsed.contains(id) || summarized.contains(id) || behindFull)) }
+                setHidden(tile.view, full != id && (pushedOut(id) || collapsed.contains(id) || summarized.contains(id) || behindFull))
                 // Its summary standing in for it, said afresh with each render.
                 if let card = tileSummaries[id], summarized.contains(id), let s = summaryContent(tile) { card.content = s }
             }
         }
-        if let f = fanned, !columns.flatMap({ $0 }).contains(where: { $0.shown.id == f }) { fanned = nil }
         // The dividers are kept from one render to the next (every
         // keystroke in a note renders): only the count changes views.
         let columnCount = max(0, columns.count - 1)
@@ -475,10 +420,7 @@ final class GridView: NSView, NSDraggingSource {
             d.onEnd = { [weak self] in
                 guard let self, self.evening == nil else { return }
                 self.dividerDragging = false
-                let stashed = self.stashedDown
-                self.stashedDown = []
-                self.dividerBelow = [:]
-                self.delegate?.gridResized(heights: self.heights, stashed: stashed)
+                self.delegate?.gridResized(heights: self.heights)
             }
             d.onDoubleClick = { [weak self, weak d] in self?.evenRows(column: c, above: above, below: below, line: d) }
         }
@@ -528,26 +470,10 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Geometry
 
-    private func isStashed(_ id: PlacementID) -> Bool { heights[id] == 0 }
-    private func shownTiles(_ c: Int) -> [Tile] { columns[c].filter { !isStashed($0.shown.id) } }
-    private func stashedTiles(_ c: Int) -> [Tile] { columns[c].filter { isStashed($0.shown.id) } }
-
-    /// A column's shown tiles, each with the stack behind it: the stashed
-    /// tiles that follow it in the column (those before the first shown
-    /// tile are behind it).
-    private func stacks(_ c: Int) -> [(top: Tile, behind: [Tile])] {
-        var out: [(top: Tile, behind: [Tile])] = []
-        var early: [Tile] = []
-        for t in columns[c] {
-            if isStashed(t.shown.id) {
-                if out.isEmpty { early.append(t) } else { out[out.count - 1].behind.append(t) }
-            } else {
-                out.append((t, early))
-                early = []
-            }
-        }
-        return out
-    }
+    /// Pushed to nothing by a line's drag (a share of 0, till the drag
+    /// ends and it's docked): not laid out.
+    private func pushedOut(_ id: PlacementID) -> Bool { heights[id] == 0 }
+    private func shownTiles(_ c: Int) -> [Tile] { columns[c].filter { !pushedOut($0.shown.id) } }
 
     /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
     /// Debugging: the tile's view put back on top, as a view made afresh
@@ -559,91 +485,6 @@ final class GridView: NSView, NSDraggingSource {
         layoutSubtreeIfNeeded()
         return "re-added"
     }
-
-    /// Debugging: the tile's stack fanned out, as its sheets clicked
-    /// would; what came up.
-    func debugRightClick(_ placement: PlacementID) -> String {
-        guard let pill = pills[placement] else { return "no pill" }
-        guard full == nil, stacks(columns.indices.first { columns[$0].contains { $0.shown.id == placement } } ?? 0)
-            .contains(where: { $0.top.shown.id == placement && !$0.behind.isEmpty }) else { return "no stack" }
-        pill.onFan?()
-        layoutSubtreeIfNeeded()
-        return switcher.map { "switcher over \(NSStringFromRect($0.frame)), bar hidden \(pill.isHidden)" } ?? "nothing"
-    }
-
-    /// The stack behind `top` fanned out, the choice following the pointer.
-    private func fanOut(_ top: PlacementID) {
-        guard full == nil else { return }
-        delegate?.gridFocus(top)
-        openStackSwitcher(top, followingPointer: true)
-    }
-
-    /// Debugging: the first stack's sheets clicked (or, `drag`, dragged
-    /// down 30 points), the events sent to them as the window would.
-    func debugClickSheets(drag: Bool) -> String {
-        guard let t = sheetTargets.first, let window else { return "no sheets" }
-        let r = t.convert(t.bounds, to: nil)
-        let at = NSPoint(x: r.midX, y: r.midY)
-        func event(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
-            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
-        }
-        let before = heights
-        if let e = event(.leftMouseDown, at) { t.mouseDown(with: e) }
-        if drag { for dy in stride(from: 5, through: 30, by: 5) { if let e = event(.leftMouseDragged, NSPoint(x: at.x, y: at.y - CGFloat(dy))) { t.mouseDragged(with: e) } } }
-        if let e = event(.leftMouseUp, drag ? NSPoint(x: at.x, y: at.y - 30) : at) { t.mouseUp(with: e) }
-        layoutSubtreeIfNeeded()
-        return "switcher \(switcher.map { NSStringFromRect($0.frame) } ?? "none"); heights \(before == heights ? "same" : "changed")"
-    }
-
-    /// Debugging: the first stack's sheets hovered — their tabs risen — or,
-    /// `off`, left.
-    /// Debugging: the focused (else first) stack's sheets hovered — the
-    /// tabs rising after the dwell — or, `button`, its stack button
-    /// (at once); or left.
-    func debugPeek(_ on: Bool, button: Bool = false) -> String {
-        let focusedTarget = sheetTargets.first { $0.top == focused }
-        guard let t = focusedTarget ?? sheetTargets.first, let top = t.top else { return "no sheets" }
-        guard on else {
-            (button ? pills[top]?.onFanHover : t.onHover)?(false)
-            hidePeek()
-            return "left"
-        }
-        if let p = peek { return "already up over \(p.top)" }
-        if button { pills[top]?.onFanHover?(true) } else { t.onHover?(true) }
-        return peek.map { "peek over \($0.top): \(NSStringFromRect($0.frame))" } ?? "rising in \(Self.peekDwellTime)s"
-    }
-
-    /// Debugging: whether the tabs are up.
-    var debugPeekUp: String { peek.map { "up over \($0.top)" } ?? "none" }
-
-    /// Debugging: tab `i` of the tabs up clicked.
-    func debugPeekPick(_ i: Int) -> String { peek?.debugPick(i) ?? "no tabs up" }
-
-    /// Debugging: where each stack's sheets take a click.
-    var debugSheetTargets: String {
-        let tiles = columns.flatMap { $0 }
-        return sheetTargets.map { t in
-            let title = tiles.first { $0.shown.id == t.top }?.shown.title ?? "?"
-            // In the window's coordinates from the top left (as `click` takes them).
-            let r = t.convert(t.bounds, to: nil)
-            let top = (window?.contentView?.bounds.height ?? 0) - r.midY
-            return "\(title) center \(Int(r.midX)) \(Int(top)) size \(Int(r.width))x\(Int(r.height))"
-        }.joined(separator: "\n")
-    }
-
-    /// Debugging: the open column's cards, the chosen marked.
-    var debugColumn: String { switcher?.debugCards ?? "no column" }
-
-    /// Debugging: the open switcher's pointer resting on card `i`.
-    func debugSwitcherHover(_ i: Int) -> String { switcher?.debugHover(i) ?? "no switcher" }
-    func debugSwitcherPointer() -> String {
-        guard let s = switcher else { return "no switcher" }
-        s.debugPointerMoves()
-        return "following the pointer: \(s.followsPointer), watching clicks: \(switcherMonitor != nil)"
-    }
-
-    func debugSwitcherPick(_ i: Int) -> String { switcher?.debugPick(i) ?? "no switcher" }
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
         guard let b = badges[placement] else { return "no badge" }
@@ -684,11 +525,9 @@ final class GridView: NSView, NSDraggingSource {
         guard r + 1 < shown.count, let ib = columns[c].firstIndex(where: { $0.shown.id == shown[r + 1].shown.id }) else { return "no such line" }
         let frames = tileFrames(column: c, in: columnFrames()[c])
         dragRowDivider(column: c, above: shown[r].shown.id, below: shown[r + 1].shown.id, to: frames[ib].minY + 1)
-        let stashed = stashedDown
-        stashedDown = []
-        dividerBelow = [:]
-        delegate?.gridResized(heights: heights, stashed: stashed)
-        return "stashed \(stashed.count)"
+        let out = heights.filter { $0.value == 0 }.count
+        delegate?.gridResized(heights: heights)
+        return "docked \(out)"
     }
 
     /// Debugging: each tile's dirty dot: hidden, grey or amber.
@@ -702,7 +541,7 @@ final class GridView: NSView, NSDraggingSource {
         columns.flatMap { $0 }.map { t in
             let v = t.view
             let p = pills[t.shown.id]
-            return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) stashed=\(isStashed(t.shown.id)) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false) summarized=\(summarized.contains(t.shown.id))"
+            return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false) summarized=\(summarized.contains(t.shown.id))"
         }.joined(separator: "\n")
     }
 
@@ -713,7 +552,7 @@ final class GridView: NSView, NSDraggingSource {
             let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
             let caret = t.view.caretRectInWindow.map { NSStringFromRect($0) } ?? "none"
             let capsule = p.map { NSStringFromRect($0.convert($0.capsule(in: $0), to: nil)) } ?? "-"
-            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) behind=\(p?.behind ?? 0) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule) \(p?.debugEdit ?? "")"
+            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule) \(p?.debugEdit ?? "")"
         }.joined(separator: "\n")
     }
 
@@ -757,13 +596,13 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Each tile's frame in a column, band included, top to bottom; no
-    /// tile shorter than its band; a stashed tile's is empty.
+    /// tile shorter than its band; one pushed out's is empty.
     private func tileFrames(column c: Int, in f: NSRect) -> [NSRect] {
         let all = columns[c]
         let shown = tileFramesShown(column: c, in: f)
         var next = 0
         return all.map { tile in
-            if isStashed(tile.shown.id) { return .zero }
+            if pushedOut(tile.shown.id) { return .zero }
             defer { next += 1 }
             return next < shown.count ? shown[next] : .zero
         }
@@ -798,9 +637,9 @@ final class GridView: NSView, NSDraggingSource {
         Self.layouts += 1
         super.layout()
         // Tiles glide to new places when the grid itself didn't change
-        // size (a tile placed, closed, grown, moved or stashed); a resize
+        // size (a tile placed, closed, grown, moved or docked); a resize
         // or a divider dragged lays out at once.
-        let mayGlide = bounds == lastLayoutBounds && (!dragging || dropped) && !dividerDragging && !isSwitching && !Motion.reduced
+        let mayGlide = bounds == lastLayoutBounds && (!dragging || dropped) && !dividerDragging && !Motion.reduced
         // Where what goes with each tile shows now, to be carried from.
         let shownBefore = mayGlide ? companionsShown() : [:]
         lastCompanionsShown = shownBefore
@@ -829,7 +668,6 @@ final class GridView: NSView, NSDraggingSource {
             focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
-                pill.behind = 0
                 pill.collapsed = false
                 pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                 keep(pill, above: tile.view)
@@ -838,19 +676,15 @@ final class GridView: NSView, NSDraggingSource {
             if let badge = badges[full], let pill = pills[full] { keep(badge, above: pill) }
             return
         }
-        for t in columns.flatMap({ $0 }) where !held(t.shown.id) {
-            let stashed = isStashed(t.shown.id)
-            // Hidden if stashed; shown or not, by whether it's collapsed,
+        for t in columns.flatMap({ $0 }) {
+            let out = pushedOut(t.shown.id)
+            // Hidden if pushed out; shown or not, by whether it's collapsed,
             // below — not shown here first and hidden again there, which
             // pictured it and told the terminal it was seen at every layout.
-            if stashed { setHidden(t.view, true) }
-            // A stashed tile's pill stays as it is — hidden behind the
-            // top's, or out in the fan: shown here, it would be drawn over
-            // the top pill for a frame, until the gather hid it again.
-            if !stashed { pills[t.shown.id]?.isHidden = false }
-            pills[t.shown.id]?.behind = 0
-            badges[t.shown.id]?.isHidden = stashed
-            ticks[t.shown.id]?.available = !stashed
+            if out { setHidden(t.view, true) }
+            pills[t.shown.id]?.isHidden = out
+            badges[t.shown.id]?.isHidden = out
+            ticks[t.shown.id]?.available = !out
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -889,23 +723,10 @@ final class GridView: NSView, NSDraggingSource {
         for (c, f) in frames.enumerated() {
             let tiles = tileFrames(column: c, in: f)
             var shownIndex = 0
-            var top: NSRect?
-            // Each stack: its sheets' edges above the top's card; its
-            // tiles hang as cards over it when they or its bar's stack
-            // button are clicked. Said to the bars first: a bar with a stack
-            // has its button, which the links' pill is placed before.
-            for stack in stacks(c) {
-                guard let topPill = pills[stack.top.shown.id] else { continue }
-                topPill.behind = stack.behind.count
-                topPill.toolTip = stack.behind.isEmpty ? nil
-                    : "\(stack.behind.count) behind this tile — click the sheets above it, or its stack button, to see \(stack.behind.count == 1 ? "it" : "them")"
-                for tile in stack.behind { pills[tile.shown.id]?.isHidden = true }
-            }
             for (i, tile) in columns[c].enumerated() {
-                guard !isStashed(tile.shown.id) else { continue }
+                guard !pushedOut(tile.shown.id) else { continue }
                 let r = tiles[i]
                 let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
-                let held = held(tile.shown.id)
                 let was = lastFrames[tile.shown.id]
                 // Too little of its content under the bar to be worth
                 // showing: its summary card in its place; less than a line
@@ -917,15 +738,13 @@ final class GridView: NSView, NSDraggingSource {
                 frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
                 // Gone to or from its summary card (a divider dragged, a
                 // neighbour grown): the one crosses over to the other.
-                if !held, !collapsed, was != nil, summarized != self.summarized.contains(tile.shown.id), !self.collapsed.contains(tile.shown.id),
+                if !collapsed, was != nil, summarized != self.summarized.contains(tile.shown.id), !self.collapsed.contains(tile.shown.id),
                    let leaving = summarized ? tile.view : tileSummaries[tile.shown.id], !leaving.isHidden {
                     crossFade(from: leaving, to: body)
                 }
-                if !held {
-                    settle(tile.view, body, was: was)
-                    setHidden(tile.view, collapsed || summarized)
-                }
-                if summarized, !held, let content = summaryContent(tile) {
+                settle(tile.view, body, was: was)
+                setHidden(tile.view, collapsed || summarized)
+                if summarized, let content = summaryContent(tile) {
                     let card = tileSummaries[tile.shown.id] ?? {
                         let c = SummaryCard(content)
                         c.inTile = true
@@ -943,21 +762,16 @@ final class GridView: NSView, NSDraggingSource {
                     card.isHidden = false
                     keep(card, above: tile.view)
                 }
-                placeTicks(of: tile, in: body, shown: !held && !collapsed && !summarized)
-                // The switcher over the whole tile, its bar put away meanwhile.
-                if held, let s = switcher, s.topID == tile.shown.id { s.frame = r }
-                if top == nil { top = r }
+                placeTicks(of: tile, in: body, shown: !collapsed && !summarized)
                 if let pill = pills[tile.shown.id] {
                     pill.collapsed = collapsed
                     let bar = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
                     barTargets[tile.shown.id] = bar
                     settle(pill, bar, was: was.map { NSRect(x: $0.minX, y: $0.maxY, width: $0.width, height: Self.barHeight) })
-                    if !held { keep(pill, above: tile.view) }
-                    pill.isHidden = held
+                    keep(pill, above: tile.view)
                 }
                 if let badge = badges[tile.shown.id] {
                     placeBadge(badge, of: tile.shown.id, in: r)
-                    if held { badge.isHidden = true }
                     // Over its bar for clicks too, not only drawn over it: a
                     // view put back on top takes its bar up above it again.
                     if let pill = pills[tile.shown.id] { keep(badge, above: pill) }
@@ -968,13 +782,11 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 shownIndex += 1
             }
-            _ = top
         }
-        // Tiles placed since the last layout come in where they land (not
-        // one come up from its stack: that's a swap, ⌃⇥'s, at once).
+        // Tiles placed since the last layout come in where they land.
         var cameIn: Set<PlacementID> = []
         if gliding, !lastFrames.isEmpty {
-            for t in columns.flatMap({ $0 }) where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !placed.contains(t.shown.id) && !held(t.shown.id) {
+            for t in columns.flatMap({ $0 }) where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !placed.contains(t.shown.id) {
                 comeIn([t.view, pills[t.shown.id], tileSummaries[t.shown.id]].compactMap { $0 }.filter { !$0.isHidden })
                 cameIn.insert(t.shown.id)
             }
@@ -985,11 +797,11 @@ final class GridView: NSView, NSDraggingSource {
         lastFrames = frameNow
         self.collapsed = collapsedNow
         self.summarized = summarizedNow
-        for (id, c) in tileSummaries where !summarizedNow.contains(id) || held(id) { c.isHidden = true }
+        for (id, c) in tileSummaries where !summarizedNow.contains(id) { c.isHidden = true }
         if dragging { dragCatcher.frame = bounds }
         // The focus ring: around the focused tile, over everything (once a
         // tile shrinking back to its place is there).
-        if let focused, zooming == nil, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !isStashed(focused) {
+        if let focused, zooming == nil, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !pushedOut(focused) {
             focusRing.isHidden = false
             let body = frameNow[focused] ?? t.view.frame
             let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
@@ -1016,13 +828,12 @@ final class GridView: NSView, NSDraggingSource {
         for (i, d) in columnDividers.enumerated() {
             d.frame = NSRect(x: frames[i].maxX, y: 0, width: Self.gap, height: bounds.height)
         }
-        layoutSheets()
         layoutShadows(frameNow, gliding: gliding)
         warpIfGrown()
-        // A tile chosen in the switcher, once it's the top again: grown
-        // from its card into its place.
+        // A tile chosen in the switcher (⌥⇥, ⌃⇥), once it's laid out:
+        // grown from its card into its place.
         if let m = pendingArrival {
-            if Date().timeIntervalSince(m.at) > 1 { land() } else if frameNow[m.id].map({ $0.height > 0 }) == true, !isStashed(m.id) {
+            if Date().timeIntervalSince(m.at) > 1 { land() } else if frameNow[m.id].map({ $0.height > 0 }) == true, !pushedOut(m.id) {
                 pendingArrival = nil
                 arrive(m.id, card: m.card, from: m.from, in: m.host)
             }
@@ -1034,7 +845,7 @@ final class GridView: NSView, NSDraggingSource {
     /// A tile placed comes in where it lands — growing from smaller,
     /// seen at once — as its neighbours' edges slide aside for it (only
     /// fading, with Reduce motion).
-    /// Every tile at the last layout, shown or in a stack.
+    /// Every tile at the last layout.
     private var placed: Set<PlacementID> = []
 
     private func comeIn(_ parts: [NSView]) {
@@ -1127,7 +938,7 @@ final class GridView: NSView, NSDraggingSource {
     /// card — and the lines between tiles: everything in the grid but the
     /// tiles, their bars and what glides or shows on its own.
     private func isCompanion(_ v: NSView) -> Bool {
-        !(v is PaneContent || v is TilePill || v === focusRing || v === dragCatcher || v === dropOverlay || v === switcher)
+        !(v is PaneContent || v is TilePill || v === focusRing || v === dragCatcher || v === dropOverlay)
     }
 
     /// Where each companion shows this moment (part way, if carried).
@@ -1251,7 +1062,7 @@ final class GridView: NSView, NSDraggingSource {
     /// it leaves — what went, seen going. Its view goes at once, as before.
     func fadeAway(_ v: PaneContent) {
         let bar = pills[v.placement]
-        guard window != nil, !isHiddenOrHasHiddenAncestor, !isSwitching, !v.isHidden, let host = layer else { return }
+        guard window != nil, !isHiddenOrHasHiddenAncestor, !v.isHidden, let host = layer else { return }
         var ghosts: [CALayer] = []
         for part in [v as NSView, bar].compactMap({ $0 }) where !part.isHidden && part.bounds.width > 20 {
             guard let image = Self.ghostPicture(of: part) else { continue }
@@ -1383,11 +1194,6 @@ final class GridView: NSView, NSDraggingSource {
     /// or after `wait` at most (then as `pictured` has it), kept for later.
     private func picturing(_ body: NSView, _ bar: NSView?, wait: Double = 0.25, _ done: @escaping (Pictured) -> Void) {
         guard let page = body as? Snapshotting else { return done(pictured(body, bar)) }
-        // Taken a moment ago, ahead of being wanted (⌃⇥ held): that one.
-        if let p = picturedAhead, p.body === body, Date().timeIntervalSince(p.at) < 1 {
-            picturedAhead = nil
-            return done(pictured(body, bar, page: p.image))
-        }
         var called = false
         page.snapshot { [weak self, weak body, weak bar] image in
             guard let self, let body, !called else { return }
@@ -1402,47 +1208,9 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    /// A page's picture taken ahead (`pictureAhead`), for `picturing` to
-    /// use rather than wait for one.
-    private var picturedAhead: (body: NSView, image: CGImage?, at: Date)?
-
-    /// ⌃⇥ pressed, its cards perhaps wanted in a moment: the stack's top's
-    /// picture taken now, if it's a page (one that can't be drawn at once),
-    /// so they needn't wait for it.
-    func pictureAhead(_ top: PlacementID) {
-        guard let t = tile(top), let body = shownBody(t), let page = body as? Snapshotting else { return }
-        page.snapshot { [weak self, weak body] image in
-            guard let self, let body else { return }
-            self.picturedAhead = (body, image?.cgImage(forProposedRect: nil, context: nil, hints: nil), Date())
-        }
-    }
-
-    /// The sheet `level` deep (1–3) above a bar, as the sheets are drawn.
-    private static func sheetRect(above bar: NSRect, level: Int) -> NSRect {
-        let level = CGFloat(min(max(level, 1), 3))
-        let inset = level * sheetStep.inset, rise = level * sheetStep.rise
-        return NSRect(x: bar.minX + inset, y: bar.maxY - Radius.surface, width: bar.width - 2 * inset, height: Radius.surface + rise)
-    }
-
-    /// Each tile in a stack in view, by its block, and the sheet above its
-    /// stack's top it's in (the nearest the first, the deepest past three).
-    func sheetPlaces() -> [BlockID: NSRect] {
-        var out: [BlockID: NSRect] = [:]
-        for c in columns.indices {
-            for stack in stacks(c) {
-                guard let bar = pills[stack.top.shown.id], !bar.isHidden, shownBody(stack.top) != nil else { continue }
-                for (i, t) in stack.behind.enumerated() {
-                    guard let b = t.shown.block?.id, out[b] == nil else { continue }
-                    out[b] = Self.sheetRect(above: bar.frame, level: i + 1)
-                }
-            }
-        }
-        return out
-    }
-
     /// What shows of a tile under its bar: its content, or its summary card.
     private func shownBody(_ t: Tile) -> NSView? {
-        guard !isStashed(t.shown.id) else { return nil }
+        guard !pushedOut(t.shown.id) else { return nil }
         if !t.view.isHidden, t.view.frame.height > 0 { return t.view }
         if summarized.contains(t.shown.id), let c = tileSummaries[t.shown.id], !c.isHidden { return c }
         return nil
@@ -1458,7 +1226,7 @@ final class GridView: NSView, NSDraggingSource {
     // MARK: Morphing
 
     /// One thing becoming another where it goes — a tile its card, a card
-    /// its tile, a sheet pulled out into its card: its outline travels and
+    /// its tile, a sidebar row's tile out into its card: its outline travels and
     /// changes shape, and what it shows is scaled to its width, from its
     /// top (cut below, never stretched), what it was giving way to what it
     /// becomes on the way.
@@ -1489,7 +1257,7 @@ final class GridView: NSView, NSDraggingSource {
             done()
         }
         let now = CACurrentMediaTime()
-        // Those pulled out of a stack go under the one in front of them.
+        // Those coming out of something (nothing leaving) go under the one in front of them.
         let items = items.filter { $0.leaving == nil } + items.filter { $0.leaving != nil }
         func animate(_ l: CALayer, _ key: String, _ a: Any, _ b: Any, delay: Double) {
             let x = CABasicAnimation(keyPath: key)
@@ -1559,13 +1327,13 @@ final class GridView: NSView, NSDraggingSource {
                 fade(leaving, [1, 1, 0], [0, 0.75, 1], delay: m.delay)
                 leaving.opacity = 0
             } else if let coming, from.height < 22 {
-                // Out of a sheet's edge: what it says only once there's
-                // room for it, not cut to a sliver of its top line.
+                // Out of something slim (a row): what it says only once
+                // there's room for it, not cut to a sliver of its top line.
                 fade(coming, [0, 0, 1], [0, 0.1, 0.35], delay: m.delay)
-                // Its ground over the sheet only as it leaves it.
+                // Its ground over what it's out of only as it leaves it.
                 fade(c, [0, 1], [0, 0.12], delay: m.delay)
             } else if let leaving, m.to.height < 30 {
-                // Into one: gone before it's a sliver, the real sheet left.
+                // Into one: gone before it's a sliver, the real one left.
                 fade(leaving, [1, 1, 0], [0, 0.6, 0.85], delay: m.delay)
                 leaving.opacity = 0
                 fade(c, [1, 1, 0], [0, 0.8, 1], delay: m.delay)
@@ -1728,7 +1496,7 @@ final class GridView: NSView, NSDraggingSource {
             self.heights[b] = pair - self.heights[a]!
         }, done: { [weak self] in
             guard let self else { return }
-            self.delegate?.gridResized(heights: self.heights, stashed: [])
+            self.delegate?.gridResized(heights: self.heights)
         })
     }
 
@@ -1739,7 +1507,7 @@ final class GridView: NSView, NSDraggingSource {
         guard let f = focused else { return "nothing focused" }
         dragging = true
         dropped = true
-        delegate?.gridMove(f, column: column, at: at, newColumn: newColumn, alone: false)
+        delegate?.gridMove(f, column: column, at: at, newColumn: newColumn)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.dragging = false }
         return "dropped"
     }
@@ -1797,27 +1565,17 @@ final class GridView: NSView, NSDraggingSource {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    /// Tiles a line's drag pushed down into the stack of the tile below,
-    /// each with that tile, to be told when the drag ends.
-    private var stashedDown: [(PlacementID, PlacementID)] = []
-    /// The tile a line's drag goes on against, for one pushed into the
-    /// stack below it: it's after that tile now.
-    private var dividerBelow: [PlacementID: PlacementID] = [:]
-
     /// The line between two tiles dragged: the two share their room by
-    /// where it is. Pushed past a tile's least height, that tile goes into
-    /// a stack (its room to the other side): pushed up, the stack of the
-    /// tile above it; pushed down, the stack of the tile below it, if any.
-    /// The line goes on against the next, until all above or below are
-    /// stashed and the tile that grew has the column, the others behind it.
+    /// where it is. Pushed past a tile's least height, that tile is pushed
+    /// out (its room to the other side; a share of 0, docked when the drag
+    /// ends, §3.1), and the line goes on against the next, until all above
+    /// or below are out and the tile that grew has the column.
     private func dragRowDivider(column c: Int, above a0: PlacementID, below b0: PlacementID, to y: CGFloat) {
         guard c < columns.count else { return }
-        var b0 = b0
-        while let next = dividerBelow[b0] { b0 = next }
         let column = columns[c]
         guard let ia = column.firstIndex(where: { $0.shown.id == a0 }), let ib = column.firstIndex(where: { $0.shown.id == b0 }) else { return }
-        let aboves = column[...ia].filter { !isStashed($0.shown.id) }
-        let belows = column[ib...].filter { !isStashed($0.shown.id) }
+        let aboves = column[...ia].filter { !pushedOut($0.shown.id) }
+        let belows = column[ib...].filter { !pushedOut($0.shown.id) }
         guard let a = aboves.last?.shown.id, let b = belows.first?.shown.id else { return }
         let f = columnFrames()[c]
         let frames = tileFrames(column: c, in: f)
@@ -1834,18 +1592,6 @@ final class GridView: NSView, NSDraggingSource {
         }
         if y < bottom + minHeight {
             heights[a] = share(a) + share(b)
-            // Into the stack of the tile below, its own stack with it, as
-            // the model's stash will have it.
-            if let next = column[(rb + 1)...].first(where: { !isStashed($0.shown.id) })?.shown.id {
-                let stack = column[(rb + 1)...].prefix { isStashed($0.shown.id) }
-                var moved = columns[c]
-                let carried = [column[rb]] + stack
-                moved.removeAll { t in carried.contains { $0.shown.id == t.shown.id } }
-                if let n = moved.firstIndex(where: { $0.shown.id == next }) { moved.insert(contentsOf: carried, at: n + 1) }
-                columns[c] = moved
-                stashedDown.append((b, next))
-                dividerBelow[b] = next
-            }
             heights[b] = 0
             needsLayout = true
             return dragRowDivider(column: c, above: a0, below: b0, to: y)
@@ -1874,8 +1620,6 @@ final class GridView: NSView, NSDraggingSource {
         return true
     }
 
-    // MARK: Hovering a stack
-
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -1888,20 +1632,15 @@ final class GridView: NSView, NSDraggingSource {
     // MARK: Dragging tiles
 
     /// Whether the tile drag under way began with ⌥ (or ⌥ is held now):
-    /// dropped on a tile, it covers it, the tile going behind it.
+    /// dropped on a tile, it takes its place, that tile docked under it.
     private var coverDrag = false
-    /// Whether the tile drag under way began with ⌘: the tile leaves its
-    /// stack behind (a fanned pill's tile has none to bring).
-    private var aloneDrag = false
 
-    /// `alone`: the tile without its stack, whatever's held (one dragged
-    /// out of a stack's fan). `thing`: what it stands for, whatever's held
-    /// (dragged by its bar's icon).
-    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, alone: Bool = false, thing: Bool = false) {
+    /// `thing`: what it stands for, whatever's held (dragged by its bar's
+    /// icon).
+    private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, thing: Bool = false) {
         let item = NSPasteboardItem()
         let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
         coverDrag = event.modifierFlags.contains(.option)
-        aloneDrag = alone || event.modifierFlags.contains(.command)
         if thing || event.modifierFlags.contains(.shift) {
             // ⇧-drag, or by the icon: not the tile but the thing it is
             // (§3.11) — its link for a note, its path for a shell, a tile
@@ -2027,12 +1766,11 @@ final class GridView: NSView, NSDraggingSource {
         DragCursor.ended()
         if !pathDrag { delegate?.gridDragChanged(false) }
         pathDrag = false
-        aloneDrag = false
         coverDrag = false
     }
 
-    /// On a tile's pill: into the stack behind it (a placement, not the
-    /// one dragged). Near a column's side: a new column there. Else between
+    /// On a tile's pill (or, ⌥, the tile): in its place, it docked under
+    /// the one dropped (a placement, not the one dragged). Near a column's side: a new column there. Else between
     /// two tiles (or above the first, below the last) of the column under
     /// the pointer.
     private func dropTarget(at point: NSPoint, dragged: PlacementID?) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)? {
@@ -2041,14 +1779,14 @@ final class GridView: NSView, NSDraggingSource {
         if dragged != nil, coverDrag || NSEvent.modifierFlags.contains(.option) {
             // ⌥: onto the tile under the pointer, whole — its shape the sign.
             for c in columns.indices {
-                for (i, t) in columns[c].enumerated() where !isStashed(t.shown.id) && t.shown.id != dragged && !t.view.isHidden {
+                for (i, t) in columns[c].enumerated() where t.shown.id != dragged && !t.view.isHidden {
                     if t.view.frame.contains(point) { return (c, i, t.view.frame, false, t.shown.id) }
                 }
             }
         }
         if dragged != nil {
             for c in columns.indices {
-                for (i, t) in columns[c].enumerated() where !isStashed(t.shown.id) && t.shown.id != dragged {
+                for (i, t) in columns[c].enumerated() where t.shown.id != dragged {
                     guard let pill = pills[t.shown.id], !pill.isHidden else { continue }
                     let capsule = pill.capsule(in: self).insetBy(dx: -4, dy: -4)
                     if capsule.contains(point) { return (c, i + 1, capsule, false, t.shown.id) }
@@ -2098,7 +1836,7 @@ final class GridView: NSView, NSDraggingSource {
         drop = target
         dropCovers = target.onto != nil && (coverDrag || NSEvent.modifierFlags.contains(.option))
         // ⌥ leaves only a copy on offer: a tile from another workspace is
-        // copied here; one of this workspace's is covered or stacked.
+        // copied here; one of this workspace's takes another's place.
         return sender.draggingSourceOperationMask.contains(.move) ? .move : .copy
     }
 
@@ -2119,140 +1857,14 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    // MARK: ⌃⇥
-
-    private var switcher: StackColumnView?
-    /// The tiles whose views the switcher holds: the grid leaves them be.
-    private var switching: Set<PlacementID> = []
-    /// Tiles whose views are lent out (to a hover card, live): left be
-    /// until they're given back.
-    private var lent: Set<PlacementID> = []
-
-    /// A tile whose view is elsewhere for now: in the switcher's cards, or lent.
-    private func held(_ id: PlacementID) -> Bool { switching.contains(id) || lent.contains(id) }
-
-    /// A tile's view lent out (it's out of sight: stacked, collapsed).
-    func lend(_ id: PlacementID) { lent.insert(id) }
-
-    /// A lent view back in the grid, out of sight as it was.
-    func takeBack(_ id: PlacementID, view: NSView) {
-        guard lent.remove(id) != nil else { return }
-        if view.superview !== self, tile(id) != nil {
-            view.removeFromSuperview()
-            addSubview(view, positioned: .below, relativeTo: subviews.first)
-        }
-        needsLayout = true
-    }
-    var isSwitching: Bool { switcher != nil || fanWaiting }
-    /// The fan asked for, waiting on its tile to grow; and ⌃⇥'s steps meanwhile.
-    private var fanWaiting = false
-    private var fanSteps = 0
-
-    private var switcherMonitor: Any?
-
-    /// The stack under `top` as cards hanging over its tile, if it has one:
-    /// from ⌃⇥, the choice then stepped along; from a right-click on its
-    /// title, the choice following the pointer, from the top. Either way a
-    /// card clicked comes to the top, and one dragged comes out of the stack
-    /// as a block dragged does (the fan closing, the rest as they were).
-    @discardableResult
-    /// `steps`: the choice that far down the column (up, negative) from
-    /// the first, as it opens — pictured so, not moved after.
-    /// `settledBy`: the cards in place then (⌃⇥'s, timed from its press),
-    /// unfolding in what time's left; else as a click opens them.
-    /// `revealAt`: made now, out of sight, and shown (unfolding) then —
-    /// ⌃⇥'s, made while it waits to see if it's a tap.
-    func openStackSwitcher(_ top: PlacementID, followingPointer: Bool, roomMade: Bool = false, steps: Int = 0, settledBy: Date? = nil, revealAt: Date? = nil) -> Bool {
-        guard switcher == nil, !fanWaiting else { return true }
-        guard let c = columns.indices.first(where: { columns[$0].contains { $0.shown.id == top } }),
-              let stack = stacks(c).first(where: { $0.top.shown.id == top }), !stack.behind.isEmpty else { return false }
-        // A stack too short to fan out (down to its bar, say) grows first,
-        // and fans out once it has.
-        if !roomMade, delegate?.gridRoomForFan(top) == true {
-            fanWaiting = true
-            fanSteps = steps
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.glide) { [weak self] in
-                guard let self else { return }
-                self.fanWaiting = false
-                let steps = self.fanSteps
-                self.fanSteps = 0
-                _ = self.openStackSwitcher(top, followingPointer: followingPointer, roomMade: true, steps: steps, settledBy: settledBy)
-            }
-            return true
-        }
-        land()
-        layoutSubtreeIfNeeded()
-        let body = stack.top.view.frame
-        // The top first, then those behind it, nearest first: each as its
-        // summary card, in place of the tile, its bar too.
-        let order = [stack.top] + stack.behind
-        let entries = order.map { t in
-            delegate?.gridSummary(t.shown.id) ?? SummaryCardContent(id: t.shown.id, symbol: t.shown.symbol,
-                                                                     summary: t.shown.block?.summary() ?? BlockSummary(title: t.shown.title))
-        }
-        let s = StackColumnView(entries: entries, selection: ((steps % entries.count) + entries.count) % entries.count)
-        s.frame = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
-        s.layer?.zPosition = 20
-        s.followsPointer = followingPointer
-        // A card clicked comes to the top; ⌘-clicked, it comes out of the
-        // stack (as ⌘ takes a stack's top alone when dragged).
-        s.onPick = { [weak self] id, mods in
-            if mods.contains(.command) { self?.settleStackSwitcher(takingOut: id) } else { self?.settleStackSwitcher(to: id) }
-        }
-        s.onDragOut = { [weak self] id, event in
-            guard let self else { return }
-            self.settleStackSwitcher(cancel: true)
-            self.beginDrag(of: id, event: event, from: self, alone: true)
-        }
-        s.onCancel = { [weak self] in self?.settleStackSwitcher(cancel: true) }
-        // From ⌃⇥, the pointer over the cards: as from the sheets after.
-        s.onFollowsPointer = { [weak self] in
-            guard let self else { return }
-            self.watchSwitcherClicks()
-            self.delegate?.gridSwitcherFollowsPointer()
-        }
-        // The tile as it is, and the pile behind it, to be seen becoming the
-        // cards (a page's picture a moment coming: the column out of sight
-        // till then).
-        addSubview(s)
-        switcher = s
-        needsLayout = true
-        s.present(dealt: false)
-        s.alphaValue = 0
-        reveal = Reveal(switcher: s, at: revealAt, settledBy: settledBy)
-        picturing(shownBody(stack.top) ?? stack.top.view, pills[top], wait: settledBy != nil ? 0.05 : 0.12) { [weak self, weak s] tile in
-            guard let self, let s, self.switcher === s, !s.isClosing else { return }
-            // Its flight made now (the cards pictured), flown when it's time.
-            let flight = self.unfolding(s, tile: tile)
-            self.reveal?.go = { [weak self, weak s] settledBy in
-                guard let self, let s, self.switcher === s, !s.isClosing else { return }
-                s.alphaValue = 1
-                // The tile itself out of sight under the column: its picture
-                // is what's seen going (it was seen fading under the column's
-                // ground coming in).
-                for v in [self.shownBody(stack.top), stack.top.view, self.pills[top], top == self.focused ? self.focusRing : nil].compactMap({ $0 }) where v.alphaValue > 0 {
-                    v.alphaValue = 0
-                    self.unseen.append(v)
-                }
-                flight?(settledBy.map { $0.timeIntervalSinceNow })
-            }
-            self.revealWhenDue()
-        }
-        if followingPointer { watchSwitcherClicks() }
-        return true
-    }
-
-    // MARK: ⌃⇥, seen
+    // MARK: A card becoming its tile (⌥⇥, ⌃⇥)
 
     /// Pictures on their way, and the tiles kept out of sight meanwhile:
-    /// all put back at once when the next ⌃⇥ comes before they're done,
-    /// never one flight under another.
+    /// all put back at once when the next switch comes before they're
+    /// done, never one flight under another.
     private var flying: [CALayer] = []
     private var unseen: [NSView] = []
 
-    /// Debugging: each picture on its way, where it is this moment, and
-    /// what it holds (each's scale and opacity).
-    var debugFlights: String { Self.describe(flying) }
 
     static func describe(_ flying: [CALayer]) -> String {
         flying.compactMap { l in
@@ -2274,95 +1886,10 @@ final class GridView: NSView, NSDraggingSource {
         unseen.forEach { $0.alphaValue = 1 }
         unseen = []
         pendingArrival = nil
-        switcher?.cardsShown = true
     }
 
     /// How much of its width a tile's picture keeps, become its card.
     static let cardShrink: CGFloat = 0.6
-
-    /// The switcher opening, as Overview opens: the tile becomes its card,
-    /// its picture shrinking as it goes, and the rest of its stack slide
-    /// out from under it, each a whole card showing what it is all the way,
-    /// down to its place (only cross-fading where they end, with Reduce
-    /// motion). The cards themselves show once theirs are there.
-    /// The cards made and shown out of sight, waiting for their time to
-    /// unfold (`go`, once their pictures are made, given the time they're
-    /// to be in place by).
-    private struct Reveal {
-        weak var switcher: StackColumnView?
-        var at: Date?
-        var settledBy: Date?
-        var go: ((Date?) -> Void)?
-        var timer: DispatchWorkItem?
-    }
-    private var reveal: Reveal?
-
-    /// The cards unfolding if they're made and it's time; else when it is.
-    private func revealWhenDue() {
-        guard var r = reveal, let go = r.go else { return }
-        if let at = r.at, at > Date() {
-            r.timer?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.revealWhenDue() }
-            r.timer = work
-            reveal = r
-            DispatchQueue.main.asyncAfter(deadline: .now() + at.timeIntervalSinceNow, execute: work)
-            return
-        }
-        r.timer?.cancel()
-        reveal = nil
-        go(r.settledBy)
-    }
-
-    /// ⌃⇥'s cards, made ahead, shown now and in place by `settledBy` (⇥
-    /// pressed again: no tap, then).
-    func revealStackSwitcher(settledBy: Date) {
-        guard var r = reveal else { return }
-        r.at = nil
-        r.settledBy = settledBy
-        reveal = r
-        revealWhenDue()
-    }
-
-    /// ⌃⇥'s cards, made ahead but not yet seen, put away unseen (control let
-    /// go at once: a tap). False if they've been seen.
-    func discardUnseenStackSwitcher() -> Bool {
-        guard let r = reveal, let s = r.switcher, s === switcher else { return false }
-        r.timer?.cancel()
-        reveal = nil
-        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
-        switcherMonitor = nil
-        s.removeFromSuperview()
-        switcher = nil
-        needsLayout = true
-        return true
-    }
-
-    /// ⌃⇥'s cards put away, control let go before they were in place — a
-    /// tap, as far as anyone can tell: unseen, at once; unfolding, folded
-    /// back the way they came, four times as fast, so what was coming out
-    /// is seen going back (no jump to where they'd have been); then `done`
-    /// (the tile it steps to brought up). False once they're in place.
-    func abandonStackSwitcher(then done: @escaping () -> Void) -> Bool {
-        if discardUnseenStackSwitcher() { done(); return true }
-        guard let s = switcher, !s.isClosing, !s.cardsShown else { return false }
-        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
-        switcherMonitor = nil
-        switcher = nil
-        // These flights and the tiles they hid, theirs alone now (a ⌃⇥ again
-        // meanwhile has its own).
-        let flights = flying, hidden = unseen
-        flying = []
-        unseen = []
-        Self.foldBack(flights, began: unfoldBegan, fading: s) { [weak self] in
-            hidden.forEach { $0.alphaValue = 1 }
-            self?.needsLayout = true
-            done()
-        }
-        return true
-    }
-
-    /// When the cards last began unfolding (media time).
-    private var unfoldBegan: CFTimeInterval?
 
     /// Flights sent back the way they came, `speed` times as fast, from
     /// where they've got to; `view` fading out meanwhile. Then they're put
@@ -2398,64 +1925,6 @@ final class GridView: NSView, NSDraggingSource {
         return NSPoint(x: f.midX, y: f.midY)
     }
 
-    /// Whether ⌃⇥'s cards would need their tile to grow first (a stack too
-    /// short to fan out).
-    func stackSwitcherNeedsRoom(_ top: PlacementID) -> Bool { delegate?.gridNeedsRoomForFan(top) == true }
-
-    private func unfold(_ s: StackColumnView, tile: Pictured, within: TimeInterval? = nil) {
-        unfolding(s, tile: tile)?(within)
-    }
-
-    /// The switcher's opening, made (its pictures taken), to be flown in the
-    /// time given (nil: as a click opens it).
-    private func unfolding(_ s: StackColumnView, tile: Pictured) -> ((TimeInterval?) -> Void)? {
-        guard let host = layer else { return nil }
-        let whole = tile.whole
-        let cards = s.cardPictures(in: self)
-        // Where the first card is: the stack's top, which the rest come
-        // out from under.
-        let first = cards.first.map(\.frame).flatMap { $0 == .zero ? nil : $0 } ?? whole
-        return { [weak self, weak s] within in
-            guard let self, let s else { return }
-            // Each card behind a little after the one before: within the
-            // time given, not added to it.
-            let stagger = within == nil ? 0.02 : 0.008, staggered = min(Double(max(cards.count - 2, 0)) * stagger, within == nil ? .infinity : 0.024)
-            var items: [Morph] = []
-            for (i, c) in cards.enumerated() where c.frame != .zero {
-                let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
-                if i == 0 {
-                    items.append(Morph(from: whole, to: c.frame, leaving: tile, coming: card, z: 10, shrink: Self.cardShrink))
-                } else {
-                    // Whole, from under the first, where the stack's top is.
-                    let under = NSRect(x: c.frame.minX, y: first.maxY - c.frame.height, width: c.frame.width, height: c.frame.height)
-                    items.append(Morph(from: under, to: c.frame, coming: card, delay: min(Double(i - 1) * stagger, staggered), z: -CGFloat(i)))
-                }
-            }
-            guard !items.isEmpty else { return }
-            s.cardsShown = false
-            self.debugUnfoldStarted = Date()
-            self.unfoldBegan = CACurrentMediaTime()
-            let d = within.map { max($0 - staggered, 0.05) * Motion.slowdown } ?? Motion.spatial * 1.5
-            self.flying += Self.morph(items, in: host, over: d) { [weak self, weak s] in
-                s?.cardsShown = true
-                self?.debugUnfolded = Date()
-            }
-        }
-    }
-
-    /// Debugging: when the cards were last in place, and started for it;
-    /// when they were asked for.
-    var debugUnfolded: Date?
-    var debugUnfoldStarted: Date?
-    var debugUnfoldAsked: Date?
-
-    /// The cards unfolding, hurried: ⇥ again while they're on their way —
-    /// what's wanted is plain, the rest of the way gone four times as fast.
-    func hurryUnfold() {
-        guard switcher?.cardsShown == false else { return }
-        Self.hurry(flying)
-    }
-
     /// Flights hurried the rest of their way, their time carried on from
     /// where they are, so nothing jumps.
     static func hurry(_ layers: [CALayer]) {
@@ -2467,14 +1936,13 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    /// A tile chosen in the switcher, waiting to be laid out where it goes,
+    /// A tile chosen in a switcher, waiting to be laid out where it goes,
     /// and its card as it was, where it was: it becomes its tile from there.
     /// `host`: where the card is and becomes it (its terms), if not here —
     /// over a space sliding in, the place it slides to.
     private var pendingArrival: (id: PlacementID, card: Pictured?, from: NSRect, at: Date, host: NSView?)?
 
-    /// The tile chosen is laid out: its card becomes it, and the stack's
-    /// tiles show again once it's there.
+    /// The tile chosen is laid out: its card becomes it.
     private func arrive(_ id: PlacementID, card: Pictured?, from r: NSRect, in over: NSView? = nil) {
         guard let t = tile(id), let host = (over ?? self).layer else { return land() }
         // Drawn as it'll be first: it was out of sight till now.
@@ -2495,7 +1963,7 @@ final class GridView: NSView, NSDraggingSource {
                 self.unseen.forEach { $0.alphaValue = 1 }
                 self.unseen = []
                 // Landed: the rest put by with it, so none is drawn over
-                // the tile once it's there (they're where the sheets are).
+                // the tile once it's there.
                 held.forEach { $0.removeFromSuperlayer() }
                 self.flying.forEach { $0.removeFromSuperlayer() }
                 self.flying = []
@@ -2509,123 +1977,6 @@ final class GridView: NSView, NSDraggingSource {
 
     /// The arrival under way: a later one (or `land`) puts it by.
     private var landingAt: Date?
-
-    /// Escape, or a click away from the cards, lets the stack be.
-    private func watchSwitcherClicks() {
-        guard switcherMonitor == nil else { return }
-        switcherMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, let s = self.switcher, event.window === self.window else { return event }
-            if event.type == .keyDown {
-                guard event.keyCode == 53 else { return event }
-                self.settleStackSwitcher(cancel: true)
-                return nil
-            }
-            if !s.frame.contains(self.convert(event.locationInWindow, from: nil)) { self.settleStackSwitcher(cancel: true) }
-            return event
-        }
-    }
-
-    /// ⌃⇥: the stack under `top` as cards over its tile, opened if it
-    /// isn't, and the choice moved a step down (back: up). False when the
-    /// tile has no stack.
-    func stepStackSwitcher(_ top: PlacementID, back: Bool) -> Bool {
-        let step = back ? -1 : 1
-        if fanWaiting { fanSteps += step; return true }
-        if let s = switcher {
-            hurryUnfold()
-            s.move(step)
-            return true
-        }
-        return openStackSwitcher(top, followingPointer: false, steps: step)
-    }
-
-    /// ⌃⇥'s cards, `steps` taken, in place by `settledBy`; made now and
-    /// shown at `revealAt`, if it's given.
-    func openStackSwitcher(_ top: PlacementID, steps: Int, settledBy: Date, revealAt: Date? = nil) -> Bool {
-        debugUnfoldAsked = Date()
-        return openStackSwitcher(top, followingPointer: false, steps: steps, settledBy: settledBy, revealAt: revealAt)
-    }
-
-    /// The switcher closes on `id` (nil: the card chosen; `cancel`: the
-    /// top as it was), which comes forward to fill the tile; the views go
-    /// back to the grid, and the stack is told which is its top now.
-    func settleStackSwitcher(to id: PlacementID? = nil, cancel: Bool = false, takingOut out: PlacementID? = nil) {
-        // Never seen (made ahead for ⌃⇥): put away as it is.
-        if discardUnseenStackSwitcher() { return }
-        guard let s = switcher, !s.isClosing else { return }
-        if let switcherMonitor { NSEvent.removeMonitor(switcherMonitor) }
-        switcherMonitor = nil
-        let top = s.topID
-        let chosen = cancel || out != nil ? top : (id ?? s.selectedID)
-        // The cards back where they go: the others into the sheets above
-        // the tile, the chosen one held where it is till its tile is laid
-        // out, then becoming it; the stack's tiles out of sight meanwhile
-        // (a second at most).
-        land()
-        let cards = s.cardPictures(in: self)
-        s.close(on: chosen)
-        s.tearDown(keeping: chosen, in: self)
-        s.removeFromSuperview()
-        if switcher === s { switcher = nil }
-        let tileRect = s.frame
-        let bar = NSRect(x: tileRect.minX, y: tileRect.maxY - Self.barHeight, width: tileRect.width, height: Self.barHeight)
-        var items: [Morph] = []
-        var level = 0
-        let at = Date()
-        pendingArrival = (chosen, nil, tileRect, at, nil)
-        // The column's ground stays under the cards till the tile's there,
-        // not the backdrop through a tile out of sight.
-        if let host = layer, let ground = s.layer?.backgroundColor {
-            let plate = CALayer()
-            plate.name = "plate"
-            plate.backgroundColor = ground
-            plate.frame = tileRect
-            plate.cornerRadius = Radius.surface
-            plate.cornerCurve = .continuous
-            plate.zPosition = 30
-            host.addSublayer(plate)
-            flying.append(plate)
-        }
-        // The rest slide back up under the stack's top, whole, as the one
-        // chosen grows over them.
-        let head = cards.first.map(\.frame).flatMap { $0 == .zero ? nil : $0 }
-        for c in cards {
-            let card = Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
-            if c.id == chosen {
-                guard c.frame != .zero else { continue }
-                pendingArrival = (chosen, card, c.frame, at, nil)
-                hold(c.picture, ground: c.ground, at: c.frame, in: self)
-                continue
-            }
-            level += 1
-            guard c.frame != .zero else { continue }
-            let under = head.map { NSRect(x: c.frame.minX, y: $0.maxY - c.frame.height, width: c.frame.width, height: c.frame.height) } ?? Self.sheetRect(above: bar, level: level)
-            items.append(Morph(from: c.frame, to: under, leaving: card, z: -CGFloat(level)))
-        }
-        // Kept where they end till the chosen tile's landed over them.
-        if let host = layer { flying += Self.morph(items, in: host, over: Motion.spatial * 1.5, keeping: true) }
-        for id in Set([chosen, top]) {
-            for v in [tile(id)?.view, pills[id]].compactMap({ $0 }) {
-                v.alphaValue = 0
-                unseen.append(v)
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self, self.pendingArrival?.at == at else { return }
-            self.land()
-        }
-        // The views back in the grid, as they'll be once the stack has its
-        // new top: the chosen one showing, the rest behind it.
-        for id in switching {
-            guard let t = tile(id) else { continue }
-            if t.view.superview !== self { addSubview(t.view) }
-            t.view.isHidden = id != chosen
-        }
-        switching = []
-        needsLayout = true
-        if chosen != top { delegate?.gridSwap(chosen) }
-        if let out, out != top { delegate?.gridUnstash(out) }
-    }
 
     /// A card held where it is till its tile is laid out.
     private func hold(_ picture: CGImage?, ground: CGColor, at r: NSRect, in view: NSView) {
@@ -2669,7 +2020,7 @@ final class GridView: NSView, NSDraggingSource {
     private func tile(at point: NSPoint) -> Tile? {
         for c in columns.indices {
             // The tile, its bar too (a link dropped on a tile's name links to it).
-            for t in columns[c] where !isStashed(t.shown.id) && !t.view.isHidden
+            for t in columns[c] where !pushedOut(t.shown.id) && !t.view.isHidden
                 && (t.view.frame.contains(point) || pills[t.shown.id].map { !$0.isHidden && $0.frame.contains(point) } == true) { return t }
         }
         return nil
@@ -2684,9 +2035,9 @@ final class GridView: NSView, NSDraggingSource {
         guard let target = drop else { return false }
         if let placement = pb.string(forType: .manifoldPlacement) {
             if let onto = target.onto {
-                if dropCovers { delegate?.gridCover(placement, over: onto, alone: aloneDrag) } else { delegate?.gridStash(placement, behind: onto, alone: aloneDrag) }
+                delegate?.gridCover(placement, over: onto)
             } else {
-                delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn, alone: aloneDrag)
+                delegate?.gridMove(placement, column: target.column, at: target.at, newColumn: target.newColumn)
             }
             return true
         }
@@ -2707,63 +2058,11 @@ final class GridView: NSView, NSDraggingSource {
         dropCovers = false
     }
 
-    /// The sheets behind a card with a stack (§3.1): each a rounded sheet
-    /// a little narrower than the one before, risen a few points above the
-    /// card, the rest of it beneath — layers under the cards, as a stack
-    /// of paper. Laid out with the cards.
-    private var sheetLayers: [CAShapeLayer] = []
-    /// Where the sheets above each stacked tile's bar take a click.
-    private var sheetTargets: [SheetsTarget] = []
-
-    private func layoutSheetTargets(_ targets: [(PlacementID, NSRect)]) {
-        while sheetTargets.count > targets.count { sheetTargets.removeLast().removeFromSuperview() }
-        while sheetTargets.count < targets.count {
-            let t = SheetsTarget()
-            t.onClick = { [weak self, weak t] in
-                guard let self, let top = t?.top else { return }
-                self.hidePeek()
-                self.fanOut(top)
-            }
-            // Over the sheets — the gap between tiles, where a drag resizes
-            // — they rise only once the pointer rests there, no button
-            // down: passing through to the line between the tiles, they don't.
-            t.onHover = { [weak self, weak t] inside in
-                guard let self else { return }
-                self.hoveringSheets = inside ? t?.top : nil
-                self.peekDwell?.cancel()
-                guard inside, let top = t?.top else { return self.leavePeekSoon() }
-                let work = DispatchWorkItem { [weak self] in
-                    guard let self, self.hoveringSheets == top, NSEvent.pressedMouseButtons == 0 else { return }
-                    self.showPeek(top)
-                }
-                self.peekDwell = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.peekDwellTime, execute: work)
-            }
-            // A press there is the resize's: no tabs over it.
-            t.onPress = { [weak self] in
-                self?.peekDwell?.cancel()
-                self?.hidePeek()
-            }
-            // Dragged, it's the line between the tiles that moves.
-            t.divider = { [weak self, weak t] in
-                guard let self, let t else { return nil }
-                return self.rowDividers.first { !$0.isHidden && $0.frame.intersects(t.frame.insetBy(dx: 0, dy: -2)) }
-            }
-            sheetTargets.append(t)
-        }
-        // Over the line between the tiles, which is where they show.
-        let above = subviews.lastIndex { $0 is RowDividerView } ?? -1
-        for (t, (id, rect)) in zip(sheetTargets, targets) {
-            t.top = id
-            t.frame = rect
-            if t.superview !== self || (subviews.firstIndex(of: t) ?? -1) < above { addSubview(t, positioned: .above, relativeTo: nil) }
-        }
-    }
     /// A shadow under each card, in the light (§3.1): the cards lifted a
     /// little off the wash.
     private var shadowLayers: [PlacementID: CAShapeLayer] = [:]
     /// Where each tile was laid out last, so a tile that moves (placed,
-    /// closed, grown, stashed) glides there, while a window resized or
+    /// closed, grown, docked) glides there, while a window resized or
     /// a divider dragged lays out at once.
     private var lastFrames: [PlacementID: NSRect] = [:]
     private var lastLayoutBounds: NSRect = .zero
@@ -2785,143 +2084,6 @@ final class GridView: NSView, NSDraggingSource {
         } else if Date().timeIntervalSince(w.since) > 1 {
             pendingWarp = nil
         }
-    }
-
-    /// Each stack's depth as the sheets were last laid out: a stack that
-    /// formed or grew since has its sheets drop into place.
-    private var sheetDepths: [PlacementID: Int]?
-    /// The tabs the sheets rise into while the pointer is over them.
-    private var peek: StackPeek?
-
-    /// Sheets stepped in and risen per level: within the gap between tiles
-    /// (three deep at most), so a stack takes no room a tile alone doesn't.
-    private static let sheetStep: (inset: CGFloat, rise: CGFloat) = (9, 3)
-
-    private func layoutSheets() {
-        var wanted: [(NSRect, Int, PlacementID)] = []
-        var targets: [(PlacementID, NSRect)] = []
-        var depths: [PlacementID: Int] = [:]
-        for (id, pill) in pills where !pill.isHidden && pill.behind > 0 && fanned != id && switcher?.topID != id {
-            let bar = pill.frame
-            depths[id] = pill.behind
-            for level in stride(from: min(pill.behind, 3), through: 1, by: -1) {
-                let inset = CGFloat(level) * Self.sheetStep.inset
-                let rise = CGFloat(level) * Self.sheetStep.rise
-                wanted.append((NSRect(x: bar.minX + inset, y: bar.maxY - Radius.surface, width: bar.width - 2 * inset, height: Radius.surface + rise), level, id))
-            }
-            // What shows of the sheets above the bar takes a click — a
-            // little taller than they are, to be hit.
-            let rise = CGFloat(min(pill.behind, 3)) * Self.sheetStep.rise
-            targets.append((id, NSRect(x: bar.minX + 6, y: bar.maxY, width: bar.width - 12, height: max(8, rise + 3))))
-        }
-        // Stacks formed or grown since the last layout (not at the first).
-        let grown: Set<PlacementID> = sheetDepths.map { old in Set(depths.filter { $0.value > (old[$0.key] ?? 0) }.keys) } ?? []
-        sheetDepths = depths
-        if let p = peek, depths[p.top] == nil || fanned == p.top { hidePeek() }
-        layoutSheetTargets(targets)
-        while sheetLayers.count > wanted.count { sheetLayers.removeLast().removeFromSuperlayer() }
-        while sheetLayers.count < wanted.count {
-            let l = CAShapeLayer()
-            l.lineWidth = 0.5
-            layer?.insertSublayer(l, at: 0)
-            sheetLayers.append(l)
-        }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        // Under the cards, and the nearer sheet (the wider) over the farther:
-        // each stack's are wanted farthest first, and laid in that order,
-        // bottommost first (a zPosition alone left the farthest on top).
-        for (i, l) in sheetLayers.enumerated() where layer?.sublayers?.firstIndex(of: l) != i {
-            l.removeFromSuperlayer()
-            layer?.insertSublayer(l, at: UInt32(i))
-        }
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            for (l, (rect, level, _)) in zip(sheetLayers, wanted) {
-                let path = CGPath(roundedRect: rect, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
-                l.path = path
-                l.fillColor = Theme.sheet(level: level).cgColor
-                // Each a card of its own: an edge, and a shadow on the one
-                // beneath.
-                l.strokeColor = EdgeColor.control.cgColor
-                l.shadowPath = path
-                l.shadowColor = NSColor.black.cgColor
-                l.shadowOpacity = 0.18
-                l.shadowRadius = 1.5
-                l.shadowOffset = CGSize(width: 0, height: 0.5)
-            }
-        }
-        CATransaction.commit()
-        // A stack just formed (or grown): its sheets drop into place, the
-        // deepest last, so it's seen being made.
-        for (l, (_, level, id)) in zip(sheetLayers, wanted) where grown.contains(id) {
-            let drop = CABasicAnimation(keyPath: "transform.translation.y")
-            drop.fromValue = Motion.distance(10)
-            drop.toValue = 0
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0
-            fade.toValue = 1
-            let group = CAAnimationGroup()
-            group.animations = [drop, fade]
-            group.duration = Motion.spatial
-            group.beginTime = CACurrentMediaTime() + Double(level - 1) * 0.05 * Motion.slowdown
-            group.fillMode = .backwards
-            group.timingFunction = Motion.settle
-            l.add(group, forKey: "drop")
-        }
-    }
-
-    /// The pointer over a stack's sheets: they rise into tabs, one for each
-    /// tile behind (its symbol and title), nearest first — over what's
-    /// above, laid out as nothing; gone as it leaves. A click still fans.
-    private func showPeek(_ top: PlacementID) {
-        guard fanned != top, let pill = pills[top], !pill.isHidden,
-              let stack = columns.indices.lazy.compactMap({ c in self.stacks(c).first { $0.top.shown.id == top } }).first,
-              !stack.behind.isEmpty else { return hidePeek() }
-        if peek?.top == top { return }
-        hidePeek()
-        let p = StackPeek(top: top, tiles: stack.behind.map { ($0.shown.id, $0.shown.title, $0.shown.block.map { Theme.symbolName(for: $0) } ?? Theme.symbolName(for: $0.shown.placement.lens, path: $0.shown.path)) })
-        p.frame = p.frame(over: pill.frame, within: bounds)
-        // A tab clicked: its tile to the top, as a fanned card picked;
-        // ⌘-clicked, out of the stack.
-        p.onPick = { [weak self] id, mods in
-            self?.hidePeek()
-            if mods.contains(.command) { self?.delegate?.gridUnstash(id) } else { self?.delegate?.gridSwap(id) }
-        }
-        // Dragged: the tile out of the stack, as a fanned card dragged.
-        p.onDragOut = { [weak self] id, event in
-            guard let self else { return }
-            self.hidePeek()
-            self.beginDrag(of: id, event: event, from: self, alone: true)
-        }
-        p.onMore = { [weak self] in
-            self?.hidePeek()
-            self?.fanOut(top)
-        }
-        p.onHover = { [weak self] inside in if !inside { self?.leavePeekSoon() } }
-        addSubview(p, positioned: .above, relativeTo: nil)
-        peek = p
-        p.rise()
-    }
-
-    /// The sheets (or stack button) hovered now, if any (the tabs stay
-    /// while either is).
-    private var hoveringSheets: PlacementID?
-    /// The tabs to rise once the pointer has rested on the sheets.
-    private var peekDwell: DispatchWorkItem?
-    private static let peekDwellTime: TimeInterval = 0.5
-
-    /// The pointer gone from the sheets or the tabs: the tabs go too, a
-    /// moment later, unless it's come onto the other.
-    private func leavePeekSoon() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            guard let self, let p = self.peek, !p.hovered, self.hoveringSheets != p.top else { return }
-            self.hidePeek()
-        }
-    }
-
-    private func hidePeek() {
-        peek?.fall()
-        peek = nil
     }
 }
 
@@ -3024,10 +2186,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
     var onClose: (() -> Void)?
-    /// Right-clicked: the stack behind the tile, called up (or its menu).
+    /// Right-clicked: the tile's menu.
     var onRightClick: ((NSEvent) -> Void)?
     /// What the links' pill takes of the bar, left of the buttons.
-    /// What the links' pill wants of the bar, its sheets included; what
+    /// What the links' pill wants of the bar, its faces included; what
     /// it's given is `linkGiven`, after the shrinkage below.
     var linkWanted: CGFloat = 0 { didSet { if linkWanted != oldValue { needsLayout = true } } }
     private(set) var linkGiven: CGFloat = 0
@@ -3090,18 +2252,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var downOnIcon = false
     private var focused = false
     private var maximized = false
-    /// How many stashed tiles are bunched behind this tile (§3.1): the
-    /// grid draws their edges above the bar; the bar says how many.
-    var behind = 0 { didSet { if behind != oldValue { needsLayout = true; superview?.needsLayout = true } } }
     private let subtitle = NSTextField(labelWithString: "")
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
-    /// With tiles behind it: the stack fanned out.
-    private let fanButton = IconButton(symbol: "square.stack", size: 10, weight: .medium, target: nil, action: nil)
-    /// How many are behind, on the stack button's corner, as a badge on an icon.
-    private let fanCount = CountBadge()
-    var onFan: (() -> Void)?
-    /// The pointer come over the stack button (true) or gone.
-    var onFanHover: ((Bool) -> Void)?
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
     private let sidebarButton = IconButton(symbol: "sidebar.left", size: 10, weight: .medium, target: nil, action: nil)
@@ -3156,13 +2308,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
         if !sidebarButton.isHidden { w += 22 }
-        if !fanButton.isHidden { w += 22 }
         let own = ownButtons.filter { !$0.isHidden }.count
         if own > 0 { w += CGFloat(own) * 22 + 4 }
         return w
     }
 
-    /// The bar's frame in `view`'s coordinates (what a drop on it stashes behind).
+    /// The bar's frame in `view`'s coordinates (what a drop on it takes the place of).
     func capsule(in view: NSView) -> NSRect { convert(bounds, to: view) }
 
     override init(frame: NSRect) {
@@ -3192,11 +2343,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         sidebarButton.target = self
         sidebarButton.action = #selector(sidebarClicked)
         sidebarButton.isHidden = true
-        fanButton.target = self
-        fanButton.action = #selector(fanClicked)
-        fanButton.onHover = { [weak self] inside in self?.onFanHover?(inside) }
-        fanButton.isHidden = true
-        fanCount.isHidden = true
         editor.isBordered = false
         editor.drawsBackground = false
         editor.focusRingType = .none
@@ -3206,7 +2352,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.delegate = self
         editor.isHidden = true
         handle.onIn = { [weak self] in self?.icon.isHidden = false }
-        for v in [handle, icon, name, subtitle, glyph, statusPill, fanButton, fanCount, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -3214,7 +2360,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     @objc private func closeClicked() { onClose?() }
     /// Its × (in its own terms), if it shows one.
     var closeButtonFrame: NSRect? { close.isHidden ? nil : close.frame }
-    @objc private func fanClicked() { onFan?() }
 
     /// Laid out at its new width, shown sliding there from `width` as its
     /// tile's edges slide: its glass's right edge going with the tile's,
@@ -3441,20 +2586,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private var stashed = false
-
     /// The symbol the icon shows, so it's set only when it changes.
     private var symbolName = ""
 
     /// Shown afresh on every render (each keystroke in a note is one):
     /// only what differs is touched, or the images and labels would be
     /// redone each time and seen to blink.
-    func show(_ shown: Shown, focused: Bool, maximized: Bool = false, stashed: Bool = false) {
+    func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
         // Shown again as it was — every render, a keystroke's in another
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
         let key = ShowKey(placement: shown.placement, version: shown.version, offline: shown.offline, foreignHost: shown.foreignHost,
-                          caption: shown.caption, focused: focused, maximized: maximized, stashed: stashed, collapsed: collapsed,
+                          caption: shown.caption, focused: focused, maximized: maximized, collapsed: collapsed,
                           minute: Int(Date().timeIntervalSince1970 / 60), favicon: shown.block?.web.flatMap { Favicons.image(forPage: $0.url) })
         if key == lastKey, shown.block != nil { return }
         lastKey = key
@@ -3463,8 +2606,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             corner.image = Theme.symbol(maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold)
             corner.toolTip = maximized ? "Restore (⇧⌘↩)" : "Maximize (⇧⌘↩)"
         }
-        self.stashed = stashed
-        if corner.isHidden != stashed { corner.isHidden = stashed }
         // A page: its site's icon, once seen; else the kind's symbol.
         if let favicon = shown.block?.web.flatMap({ Favicons.image(forPage: $0.url) }) {
             if icon.image !== favicon { icon.image = favicon }
@@ -3493,7 +2634,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         updateSubtitle(shown)
         // From another host than the workspace's: the host in its pill.
         if hostPill.host != shown.foreignHost { hostPill.host = shown.foreignHost; needsLayout = true }
-        showRest(shown, stashed: stashed, focused: focused)
+        showRest(shown, focused: focused)
     }
 
     /// What the bar was last shown for: its subtitle made again as the tile
@@ -3506,7 +2647,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var offline: Bool
         var foreignHost: String?
         var caption: String?
-        var focused, maximized, stashed, collapsed: Bool
+        var focused, maximized, collapsed: Bool
         var minute: Int
         var favicon: NSImage?
     }
@@ -3532,8 +2673,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if subtitle.stringValue != where_ { subtitle.stringValue = where_; needsLayout = true }
     }
 
-    private func showRest(_ shown: Shown, stashed: Bool, focused: Bool) {
-        if close.isHidden != stashed { close.isHidden = stashed }
+    private func showRest(_ shown: Shown, focused: Bool) {
         // The status by the name (`StatusMark`): a pill only when it needs
         // you, the name shimmering while it works, dim when inactive.
         let mark = shown.offline ? StatusMark(.offline) : StatusMark(of: shown.block)
@@ -3593,10 +2733,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // and symbol, then to its arrow alone, then maximize goes, then
         // the pill altogether; the × and the status stay, and last the
         // name itself is cut.
-        let showClose = !stashed && showsButtons
-        var showCorner = !stashed && showsButtons
+        let showClose = showsButtons
+        var showCorner = showsButtons
         var showSidebar = showCorner && sidebar != nil
-        var showFan = showCorner && behind > 0 && !maximized
         var showOwn = showCorner && !viewButtons.isEmpty
         let ownWidth = CGFloat(viewButtons.count) * 22 + 4
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
@@ -3609,7 +2748,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if showClose { used += 22 }
             if showCorner { used += 22 }
             if showSidebar { used += 22 }
-            if showFan { used += 22 }
             if showOwn { used += ownWidth }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
             if !statusPill.isHidden { used += statusPill.wanted.width + 8 }
@@ -3624,7 +2762,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // name gives way to it.
         statusPill.compact = false
         if spare() < nameNeed, !statusPill.isHidden { statusPill.compact = true }
-        if spare() < nameNeed, showFan { showFan = false }
         if spare() < nameNeed, showCorner { showCorner = false }
         // Narrower still, the pill goes altogether: the symbol and a bit of
         // the name say what the tile is; the links are a hover away in the
@@ -3643,17 +2780,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         corner.isHidden = !showCorner
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
-            right -= 22
-        }
-        fanButton.isHidden = !showFan
-        fanCount.isHidden = !showFan
-        if showFan {
-            fanButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
-            // The count on its lower right, over the icon's corner.
-            fanCount.stringValue = behind > 9 ? "9+" : "\(behind)"
-            let w: CGFloat = behind > 9 ? 14 : 10
-            fanCount.frame = NSRect(x: fanButton.frame.maxX - w + 3, y: fanButton.frame.minY - 3, width: w, height: 10)
-            fanButton.toolTip = "Show the \(behind == 1 ? "tile" : "\(behind) tiles") behind this one (⌃⇥)"
             right -= 22
         }
         sidebarButton.isHidden = !showSidebar
@@ -4030,55 +3156,6 @@ final class IconHandle: NSView {
     }
 }
 
-/// What shows of a stack's sheets above its top tile's bar: clicked, the
-/// stack fans out; dragged, the line between the tiles under it moves.
-final class SheetsTarget: NSView {
-    var top: PlacementID?
-    var onClick: (() -> Void)?
-    /// The pointer come over the sheets (true) or gone (false).
-    var onHover: ((Bool) -> Void)?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { onHover?(true) }
-    override func mouseExited(with event: NSEvent) { onHover?(false) }
-    var divider: (() -> RowDividerView?)?
-    /// Pressed: before it's known to be a click or a drag.
-    var onPress: (() -> Void)?
-    private var downAt: NSPoint?
-    private var moved = false
-    private var dragging: RowDividerView?
-
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func mouseDown(with event: NSEvent) {
-        onPress?()
-        downAt = event.locationInWindow
-        moved = false
-        dragging = nil
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        if !moved, let at = downAt, hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) > 3 {
-            moved = true
-            dragging = divider?()
-            dragging?.mouseDown(with: event)
-            if dragging != nil { NSCursor.resizeUpDown.set() }
-        }
-        dragging?.mouseDragged(with: event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        if let d = dragging { d.mouseUp(with: event) } else if downAt != nil, !moved { onClick?() }
-        downAt = nil
-        moved = false
-        dragging = nil
-    }
-}
-
 /// The grab area over the line between two tiles in a column: dragged,
 /// it moves; double-clicked, the two share their room evenly.
 final class RowDividerView: NSView {
@@ -4293,204 +3370,6 @@ enum BlockDragImage {
                       options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
             return true
         }
-    }
-}
-
-/// A stack's tiles as tabs risen above its sheets while the pointer is over
-/// them (§3.1): one per tile behind, nearest lowest and widest, each its
-/// symbol and title, the rest counted past four. Drawn over whatever is
-/// above, taking no room. A tab clicked brings its tile to the top; dragged,
-/// it takes the tile out of the stack, to be dropped where you like; the
-/// count clicked fans the stack.
-final class StackPeek: NSView {
-    let top: PlacementID
-    private let tiles: [(id: PlacementID, title: String, symbol: String)]
-    private static let tabHeight: CGFloat = 20, shown = 4
-    var onPick: ((PlacementID, NSEvent.ModifierFlags) -> Void)?
-    var onDragOut: ((PlacementID, NSEvent) -> Void)?
-    var onMore: (() -> Void)?
-    /// The pointer come onto the tabs (true) or gone from them (false).
-    var onHover: ((Bool) -> Void)?
-    private(set) var hovered = false
-    private var hoveredTab: Int? { didSet { if hoveredTab != oldValue { needsDisplay = true } } }
-    private var downAt: (tab: Int, point: NSPoint)?
-
-    init(top: PlacementID, tiles: [(PlacementID, String, String)]) {
-        self.top = top
-        self.tiles = tiles.map { (id: $0.0, title: $0.1, symbol: $0.2) }
-        super.init(frame: .zero)
-        wantsLayer = true
-        alphaValue = 0
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    private var rows: Int { min(tiles.count, Self.shown) + (tiles.count > Self.shown ? 1 : 0) }
-
-    /// Where it goes: just above a bar, as wide as it — or, with no room
-    /// above (a tile at the top of its column), hanging just below it, over
-    /// the tile's top.
-    private(set) var below = false
-    func frame(over bar: NSRect, within bounds: NSRect) -> NSRect {
-        let h = CGFloat(rows) * (Self.tabHeight - 2) + 4
-        below = bar.maxY + 1 + h > bounds.maxY
-        return NSRect(x: bar.minX, y: below ? bar.minY - 1 - h : bar.maxY + 1, width: bar.width, height: h)
-    }
-
-    /// Each row's tab: nearest at the bar, the rest away from it, each
-    /// stepped in.
-    private func tabRect(_ i: Int) -> NSRect {
-        let inset = 6 + CGFloat(i) * 9
-        let offset = 2 + CGFloat(i) * (Self.tabHeight - 2)
-        let y = below ? bounds.height - Self.tabHeight - offset : offset
-        return NSRect(x: inset, y: y, width: bounds.width - 2 * inset, height: Self.tabHeight)
-    }
-
-    /// The tab at a point: the nearest one wins where they overlap.
-    private func tab(at p: NSPoint) -> Int? { (0..<rows).first { tabRect($0).contains(p) } }
-
-    /// Not in the gap above the bar, where a press resizes, whatever's
-    /// over it.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard let superview else { return nil }
-        let p = convert(point, from: superview)
-        if !below, p.y < GridView.gap { return nil }
-        return tab(at: p) != nil ? self : nil
-    }
-
-    func rise() {
-        let end = frame
-        setFrameOrigin(NSPoint(x: end.minX, y: end.minY + Motion.distance(below ? 6 : -6)))
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Motion.base
-            ctx.timingFunction = Motion.appear
-            animator().alphaValue = 1
-            animator().setFrameOrigin(end.origin)
-        }
-    }
-
-    func fall() {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Motion.fast
-            animator().alphaValue = 0
-        }, completionHandler: { [weak self] in self?.removeFromSuperview() })
-    }
-
-    // MARK: Pointer
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        hovered = true
-        hoveredTab = tab(at: convert(event.locationInWindow, from: nil))
-        onHover?(true)
-    }
-
-    override func mouseMoved(with event: NSEvent) { hoveredTab = tab(at: convert(event.locationInWindow, from: nil)) }
-
-    override func mouseExited(with event: NSEvent) {
-        hovered = false
-        hoveredTab = nil
-        onHover?(false)
-    }
-
-    override func resetCursorRects() {
-        for i in 0..<rows { addCursorRect(tabRect(i), cursor: .pointingHand) }
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        downAt = tab(at: p).map { ($0, p) }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let down = downAt, down.tab < min(tiles.count, Self.shown) else { return }
-        let p = convert(event.locationInWindow, from: nil)
-        guard hypot(p.x - down.point.x, p.y - down.point.y) > 3 else { return }
-        downAt = nil
-        onDragOut?(tiles[down.tab].id, event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard let down = downAt else { return }
-        downAt = nil
-        if down.tab < min(tiles.count, Self.shown) { onPick?(tiles[down.tab].id, event.modifierFlags) } else { onMore?() }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        var labels = tiles.prefix(Self.shown).map { (title: $0.title, symbol: $0.symbol) }
-        if tiles.count > Self.shown { labels.append((title: "\(tiles.count - Self.shown) more", symbol: "ellipsis")) }
-        // Farthest first, so the nearer tabs overlap the ones behind them.
-        for (i, t) in labels.enumerated().reversed() {
-            let r = tabRect(i)
-            let path = NSBezierPath(roundedRect: r, xRadius: Radius.surface, yRadius: Radius.surface)
-            NSGraphicsContext.saveGraphicsState()
-            Elevation.resting.shadow.set()
-            Theme.sheet(level: i + 1).setFill()
-            path.fill()
-            NSGraphicsContext.restoreGraphicsState()
-            // The one under the pointer, lit as a hovered row is (twice: on
-            // a sheet's grey, once doesn't show).
-            if hoveredTab == i {
-                Theme.hover.setFill()
-                path.fill()
-                path.fill()
-            }
-            (hoveredTab == i ? EdgeColor.controlHovered : EdgeColor.control).setStroke()
-            path.lineWidth = 0.5
-            path.stroke()
-            var x = r.minX + 10
-            // The symbol in the secondary text's color, as the bar's own is.
-            // An agent's mark is an image of its own, drawn as it is.
-            if let image = Theme.symbol(t.symbol, size: 10, weight: .medium, color: Theme.secondaryText) {
-                let size = image.size
-                image.draw(in: NSRect(x: x, y: r.midY - size.height / 2, width: size.width, height: size.height))
-                x += size.width + 6
-            }
-            let label = NSAttributedString(string: t.title, attributes: [.font: UIType.caption, .foregroundColor: Theme.text])
-            let room = r.maxX - 10 - x
-            let size = label.size()
-            label.draw(with: NSRect(x: x, y: r.midY - size.height / 2, width: max(0, room), height: size.height), options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
-        }
-    }
-
-    /// Debugging: tab `i` clicked, as the pointer would.
-    func debugPick(_ i: Int) -> String {
-        guard i < min(tiles.count, Self.shown) else { onMore?(); return "more" }
-        onPick?(tiles[i].id, [])
-        return "picked \(tiles[i].title)"
-    }
-}
-
-/// A count in a lozenge (a stack's, on its bar's fan button): the figures
-/// centred in it both ways, by their own height, not the line's.
-final class CountBadge: NSView {
-    var stringValue = "" { didSet { if stringValue != oldValue { needsDisplay = true } } }
-    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .bold)
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 5
-        layer?.borderWidth = 0.5
-        themed {
-            $0.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
-            $0.layer?.borderColor = EdgeColor.control.cgColor
-            $0.needsDisplay = true
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let text = NSAttributedString(string: stringValue, attributes: [.font: Self.font, .foregroundColor: Theme.text])
-        // The figures' own box (cap height, baseline up), set in the middle.
-        let baseline = (bounds.height - Self.font.capHeight) / 2
-        text.draw(at: NSPoint(x: (bounds.width - text.size().width) / 2, y: baseline + Self.font.descender))
     }
 }
 

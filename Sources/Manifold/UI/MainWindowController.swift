@@ -80,7 +80,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var tileMonitors: [Any] = []
     private var tileLeaving: NSObjectProtocol?
     /// ⌥⇥'s cards, once they show, and their pictures on their way.
-    private var tileSwitcher: (frame: NSView, column: StackColumnView)?
+    private var tileSwitcher: (frame: NSView, column: CardColumnView)?
     private var tileFlights: [CALayer] = []
     let sidebar = SidebarView()
     /// What the window shows with no space at all.
@@ -286,7 +286,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private var lastFocused: PlacementID?
 
     /// Each block's tile as last pictured, for its card while it's out of
-    /// sight: taken as a tile is stacked, collapsed or maximized over, as
+    /// sight: taken as a tile is docked, collapsed or maximized over, as
     /// its workspace is left, and whenever its card is shown.
     private var tilePictures: [BlockID: NSImage] = [:]
 
@@ -1579,7 +1579,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A pointer move, handed to the surface as its tracking area would.
-    /// A synthesized move: to the grid (its stacks), and to whatever view
+    /// A synthesized move: to the grid, and to whatever view
     /// is under the point that takes moves of its own (a scrubber, a
     /// command's dot).
     func debugHover(_ event: NSEvent) {
@@ -1587,7 +1587,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is StackColumnView || view is OrganizationView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is CardColumnView || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
@@ -1740,10 +1740,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         return "no tile \(title)"
     }
-    func debugPeek(_ on: Bool, button: Bool = false) -> String { content.debugPeek(on, button: button) }
-    var debugPeekUp: String { content.debugPeekUp }
-    var debugColumn: String { content.debugColumn }
-    func debugPeekPick(_ i: Int) -> String { content.debugPeekPick(i) }
     var debugDirty: String { content.debugDirty }
     func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
     func debugDirtyClick() -> String {
@@ -1767,27 +1763,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         while line == nil, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
         return String(format: "page %.2f", (line ?? nil) ?? -1)
     }
-    func debugSwitcherHover(_ i: Int) -> String { content.debugSwitcherHover(i) }
-    var debugSheetTargets: String { content.debugSheetTargets }
     func debugFollowLink(toPlacementEndingIn suffix: String, modifiers: NSEvent.ModifierFlags = []) -> String {
         guard let a = arrangement, let f = a.focused, let t = a.placements.first(where: { $0.id.hasSuffix(suffix) }) else { return "no \(suffix)" }
         gridOpenLink(t.block, from: f, modifiers: modifiers)
         return debugDock("")
     }
-    func debugClickSheets(drag: Bool) -> String { content.debugClickSheets(drag: drag) }
-    func debugSwitcherPick(_ i: Int) -> String { content.debugSwitcherPick(i) }
-    func debugSwitcherPointer() -> String { content.debugSwitcherPointer() }
 
     var debugSurface: NSView? { content }
 
     func debugReadd() -> String {
         guard let f = arrangement?.focused else { return "nothing focused" }
         return content.debugReadd(f)
-    }
-
-    func debugRightClick() -> String {
-        guard let f = arrangement?.focused else { return "nothing focused" }
-        return content.debugRightClick(f)
     }
 
     func debugBadge(_ arg: String) -> String {
@@ -2441,9 +2427,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let a = arrangement, let id = selected else { return }
         let before = hosts.reachable()
         if let f = a.focused {
-            // Taken off, a tile's room goes to the first of the stack
-            // behind it, if there is one, which comes back where it was
-            // and takes the focus (the model's doing); else to the next.
+            // Taken off, a tile's room goes back where it came from — to a
+            // tile docked under it (a terminal its `$EDITOR` was over),
+            // which comes back in its place and takes the focus (the
+            // model's doing); else to its neighbours.
             let block = a.placement(f)?.block
             noteClosing(f, in: id)
             hosts.append([.remove(f)], to: .block(id))
@@ -3227,7 +3214,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         noteSeen(force: true)
     }
 
-    var debugFlights: String { [content.debugFlights, GridView.describe(tileFlights)].filter { !$0.isEmpty }.joined(separator: "\n") }
+    var debugFlights: String { GridView.describe(tileFlights) }
 
     /// Debugging: ⌘ taken as held, for "walk".
     private var debugHeld = false
@@ -3408,7 +3395,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Where the space has its tiles now (the one gone to, if another).
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.placedParts(), from: content)
-        let sheets = sheetsInRoot(for: w.places)
         let arriving = target?.tile ?? home
         var items: [GridView.Morph] = []
         for c in cards where c.frame != .zero {
@@ -3419,12 +3405,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             } else if let tile = tiles[c.id] {
                 // Back into its tile, here.
                 items.append(GridView.Morph(from: c.frame, to: tile.whole, leaving: card, shrink: GridView.cardShrink))
-            } else if let sheet = sheets[c.id] {
-                // Back into its sheet, here.
-                items.append(GridView.Morph(from: c.frame, to: sheet, leaving: card))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
-                // In another space: back into its row in the sidebar.
+                // Docked, or in another space: back into its row in the sidebar.
                 items.append(GridView.Morph(from: c.frame, to: row, leaving: card))
             } else {
                 // Its tile's in another space: gone, sinking a little.
@@ -3456,18 +3439,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         tileFlights += GridView.morph(items, in: host, over: Motion.spatial * 1.5)
-    }
-
-    /// The sheets of the space shown that `places`' tiles are in (the
-    /// root's terms), by tile.
-    private func sheetsInRoot(for places: [Settled]) -> [PlacementID: NSRect] {
-        let sheets = content.sheetPlaces()
-        var out: [PlacementID: NSRect] = [:]
-        for p in places where p.space == selected {
-            guard let t = p.tile, let b = arrangement?.placement(t)?.block, let r = sheets[b] else { continue }
-            out[t] = root.convert(r, from: content)
-        }
-        return out
     }
 
     private func landTiles() {
@@ -3515,7 +3486,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return c
         }
         guard entries.count == w.places.count else { return endTileWalk(settling: false) }
-        let column = StackColumnView(entries: entries, selection: w.index)
+        let column = CardColumnView(entries: entries, selection: w.index)
         column.onPick = { [weak self] id, _ in
             guard let self, let i = self.tileWalk?.places.firstIndex(where: { $0.tile == id }) else { return }
             self.endTileWalk(settling: true, to: i)
@@ -3523,7 +3494,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         column.onCancel = { [weak self] in self?.endTileWalk(settling: false) }
         let room = root.convert(content.bounds, from: content).insetBy(dx: 32, dy: 32)
         let width = min(520, room.width)
-        let height = min(StackColumnView.height(for: entries.count), room.height, 640)
+        let height = min(CardColumnView.height(for: entries.count), room.height, 640)
         // Floating over the space: a shadow under the column.
         let frame = NSView(frame: NSRect(x: room.midX - width / 2, y: room.midY - height / 2, width: width, height: height).integral)
         frame.wantsLayer = true
@@ -3548,7 +3519,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.placedParts(), from: content)
-        let sheets = sheetsInRoot(for: w.places)
         let cards = column.cardPictures(in: root)
         guard let first = cards.first(where: { $0.frame != .zero }) else {
             tileUnseen = { [weak frame] _ in frame?.alphaValue = 1 }
@@ -3562,12 +3532,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let delay = min(Double(i) * stagger, staggered)
             if let tile = tiles[c.id] {
                 items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, shrink: GridView.cardShrink))
-            } else if let sheet = sheets[c.id] {
-                // Pulled out of its stack's sheet.
-                items.append(GridView.Morph(from: sheet, to: c.frame, coming: card, delay: delay))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
-                // In another space: out of its row in the sidebar.
+                // Docked, or in another space: out of its row in the sidebar.
                 items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: delay))
             } else {
                 // Elsewhere: out from under the first.
@@ -3751,7 +3718,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func setUp(_ g: GridView) {
         g.delegate = self
-        // A tile going out of sight (stacked, to its bar): pictured now,
+        // A tile going out of sight (docked, to its bar): pictured now,
         // as it still shows — collapsed to its bar it has no size to be
         // pictured at later. Behind one maximized it keeps its size, so
         // it's pictured when a card wants it (a page now: its snapshot
@@ -3886,22 +3853,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         showingSome(a.revealing(placement), in: a)
     }
 
-    /// How much of a tile to show, grown to it: a glimpse, for a tile
-    /// gone to (as apex does for a window it goes to); more, for a stack
-    /// about to fan out, so the cards have room to hang.
-    enum Reveal {
-        case glimpse, fan
-
-        /// Its content's height, at most and as a part of the column.
-        var points: CGFloat { self == .glimpse ? 160 : 320 }
-        var share: CGFloat { self == .glimpse ? 1 / 4 : 1 / 2 }
-    }
+    /// How much of a tile gone to is shown, grown to it (as apex does for a
+    /// window it goes to): its content's height, at most, and as a part
+    /// of the column.
+    private static let glimpse: (points: CGFloat, share: CGFloat) = (160, 1 / 4)
 
     /// Events that leave a tile focused (or `placement`), with that tile
-    /// grown to `reveal` if it's short of it — for a glimpse, only one
-    /// too short for its content (its summary in its place, or its bar alone) —
-    /// taken from its neighbours as growing takes it.
-    private func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil, _ reveal: Reveal = .glimpse) -> [Event] {
+    /// grown to a glimpse if it's too short for its content (its summary
+    /// in its place, or its bar alone) — taken from its neighbours as
+    /// growing takes it.
+    private func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil) -> [Event] {
         var after = a
         for e in events { after.apply(e) }
         guard let f = placement ?? after.focused, after.full == nil, let (c, _) = after.locate(f) else { return events }
@@ -3912,8 +3873,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard sum > 0, usable > 0 else { return events }
         let share = after.height(of: f) / sum
         let body = usable * CGFloat(share) - GridView.barHeight
-        let target = min(reveal.points, usable * reveal.share)
-        guard reveal == .glimpse ? body < GridView.summarizeBelow : body < target - 1 else { return events }
+        let target = min(Self.glimpse.points, usable * Self.glimpse.share)
+        guard body < GridView.summarizeBelow else { return events }
         let want = Double((target + GridView.barHeight) / usable)
         return events + after.growing(f, step: (want - share) * sum)
     }
@@ -4223,7 +4184,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Opening on the space shown: its tiles, as they are, to be seen
         // going to their places in it.
         let fromTiles = stateView == nil && !content.isHidden ? partsInRoot(content.tileParts(), from: content) : [:]
-        let fromSheets = stateView == nil && !content.isHidden ? content.sheetPlaces().mapValues { root.convert($0, from: content) } : [:]
         if stateView == nil {
             let v = StateView()
             v.onOpen = { [weak self] b, mods in
@@ -4253,7 +4213,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         layoutViews()
         render()
         window?.makeFirstResponder(stateView)
-        if let v = stateView, !fromTiles.isEmpty || !fromSheets.isEmpty { flyIn(v, from: fromTiles, sheets: fromSheets) }
+        if let v = stateView, !fromTiles.isEmpty { flyIn(v, from: fromTiles) }
     }
 
     func hideStateView() {
@@ -4290,19 +4250,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Overview opening, as Mission Control does: each tile in the space
     /// becomes its card where the card is — its outline going there, what
-    /// it shows scaled to its width, the card coming in on the way — and
-    /// each tile in a stack is pulled out of its sheet into its card; the
+    /// it shows scaled to its width, the card coming in on the way; the
     /// rest of Overview fades in.
-    private func flyIn(_ v: StateView, from tiles: [BlockID: GridView.Pictured], sheets: [BlockID: NSRect]) {
+    private func flyIn(_ v: StateView, from tiles: [BlockID: GridView.Pictured]) {
         guard !Motion.reduced, let host = root.layer else { return fadeIn(v) }
         var items: [GridView.Morph] = []
         var flown: [BlockID] = []
         for (block, card) in partsInRoot(v.cellParts(), from: v) {
-            if let tile = tiles[block] {
-                items.append(GridView.Morph(from: tile.whole, to: card.whole, leaving: tile, coming: card))
-            } else if let sheet = sheets[block] {
-                items.append(GridView.Morph(from: sheet, to: card.whole, coming: card))
-            } else { continue }
+            guard let tile = tiles[block] else { continue }
+            items.append(GridView.Morph(from: tile.whole, to: card.whole, leaving: tile, coming: card))
             flown.append(block)
         }
         guard !items.isEmpty else { return fadeIn(v) }
@@ -4315,23 +4271,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Overview closing: each card becomes its tile again, where the tile
-    /// is (as the space has it now), or goes back into its sheet; the rest
-    /// of the space fades in.
+    /// is (as the space has it now); the rest of the space fades in.
     private func flyOut(from cards: [BlockID: GridView.Pictured]) {
         guard !content.isHidden else { return }
         guard !Motion.reduced, let host = root.layer else { return fadeIn(content) }
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.tileParts(), from: content)
-        let sheets = content.sheetPlaces().mapValues { root.convert($0, from: content) }
         var items: [GridView.Morph] = []
         var flown: [BlockID] = []
         for (block, card) in cards {
-            if let tile = tiles[block] {
-                items.append(GridView.Morph(from: card.whole, to: tile.whole, leaving: card, coming: tile))
-                flown.append(block)
-            } else if let sheet = sheets[block] {
-                items.append(GridView.Morph(from: card.whole, to: sheet, leaving: card))
-            }
+            guard let tile = tiles[block] else { continue }
+            items.append(GridView.Morph(from: card.whole, to: tile.whole, leaving: card, coming: tile))
+            flown.append(block)
         }
         guard !items.isEmpty else { return fadeIn(content) }
         let d = Motion.spatial * 1.5
@@ -4539,7 +4490,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A space's own rows: its name, where it is among the spaces, its
-    /// layout (columns and their widths, stacks, a tile maximized, the
+    /// layout (columns and their widths, what's docked, a tile maximized, the
     /// focus), what its tiles are and how they stand.
     private func spaceRows(_ id: BlockID, _ a: ArrangementState, _ make: (String, String, String, (() -> Void)?) -> OrgNode) -> (own: [OrgNode], layout: [OrgNode]) {
         func row(_ value: String, _ label: String, _ symbol: String) -> OrgNode { make(value, label, symbol, nil) }
@@ -5744,7 +5695,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Goes to an entry: its tile if it's still anywhere (its workspace
-    /// shown, out of its stack, focused), else its block wherever it is;
+    /// shown, back from the dock, focused), else its block wherever it is;
     /// then the place in it.
     private func go(toNav e: NavEntry) -> Bool {
         navigating = true
@@ -8408,9 +8359,6 @@ extension MainWindowController: GridDelegate {
         return [.heights([placement: want, other.id: a.height(of: other.id) - delta])]
     }
 
-    func gridSwitcherFollowsPointer() {}
-    func gridNeedsRoomForFan(_ top: PlacementID) -> Bool { false }
-    func gridRoomForFan(_ top: PlacementID) -> Bool { false }
     func gridCanDrop(_ arrangement: BlockID) -> Bool { arrangement != selected }
 
     /// Another arrangement dropped on this one: its columns come over.
@@ -8422,7 +8370,7 @@ extension MainWindowController: GridDelegate {
         hosts.select(id)
     }
 
-    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool, alone: Bool) {
+    func gridMove(_ placement: PlacementID, column: Int, at: Int, newColumn: Bool) {
         guard let a = arrangement else { return }
         if a.placement(placement) == nil { return bringFromElsewhere(placement, column: column, at: at, newColumn: newColumn) }
         if newColumn || column >= a.columns.count {
@@ -8488,11 +8436,8 @@ extension MainWindowController: GridDelegate {
         }
     }
 
-    func gridUnstash(_ placement: PlacementID) { focus(placement) }
-    func gridSwap(_ placement: PlacementID) { focus(placement) }
-
     /// ⌥-drag: the dragged tile takes a tile's place, that one docked.
-    func gridCover(_ placement: PlacementID, over target: PlacementID, alone: Bool) {
+    func gridCover(_ placement: PlacementID, over target: PlacementID) {
         if let a = arrangement, a.placement(placement) == nil, let (c, i) = a.locate(target) {
             return bringFromElsewhere(placement, column: c, at: i + 1, newColumn: false, over: target)
         }
@@ -8521,7 +8466,6 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement, whole: true))
     }
 
-    func gridStash(_ placement: PlacementID, behind: PlacementID, alone: Bool) { gridCover(placement, over: behind, alone: alone) }
 
     func gridToggleFull(_ placement: PlacementID) {
         guard let a = arrangement else { return }
@@ -8557,7 +8501,7 @@ extension MainWindowController: GridDelegate {
     func debugSetFractions(_ f: [Double]) { gridResized(fractions: f) }
     /// A line between tiles dragged: the shares as it left them; a tile
     /// pushed to nothing, docked (its room to the tile that pushed it).
-    func gridResized(heights: [PlacementID: Double], stashed: [(PlacementID, PlacementID)]) {
+    func gridResized(heights: [PlacementID: Double]) {
         let gone = heights.filter { $0.value == 0 }.map(\.key).sorted()
         appendToSelected(gone.map { Event.dock($0, heir: nil) } + [.heights(heights.filter { $0.value > 0 })])
     }
@@ -10944,7 +10888,7 @@ extension MainWindowController: OrganizationViewDelegate {
                 picture = kept
             }
         }
-        // Under it, the block in a few lines, as a stack's column has it
+        // Under it, the block in a few lines, as a switcher's cards have it
         // (an arrangement, which has none, as it was).
         let summary = b.kind == .arrangement ? nil : cardContent(for: id)
         HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture,

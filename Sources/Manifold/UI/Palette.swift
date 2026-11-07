@@ -90,9 +90,7 @@ struct Palette {
         var sheetEdgeHovered: Shade
         /// A sheet beneath a stack's top, `level` deep.
         var sheet: (Int) -> Shade
-        /// A run of rows drawn round together (a stack's tiles in the sidebar).
-        var groupOutline: Shade
-        /// A stack's column of cards.
+        /// A column of summary cards (a card's fill).
         var stack: Shade
         /// What's dragged, as a pill.
         var dragPill: Shade
@@ -347,7 +345,6 @@ extension Palette {
             sheetEdgeHovered: .wash(0.34, 0.34),
             // Darker further down in light, lighter nearer the top in dark.
             sheet: { level in .grey(0.93 - CGFloat(level) * 0.045, 0.36 - CGFloat(level) * 0.05) },
-            groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
             stack: .grey(0.995, 0.2),
             dragPill: Shade(NSColor(white: 1, alpha: 1), NSColor(white: 0.3, alpha: 1)),
             linkBehind: { depth in .grey(0.95 - CGFloat(depth) * 0.03, 0.16 - CGFloat(depth) * 0.015) },
@@ -519,7 +516,6 @@ extension Palette {
                 sheetEdge: .wash(0.2, 0.16),
                 sheetEdgeHovered: .wash(0.34, 0.34),
                 sheet: { level in Shade(warm(0.92 - CGFloat(level) * 0.045), warm(0.33 - CGFloat(level) * 0.045)) },
-                groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
                 stack: .hex(0xF7F7F5, 0x2E2E2B),
                 dragPill: .hex(0xFBFBF9, 0x4A4A46),
                 linkBehind: { depth in Shade(warm(0.94 - CGFloat(depth) * 0.03), warm(0.15 - CGFloat(depth) * 0.015)) },
@@ -683,7 +679,6 @@ extension Palette {
                 // The tags' pale blue, deeper further down; by night lighter nearer the top.
                 sheet: { level in Shade(NSColor(srgbRed: 0.90 - CGFloat(level) * 0.045, green: 0.94 - CGFloat(level) * 0.045, blue: 0.95 - CGFloat(level) * 0.04, alpha: 1),
                                         NSColor(srgbRed: 0.31 - CGFloat(level) * 0.045, green: 0.32 - CGFloat(level) * 0.045, blue: 0.33 - CGFloat(level) * 0.045, alpha: 1)) },
-                groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
                 stack: .hex(0xF5F5EA, 0x26282A),
                 dragPill: .hex(0xFFFFFF, 0x4A4C4E),
                 linkBehind: { depth in Shade(NSColor(srgbRed: 0.92 - CGFloat(depth) * 0.03, green: 0.96 - CGFloat(depth) * 0.03, blue: 0.97 - CGFloat(depth) * 0.03, alpha: 1),
@@ -834,7 +829,6 @@ extension Palette {
                 // Wheat, deeper further down; by night slate, lighter nearer the top.
                 sheet: { level in Shade(NSColor(srgbRed: 0.95 - CGFloat(level) * 0.045, green: 0.875 - CGFloat(level) * 0.045, blue: 0.81 - CGFloat(level) * 0.04, alpha: 1),
                                         NSColor(srgbRed: 0.27 - CGFloat(level) * 0.04, green: 0.29 - CGFloat(level) * 0.04, blue: 0.33 - CGFloat(level) * 0.045, alpha: 1)) },
-                groupOutline: Shade(NSColor(white: 0, alpha: 0.28), NSColor(white: 1, alpha: 0.28)),
                 stack: .hex(0xFFF7EF, 0x2A2E37),
                 dragPill: .hex(0xFFFCFA, 0x4D515A),
                 linkBehind: { depth in Shade(NSColor(srgbRed: 0.97 - CGFloat(depth) * 0.03, green: 0.91 - CGFloat(depth) * 0.03, blue: 0.86 - CGFloat(depth) * 0.03, alpha: 1),

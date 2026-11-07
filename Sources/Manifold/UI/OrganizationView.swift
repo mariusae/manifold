@@ -39,8 +39,7 @@ enum Organization: String, CaseIterable {
 
 /// What the sidebar can be narrowed to (§3.6), whichever organization it
 /// shows: each a test of a block. The rows it admits stay, with the way
-/// to each — its host, its space, its folders, a stacked tile's stack —
-/// and the rest go (`OrgNode.filtered`).
+/// to each — its host, its space, its folders — and the rest go (`OrgNode.filtered`).
 enum SidebarFilter: String, CaseIterable {
     /// Blocks with a status (§3.7): working, needing you, done or failed.
     case status
@@ -96,14 +95,8 @@ final class OrgNode {
     /// Not on any workspace now (Files): after the ones that are, in a
     /// dimmer face.
     var dimmed = false
-    /// In a stack (on the desk): its rows share a faint ground, the top's
-    /// first; and one behind the top, set in and dimmer, as out of sight.
-    var stack: SelectionRowView.Grouped?
     /// A docked tile's row (§3.1): its name quieter, out of the grid.
     var docked = false
-    /// The same tile shown twice (pinned at the top, and in its stack):
-    /// the placement both rows are for, so the one lights with the other.
-    var twin: PlacementID?
     /// What the block is doing (§3.7), shown by its name (`StatusMark`).
     var look: StatusGlyph.Look?
     /// What it needs, when it's blocked: the pill's word.
@@ -171,9 +164,8 @@ final class OrgNode {
     fileprivate var givenChildren: [OrgNode] { given }
 
     /// The rows `keep` says to, and the way to each: a row stays if it's
-    /// kept or anything under it is; a tile behind in a stack keeps its
-    /// stack's top, the two outlined together as the stack is; a hairline
-    /// stays only between rows that do; a row's count is of the rows
+    /// kept or anything under it is; a hairline stays only between rows
+    /// that do; a row's count is of the rows
     /// under it admitted. Rows made for one showing: their children are
     /// pruned in place.
     static func filtered(_ nodes: [OrgNode], keep: (OrgNode) -> Bool) -> [OrgNode] {
@@ -196,30 +188,11 @@ final class OrgNode {
             }
             kept[i] = n.style != .divider && (own || !n.given.isEmpty)
         }
-        // Each row's stack (its index among the stacks here), and a kept
-        // row behind its top keeps the top.
-        var stackOf = [Int?](repeating: nil, count: nodes.count)
-        var top: Int?, count = 0
-        for (i, n) in nodes.enumerated() {
-            guard let s = n.stack else { top = nil; continue }
-            if s.first || top == nil { top = i; count += 1 }
-            stackOf[i] = count
-            if kept[i], let t = top { kept[t] = true }
-        }
         // A hairline between kept rows.
         for (i, n) in nodes.enumerated() where n.style == .divider {
             kept[i] = kept[..<i].contains(true) && kept[(i + 1)...].contains(true)
         }
-        let out = nodes.indices.filter { kept[$0] }
-        // Stacks outlined again around what's left of each: a top alone
-        // isn't a stack (a tile alone behind is, as it was).
-        for (k, i) in out.enumerated() {
-            guard let s = stackOf[i] else { continue }
-            let first = k == 0 || stackOf[out[k - 1]] != s
-            let last = k == out.count - 1 || stackOf[out[k + 1]] != s
-            nodes[i].stack = first && last && !nodes[i].docked ? nil : SelectionRowView.Grouped(first: first, last: last)
-        }
-        return out.map { nodes[$0] }
+        return nodes.indices.filter { kept[$0] }.map { nodes[$0] }
     }
 
     /// Every row under these that has rows under it.
@@ -237,7 +210,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale && image === o.image && stack == o.stack && docked == o.docked && twin == o.twin
+            && dirty == o.dirty && stale == o.stale && image === o.image && docked == o.docked
     }
 
     /// Takes another's values (the same row made again), its children
@@ -246,7 +219,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale; image = o.image; stack = o.stack; docked = o.docked; twin = o.twin
+        dirty = o.dirty; stale = o.stale; image = o.image; docked = o.docked
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
     }
 }
@@ -781,22 +754,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         // The current workspace's label wears a bar at its left edge.
         if let n = item as? OrgNode {
             v.marked = n.style == .section && n.emphasis && n.arrangement != nil
-            v.grouped = n.stack
-            // A twin's hover lights the other row of the same tile.
-            if let twin = n.twin {
-                v.onHover = { [weak self, weak v] on in self?.echo(twin, except: v, on) }
-            }
         }
         return v
-    }
-
-    /// The other rows of a twin lit (or not) with the one hovered.
-    private func echo(_ twin: PlacementID, except row: SelectionRowView?, _ on: Bool) {
-        for r in 0..<outline.numberOfRows {
-            guard let n = outline.item(atRow: r) as? OrgNode, n.twin == twin,
-                  let v = outline.rowView(atRow: r, makeIfNecessary: false) as? SelectionRowView, v !== row else { continue }
-            v.echo = on
-        }
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {
@@ -1045,7 +1004,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.stack.map { " [stack\($0.first ? " first" : "")\($0.last ? " last" : "")]" } ?? "")\(n.docked ? " [docked]" : "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.docked ? " [docked]" : "")"
         }.joined(separator: "\n")
     }
 
@@ -1361,8 +1320,6 @@ final class OrgRowView: NSTableCellView {
         icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
         icon.alphaValue = node.dimmed ? 0.6 : 1
-        // Its row's ground, if it's in a stack (a row reused keeps the last).
-        (superview as? SelectionRowView)?.grouped = node.stack
         count.stringValue = node.count.map { "\($0)" } ?? ""
         count.isHidden = node.count == nil
         detail.stringValue = node.detail
@@ -1385,10 +1342,6 @@ final class OrgRowView: NSTableCellView {
         placeLiveTip()
     }
 
-    override func viewDidMoveToSuperview() {
-        super.viewDidMoveToSuperview()
-        if let node { (superview as? SelectionRowView)?.grouped = node.stack }
-    }
 
     /// The live tooltip's rect is the row's, kept so as it resizes.
     private func placeLiveTip() {

@@ -272,27 +272,23 @@ final class CardTitle: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// A stack fanned out (§3.1), as iOS opens a stack of notifications: in
-/// place of its tile, a column of its tiles as summary cards — the top
-/// first, then those behind, nearest first — scrolled through, the one
-/// chosen ringed. ⌃⇥ moves the choice, the pointer chooses what it's over;
-/// a card clicked comes to the top, one dragged comes out of the stack.
-final class StackColumnView: NSView {
+/// A switcher's tiles (⌥⇥, ⌃⇥) as a column of their summary cards, the
+/// latest settled on first, scrolled through, the one chosen ringed. ⇥
+/// moves the choice; once the pointer moves over the cards, it chooses
+/// what it's over; a card clicked is gone to.
+final class CardColumnView: NSView {
     private(set) var cards: [SummaryCard]
     /// The card chosen, by its place in the column (0, the top).
     private(set) var selection: Int
     private let scroll = NSScrollView()
     private let document = FlippedView()
     var onPick: ((PlacementID, NSEvent.ModifierFlags) -> Void)?
-    var onDragOut: ((PlacementID, NSEvent) -> Void)?
     var onCancel: (() -> Void)?
-    /// The card under the pointer is the one chosen (opened from the sheets
-    /// or the button; from ⌃⇥, once the pointer moves over the cards).
-    var followsPointer = false
-    var onFollowsPointer: (() -> Void)?
+    /// The card under the pointer is the one chosen, once the pointer
+    /// moves over the cards.
+    private var followsPointer = false
     private var pointerSeenAt: NSPoint?
-    private(set) var isClosing = false
-    private var downAt: (card: Int, point: NSPoint)?
+    private var downAt: Int?
     private static let gap: CGFloat = 8, margin: CGFloat = 10
 
     /// `entries` top first.
@@ -314,10 +310,6 @@ final class StackColumnView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    var selectedID: PlacementID { cards[selection].content.id }
-    /// The tile that was the stack's top: the first card.
-    var topID: PlacementID { cards[0].content.id }
 
     /// As tall as `count` cards in a column want.
     static func height(for count: Int) -> CGFloat { margin * 2 + CGFloat(count) * (SummaryCard.height + gap) - gap }
@@ -392,15 +384,8 @@ final class StackColumnView: NSView {
         reveal(selection)
     }
 
-    /// Moves the choice along: down the column (deeper in the stack) for
-    /// positive steps, round the ends.
-    func move(_ delta: Int) {
-        guard !isClosing else { return }
-        choose(((selection + delta) % cards.count + cards.count) % cards.count)
-    }
-
     func choose(_ i: Int) {
-        guard !isClosing, cards.indices.contains(i), i != selection else { return }
+        guard cards.indices.contains(i), i != selection else { return }
         cards[selection].chosen = false
         selection = i
         cards[i].chosen = true
@@ -411,20 +396,6 @@ final class StackColumnView: NSView {
         guard cards.indices.contains(i) else { return }
         document.scrollToVisible(cards[i].frame.insetBy(dx: 0, dy: -Self.margin))
     }
-
-    /// Closes on `id` (the chosen card) at once: the grid carries pictures
-    /// of the cards back to their tiles.
-    func close(on id: PlacementID) {
-        isClosing = true
-        if let i = cards.firstIndex(where: { $0.content.id == id }) {
-            cards[selection].chosen = false
-            selection = i
-            cards[i].chosen = true
-        }
-    }
-
-    /// No views are held: nothing to give back.
-    func tearDown(keeping: PlacementID? = nil, in column: NSView? = nil) {}
 
     // MARK: Pointer
 
@@ -446,34 +417,25 @@ final class StackColumnView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard !isClosing else { return }
         NSCursor.pointingHand.set()
         if !followsPointer {
-            // From ⌃⇥: the pointer moved over the cards is the pointer wanted.
+            // The pointer moved over the cards is the pointer wanted.
             guard let seen = pointerSeenAt else { pointerSeenAt = event.locationInWindow; return }
             guard hypot(event.locationInWindow.x - seen.x, event.locationInWindow.y - seen.y) > 6 else { return }
             followsPointer = true
-            onFollowsPointer?()
         }
         if let i = card(at: event.locationInWindow) { choose(i) }
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !isClosing else { return }
         guard let i = card(at: event.locationInWindow) else { onCancel?(); return }
-        downAt = (i, event.locationInWindow)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let down = downAt, hypot(event.locationInWindow.x - down.point.x, event.locationInWindow.y - down.point.y) > 3 else { return }
-        downAt = nil
-        onDragOut?(cards[down.card].content.id, event)
+        downAt = i
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let down = downAt else { return }
+        guard let i = downAt else { return }
         downAt = nil
-        onPick?(cards[down.card].content.id, event.modifierFlags)
+        onPick?(cards[i].content.id, event.modifierFlags)
     }
 
     // MARK: Debugging
@@ -482,25 +444,5 @@ final class StackColumnView: NSView {
         guard cards.indices.contains(i) else { return "no card \(i)" }
         onPick?(cards[i].content.id, [])
         return "picked \(cards[i].content.summary.title)"
-    }
-
-    func debugPointerMoves() {
-        followsPointer = true
-        onFollowsPointer?()
-    }
-
-    func debugHover(_ i: Int) -> String {
-        guard cards.indices.contains(i) else { return "no card \(i)" }
-        followsPointer = true
-        choose(i)
-        return "chosen \(cards[i].content.summary.title)"
-    }
-
-    /// Debugging: the cards, a line each, the chosen marked.
-    var debugCards: String {
-        cards.enumerated().map { i, c in
-            let s = c.content.summary
-            return (i == selection ? "*" : " ") + " \(s.title) [\(s.note ?? "")] " + s.lines.joined(separator: " | ") + (c.content.thumbnail == nil ? "" : " (picture)")
-        }.joined(separator: "\n")
     }
 }

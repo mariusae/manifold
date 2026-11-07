@@ -1,7 +1,7 @@
 import Foundation
 
-/// A block in a few lines (§3.1): what a stack's column shows of each of
-/// its tiles, and, in time, a tile down to its bar, a sidebar row's hover
+/// A block in a few lines (§3.1): what a switcher's cards (⌥⇥, ⌃⇥) show
+/// of each tile, and, in time, a tile down to its bar, a sidebar row's hover
 /// card, a finder result, `mani ls`. Each kind says what's worth knowing
 /// of it at a glance — a terminal its last command and how it ended, a note
 /// its first lines, a diff its files and lines changed — from its state

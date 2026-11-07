@@ -615,18 +615,6 @@ enum DebugControl {
             return wc?.debugDrop(w, as: form, grid: slot, palette: palette) ?? "no window"
         case "pills":
             return wc?.debugPills ?? "no window"
-        case "column":
-            // The open stack column's cards, the chosen marked.
-            return wc?.debugColumn ?? "no window"
-        case "peek":
-            // "peek [off]": the focused (else first) stack's sheets hovered (or
-            // left), the tabs rising after a moment; "peek button [off]": its
-            // stack button, at once; "peek up": whether they are; "peek pick
-            // <i>": tab i of those up clicked.
-            if arg.hasPrefix("pick "), let i = Int(arg.dropFirst(5)) { return wc?.debugPeekPick(i) ?? "no window" }
-            if arg == "up" { return wc?.debugPeekUp ?? "no window" }
-            let button = arg.hasPrefix("button")
-            return wc?.debugPeek(!arg.hasSuffix("off"), button: button) ?? "no window"
         case "pasteimage":
             // "pasteimage <image path> [text]": a paste into the focused
             // editor of a pasteboard of our own (not the general one) holding
@@ -655,7 +643,7 @@ enum DebugControl {
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(cg.width)x\(cg.height)"
         case "flights":
-            // ⌃⇥'s pictures on their way, this moment.
+            // ⌥⇥'s and ⌃⇥'s pictures on their way, this moment.
             return wc?.debugFlights ?? "no window"
         case "walk":
             return wc?.debugWalk(arg) ?? "no window"
@@ -1054,17 +1042,6 @@ enum DebugControl {
         case "readd":
             // The focused tile's view put back on top of the grid, as a view made afresh is.
             return wc?.debugReadd() ?? "no window"
-        case "rightclick":
-            // The focused tile's title right-clicked: the stack's fan, or the menu.
-            return wc?.debugRightClick() ?? "no window"
-        case "switcher":
-            // "switcher hover <i>": the open switcher's pointer on card i (0 at
-            // the back); "switcher pick <i>": card i clicked.
-            let a = arg.split(separator: " ")
-            // "switcher pointer": the pointer moved over the cards (from ⌃⇥).
-            if a.first == "pointer" { return wc?.debugSwitcherPointer() ?? "no window" }
-            guard a.first == "hover" || a.first == "pick", let i = a.dropFirst().first.flatMap({ Int($0) }), let wc else { return "usage: switcher hover|pick <i>" }
-            return a.first == "pick" ? wc.debugSwitcherPick(i) : wc.debugSwitcherHover(i)
         case "badge":
             // "badge": the focused tile's link badge fanned, its links listed;
             // "badge break n": the nth link's × clicked.

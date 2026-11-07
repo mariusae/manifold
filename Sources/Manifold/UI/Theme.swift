@@ -438,22 +438,12 @@ final class SelectionRowView: NSTableRowView {
     override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
     /// Marked: a bar in the accent at the left edge (the current workspace's row).
     var marked = false { didSet { needsDisplay = true } }
-    /// One of a run of rows drawn round together (a stack's tiles in the
-    /// sidebar): a dotted rounded outline, its top on the first row and its
-    /// bottom on the last.
-    struct Grouped: Equatable { var first: Bool; var last: Bool }
-    var grouped: Grouped? { didSet { if grouped != oldValue { needsDisplay = true } } }
     /// One of a run of rows on a panel of their own (a block and its
     /// processes): a card's fill as wide as what's in view, its top
     /// rounded on the first row, after `lead` of air, and its foot on the
     /// last. `quiet`: a row there to be read, not chosen (no hover).
     struct Panel: Equatable { var first = false; var last = false; var lead: CGFloat = 0; var quiet = false }
     var panel: Panel? { didSet { if panel != oldValue { needsDisplay = true } } }
-    private static let outlineColor = NSColor.themed { $0.chrome.groupOutline }
-    /// Told as the pointer comes and goes (a row with a twin lights it).
-    var onHover: ((Bool) -> Void)?
-    /// Lit as if hovered: the other row of the same thing is.
-    var echo = false { didSet { if echo != oldValue { needsDisplay = true } } }
     override var isFloating: Bool { didSet { needsDisplay = true } }
     /// Under the pointer: one row at a time, in every list — a row taking
     /// it takes it from the last. Rows are reused and move under a still
@@ -469,7 +459,6 @@ final class SelectionRowView: NSTableRowView {
             } else if Self.hoveredRow === self {
                 Self.hoveredRow = nil
             }
-            onHover?(hovered)
         }
     }
     private static weak var hoveredRow: SelectionRowView?
@@ -487,8 +476,6 @@ final class SelectionRowView: NSTableRowView {
     override func prepareForReuse() {
         super.prepareForReuse()
         hovered = false
-        onHover = nil
-        echo = false
     }
 
     override func viewDidMoveToSuperview() {
@@ -518,27 +505,8 @@ final class SelectionRowView: NSTableRowView {
             Theme.windowBackground.setFill()
             bounds.fill()
         }
-        if let g = grouped {
-            // Square where it runs on into the next row: the rounded rect
-            // carried past that edge, and cut there.
-            let reach = Radius.control * 2
-            // Its top and bottom edges, as the run reads (flipped or not).
-            let (low, high) = isFlipped ? (g.first, g.last) : (g.last, g.first)
-            let minY = low ? bounds.minY + 1 : bounds.minY - reach
-            let maxY = high ? bounds.maxY - 1 : bounds.maxY + reach
-            let r = NSRect(x: bounds.minX + 6, y: minY, width: bounds.width - 12, height: maxY - minY)
-            NSGraphicsContext.saveGraphicsState()
-            bounds.clip()
-            Self.outlineColor.setStroke()
-            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
-            path.lineWidth = 1
-            path.setLineDash([1.5, 2.5], count: 2, phase: 0)
-            path.lineCapStyle = .round
-            path.stroke()
-            NSGraphicsContext.restoreGraphicsState()
-        }
         if let p = panel { drawPanel(p) }
-        if hovered || echo, !isSelected, !isGroupRowStyle, panel?.quiet != true {
+        if hovered, !isSelected, !isGroupRowStyle, panel?.quiet != true {
             Flat.hovered.setFill()
             Flat.rowBand(band).fill()
         }
