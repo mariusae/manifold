@@ -6402,6 +6402,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return out
     }
 
+    /// ⌃⌘P: the nearest project — the one the focused tile is in (§2.6),
+    /// else its repository's root, else its folder — its homepage gone to
+    /// where it's shown, else opened beside.
+    @objc func goToNearestProject(_ sender: Any?) {
+        guard let f = focusedShown, let b = hosts.block(f.placement.block), let place = b.place else { return NSSound.beep() }
+        let on = f.placement.block.host
+        let root = focusedProject()?.1.root ?? projectRoot(from: place, on: on)
+        // The project itself focused: nowhere nearer to go.
+        guard !(b.kind == .directory && b.path == root) else { return NSSound.beep() }
+        let id = hosts.directoryBlock(for: root, on: on)
+        let shownHere = arrangement?.placements.contains { $0.block == id } == true
+        openDirectory(root, from: f.placement.id, as: Self.disposition ?? (shownHere ? .goTo : .beside), context: "its project")
+    }
+
     /// The project the focused tile's block is in (§2.6), on its host.
     func focusedProject() -> (HostID, Project)? {
         guard let f = focusedShown?.placement.block, let b = hosts.block(f), let place = b.place,

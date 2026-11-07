@@ -514,6 +514,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Find in Blocks…", #selector(MainWindowController.findInBlocks(_:)), "o", [.command, .shift])
         item(go, "Outline…", #selector(MainWindowController.goToTile(_:)), "p")
         item(go, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
+        // The project the focused tile is in, its homepage (⌃⌘P).
+        item(go, "Go to Project", #selector(MainWindowController.goToNearestProject(_:)), "p", [.command, .control])
         // ⌘L is one key for two things, by the tile: a line, in an editor
         // (as Xcode's); its address, in a page (as a browser's).
         item(go, "Go to Line…", #selector(MainWindowController.goToLineOrAddress(_:)), "l")
