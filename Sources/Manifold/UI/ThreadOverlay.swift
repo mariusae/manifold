@@ -41,9 +41,10 @@ final class ThreadOverlayView: NSView {
         chat.fits = false
         for v in [tabs, titleLabel, close, chat, timeline] as [NSView] { addSubview(v) }
         themed { v in
-            v.layer?.backgroundColor = Theme.sheet(level: 2).cgColor
-            v.layer?.borderColor = Theme.divider.cgColor
-            v.layer?.borderWidth = 1
+            // Lighter than the window it's over, its edge a hairline.
+            v.layer?.backgroundColor = Theme.panel.cgColor
+            v.layer?.borderColor = Theme.panelBorder.cgColor
+            v.layer?.borderWidth = 0.5
         }
     }
 
@@ -145,13 +146,18 @@ extension MainWindowController {
         o.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
     }
 
-    /// Debugging the overlay: `overlay` (⌥⌘M), `overlay tab <0|1>`,
+    /// Debugging the overlay: `overlay` (⌥⌘M), `overlay thread <id>`, `overlay tab <0|1>`,
     /// `overlay send <text>`, `overlay close`; and what it shows.
     func debugOverlay(_ arg: String) -> String {
         let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
         switch w.first {
         case nil: commentHere(nil)
         case "close": closeThreadOverlay()
+        case "thread":
+            // "overlay thread <id's end>": that thread read in it.
+            let end = w.dropFirst().first ?? ""
+            guard let t = hosts.threads.first(where: { $0.id.ulid.hasSuffix(end) }) else { return "no thread \(end)" }
+            showThreadOverlay(nil, thread: t.id)
         case "tab":
             if let o = threadUI.overlay { o.tab = Int(w.dropFirst().first ?? "0") ?? 0; o.onTab?(o.tab) }
         case "send":

@@ -141,7 +141,7 @@ final class ThreadChatView: NSView {
         for v in [header, scroll, composerScroll, placeholder, resolveButton, sendButton] as [NSView] { addSubview(v) }
         themed { v in
             v.contextView.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
-            v.composerScroll.layer?.borderColor = Theme.divider.cgColor
+            v.composerScroll.layer?.borderColor = Flat.line.cgColor
             v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
         }
     }
@@ -170,12 +170,15 @@ final class ThreadChatView: NSView {
         }
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
         var ruled = false
-        for e in t?.entries ?? [] {
+        var previous: ThreadEntry?
+        for e in t?.entries ?? [] where !e.isEmptyComment {
             if !ruled, let mark = m.seenMark, e.at > mark, e.isNotable {
                 list.addArrangedSubview(rule("New"))
                 ruled = true
+                previous = nil
             }
-            list.addArrangedSubview(row(for: e))
+            list.addArrangedSubview(row(for: e, after: previous))
+            previous = e
         }
         for agent in m.working {
             let name = t?.agents.first { $0.block == agent }?.name ?? "The agent"
@@ -237,9 +240,9 @@ final class ThreadChatView: NSView {
 
     // MARK: Rows
 
-    private func row(for e: ThreadEntry) -> NSView {
+    private func row(for e: ThreadEntry, after previous: ThreadEntry? = nil) -> NSView {
         switch e.kind {
-        case .comment(let text): return bubble(e, text)
+        case .comment(let text): return comment(e, text, continued: CommentView.continues(e, after: previous))
         case .resolved: return eventRow("Resolved by \(e.author.isYou ? "you" : e.author.name)", at: e.at)
         case .reopened: return eventRow("Reopened by \(e.author.isYou ? "you" : e.author.name)", at: e.at)
         case let .asked(agent, name): return eventRow("\(name) asked to look", at: e.at, icon: model.icon(agent))
@@ -252,40 +255,19 @@ final class ThreadChatView: NSView {
         }
     }
 
-    /// A comment: its author's pill and when, over its words in a bubble —
-    /// yours at the right, tinted with the accent; others' at the left.
-    private func bubble(_ e: ThreadEntry, _ text: String) -> NSView {
-        let mine = e.author.isYou
-        let pill = AuthorPill(e.author, icon: e.author.agentBlock.flatMap(model.icon))
-        pill.onClick = { [weak self] in
+    /// A comment: its author's mark, name and when, over its words.
+    private func comment(_ e: ThreadEntry, _ text: String, continued: Bool) -> NSView {
+        let width = scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width - 24
+        let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: continued, width: width - 4)
+        v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
             self.delegate?.threadChat(self, follow: MainWindowController.address(b))
         }
-        if case let .you(machine) = e.author { pill.toolTip = machine.map { "From \($0)" } }
-        let when = NSTextField(labelWithString: BlockSummary.ago(e.at, now: Date()) ?? "")
-        when.font = UIType.footnote
-        when.textColor = Theme.tertiaryText
-        when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
-        let meta = NSStackView(views: mine ? [when, pill] : [pill, when])
-        meta.spacing = 6
-        let body = BubbleText(markdown: text, mine: mine)
-        body.onLink = { [weak self] url in
+        v.onLink = { [weak self] url in
             guard let self else { return }
             self.delegate?.threadChat(self, follow: url.absoluteString)
         }
-        let column = NSStackView(views: [meta, body])
-        column.orientation = .vertical
-        column.alignment = mine ? .trailing : .leading
-        column.spacing = 3
-        let line = NSStackView()
-        line.orientation = .horizontal
-        if mine { line.addArrangedSubview(NSView()) }
-        line.addArrangedSubview(column)
-        if !mine { line.addArrangedSubview(NSView()) }
-        // At most most of the chat's width.
-        let width = scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width - 24
-        body.limit = max(160, floor(width * 0.86))
-        return fill(line)
+        return fill(v)
     }
 
     private func eventRow(_ words: String, at: Stamp? = nil, icon: NSImage? = nil, tone: NSColor? = nil) -> NSView {
@@ -414,81 +396,151 @@ final class HairlineView: NSView {
     }
 }
 
-/// Who wrote an entry, as a pill: You in plain ink; an agent with its mark
-/// and its name, in the accent. Clicked (an agent's), its terminal.
-final class AuthorPill: NSView {
-    var onClick: (() -> Void)?
-    private let label = NSTextField(labelWithString: "")
-    private let image = NSImageView()
-    private let author: ThreadAuthor
+extension ThreadEntry {
+    /// A comment with no words (an agent's reply that said nothing): not shown.
+    var isEmptyComment: Bool {
+        if case .comment(let t) = kind { return t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return false
+    }
+}
 
-    init(_ author: ThreadAuthor, icon: NSImage?) {
-        self.author = author
+/// A comment, as a conversation shows one (Quip's): who wrote it, a round
+/// mark at the left — your initial on the accent, an agent's own mark —
+/// their name in bold and when beside it, the words under the name in
+/// full ink, no bubble. One more from the same author just after, its
+/// words alone under theirs (`continued`).
+final class CommentView: NSView {
+    static let avatar: CGFloat = 22
+    static let gap: CGFloat = 8
+    var onAuthor: (() -> Void)?
+    var onLink: ((URL) -> Void)? { didSet { body.onLink = onLink } }
+    let body: CommentText
+
+    init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat) {
+        body = CommentText(markdown: text)
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 8
-        label.font = UIType.caption
-        label.stringValue = author.name
-        image.image = icon ?? (author.agentBlock != nil ? NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) : nil)
-        image.isHidden = image.image == nil
-        image.imageScaling = .scaleProportionallyUpOrDown
-        addSubview(image)
-        addSubview(label)
-        themed { v in
-            switch v.author {
-            case .agent:
-                v.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.16).cgColor
-                v.label.textColor = Theme.accent
-                v.image.contentTintColor = Theme.accent
-            case .you:
-                v.layer?.backgroundColor = Theme.text.withAlphaComponent(0.08).cgColor
-                v.label.textColor = Theme.text
-            case .manifold:
-                v.layer?.backgroundColor = NSColor.clear.cgColor
-                v.label.textColor = Theme.tertiaryText
-            }
+        translatesAutoresizingMaskIntoConstraints = false
+        let indent = Self.avatar + Self.gap
+        body.limit = max(120, width - indent)
+        var views: [NSView] = []
+        if !continued {
+            let name = NSTextField(labelWithString: e.author.isYou ? "You" : e.author.name)
+            name.font = .systemFont(ofSize: 12, weight: .semibold)
+            name.textColor = Theme.text
+            let when = NSTextField(labelWithString: BlockSummary.ago(e.at, now: Date()) ?? "")
+            when.font = UIType.footnote
+            when.textColor = Theme.tertiaryText
+            when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
+            if case let .you(machine) = e.author { name.toolTip = machine.map { "From \($0)" } }
+            let head = NSStackView(views: [name, when])
+            head.spacing = 6
+            head.alignment = .firstBaseline
+            views.append(head)
+            let mark = Avatar(e.author, icon: icon)
+            mark.onClick = { [weak self] in self?.onAuthor?() }
+            mark.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(mark)
+            NSLayoutConstraint.activate([
+                mark.leadingAnchor.constraint(equalTo: leadingAnchor), mark.topAnchor.constraint(equalTo: topAnchor, constant: 1),
+                mark.widthAnchor.constraint(equalToConstant: Self.avatar), mark.heightAnchor.constraint(equalToConstant: Self.avatar),
+            ])
         }
+        views.append(body)
+        let column = NSStackView(views: views)
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 2
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: indent),
+            column.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: continued ? 0 : Self.avatar + 1),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: NSSize {
-        let w = label.intrinsicContentSize.width + 14 + (image.isHidden ? 0 : 14)
-        return NSSize(width: ceil(w), height: 16)
-    }
-
+    /// Its words as wide as it is, once it's laid out at its width.
     override func layout() {
         super.layout()
-        var x: CGFloat = 7
-        if !image.isHidden {
-            image.frame = NSRect(x: x, y: 2, width: 12, height: 12)
-            x += 14
-        }
-        let s = label.intrinsicContentSize
-        label.frame = NSRect(x: x, y: (bounds.height - s.height) / 2, width: s.width, height: s.height)
+        let l = max(120, bounds.width - Self.avatar - Self.gap)
+        if bounds.width > 0, abs(body.limit - l) > 0.5 { body.limit = l }
     }
 
-    override func mouseDown(with event: NSEvent) { onClick?() }
-
-    override func resetCursorRects() {
-        if author.agentBlock != nil { addCursorRect(bounds, cursor: .pointingHand) }
+    /// Whether `e` follows `previous` as more of the same: a comment by the
+    /// same author, a few minutes on.
+    static func continues(_ e: ThreadEntry, after previous: ThreadEntry?) -> Bool {
+        guard let p = previous, case .comment = p.kind, case .comment = e.kind,
+              (p.author.isYou && e.author.isYou) || (p.author.agentBlock != nil && p.author.agentBlock == e.author.agentBlock) else { return false }
+        return e.at.date.timeIntervalSince(p.at.date) < 5 * 60
     }
 }
 
-/// A comment's words, rendered as Markdown in a bubble; links clicked go
-/// where they say.
-final class BubbleText: NSView, NSTextViewDelegate {
+/// An author's round mark: your initial, white on the accent; an agent's
+/// own mark on a pale ground; clicked (an agent's), its terminal.
+final class Avatar: NSView {
+    var onClick: (() -> Void)?
+    private let author: ThreadAuthor
+    private let icon: NSImage?
+
+    init(_ author: ThreadAuthor, icon: NSImage?) {
+        self.author = author
+        self.icon = icon ?? (author.agentBlock != nil ? NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) : nil)
+        super.init(frame: .zero)
+        toolTip = author.isYou ? nil : author.name
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
+        if author.isYou {
+            Theme.accent.setFill()
+            circle.fill()
+            let initial = String((NSFullUserName().first ?? "Y").uppercased())
+            let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: bounds.height * 0.5, weight: .semibold), .foregroundColor: NSColor.white]
+            let size = initial.size(withAttributes: a)
+            initial.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2), withAttributes: a)
+            return
+        }
+        Theme.text.withAlphaComponent(0.07).setFill()
+        circle.fill()
+        Theme.text.withAlphaComponent(0.16).setStroke()
+        circle.lineWidth = 0.5
+        circle.stroke()
+        guard let icon else { return }
+        let side = bounds.height * 0.6
+        let r = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+        if icon.isTemplate {
+            let tinted = NSImage(size: r.size, flipped: false) { rect in
+                icon.draw(in: rect)
+                Theme.accent.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            tinted.draw(in: r)
+        } else {
+            icon.draw(in: r)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func resetCursorRects() { if author.agentBlock != nil { addCursorRect(bounds, cursor: .pointingHand) } }
+}
+
+/// A comment's words, rendered as Markdown, as wide as they want up to
+/// `limit`; links clicked go where they say.
+final class CommentText: NSView, NSTextViewDelegate {
     var onLink: ((URL) -> Void)?
     private let text = NSTextView()
-    private let mine: Bool
     private let attributed: NSAttributedString
 
-    init(markdown: String, mine: Bool) {
-        self.mine = mine
+    init(markdown: String) {
         attributed = MarkdownText.attributed(markdown, font: UIType.body, code: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular), color: Theme.text)
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 9
         text.isEditable = false
         text.isSelectable = true
         text.drawsBackground = false
@@ -499,20 +551,15 @@ final class BubbleText: NSView, NSTextViewDelegate {
         text.linkTextAttributes = [.foregroundColor: Theme.accent, .cursor: NSCursor.pointingHand]
         addSubview(text)
         translatesAutoresizingMaskIntoConstraints = false
-        themed { v in
-            v.layer?.backgroundColor = (v.mine ? Theme.accent.withAlphaComponent(0.13) : Theme.text.withAlphaComponent(0.06)).cgColor
-        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private static let pad = NSSize(width: 10, height: 6)
-
     /// Its size for a width at most `limit`: as narrow as its longest line.
     private func size(limit: CGFloat) -> NSSize {
-        let inner = max(40, limit - Self.pad.width * 2)
+        let inner = max(40, limit)
         let r = attributed.boundingRect(with: NSSize(width: inner, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading])
-        return NSSize(width: ceil(min(inner, r.width)) + Self.pad.width * 2 + 2, height: ceil(r.height) + Self.pad.height * 2)
+        return NSSize(width: ceil(min(inner, r.width)) + 2, height: ceil(r.height))
     }
 
     var limit: CGFloat = 340 { didSet { if limit != oldValue { invalidateIntrinsicContentSize() } } }
@@ -524,14 +571,9 @@ final class BubbleText: NSView, NSTextViewDelegate {
         invalidateIntrinsicContentSize()
     }
 
-    override func resizeSubviews(withOldSize oldSize: NSSize) {
-        super.resizeSubviews(withOldSize: oldSize)
-        if let list = enclosingScrollView?.documentView, list.bounds.width > 0 { limit = floor(list.bounds.width * 0.86) }
-    }
-
     override func layout() {
         super.layout()
-        text.frame = bounds.insetBy(dx: Self.pad.width, dy: Self.pad.height)
+        text.frame = bounds
     }
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {

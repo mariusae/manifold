@@ -164,7 +164,7 @@ final class ThreadTimelineView: NSView {
         placeholder.textColor = Theme.tertiaryText
         for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
         themed { v in
-            v.composerScroll.layer?.borderColor = Theme.divider.cgColor
+            v.composerScroll.layer?.borderColor = Flat.line.cgColor
             v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
         }
     }
@@ -270,6 +270,7 @@ final class ThreadTimelineView: NSView {
         if compact, chosen == run.thread.id { reply.contentTintColor = Theme.accent }
         let head = NSStackView(views: [place, NSView(), reply, resolve])
         head.spacing = 6
+        place.strong = true
         let id = run.thread.id
         reply.onClick = { [weak self] in self?.choose(id) }
         resolve.onClick = { [weak self] in
@@ -279,41 +280,40 @@ final class ThreadTimelineView: NSView {
         let column = NSStackView(views: [head])
         column.orientation = .vertical
         column.alignment = .leading
-        column.spacing = 4
+        column.spacing = 6
         head.translatesAutoresizingMaskIntoConstraints = false
+        let divider = HairlineView()
+        column.addArrangedSubview(divider)
+        divider.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        head.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        var previous: ThreadEntry?
         for (i, e) in run.entries.enumerated() {
-            if i == ruleAt { column.addArrangedSubview(rule()) }
-            column.addArrangedSubview(entryView(e))
+            if i == ruleAt { column.addArrangedSubview(rule()); previous = nil }
+            if e.isEmptyComment { continue }
+            let v = entryView(e, after: previous)
+            column.addArrangedSubview(v)
+            v.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+            previous = e
         }
         let box = RunBox(column, chosen: chosen == id, resolved: resolved)
         box.onClick = { [weak self] in self?.choose(id) }
         return box
     }
 
-    private func entryView(_ e: ThreadEntry) -> NSView {
+    private func entryView(_ e: ThreadEntry, after previous: ThreadEntry?) -> NSView {
         let when = BlockSummary.ago(e.at, now: Date()) ?? ""
         switch e.kind {
         case .comment(let text):
-            let pill = AuthorPill(e.author, icon: e.author.agentBlock.flatMap(model.icon))
-            pill.onClick = { [weak self] in
+            let width = (scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width) - 24
+            let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: CommentView.continues(e, after: previous), width: width)
+            v.onAuthor = { [weak self] in
                 guard let self, let b = e.author.agentBlock else { return }
                 self.delegate?.timeline(self, follow: MainWindowController.address(b))
             }
-            let time = NSTextField(labelWithString: when)
-            time.font = UIType.footnote
-            time.textColor = Theme.tertiaryText
-            let body = BubbleText(markdown: text, mine: e.author.isYou)
-            body.limit = max(200, (scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width) - 60)
-            body.onLink = { [weak self] url in
+            v.onLink = { [weak self] url in
                 guard let self else { return }
                 self.delegate?.timeline(self, follow: url.absoluteString)
             }
-            let meta = NSStackView(views: [pill, time])
-            meta.spacing = 6
-            let v = NSStackView(views: [meta, body])
-            v.orientation = .vertical
-            v.alignment = .leading
-            v.spacing = 3
             return v
         default:
             let who = e.author.isYou ? "you" : e.author.name
@@ -330,8 +330,13 @@ final class ThreadTimelineView: NSView {
             }
             let label = NSTextField(labelWithString: words + " · " + when)
             label.font = UIType.footnote
-            label.textColor = Theme.tertiaryText
-            return label
+            label.textColor = Theme.secondaryText
+            label.lineBreakMode = .byTruncatingTail
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            label.toolTip = words
+            let line = NSStackView(views: [label])
+            line.edgeInsets = NSEdgeInsets(top: 0, left: CommentView.avatar + CommentView.gap, bottom: 0, right: 0)
+            return line
         }
     }
 
@@ -472,20 +477,22 @@ final class RunBox: NSView {
         self.resolved = resolved
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 8
+        layer?.cornerRadius = Radius.surface
+        layer?.cornerCurve = .continuous
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             content.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
         ])
         alphaValue = resolved && !chosen ? 0.72 : 1
         themed { v in
-            v.layer?.backgroundColor = (v.chosen ? Theme.accent.withAlphaComponent(0.12) : Theme.text.withAlphaComponent(0.035)).cgColor
-            v.layer?.borderColor = (v.chosen ? Theme.accent.withAlphaComponent(0.6) : NSColor.clear).cgColor
-            v.layer?.borderWidth = v.chosen ? 1 : 0
+            // A card a shade lighter than what it's on, an edge round it.
+            v.layer?.backgroundColor = Theme.panel.cgColor
+            v.layer?.borderColor = (v.chosen ? Theme.accent.withAlphaComponent(0.7) : Theme.cardBorder).cgColor
+            v.layer?.borderWidth = v.chosen ? 1.5 : 0.5
         }
     }
 
@@ -496,6 +503,13 @@ final class RunBox: NSView {
 
 /// Words that go somewhere, clicked: a symbol before them.
 final class LinkLabel: NSView {
+    /// A heading's: semibold, in full ink.
+    var strong = false {
+        didSet {
+            label.font = strong ? .systemFont(ofSize: 11.5, weight: .semibold) : UIType.caption
+            label.textColor = strong ? Theme.text : Theme.secondaryText
+        }
+    }
     private let label = NSTextField(labelWithString: "")
     private let image = NSImageView()
     private let action: () -> Void
@@ -517,7 +531,7 @@ final class LinkLabel: NSView {
         ])
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         themed { v in
-            v.label.textColor = Theme.secondaryText
+            v.label.textColor = v.strong ? Theme.text : Theme.secondaryText
             v.image.contentTintColor = Theme.accent
         }
     }

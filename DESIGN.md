@@ -1204,9 +1204,13 @@ mention scattering cards about.
 
 **The chat.** A thread reads as a chat, the same wherever it's drawn:
 at its head, what it's about (the excerpt; drifted, said so); then its
-entries, each comment with its author's **pill** before it — *You* in
-plain ink on the right, an agent's face, name and colour on the left,
-the pill clicked going to the agent and the turn — and each event a
+entries, each comment as Quip's conversation shows one, all at the
+left: its author's round **mark** (your initial on the accent, an
+agent's face; clicked, the agent and the turn), their name in bold and
+when beside it, the words under the name in full ink, no bubble — one
+more from the same author just after, its words alone under theirs;
+in the timeline each thread's run a card a shade lighter than what
+it's on, its place a heading over a hairline — and each event a
 hairline sentence ("Resolved by Claude · 2m"); an agent at work on it
 shows working, as its tile does; at its foot the composer (↩ sends,
 ⇧↩ a line, `@` an agent, drops take references) and Resolve. Replying to
