@@ -361,7 +361,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         // The outline at the left, a third of the tile at most.
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
-            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            left = TileSidebar.width(in: bounds.width)
             sidebar.frame = NSRect(x: 0, y: bottom, width: left, height: top - bottom)
         }
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)

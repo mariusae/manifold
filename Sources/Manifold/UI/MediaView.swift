@@ -197,7 +197,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
                 if keeper.value("outline") == "1" { setSidebar(true) }
             }
             if let sidebar, !sidebar.isHidden {
-                let w = min(TileSidebar.width, (bounds.width / 3).rounded())
+                let w = TileSidebar.width(in: bounds.width)
                 sidebar.frame = NSRect(x: 0, y: 0, width: w, height: content.height)
                 content.origin.x = w
                 content.size.width -= w

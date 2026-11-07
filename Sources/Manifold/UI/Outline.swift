@@ -18,6 +18,8 @@ final class Outline {
         var running = false
         /// In the code font: a command, not a heading.
         var code = false
+        /// A path (a diff's file): cut short at its head, its name kept.
+        var path = false
     }
 
     private(set) var items: [Item] = []
@@ -48,6 +50,19 @@ final class Outline {
     private static var made = 0
     /// Its space's index watches it (once).
     var indexed = false
+
+    /// What its sidebar's field narrows it to: the words each item shown
+    /// has (in its title or detail) — the ticks and their list too.
+    var filter: [String] = [] {
+        didSet { if filter != oldValue { changed() } }
+    }
+
+    func admits(_ i: Int) -> Bool {
+        filter.allSatisfy { (items[i].title + " " + items[i].detail).lowercased().contains($0) }
+    }
+
+    /// The items the filter admits, by index.
+    var shown: [Int] { filter.isEmpty ? Array(items.indices) : items.indices.filter(admits) }
 
     func set(_ fresh: [Item]) {
         guard fresh != items else { return }
@@ -129,7 +144,7 @@ final class OutlineTicks: NSView {
     override var isFlipped: Bool { true }
 
     private func refresh() {
-        isHidden = !available || outline.items.isEmpty
+        isHidden = !available || outline.shown.isEmpty
         needsDisplay = true
         // The list's rows made only while it shows for these ticks: they were
         // made for every entry at each layout (every tile's ticks), the list
@@ -140,14 +155,17 @@ final class OutlineTicks: NSView {
     /// Which tick stands for the item you're at: the item itself among
     /// five or fewer; its share of the way down a longer outline.
     var currentTick: Int? {
-        guard let c = outline.current, !outline.items.isEmpty else { return nil }
-        let n = min(outline.items.count, Self.maxTicks)
-        guard outline.items.count > n else { return c }
-        return Int((Double(c) / Double(outline.items.count - 1) * Double(n - 1)).rounded())
+        let shown = outline.shown
+        guard let c = outline.current, !shown.isEmpty else { return nil }
+        // Narrowed: the nearest shown at or before where you are.
+        let at = shown.lastIndex { $0 <= c } ?? 0
+        let n = min(shown.count, Self.maxTicks)
+        guard shown.count > n else { return at }
+        return Int((Double(at) / Double(max(1, shown.count - 1)) * Double(n - 1)).rounded())
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let n = min(outline.items.count, Self.maxTicks)
+        let n = min(outline.shown.count, Self.maxTicks)
         let span = CGFloat(n - 1) * Self.spacing + Self.thickness
         var y = ((bounds.height - span) / 2).rounded()
         let right = bounds.width - 4
@@ -163,9 +181,12 @@ final class OutlineTicks: NSView {
 
     /// The outline's items as the list's rows.
     private func rows() -> [FloatingList.Row] {
-        outline.items.enumerated().map { i, item in
-            FloatingList.Row(title: item.title, detail: item.detail, level: item.level, code: item.code,
-                             failed: item.failed, running: item.running, current: i == outline.current,
+        let shown = outline.shown, c = outline.current
+        let here = c.flatMap { c in shown.last { $0 <= c } }
+        return shown.map { i in
+            let item = outline.items[i]
+            return FloatingList.Row(title: item.title, detail: item.detail, level: item.level, code: item.code,
+                             failed: item.failed, running: item.running, current: i == here,
                              action: { [weak outline] in
                                  FloatingList.shared.hideNow()
                                  outline?.pick(i)
@@ -206,7 +227,7 @@ final class OutlineTicks: NSView {
 
     /// Debugging: the ticks as drawn, and the items.
     var debugState: String {
-        let n = min(outline.items.count, Self.maxTicks)
+        let n = min(outline.shown.count, Self.maxTicks)
         return "ticks \(n) current tick \(currentTick.map(String.init) ?? "-") hidden \(isHidden)\n"
             + outline.items.enumerated().map { "\($0.offset == outline.current ? "*" : " ")\(String(repeating: "  ", count: $0.element.level))\($0.element.title)\($0.element.detail.isEmpty ? "" : " · " + $0.element.detail)" }.joined(separator: "\n")
     }

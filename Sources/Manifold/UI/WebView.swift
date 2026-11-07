@@ -173,7 +173,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         super.layout()
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
-            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            left = TileSidebar.width(in: bounds.width)
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
         web.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height)

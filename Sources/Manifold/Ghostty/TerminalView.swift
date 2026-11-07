@@ -417,7 +417,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         set {
             given = newValue
             guard let sidebar, sidebarOn, let parent = superview else { return super.frame = newValue }
-            let w = min(TileSidebar.width, (newValue.width / 3).rounded())
+            let w = TileSidebar.width(in: newValue.width)
             if sidebar.superview !== parent { parent.addSubview(sidebar) }
             sidebar.frame = NSRect(x: newValue.minX, y: newValue.minY, width: w, height: newValue.height)
             super.frame = NSRect(x: newValue.minX + w, y: newValue.minY, width: newValue.width - w, height: newValue.height)

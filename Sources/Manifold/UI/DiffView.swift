@@ -129,7 +129,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
-            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            left = TileSidebar.width(in: bounds.width)
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - 32)
         }
         var top = bounds.height - 32
@@ -265,7 +265,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         marks = []
         for (i, r) in rowsView.rows.enumerated() {
             switch r.kind {
-            case let .file(name): entries.append(.init(title: name, level: 0)); marks.append(i)
+            case let .file(name): entries.append(.init(title: name, level: 0, path: true)); marks.append(i)
             case .hunk:
                 // The hunk by what it's in (the function a patch names), else its line.
                 let heading = r.text.trimmingCharacters(in: .whitespaces)

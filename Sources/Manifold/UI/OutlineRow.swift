@@ -13,6 +13,8 @@ struct OutlineEntry: Equatable {
     var level = 0
     var failed = false
     var running = false
+    /// A path: cut short at its head, the file's name kept.
+    var path = false
 }
 
 /// An outline row: a mark, the words, and the outcome in grey at the right.
@@ -40,6 +42,7 @@ final class OutlineRow: NSTableCellView {
     func show(_ e: OutlineEntry) {
         level = e.level
         title.stringValue = e.title
+        title.lineBreakMode = e.path ? .byTruncatingHead : .byTruncatingTail
         title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : FontTheme.code(11.5)
         detail.stringValue = e.detail
         detail.isHidden = e.detail.isEmpty

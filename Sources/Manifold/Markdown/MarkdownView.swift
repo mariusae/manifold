@@ -327,7 +327,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
         // The outline at the left, a third of the tile at most.
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
-            left = min(TileSidebar.width, (bounds.width / 3).rounded())
+            left = TileSidebar.width(in: bounds.width)
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
         let r = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
@@ -354,7 +354,7 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
 
     /// Where the page goes: right of the outline, left of the scrubber.
     private var pageFrame: NSRect {
-        let left = sidebar.flatMap { $0.isHidden ? nil : min(TileSidebar.width, (bounds.width / 3).rounded()) } ?? 0
+        let left = sidebar.flatMap { $0.isHidden ? nil : TileSidebar.width(in: bounds.width) } ?? 0
         return NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
     }
 

@@ -12,7 +12,21 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     enum Page: String { case contents, pages }
 
-    static let width: CGFloat = 220
+    /// How wide, in every tile: as one was last dragged to (its right
+    /// edge), within a share of its tile.
+    static var width: CGFloat {
+        get { UserDefaults.standard.object(forKey: "TileSidebarWidth").map { CGFloat(($0 as? Double) ?? 220) } ?? 220 }
+        set {
+            UserDefaults.standard.set(Double(min(max(newValue, 140), 560).rounded()), forKey: "TileSidebarWidth")
+            NotificationCenter.default.post(name: widthChanged, object: nil)
+        }
+    }
+    static let widthChanged = Notification.Name("TileSidebarWidthChanged")
+    /// Its width in a tile this wide.
+    static func width(in tile: CGFloat) -> CGFloat { min(width, (tile * 0.6).rounded()) }
+    /// Its right edge: a hairline, and a handle to drag it wider or narrower.
+    private let edge = CALayer()
+    private let handle = ResizeHandleView()
     let outline: Outline
     var onPageChange: ((Page) -> Void)?
 
@@ -70,10 +84,14 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         ground.endPoint = CGPoint(x: 1, y: 0.5)
         ground.locations = [0, 0.45, 1]
         ground.actions = ["frame": NSNull(), "bounds": NSNull(), "position": NSNull(), "colors": NSNull()]
+        // Set off from its tile by a hairline at its edge, over the ground.
+        edge.actions = ["frame": NSNull(), "bounds": NSNull(), "position": NSNull(), "backgroundColor": NSNull()]
+        layer?.addSublayer(edge)
         // (Again a turn later: its tile's colour may be set after its own.)
         themed { v in
             v.shadeGround()
             DispatchQueue.main.async { [weak v] in v?.shadeGround() }
+            v.edge.backgroundColor = Theme.divider.cgColor
         }
         let c = NSTableColumn(identifier: .init("entry"))
         table.addTableColumn(c)
@@ -122,6 +140,14 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             table.menu = NSMenu()
             table.menu?.delegate = self
         }
+        handle.onDrag = { [weak self] x in
+            guard let self else { return }
+            Self.width = self.convert(NSPoint(x: x, y: 0), from: nil).x
+        }
+        addSubview(handle)
+        NotificationCenter.default.addObserver(forName: Self.widthChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.superview?.needsLayout = true
+        }
         show(page: .contents)
         outline.watch(self) { [weak self] in self?.outlineChanged() }
         outlineChanged()
@@ -157,6 +183,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         super.layout()
         ground.frame = bounds
         shadeGround()
+        edge.frame = NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height)
+        handle.frame = NSRect(x: bounds.width - 6, y: 0, width: 6, height: bounds.height)
         var top = bounds.height
         if let tabs {
             tabs.sizeToFit()
@@ -173,11 +201,6 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         scroll.frame = body
         pagesView?.frame = body
         empty.frame = NSRect(x: 8, y: body.midY - 10, width: body.width - 16, height: 20)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        Theme.divider.setFill()
-        NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height).fill()
     }
 
     func show(page: Page) {
@@ -206,11 +229,13 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     /// with every word in their title or detail, flat.
     private func refilter() {
         let words = search.stringValue.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        // The outline narrowed, wherever it shows (its ticks too).
+        outline.filter = words
         rows = entries.indices.filter { i in words.allSatisfy { (entries[i].title + " " + entries[i].detail).lowercased().contains($0) } }
         table.reloadData()
         empty.stringValue = words.isEmpty ? emptyText : "Nothing matches"
         empty.isHidden = page != .contents || !rows.isEmpty
-        if filtering {
+        if filtering, isSearching {
             // The first found chosen, for ↩.
             if !rows.isEmpty { select(0) }
         } else {
@@ -222,11 +247,14 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     /// The entry you're in, marked and kept in sight.
     private var current: Int? {
-        didSet { if current != oldValue, !filtering { markCurrent() } }
+        didSet { if current != oldValue, !isSearching { markCurrent() } }
     }
 
+    /// The entry you're in marked — filtered, the nearest listed at or
+    /// before it (a file whose changes the filter hides) — unless the
+    /// field has the keyboard, its first found chosen for ↩.
     private func markCurrent() {
-        if let current, let row = rows.firstIndex(of: current) { select(row) } else {
+        if let current, let row = rows.lastIndex(where: { $0 <= current }) ?? (rows.first == current ? 0 : nil) { select(row) } else {
             marking = true
             table.deselectAll(nil)
             marking = false
@@ -281,6 +309,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         let ended = onSearchEnd
         onSearchEnd = nil
         ended?()
+        markCurrent()
     }
 
     func controlTextDidChange(_ obj: Notification) { refilter() }
@@ -317,7 +346,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             return r
         }()
         let e = entries[rows[row]]
-        cell.show(OutlineEntry(id: row, line: e.code ? nil : 0, title: e.title, detail: e.detail, level: filtering ? 0 : e.level, failed: e.failed, running: e.running))
+        cell.show(OutlineEntry(id: row, line: e.code ? nil : 0, title: e.title, detail: e.detail, level: filtering ? 0 : e.level, failed: e.failed, running: e.running, path: e.path))
         return cell
     }
 
