@@ -955,6 +955,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var spaceSwitcher: SpaceSwitcherView?
     var spaceSwitchShow: DispatchWorkItem?
     var spaceSwitchMonitors: [Any] = []
+    /// A space's card under the pointer on its square in the strip.
+    var spacePeek: SpaceSwitcherView?
+    var spacePeekWork: DispatchWorkItem?
     /// ⌘ held a moment: the strip's numbers shown, till it's let go.
     var commandHeld: DispatchWorkItem?
     var commandMonitor: Any?

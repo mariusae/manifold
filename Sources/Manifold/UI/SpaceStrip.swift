@@ -378,7 +378,7 @@ extension MainWindowController {
                 self.hosts.select(id)
             }
             strip.onHover = { [weak self] id, rect in
-                guard let self, let window = self.window, let id else { return HoverCard.shared.hide() }
+                guard let self, let window = self.window, let id else { self?.hideSpacePeek(); return }
                 self.peekSpace(id, beside: rect, in: window)
             }
             strip.onMenu = { [weak self] id in self?.spaceMenu(id) }
@@ -415,24 +415,49 @@ extension MainWindowController {
 
     /// A space peeked at from the strip: its name, where, and its tiles —
     /// what wants you first, each with what its status says.
+    /// The pointer on a square: the space's card, as ⌘` shows it (a picture
+    /// of its grid), beside the square — a moment after, and at once when
+    /// moving from one square to the next.
     private func peekSpace(_ id: BlockID, beside rect: NSRect, in window: NSWindow) {
-        guard let a = hosts.arrangement(id) else { return HoverCard.shared.hide() }
-        var detail = a.placements.count == 1 ? "1 tile" : "\(a.placements.count) tiles"
-        if !a.docked.isEmpty { detail += ", \(a.docked.count) docked" }
-        if hosts.ordered.count > 1 { detail += " · on \(hosts.label(of: id.host))" }
-        func line(_ p: Placement, docked: Bool) -> (Int, String) {
-            let b = hosts.block(p.block)
-            let rank = switch StatusGlyph.look(of: b) { case .needsYou: 0; case .failed(read: false): 1; case .done(read: false): 2; default: 3 }
-            var s = (b.map(Self.linkTitle) ?? "?")
-            if let r = StatusGlyph.remark(b) { s += " — " + r }
-            if docked { s += "  (docked)" }
-            return (rank, s)
+        HoverCard.shared.hide()
+        spacePeekWork?.cancel()
+        let show = { [weak self] in
+            guard let self, let card = self.spaceCard(id) else { return }
+            let v = self.spacePeek ?? SpaceSwitcherView()
+            v.cards = [card]
+            v.chosen = -1
+            let size = v.wantedSize
+            let r = self.root.convert(rect, from: nil)
+            // Out beside the sidebar (clear of the other squares), its top
+            // level with the square's.
+            let x = min(self.sidebar.frame.maxX + 8, self.root.bounds.maxX - size.width - 8)
+            let y = max(8, min(r.maxY - size.height + 6, self.root.bounds.maxY - size.height - 8))
+            v.frame = NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
+            if v.superview == nil {
+                v.alphaValue = 0
+                self.root.addSubview(v)
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = Motion.fast
+                    v.animator().alphaValue = 1
+                }
+            }
+            self.spacePeek = v
         }
-        let lines = (a.columns.flatMap { $0 }.map { line($0, docked: false) } + a.docked.reversed().map { line($0.placement, docked: true) })
-            .enumerated().sorted { ($0.element.0, $0.offset) < ($1.element.0, $1.offset) }.map(\.element.1)
-        let body = lines.prefix(12).joined(separator: "\n") + (lines.count > 12 ? "\n…and \(lines.count - 12) more" : "")
-        HoverCard.shared.show(key: "space/" + id.description, title: title(of: a), detail: detail, body: body, font: nil,
-                              beside: rect, in: window, delay: 0.3, above: true)
+        if spacePeek != nil { return show() }
+        let work = DispatchWorkItem(block: show)
+        spacePeekWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    /// The square's card put away.
+    func hideSpacePeek() {
+        spacePeekWork?.cancel()
+        guard let v = spacePeek else { return }
+        spacePeek = nil
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = Motion.fast
+            v.animator().alphaValue = 0
+        }, completionHandler: { v.removeFromSuperview() })
     }
 
     /// A space's menu, from its square in the strip: its colour, its
