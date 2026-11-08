@@ -2,22 +2,24 @@ import AppKit
 import ManifoldCore
 
 /// The threads' overlay (§3.12), over the window from anywhere (⌥⌘M),
-/// taking no tile: Here — the place you're at (a terminal's command, a
-/// PDF's page, a page's selection, else the tile), its threads, or the
-/// composer for one — and Space, the space's timeline. ⎋ closes it; a
-/// place in it clicked is gone to, the overlay kept.
+/// taking no tile: the place you're at (a terminal's command, a PDF's
+/// page, a page's selection, else the tile; else the space), its threads,
+/// or the composer for one. The space's timeline is the sidebar's. ⎋
+/// closes it; its ↖↘ makes the thread a tile; a place in it clicked is
+/// gone to, the overlay kept.
 final class ThreadOverlayView: NSView {
     let chat = ThreadChatView()
-    let timeline = ThreadTimelineView()
-    private let tabs = NSSegmentedControl(labels: ["Here", "Space"], trackingMode: .selectOne, target: nil, action: nil)
     private let close = IconButton(symbol: "xmark", size: 10, target: nil, action: nil)
+    private let popOut = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
     private let titleLabel = NSTextField(labelWithString: "")
     var onClose: (() -> Void)?
-    var onTab: ((Int) -> Void)?
-    /// Here's place, and its threads, stepped through.
+    var onPopOut: (() -> Void)?
+    /// The place, and its threads, stepped through.
     var herePlace: ThreadPlace?
     var hereThreads: [BlockID] = []
     var hereTitle = "" { didSet { titleLabel.stringValue = hereTitle } }
+    /// A thread to make a tile of (none yet: a new one's composer).
+    var canPopOut = false { didSet { popOut.isEnabled = canPopOut; popOut.alphaValue = canPopOut ? 1 : 0.35 } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -28,18 +30,18 @@ final class ThreadOverlayView: NSView {
         layer?.shadowOpacity = 0.35
         layer?.shadowRadius = 18
         layer?.shadowOffset = NSSize(width: 0, height: -6)
-        tabs.segmentStyle = .rounded
-        tabs.controlSize = .small
-        tabs.target = self
-        tabs.action = #selector(tabChosen)
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⎋)"
-        titleLabel.font = UIType.caption
-        titleLabel.textColor = Theme.secondaryText
+        popOut.target = self
+        popOut.action = #selector(popOutClicked)
+        popOut.toolTip = "Open the Thread as a Tile"
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.textColor = Theme.text
         titleLabel.lineBreakMode = .byTruncatingMiddle
         chat.fits = false
-        for v in [tabs, titleLabel, close, chat, timeline] as [NSView] { addSubview(v) }
+        chat.showsTileButton = false
+        for v in [titleLabel, popOut, close, chat] as [NSView] { addSubview(v) }
         themed { v in
             // Lighter than the window it's over, its edge a hairline.
             v.layer?.backgroundColor = Theme.panel.cgColor
@@ -50,42 +52,22 @@ final class ThreadOverlayView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var tab: Int {
-        get { tabs.selectedSegment }
-        set {
-            tabs.selectedSegment = newValue
-            chat.isHidden = newValue != 0
-            titleLabel.isHidden = newValue != 0
-            timeline.isHidden = newValue != 1
-            needsLayout = true
-        }
-    }
-
-    var hasHere: Bool = true { didSet { tabs.setEnabled(hasHere, forSegment: 0) } }
-
-    @objc private func tabChosen() {
-        tab = tabs.selectedSegment
-        onTab?(tab)
-    }
-
     @objc private func closeClicked() { onClose?() }
+    @objc private func popOutClicked() { onPopOut?() }
 
     /// ⎋, wherever the keyboard is in it.
     override func cancelOperation(_ sender: Any?) { onClose?() }
 
-    func focus() { window?.makeFirstResponder(tab == 0 ? chat.composer : timeline.composer) }
+    func focus() { window?.makeFirstResponder(chat.composer) }
 
     override func layout() {
         super.layout()
-        let pad: CGFloat = 10
-        tabs.sizeToFit()
-        let top = bounds.height - pad - 22
-        tabs.frame = NSRect(x: pad + 2, y: top, width: tabs.frame.width, height: 22)
-        close.frame = NSRect(x: bounds.width - pad - 18, y: top + 2, width: 18, height: 18)
-        titleLabel.frame = NSRect(x: tabs.frame.maxX + 10, y: top + 3, width: max(0, close.frame.minX - tabs.frame.maxX - 20), height: 16)
-        let content = NSRect(x: 0, y: 0, width: bounds.width, height: top - 4)
-        chat.frame = content
-        timeline.frame = content
+        let pad: CGFloat = 12
+        let top = bounds.height - pad - 20
+        close.frame = NSRect(x: bounds.width - pad - 18, y: top + 1, width: 18, height: 18)
+        popOut.frame = NSRect(x: close.frame.minX - 24, y: top + 1, width: 18, height: 18)
+        titleLabel.frame = NSRect(x: pad + 4, y: top + 1, width: max(0, popOut.frame.minX - pad - 12), height: 18)
+        chat.frame = NSRect(x: 0, y: 0, width: bounds.width, height: top - 4)
     }
 
     // Clicks stop here, not on the tiles beneath.
@@ -94,39 +76,38 @@ final class ThreadOverlayView: NSView {
 
 extension MainWindowController {
     /// ⌥⌘M where there's no editor's or diff's place: the overlay, on the
-    /// place you're at (`place`, else the focused tile's), or the space.
+    /// place you're at (`place`, else the space), or a thread asked for.
     func showThreadOverlay(_ place: ThreadPlace?, thread: BlockID? = nil, tab: Int? = nil) {
-        if let o = threadUI.overlay, o.superview != nil, place == nil, thread == nil, tab == nil { return closeThreadOverlay() }
+        if let o = threadUI.overlay, o.superview != nil, place == nil, thread == nil { return closeThreadOverlay() }
         threadUI.popover?.close()
         let o = threadUI.overlay ?? ThreadOverlayView()
         threadUI.overlay = o
         o.onClose = { [weak self] in self?.closeThreadOverlay() }
         o.chat.composer.onCancel = { [weak self] in self?.closeThreadOverlay() }
-        o.timeline.composer.onCancel = { [weak self] in self?.closeThreadOverlay() }
-        o.onTab = { [weak self, weak o] t in
-            guard let self, let o else { return }
-            if t == 1 { self.refresh(o.timeline) }
-            o.focus()
+        o.onPopOut = { [weak self, weak o] in
+            guard let self, let id = o?.chat.threadID else { return }
+            self.closeThreadOverlay()
+            self.popOutThread(id)
         }
-        o.timeline.space = selected
-        o.timeline.marksWhenOpened = nil
-        // Here: the thread asked for, else the place given or under the caret.
-        let here: ThreadPlace? = thread == nil ? place : nil
+        // The thread asked for, else the place given — else the space.
+        var here: ThreadPlace? = thread == nil ? place : nil
+        if thread == nil, here == nil, let space = selected {
+            here = ThreadPlace(block: space, title: hosts.arrangement(space).map(title(of:)))
+        }
         o.herePlace = here
         o.hereThreads = thread.map { [$0] } ?? here.map { p in hosts.threads(about: p.block, anchor: p.anchor).sorted { $0.created > $1.created }.map(\.id) } ?? []
-        o.hasHere = here != nil || thread != nil
         let openHere = o.hereThreads.first { hosts.block($0)?.thread?.resolved != true } ?? o.hereThreads.first
         o.chat.threadID = openHere
         o.chat.newPlace = openHere == nil ? here : nil
         o.chat.newSpace = selected
-        o.hereTitle = (thread.flatMap { hosts.block($0)?.thread?.about } ?? here).map { describe($0).title } ?? ""
-        o.tab = tab ?? (o.hasHere ? 0 : 1)
+        o.canPopOut = openHere != nil
+        o.hereTitle = (thread.flatMap { hosts.block($0)?.thread?.title } ?? openHere.flatMap { hosts.block($0)?.thread?.title })
+            ?? ((thread.flatMap { hosts.block($0)?.thread?.about } ?? here).map { describe($0).title } ?? "")
         if o.superview == nil {
             root.addSubview(o)
             layoutThreadOverlay()
         }
         watch(o.chat)
-        watch(o.timeline)
         DispatchQueue.main.async { o.focus() }
     }
 
@@ -156,7 +137,7 @@ extension MainWindowController {
         case "mentions", "message":
             // The composer's `@` list, or what it would send.
             guard let o = threadUI.overlay else { return "no overlay" }
-            let c = o.tab == 0 ? o.chat.composer : o.timeline.composer
+            let c = o.chat.composer
             if w[0] == "mentions", let path = w.dropFirst().first { return c.mentions.debugPicture(path) }
             return w[0] == "mentions" ? c.mentions.debugRows : "“\(c.message)” · shown “\(c.string)”"
         case "thread":
@@ -164,15 +145,14 @@ extension MainWindowController {
             let end = w.dropFirst().first ?? ""
             guard let t = hosts.threads.first(where: { $0.id.ulid.hasSuffix(end) }) else { return "no thread \(end)" }
             showThreadOverlay(nil, thread: t.id)
-        case "tab":
-            if let o = threadUI.overlay { o.tab = Int(w.dropFirst().first ?? "0") ?? 0; o.onTab?(o.tab) }
+        case "popout": threadUI.overlay?.onPopOut?()
         case "send":
             guard let o = threadUI.overlay else { return "no overlay" }
             let text = w.dropFirst().first ?? ""
-            if o.tab == 0 { threadChat(o.chat, send: text) } else { timeline(o.timeline, send: text, to: o.timeline.chosen) }
+            threadChat(o.chat, send: text)
         default: break
         }
         guard let o = threadUI.overlay, o.superview != nil else { return "no overlay" }
-        return "overlay \(Int(o.frame.width))x\(Int(o.frame.height)) · tab \(o.tab == 0 ? "here" : "space") · here “\(o.hereTitle)” \(o.hasHere ? "" : "(none)") · thread \(o.chat.threadID.map { String($0.ulid.suffix(6)) } ?? "new") · \(o.hereThreads.count) here · timeline runs \(o.timeline.model.runs.count)"
+        return "overlay \(Int(o.frame.width))x\(Int(o.frame.height)) · “\(o.hereTitle)” · thread \(o.chat.threadID.map { String($0.ulid.suffix(6)) } ?? "new") · \(o.hereThreads.count) here · pop out \(o.canPopOut)"
     }
 }

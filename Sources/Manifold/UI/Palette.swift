@@ -624,9 +624,11 @@ extension Palette {
             // cooler than the paper, by night its paper unlit; the pools
             // faint, the tint's (its red) a blush.
             backdrop: Backdrop(
-                // Toned down: about six-tenths the saturation it had.
-                light: .init(stops: [(0.11, 0.06, 0.95), (0.06, 0.08, 0.94), (0.12, 0.07, 0.91), (0.14, 0.03, 0.97)],
-                             pool: (0.09, 0.98), tintPool: (0.12, 0.98)),
+                // Deeper than the paper the tiles are, from corner to
+                // corner more than before, as a desk under the pages: a
+                // warm grey, little colour in it.
+                light: .init(stops: [(0.11, 0.11, 0.89), (0.07, 0.13, 0.85), (0.12, 0.10, 0.80), (0.14, 0.05, 0.92)],
+                             pool: (0.10, 0.96), tintPool: (0.12, 0.96)),
                 dark: .init(stops: [(0.10, 0.10, 0.19), (0.06, 0.13, 0.18), (0.11, 0.10, 0.15), (0.13, 0.05, 0.11)],
                             pool: (0.16, 0.25), tintPool: (0.22, 0.31)),
                 // A warm umber, softer: the paper deepened, not greyed.
@@ -934,8 +936,10 @@ extension Palette {
             // FT pink into its paper and wheat; by night slate, a claret
             // dusk in it. The tint's pool, teal.
             backdrop: Backdrop(
-                light: .init(stops: [(0.07, 0.24, 0.99), (0.08, 0.11, 1.0), (0.08, 0.17, 0.95), (0.075, 0.07, 0.99)],
-                             pool: (0.2, 1), tintPool: (0.35, 1)),
+                // The salmon paper deepened under the tiles, more from
+                // corner to corner: the pages set apart from it.
+                light: .init(stops: [(0.07, 0.30, 0.93), (0.08, 0.18, 0.96), (0.075, 0.26, 0.84), (0.075, 0.12, 0.93)],
+                             pool: (0.22, 0.98), tintPool: (0.35, 0.98)),
                 dark: .init(stops: [(0.61, 0.32, 0.24), (0.60, 0.42, 0.22), (0.93, 0.35, 0.20), (0.61, 0.22, 0.14)],
                             pool: (0.4, 0.3), tintPool: (0.6, 0.4)),
                 // A warm ink, as FT's black-80: the paper deepened, not greyed.

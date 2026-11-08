@@ -402,14 +402,14 @@ extension MainWindowController: ThreadChatDelegate {
         // Elsewhere, the overlay: about a terminal's command, a PDF's page,
         // a page (its words selected, the quote it's about), the tile; or
         // the space.
-        guard let here else { return showThreadOverlay(nil, tab: 1) }
+        guard let here else { return showThreadOverlay(nil) }
         Task { @MainActor [weak self] in
             guard let self else { return }
             let selected = f.block?.kind == .web ? await v.maniSelection() : nil
             self.threadPlace(here) { [weak self] place in
                 var place = place
                 if let s = selected?.text, !s.isEmpty { place?.context = "“" + String(s.prefix(400)) + "”" }
-                self?.showThreadOverlay(place, tab: place == nil ? 1 : nil)
+                self?.showThreadOverlay(place)
             }
         }
     }
@@ -654,14 +654,11 @@ extension MainWindowController: ThreadTimelineDelegate {
     /// none but the space) and the thread read in the overlay — unless it's
     /// the overlay's own timeline, which reads it there.
     func timeline(_ view: ThreadTimelineView, goToPlaceOf thread: BlockID) {
-        let inOverlay = threadUI.overlay?.timeline === view
         if !aboutTheSpace(thread) { goToPlace(ofThread: thread) }
-        if inOverlay { return showThreadOverlay(nil, thread: thread) }
         DispatchQueue.main.async { [weak self] in self?.showThreadOverlay(nil, thread: thread) }
     }
 
     func timeline(_ view: ThreadTimelineView, popOut thread: BlockID) {
-        if threadUI.overlay?.timeline === view { closeThreadOverlay() }
         popOutThread(thread)
     }
 

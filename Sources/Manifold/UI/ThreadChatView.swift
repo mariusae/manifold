@@ -68,6 +68,8 @@ final class ThreadChatView: NSView {
     private let placeholder = NSTextField(labelWithString: "")
     private let resolveButton = FlatButton("Resolve", symbol: "checkmark", font: UIType.detail)
     private let tileButton = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
+    /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
+    var showsTileButton = true
     private let sendButton = FlatButton("Send", style: .primary, font: UIType.detail)
     /// The most it grows to, where it's fitted (a card).
     var maxHeight: CGFloat = 560
@@ -162,7 +164,7 @@ final class ThreadChatView: NSView {
         placeLabel.stringValue = m.placeTitle
         driftLabel.stringValue = m.drift ?? ""
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
-        tileButton.isHidden = m.inTile || m.thread == nil
+        tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
         if let context = place?.context, !context.isEmpty {
             contextView.isHidden = false
             contextView.attributedStringValue = Self.context(context, diff: place?.diff != nil)
