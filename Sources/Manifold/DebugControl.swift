@@ -549,7 +549,8 @@ enum DebugControl {
         case "dock":
             // "dock": the space's columns, each tile with its share, and what's
             // docked, with where each was; "dock it": the focused tile docked
-            // (⌘M); "dock back <placement suffix>": that one gone to.
+            // (⌘M); "dock back <placement suffix>": that one gone to; "dock
+            // click": the focused tile's bar clicked.
             // "dock golink <placement suffix> [over|beside]": that tile's block
             // followed from the focused tile's links, as a badge's link clicked.
             // "dock focus <placement suffix>": that tile focused.

@@ -406,7 +406,10 @@ close. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌘-click
 fills its column, docking the others; ⌥-click fills all of it but the
 others' bars, which stay in the grid, each down to its bar — Tile ▸
-Fill the Column, Keeping Bars, ⌃⌥⌘=; ⌃-click or the symbol opens its menu), and as a tile narrows
+Fill the Column, Keeping Bars, ⌃⌥⌘=; after either, a click on its bar
+puts the column back as it was, those docked back where they were and
+every share as it was — as acme's — if nothing's changed it since;
+⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
 show: the place goes first, then maximize, then the links, and the
 status's word becomes a dot; close and the status stay, and last the

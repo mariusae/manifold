@@ -909,6 +909,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The dock as a shelf at the grid's foot (View ▸ Show Dock Shelf).
     let dockShelf = DockShelfView()
+    /// The column the last tile to fill one left, and as it was before.
+    var columnFill: ColumnFill?
     /// The space whose dock the shelf last saw, and what was docked: what
     /// changed since flies between the grid and the shelf.
     var dockShelfSeen: (space: BlockID?, docked: Set<PlacementID>)?
@@ -1808,6 +1810,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func debugDock(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         if w.first == "it" { dockTile(nil) }
+        // "dock click": the focused tile's bar clicked (grown a step, or a fill undone).
+        if w.first == "click", let f = arrangement?.focused { gridGrow(f) }
         if w.first == "back", w.count > 1, let p = arrangement?.placements.first(where: { $0.id.hasSuffix(w[1]) }) { focus(p.id) }
         guard let b = arrangement else { return "no space" }
         func name(_ p: Placement) -> String { "\(hosts.block(p.block)?.displayTitle ?? "?")#\(p.id.suffix(4))" }
@@ -3901,8 +3905,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func fillColumn(_ sender: Any?) {
-        guard let a = arrangement, let f = a.focused else { return }
-        appendToSelected(a.growing(f, whole: true))
+        guard let f = arrangement?.focused else { return }
+        fill(f, keepingBars: false)
     }
 
     /// The focused tile all its column but the others' bars (as its bar
@@ -8478,22 +8482,63 @@ extension MainWindowController: GridDelegate {
     /// A pill clicked: its tile grows a step, as acme's does.
     func gridGrow(_ placement: PlacementID) {
         guard let a = arrangement else { return }
+        // Just filled (⌘- or ⌥-clicked): clicked, its column as it was (acme's).
+        if unfill(placement) { return }
         appendToSelected(a.growing(placement))
     }
 
     /// A pill ⌘-clicked: its tile fills the column, the others docked.
-    func gridFill(_ placement: PlacementID) {
-        guard let a = arrangement else { return }
-        appendToSelected(a.growing(placement, whole: true))
+    func gridFill(_ placement: PlacementID) { fill(placement, keepingBars: false) }
+
+    /// A column as it was before a tile filled it — its tiles' shares, and
+    /// those the filling docked — and as the filling left it, to tell it's
+    /// still so.
+    struct ColumnFill {
+        var space: BlockID
+        var tile: PlacementID
+        var before: [PlacementID: Double]
+        var docked: [PlacementID]
+        var after: [PlacementID]
+        var afterHeights: [PlacementID: Double]
+    }
+
+    /// A tile filling its column — the others docked (⌘-click), or down
+    /// to their bars (`keepingBars`, ⌥-click) — the column as it was kept,
+    /// for a click on its bar to put back.
+    func fill(_ placement: PlacementID, keepingBars: Bool) {
+        guard let a = arrangement, let space = selected, let (c, _) = a.locate(placement) else { return }
+        let events = keepingBars ? a.squeezing(placement) : a.growing(placement, whole: true)
+        guard !events.isEmpty else { return }
+        var after = a
+        for e in events { after.apply(e) }
+        let column = a.columns[c]
+        let left = after.locate(placement).map { after.columns[$0.0] } ?? []
+        columnFill = ColumnFill(space: space, tile: placement,
+                                before: Dictionary(uniqueKeysWithValues: column.map { ($0.id, a.height(of: $0.id)) }),
+                                docked: column.map(\.id).filter { after.isDocked($0) },
+                                after: left.map(\.id),
+                                afterHeights: Dictionary(uniqueKeysWithValues: left.map { ($0.id, after.height(of: $0.id)) }))
+        appendToSelected(events)
+    }
+
+    /// The column a tile filled put back as it was — those docked back
+    /// where they were, every share as it was — if it's still as the
+    /// filling left it; else (changed since) nothing, and forgotten.
+    private func unfill(_ placement: PlacementID) -> Bool {
+        guard let f = columnFill, f.tile == placement else { return false }
+        columnFill = nil
+        guard f.space == selected, let a = arrangement, let (c, _) = a.locate(placement),
+              a.columns[c].map(\.id) == f.after,
+              f.after.allSatisfy({ abs(a.height(of: $0) - (f.afterHeights[$0] ?? -1)) < 1e-6 }),
+              f.docked.allSatisfy(a.isDocked) else { return false }
+        appendToSelected(f.docked.map { Event.undock($0) } + [.heights(f.before), .focus(placement)])
+        return true
     }
 
 
     /// A bar ⌥-clicked: its tile takes the column but for the others'
     /// bars, which stay in the grid.
-    func gridSqueeze(_ placement: PlacementID) {
-        guard let a = arrangement else { return }
-        appendToSelected(a.squeezing(placement))
-    }
+    func gridSqueeze(_ placement: PlacementID) { fill(placement, keepingBars: true) }
 
     func gridToggleFull(_ placement: PlacementID) {
         guard let a = arrangement else { return }

@@ -230,8 +230,9 @@ parts from the Mac's conventions on purpose.
   the bar to move the tile; click it to grow the tile a step (the
   pointer follows the bar, so a click again grows again), ⌘-click
   it to fill its column (the others docked), ⌥-click it to fill all but
-  the others' bars (they stay, each down to its bar — ⌃⌥⌘=), its corner
-  to maximize; click its symbol, or ⌃-click the bar,
+  the others' bars (they stay, each down to its bar — ⌃⌥⌘=) — and,
+  as in acme, a click on its bar after either puts the column back as it
+  was —, its corner to maximize; click its symbol, or ⌃-click the bar,
   for the tile's menu; ⇧-click it for where the block is, folder by folder up
   to the root (a terminal's working directory likewise), each browsing
   that folder here, as ⌘-clicking a document's title does in the
