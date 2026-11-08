@@ -37,6 +37,56 @@ final class SpaceStripView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// Something dragged onto a space's square (its rect in the window),
+    /// with ⌥ (copied) or not; true if it was taken.
+    var onDrop: ((NSPasteboard, BlockID, Bool, NSRect) -> Bool)?
+    /// Held over a square a moment, mid-drag: that space gone to, for the
+    /// drop to land where it's wanted in it.
+    var onSpring: ((BlockID) -> Void)?
+    private var dropTarget: Int? { didSet { if dropTarget != oldValue { needsDisplay = true } } }
+    private var spring: DispatchWorkItem?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.manifoldPlacement, .manifoldBlock])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let p = convert(sender.draggingLocation, from: nil)
+        let i = chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -6).contains(p) && !chips[$0].current }
+        if i != dropTarget {
+            dropTarget = i
+            spring?.cancel()
+            if let i {
+                let id = chips[i].id
+                let work = DispatchWorkItem { [weak self] in
+                    self?.dropTarget = nil
+                    self?.onSpring?(id)
+                }
+                spring = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+            }
+        }
+        guard i != nil else { return [] }
+        return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        spring?.cancel()
+        dropTarget = nil
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        spring?.cancel()
+        defer { dropTarget = nil }
+        guard let i = dropTarget else { return false }
+        return onDrop?(sender.draggingPasteboard, chips[i].id, NSEvent.modifierFlags.contains(.option), convert(rect(i), to: nil)) ?? false
+    }
+
     func show(_ new: [Chip]) {
         guard new != chips else { return }
         chips = new
@@ -77,8 +127,15 @@ final class SpaceStripView: NSView {
                 NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
             }
             let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-            c.color.withAlphaComponent(c.current ? 0.32 : hovered == i ? 0.26 : 0.18).setFill()
+            c.color.withAlphaComponent(c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18).setFill()
             path.fill()
+            if dropTarget == i {
+                // Something held over it, to go there.
+                let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
+                ring.lineWidth = 2
+                Theme.accent.setStroke()
+                ring.stroke()
+            }
             if c.current {
                 let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
                 ring.lineWidth = 1.5
@@ -249,6 +306,14 @@ extension MainWindowController {
             }
             strip.onMenu = { [weak self] id in self?.spaceMenu(id) }
             sidebar.onSwipe = { [weak self] step in self?.switchSpace(by: step) }
+            strip.onDrop = { [weak self] pb, id, copy, square in
+                guard let self, let item = OrgDragItem(pb) else { return false }
+                return self.dropOnSpace(item, space: id, copy: copy, square: self.root.convert(square, from: nil))
+            }
+            strip.onSpring = { [weak self] id in
+                guard let self, id != self.selected else { return }
+                self.hosts.select(id)
+            }
         }
         strip.show(spaceChips())
         refreshNeedsYou()
@@ -374,6 +439,11 @@ extension MainWindowController {
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
+        case "drop":
+            // "spaces drop <i> [copy]": the focused tile dropped on square i.
+            guard let i = w.dropFirst().first.flatMap(Int.init), strip.chips.indices.contains(i), let f = arrangement?.focused else { return "no" }
+            let square = root.convert(strip.convert(NSRect(x: 10 + CGFloat(i) * 30, y: 6, width: 24, height: 24), to: nil), from: nil)
+            _ = dropOnSpace(.placement(f), space: strip.chips[i].id, copy: w.last == "copy", square: square)
         case "needspick": if let i = w.dropFirst().first.flatMap(Int.init), sidebar.needsYou.items.indices.contains(i) { sidebar.needsYou.onPick?(sidebar.needsYou.items[i]) }
         case "color", "symbol":
             if let id = chip(w.dropFirst().first) { setSpaceLook(id, w[0] == "color" ? SpaceLook.colorKey : SpaceLook.symbolKey, w.count > 2 ? w[2] : "") }

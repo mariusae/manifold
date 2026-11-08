@@ -48,10 +48,36 @@ extension MainWindowController {
     /// How a tile leaving the grid is seen to go: flown, docked with
     /// somewhere to fly to; in a puff, closed (gone from the desk, or on
     /// its way); else moved.
+    /// A tile (or a block) dropped on a space's square in the strip: sent
+    /// there, docked — moved, or with ⌥ copied — the window staying here; a
+    /// tile of the grid's flying into the square as it goes.
+    func dropOnSpace(_ item: OrgDragItem, space: BlockID, copy: Bool, square: NSRect) -> Bool {
+        guard space != selected, let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
+        let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
+        let before = Set(hosts.arrangement(space)?.placements.map(\.id) ?? [])
+        show(block, lens: lens, .here, in: space)
+        if let placed = hosts.arrangement(space)?.placements.first(where: { $0.block == block && !before.contains($0.id) }) {
+            hosts.append([.dock(placed.id, heir: nil)], to: .block(space))
+        }
+        guard let from, !copy else { return true }
+        if from.arrangement == selected, !Motion.reduced, let host = root.layer, let p = content.placedParts()[from.placement.id] {
+            let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+            flownAway.insert(from.placement.id)
+            GridView.morph([GridView.Morph(from: tile.whole, to: square, leaving: tile)], in: host, over: Motion.spatial * 1.4)
+        }
+        takeOut(from.placement.id, of: from.arrangement)
+        return true
+    }
+
     func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
-        if f?.down[v.placement] != nil { return .flown }
+        if f?.down[v.placement] != nil || flownAway.remove(v.placement) != nil { return .flown }
         if recentlyClosed.contains(v.block) { return .closed }
-        let onDesk = allWorkspaces.contains { hosts.arrangement($0)?.placement(v.placement) != nil }
+        // Still on the desk — this tile, or its block in another space's
+        // (moved there) — it's moved; else closed.
+        let onDesk = allWorkspaces.contains { w in
+            guard let a = hosts.arrangement(w) else { return false }
+            return a.placement(v.placement) != nil || (w != selected && a.placements.contains { $0.block == v.block })
+        }
         return onDesk ? .moved : .closed
     }
 

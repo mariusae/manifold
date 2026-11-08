@@ -921,6 +921,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The space whose dock was last seen, and what was docked: what
     /// changed since flies between the grid and the sidebar.
     var dockSeen: (space: BlockID?, docked: Set<PlacementID>)?
+    /// Tiles leaving the grid flown by hand (to a space's square in the
+    /// strip), not seen to go by the grid.
+    var flownAway: Set<PlacementID> = []
 
     private let transfersBadge = TransfersBadge()
 
@@ -8409,7 +8412,7 @@ extension MainWindowController: GridDelegate {
 
     /// A tile taken off a space it was moved from; the space stays, emptied
     /// or not, until it's removed (§4).
-    private func takeOut(_ placement: PlacementID, of arrangement: BlockID) {
+    func takeOut(_ placement: PlacementID, of arrangement: BlockID) {
         hosts.append(.remove(placement), to: .block(arrangement))
     }
 
@@ -11061,7 +11064,7 @@ extension MainWindowController: OrganizationViewDelegate {
 
     /// The block a dragged item stands for, and the placement to take
     /// away if it's a column's block being moved.
-    private func dragged(_ item: OrgDragItem) -> (block: BlockID, from: (arrangement: BlockID, placement: Placement)?)? {
+    func dragged(_ item: OrgDragItem) -> (block: BlockID, from: (arrangement: BlockID, placement: Placement)?)? {
         switch item {
         case .block(let b): return (b, nil)
         case .arrangement(let a): return (a, nil)
