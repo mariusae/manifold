@@ -3229,8 +3229,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// one come to. The ones passed on the way aren't settled on; Escape
     /// goes back to where the walk began. With one workspace, ⌘` goes to
     /// the app's next window, as macOS has it.
-    @objc func walkTabs(_ sender: Any?) { walkTabs(back: false) }
-    @objc func walkTabsBack(_ sender: Any?) { walkTabs(back: true) }
 
     private func walkTabs(back: Bool) {
         let live = Set(allWorkspaces)
@@ -3778,7 +3776,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window
     /// (or, backward, its previous) — Settings, another window.
-    private func cycleWindows(back: Bool) {
+    func cycleWindows(back: Bool) {
         let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.canBecomeKey && !$0.isMiniaturized }
         guard windows.count > 1, let key = NSApp.keyWindow, let i = windows.firstIndex(of: key) else { return }
         // Ordered front to back: the next is the one behind; backward, the last.

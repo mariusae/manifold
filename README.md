@@ -285,30 +285,15 @@ parts from the Mac's conventions on purpose.
   and a folder tile's (the folders it showed, as a Finder window's Back
   goes); the mouse's buttons go there first in such a tile. A web page
   zooms with ⌘+ and ⌘− in Safari's steps (50% to 300%), ⌘0 back.
-- **⌘\`** walks the spaces most recently gone to first, for as long
-  as ⌘ is held; letting go settles on the one come to, as ⌘⇥ does
-  apps: the next ⌘\` goes back to where you were, and spaces only
-  passed on the way don't count as gone to (with one space,
-  it goes to Manifold's next window, as macOS has it). With the sidebar
-  away, ⌘ held a moment names the space come to over the window (and
-  which of how many), renamed at each ⌘\` or ⇧⌘\` until ⌘ is let go;
-  with it out, the walk keeps the space's row in view. ⌘1–9 and ⇧⌘[ /
-  ⇧⌘] switch spaces too, as does the Dock icon's menu: every space,
-  under its host when there are several, the one shown checked. However
-  you go, the space comes in as the strip has them — from the right for
-  one further along, from the left for one before — and the sidebar's
-  list slides with it. A file or
-  folder dropped on the Dock icon opens in the space shown, as a
-  path clicked there does: a tile of its own, or gone to where it is.
-- **⌥⇥** switches spaces, the most recently settled on first (⌘\`'s
-  order): a tap goes back to the space before; held a moment, the
-  spaces come as cards over the window — each a picture of its grid,
-  its tiles in their columns at their sizes (their last pictures, else
-  their symbols and names), the focused one ringed, its square, name,
-  host and what wants you there, how many are docked — each ⇥ a card
-  further (⇧⇥ back), and letting go goes to the one chosen (Escape
-  stays; a card clicked goes there). ⌃⇥ is the space's tiles; the
-  switchers are the trail at two scales, spaces and tiles.
+- **⌘\`** switches spaces, the most recently settled on first: a tap
+  goes back to the space before; with ⌘ held a moment, the spaces come
+  as cards over the window — each a picture of its grid, its tiles in
+  their columns at their sizes (their last pictures, else their symbols
+  and names), the focused one ringed, its square, name, host and what
+  wants you there, how many are docked — each \` a card further (⇧\`
+  back), and letting go of ⌘ goes to the one chosen (Escape stays; a
+  card clicked goes there). With one space, ⌘\` goes round the app's
+  windows, as macOS has it. ⌃⇥ is the space's tiles; ⌥⇥ is free.
   Back (⌃-) is the other way over it: a stack of every place, within
   blocks too, walked one step at a time. ⌥⇥ is taken from a terminal
   too, as ⌃⇥ is (Meta-Tab, with Option as Meta).

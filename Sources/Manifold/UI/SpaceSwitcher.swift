@@ -1,12 +1,12 @@
 import AppKit
 import ManifoldCore
 
-/// ⌥⇥ (§3.6): the spaces, the most recently settled on first (⌘`'s
-/// order), as cards over the window while ⌥ is held — each a picture of
+/// ⌘` (§3.6): the spaces, the most recently settled on first, as cards
+/// over the window while ⌘ is held — each a picture of
 /// its grid: its tiles in their columns at their sizes, each its last
 /// picture (else its symbol and name), the focused one ringed; over it
-/// its square, its name, its host, what wants you there. ⇥ steps on, ⇧⇥
-/// back; letting go of ⌥ goes to the one chosen, ⎋ stays.
+/// its square, its name, its host, what wants you there. ` steps on, ⇧`
+/// back; letting go of ⌘ goes to the one chosen, ⎋ stays.
 final class SpaceSwitcherView: NSView {
     struct Card {
         struct Tile {
@@ -248,32 +248,34 @@ extension MainWindowController {
                      status: spaceStatus(a), tiles: tiles, docked: a.docked.count)
     }
 
-    /// ⌥⇥ (⇧⌥⇥ back): a step through the spaces with ⌥ held, their cards
-    /// shown a moment after (a quick ⌥⇥ flashes nothing, and goes back
-    /// to the space before); letting go of ⌥ goes to the one chosen.
-    @objc func walkSpaces(_ sender: Any?) { stepSpaces(1) }
-    @objc func walkSpacesBack(_ sender: Any?) { stepSpaces(-1) }
+    /// ⌘` (⇧⌘` back): a step through the spaces with ⌘ held, their cards
+    /// shown a moment after (a quick ⌘` flashes nothing, and goes back to
+    /// the space before); letting go of ⌘ goes to the one chosen. With one
+    /// space, the app's next window, as macOS has it.
+    @objc func walkTabs(_ sender: Any?) { stepSpaces(1) }
+    @objc func walkTabsBack(_ sender: Any?) { stepSpaces(-1) }
 
     private func stepSpaces(_ step: Int) {
         if let s = spaceSwitch {
             // Its key let go unheard (the app left meanwhile): over.
-            guard NSEvent.modifierFlags.contains(.option) || debugHeld else { return endSpaceSwitch(going: true) }
+            guard NSEvent.modifierFlags.contains(.command) || debugHeld else { return endSpaceSwitch(going: true) }
             let n = s.order.count
             spaceSwitch?.index = ((s.index + step) % n + n) % n
             spaceSwitcher?.chosen = spaceSwitch!.index
             return
         }
         let order = spaceTrail()
-        guard order.count > 1 else { return NSSound.beep() }
+        guard order.count > 1 else { return cycleWindows(back: step < 0) }
         let index = ((step) % order.count + order.count) % order.count
-        guard NSEvent.modifierFlags.contains(.option) || debugHeld else { return hosts.select(order[index]) }
+        // From the menu, ⌘ not held: one step, gone.
+        guard NSEvent.modifierFlags.contains(.command) || debugHeld else { return hosts.select(order[index]) }
         spaceSwitch = (order, index)
         // Shown in a moment, if ⌥'s still held.
         let work = DispatchWorkItem { [weak self] in self?.showSpaceSwitcher() }
         spaceSwitchShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
         spaceSwitchMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] e in
-            if !e.modifierFlags.contains(.option) { self?.endSpaceSwitch(going: true) }
+            if !e.modifierFlags.contains(.command) { self?.endSpaceSwitch(going: true) }
             return e
         } as Any)
         spaceSwitchMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
