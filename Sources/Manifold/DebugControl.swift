@@ -1515,6 +1515,13 @@ enum DebugControl {
             item.representedObject = scheme.rawValue
             wc?.setColorScheme(item)
             return "ok"
+        case "colortheme":
+            // "colortheme <id>": the colour theme (paper, newsprint, classic, …).
+            guard let wc, let p = Palette.all.first(where: { $0.id == arg }) else { return Palette.all.map(\.id).joined(separator: ", ") }
+            var a = wc.hosts.state.appearance
+            a.colorTheme = p.id
+            wc.hosts.setAppearance(a)
+            return "ok: \(p.title)"
         case "theme":
             guard let theme = FontTheme(rawValue: arg) else { return FontTheme.allCases.map(\.rawValue).joined(separator: ", ") }
             let item = NSMenuItem()
