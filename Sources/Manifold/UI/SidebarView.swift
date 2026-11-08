@@ -102,6 +102,8 @@ final class SidebarView: NSView {
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
+    /// Under a space's name: the host it's on, a remote's ping times by it.
+    let spaceHost = SpaceHostLine()
     private var pushed: Bool { organization == .closed || organization == .inspector }
     /// A header of its own under the window's buttons: a pushed list's, the
     /// space's (its name, over its tiles), or the threads'.
@@ -132,7 +134,7 @@ final class SidebarView: NSView {
         pushedTitle.lineBreakMode = .byTruncatingTail
         pushedSubtitle.font = UIType.detail
         pushedSubtitle.textColor = Theme.secondaryText
-        for v in [backButton, pushedTitle, pushedSubtitle] { v.isHidden = true; card.addSubview(v) }
+        for v in [backButton, pushedTitle, pushedSubtitle, spaceHost] { v.isHidden = true; card.addSubview(v) }
 
         for t in tabs {
             t.onClick = { [weak self, weak t] in
@@ -186,7 +188,8 @@ final class SidebarView: NSView {
         var top = bounds.height - Self.headerHeight
         backButton.isHidden = !pushed
         pushedTitle.isHidden = !titled
-        pushedSubtitle.isHidden = !titled
+        pushedSubtitle.isHidden = !titled || organization == .desk
+        spaceHost.isHidden = !titled || organization != .desk
         for v in threadsControls { v.isHidden = organization != .threads }
         if titled {
             // The back button (a list pushed over the tree) and the list's
@@ -205,6 +208,7 @@ final class SidebarView: NSView {
             let left: CGFloat = pushed ? 44 : 16
             pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
             pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
+            spaceHost.frame = NSRect(x: left, y: top - Self.pushedHeight, width: max(0, right - left), height: 18)
             top -= Self.pushedHeight + 6
         }
         // The spaces along the very bottom; over them the counts of what's
@@ -272,7 +276,7 @@ final class SidebarView: NSView {
     /// do, over a picture of the last sliding out. With less motion, only
     /// changed.
     func slideSpace(_ dir: CGFloat, change: () -> Void) {
-        let moving: [NSView] = [organizationView, pushedTitle, pushedSubtitle]
+        let moving: [NSView] = [organizationView, pushedTitle, pushedSubtitle, spaceHost]
         let region = moving.filter { !$0.isHidden }.map(\.frame).reduce(NSRect.null) { $0.union($1) }
         guard !Motion.reduced, window != nil, !isHiddenOrHasHiddenAncestor, !region.isEmpty, let host = card.layer,
               let rep = card.bitmapImageRepForCachingDisplay(in: region) else { return change() }
@@ -338,10 +342,10 @@ final class SidebarView: NSView {
     }
 
     /// The space shown (§3.6): its name over its tiles, and how many.
-    func setSpace(title: String, subtitle: String) {
+    func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?) {
         guard organization == .desk else { return }
         pushedTitle.stringValue = title
-        pushedSubtitle.stringValue = subtitle
+        spaceHost.show(host: host, standing: standing, pings: pings)
     }
 
     /// The Inspector's header: the block's name, and what and where it is.
@@ -720,4 +724,74 @@ final class StatusCountsView: NSView {
         }
     }
 
+}
+
+/// A space's host, under its name (§3.6): its name — This Mac, or the
+/// remote's — what's wrong with its link if anything, and a remote's ping
+/// times lately (`Sparkline`). The pointer on it, the host's card: its
+/// machine and link, live.
+final class SpaceHostLine: NSView {
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private let sparkline = Sparkline()
+    /// The pointer on it (its rect in the window), or gone.
+    var onHover: ((NSRect?) -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        icon.image = Theme.symbol("desktopcomputer", size: 10.5, weight: .medium)
+        icon.contentTintColor = Theme.secondaryText
+        label.font = UIType.detail
+        label.textColor = Theme.secondaryText
+        label.lineBreakMode = .byTruncatingTail
+        for v in [icon, label, sparkline] as [NSView] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(host: String, standing: String?, pings: (() -> Sparkline.Pings)?) {
+        label.stringValue = host + (standing.map { " · " + $0 } ?? "")
+        label.textColor = standing == nil ? Theme.secondaryText : Status.attention
+        sparkline.pings = pings
+        sparkline.isHidden = pings == nil
+        needsLayout = true
+    }
+
+    var debugText: String { label.stringValue + (sparkline.isHidden ? "" : " ~sparkline") }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        icon.frame = NSRect(x: 0, y: (h - 14) / 2, width: 14, height: 14)
+        let room = bounds.width - 19 - (sparkline.isHidden ? 0 : Sparkline.width + 8)
+        label.sizeToFit()
+        let lw = min(ceil(label.frame.width), max(0, room))
+        label.frame = NSRect(x: 19, y: (h - 15) / 2, width: lw, height: 15)
+        sparkline.frame = NSRect(x: label.frame.maxX + 8, y: (h - Sparkline.height) / 2, width: Sparkline.width, height: Sparkline.height)
+    }
+
+    /// Its parts, for the pointer: the name and the line by it.
+    private var hot: NSRect { NSRect(x: 0, y: 0, width: sparkline.isHidden ? label.frame.maxX : sparkline.frame.maxX, height: bounds.height) }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    private var over = false
+    private func track(_ event: NSEvent) {
+        let now = hot.contains(convert(event.locationInWindow, from: nil))
+        guard now != over else { return }
+        over = now
+        onHover?(now ? convert(hot, to: nil) : nil)
+    }
+    override func mouseEntered(with event: NSEvent) { track(event) }
+    override func mouseMoved(with event: NSEvent) { track(event) }
+    override func mouseExited(with event: NSEvent) { over = false; onHover?(nil) }
 }

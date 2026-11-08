@@ -28,8 +28,10 @@ parts from the Mac's conventions on purpose.
   counts of what needs you, is working and is done and not yet read
   (no row for them when there are none). The
   window sits on a wash of soft colour (Look, below). Under Spaces the
-  sidebar shows **one space at a time**: its name at the top, with how
-  many tiles it has on screen and docked, then its tiles in sections
+  sidebar shows **one space at a time**: its name at the top, and under
+  it the host it's on — This Mac or another, a remote's ping times
+  beside it; the pointer on it shows the host's machine and link, live —
+  then its tiles in sections
   that don't fold — **Pinned**, **On Screen** (as the grid has them,
   column by column, a hairline between columns) and **Docked** (the
   latest first). Along the very bottom runs **the strip**, every

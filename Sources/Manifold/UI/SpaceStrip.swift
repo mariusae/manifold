@@ -501,6 +501,13 @@ extension MainWindowController {
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
+        case "host":
+            // "spaces host [hover]": the heading's host line; with hover, its card.
+            if w.dropFirst().first == "hover" {
+                let v = sidebar.spaceHost
+                v.onHover?(v.convert(NSRect(x: 0, y: 0, width: 80, height: v.bounds.height), to: nil))
+            }
+            return sidebar.spaceHost.debugText
         case "plus":
             // "spaces plus": the hosts' list over the + (even for one host);
             // "spaces plus new": the + clicked; "spaces plus pick <i>": host i chosen.

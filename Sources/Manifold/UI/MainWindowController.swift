@@ -4005,14 +4005,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's heading for the space shown: its name; how many of
     /// its tiles are on screen and docked, and its host's name when
     /// there's more than one.
+    /// The space's heading: its name, and the host it's on — a remote's
+    /// ping times by it, and what's wrong with its link if anything; the
+    /// pointer on the host, its card.
     private func showSpaceHeading() {
-        guard let id = selected, let a = hosts.arrangement(id) else { return sidebar.setSpace(title: "", subtitle: "") }
-        var words: [String] = []
-        if hosts.ordered.count > 1 { words.append(hosts.label(of: id.host)) }
-        let shown = a.columns.reduce(0) { $0 + $1.count }
-        words.append(shown == 1 ? "1 tile" : "\(shown) tiles")
-        if !a.docked.isEmpty { words.append("\(a.docked.count) docked") }
-        sidebar.setSpace(title: title(of: a), subtitle: words.joined(separator: " · "))
+        guard let id = selected, let a = hosts.arrangement(id) else { return sidebar.setSpace(title: "", host: "", standing: nil, pings: nil) }
+        let c = hosts.client(id.host)
+        var standing: String?
+        if let c, c.isRemote {
+            switch c.link {
+            case .connecting: standing = "connecting…"
+            case .unreachable: standing = "can't be reached"
+            case .connected: standing = c.watching ? "watching" : nil
+            }
+        }
+        sidebar.setSpace(title: title(of: a), host: hosts.label(of: id.host), standing: standing,
+                         pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil)
+        if sidebar.spaceHost.onHover == nil {
+            sidebar.spaceHost.onHover = { [weak self] rect in
+                guard let self, let rect, let window = self.window, let host = self.selected?.host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }
+                self.showHostCard(c, beside: rect, in: window)
+            }
+        }
     }
 
     /// The row the sidebar's tree was last made with chosen.
@@ -10817,20 +10831,24 @@ extension MainWindowController: OrganizationViewDelegate {
         return true
     }
 
+    /// A host's card: its machine, and a remote's link, live.
+    func showHostCard(_ c: HostClient, beside rect: NSRect, in window: NSWindow) {
+        var detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
+        if c.watching, !c.isRemote { detail = "Watching: \(c.fencedBy ?? "another Manifold") took over · " + detail }
+        // How long its server has been running.
+        if c.isConnected, let started = c.serverStarted { detail += " · server up " + HostDashboard.duration(Date().timeIntervalSince(started)) }
+        HoverCard.shared.show(key: "host:\(c.host.raw)", title: hosts.label(of: c.host), detail: detail, body: "", font: nil,
+                              lend: {
+                                  let d = HostDashboard(client: c)
+                                  return HoverCard.LiveLoan(view: d, size: d.size, width: HostDashboard.width) { $0.removeFromSuperview() }
+                              },
+                              beside: rect, in: window)
+    }
+
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
         // A host's row: its machine, and a remote's link, live.
         if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), let window {
-            var detail = c.isRemote ? HostDashboard.standing(c) : c.machineLatest.map { "\($0.hostname) · \($0.system)" } ?? "This Mac"
-            if c.watching, !c.isRemote { detail = "Watching: \(c.fencedBy ?? "another Manifold") took over · " + detail }
-            // How long its server has been running.
-            if c.isConnected, let started = c.serverStarted { detail += " · server up " + HostDashboard.duration(Date().timeIntervalSince(started)) }
-            HoverCard.shared.show(key: node.id, title: hosts.label(of: c.host), detail: detail, body: "", font: nil,
-                                  lend: {
-                                      let d = HostDashboard(client: c)
-                                      return HoverCard.LiveLoan(view: d, size: d.size, width: HostDashboard.width) { $0.removeFromSuperview() }
-                                  },
-                                  beside: rect, in: window)
-            return
+            return showHostCard(c, beside: rect, in: window)
         }
         guard let node, let id = node.block, let window else { return HoverCard.shared.hide() }
         showBlockCard(id, beside: rect, in: window)
