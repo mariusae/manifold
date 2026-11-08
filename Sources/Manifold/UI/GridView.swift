@@ -1269,6 +1269,20 @@ final class GridView: NSView, NSDraggingSource {
         return out
     }
 
+    /// Each tile down to its bar (nothing of it shown under it), its bar
+    /// where it is (the grid's terms) with a picture of it.
+    func placedBars() -> [PlacementID: Pictured] {
+        var out: [PlacementID: Pictured] = [:]
+        for t in columns.flatMap({ $0 }) where shownBody(t) == nil {
+            guard let bar = pills[t.shown.id], !bar.isHidden, bar.frame.height > 0 else { continue }
+            let alpha = bar.alphaValue
+            bar.alphaValue = 1
+            out[t.shown.id] = Pictured(parts: [(bar.frame, Self.ghostPicture(of: bar))], ground: Self.ground(of: bar))
+            bar.alphaValue = alpha
+        }
+        return out
+    }
+
     /// `page`: a page's picture, from it; else, for a page, its last kept
     /// (if it was the same shape), which a drawing of it would leave blank.
     private func pictured(_ body: NSView, _ bar: NSView?, page: CGImage? = nil) -> Pictured {

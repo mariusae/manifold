@@ -2921,8 +2921,10 @@ purpose — set down so a later audit reads them as choices, not slips.
   second); the row's slot opens as it pours, the rows round it gliding
   to make room (`OrganizationView.glide`), and what the row says is
   wiped in from the right as the tile gets there — undocked, wiped out,
-  then the row glides back among those on screen as the tile pours out
-  — and the
+  then the row glides back among those on screen as the tile pours out;
+  a tile down to its bar (⌥-clicked's others) has only its bar to pour,
+  so the bar flies to its row as wide as it is, then shrinks to the
+  row's size (`Genie.fly`) — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put

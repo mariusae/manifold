@@ -47,6 +47,44 @@ enum Genie {
         return true
     }
 
+    /// A bar (a tile down to it) flown to `row`: across to it, as wide as
+    /// it is, its left edge at the row's, then made the row's size, fading
+    /// as it gets there — over `host`, over `d`.
+    static func fly(_ p: GridView.Pictured, to row: NSRect, in host: CALayer, over d: Double, scale: CGFloat) {
+        guard let image = image(of: p, scale: scale) else { return }
+        let from = p.whole
+        let l = CALayer()
+        l.contents = image
+        l.contentsScale = scale
+        l.contentsGravity = .resize
+        l.cornerRadius = Radius.control
+        l.masksToBounds = true
+        l.zPosition = 45
+        l.frame = row
+        l.opacity = 0
+        let landed = NSRect(x: row.minX, y: row.midY - from.height / 2, width: from.width, height: from.height)
+        let ease = CAMediaTimingFunction(name: .easeInEaseOut)
+        let pos = CAKeyframeAnimation(keyPath: "position")
+        pos.values = [from, landed, row].map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
+        let size = CAKeyframeAnimation(keyPath: "bounds.size")
+        size.values = [from, landed, row].map { NSValue(size: $0.size) }
+        for x in [pos, size] {
+            x.keyTimes = [0, 0.55, 1]
+            x.timingFunctions = [ease, ease]
+        }
+        let fade = CAKeyframeAnimation(keyPath: "opacity")
+        fade.values = [1, 1, 0]
+        fade.keyTimes = [0, 0.75, 1]
+        let group = CAAnimationGroup()
+        group.animations = [pos, size, fade]
+        group.duration = d
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
+        host.addSublayer(l)
+        l.add(group, forKey: "fly")
+        CATransaction.commit()
+    }
+
     static func run(_ image: CGImage, tile: NSRect, target: NSRect, restoring: Bool, in host: CALayer, over d: Double,
                     scale: CGFloat, done: @escaping () -> Void = {}) {
         guard tile.width > 2, tile.height > 2, target.width > 0, target.height > 0 else { return done() }

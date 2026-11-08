@@ -12,6 +12,8 @@ extension MainWindowController {
     /// sidebar), in the root's terms.
     struct DockFlights {
         var down: [PlacementID: GridView.Pictured] = [:]
+        /// Down to their bars: the bar flown to its row, then made its size.
+        var bars: [PlacementID: GridView.Pictured] = [:]
         var up: [PlacementID: NSRect] = [:]
     }
 
@@ -33,16 +35,18 @@ extension MainWindowController {
         var f = DockFlights()
         let down = now.subtracting(seen.docked)
         if !down.isEmpty {
-            let parts = content.placedParts()
+            let parts = content.placedParts(), bars = content.placedBars()
+            func here(_ p: GridView.Pictured) -> GridView.Pictured {
+                GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+            }
             for id in down {
-                guard let p = parts[id] else { continue }
-                f.down[id] = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+                if let p = parts[id] { f.down[id] = here(p) } else if let b = bars[id] { f.bars[id] = here(b) }
             }
         }
         for id in seen.docked.subtracting(now) where a.locate(id) != nil {
             f.up[id] = sidebar.organizationView.row(of: id, in: space, in: root) ?? .zero
         }
-        return f.down.isEmpty && f.up.isEmpty ? nil : f
+        return f.down.isEmpty && f.bars.isEmpty && f.up.isEmpty ? nil : f
     }
 
     /// A row's right end, where a tile pours into it.
@@ -82,7 +86,7 @@ extension MainWindowController {
     }
 
     func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
-        if f?.down[v.placement] != nil || flownAway.remove(v.placement) != nil { return .flown }
+        if f?.down[v.placement] != nil || f?.bars[v.placement] != nil || flownAway.remove(v.placement) != nil { return .flown }
         if recentlyClosed.contains(v.block) { return .closed }
         // Still on the desk — this tile, or its block in another space's
         // (moved there) — it's moved; else closed.
@@ -105,8 +109,14 @@ extension MainWindowController {
         let rows = sidebar.organizationView
         // Into its row: a gap opening for the row as the tile pours into
         // its right end, what it says wiped in from there.
-        if !f.down.isEmpty {
-            rows.glide(over: d * 0.75, opening: Set(f.down.keys)) { refreshOrganization(now: true) }
+        if !f.down.isEmpty || !f.bars.isEmpty {
+            rows.glide(over: d * 0.75, opening: Set(f.down.keys).union(f.bars.keys)) { refreshOrganization(now: true) }
+        }
+        // A tile down to its bar: the bar flown to its row, then made its size.
+        for (id, bar) in f.bars {
+            let row = rows.row(of: id, in: space, in: root)
+            Genie.fly(bar, to: row ?? edgeSpot(bar.whole), in: host, over: d, scale: scale)
+            if row != nil { rows.wipe(id, in: true, after: d * 0.55, over: d * 0.4) }
         }
         for (id, tile) in f.down {
             if let row = rows.row(of: id, in: space, in: root) {
