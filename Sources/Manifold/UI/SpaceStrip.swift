@@ -28,7 +28,7 @@ final class SpaceStripView: NSView {
     static let height: CGFloat = 36
     static let side: CGFloat = 24
     static let gap: CGFloat = 6
-    static let inset: CGFloat = 10
+    static let inset: CGFloat = SidebarView.margin
 
     var onPick: ((BlockID) -> Void)?
     /// The pointer on one (its rect in the window), or off them.
@@ -596,7 +596,7 @@ final class NeedsYouView: NSView {
         Theme.divider.setFill()
         NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
         NSAttributedString(string: "Needs you", attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: Status.attention])
-            .draw(at: NSPoint(x: 18, y: 5))
+            .draw(at: NSPoint(x: SidebarView.margin + 2, y: 5))
         if items.count > 1 {
             let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
             n.draw(at: NSPoint(x: bounds.width - 18 - n.size().width, y: 6))
@@ -608,7 +608,7 @@ final class NeedsYouView: NSView {
                 NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
             }
             // Its space's square, small.
-            let sq = NSRect(x: r.minX + 8, y: r.midY - 8, width: 16, height: 16)
+            let sq = NSRect(x: SidebarView.margin, y: r.midY - 8, width: 16, height: 16)
             item.spaceColor.withAlphaComponent(0.28).setFill()
             NSBezierPath(roundedRect: sq, xRadius: 4, yRadius: 4).fill()
             let sInk = item.spaceColor.blended(withFraction: 0.25, of: Theme.text) ?? item.spaceColor
@@ -637,7 +637,7 @@ final class NeedsYouView: NSView {
         if hasMoreRow {
             let r = rowRect(shown)
             NSAttributedString(string: all ? "Fewer" : "\(items.count - Self.most) more…", attributes: [.font: UIType.detail, .foregroundColor: hovered == shown ? Theme.text : Theme.secondaryText])
-                .draw(at: NSPoint(x: r.minX + 8, y: r.midY - 7))
+                .draw(at: NSPoint(x: SidebarView.margin + 2, y: r.midY - 7))
         }
     }
 

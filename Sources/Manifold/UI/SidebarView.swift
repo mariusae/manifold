@@ -94,6 +94,9 @@ final class SidebarView: NSView {
     static let footRowHeight: CGFloat = 22
 
     static let headerHeight: CGFloat = 40
+    /// Where everything down the sidebar starts: the space's name, the
+    /// rows' icons and their sections' names, what needs you, the strip.
+    static let margin: CGFloat = 20
     static let filterHeight: CGFloat = 34
     static let barHeight: CGFloat = 34
     /// A list pushed over the tree (Recently Closed, Search): the header
@@ -205,7 +208,8 @@ final class SidebarView: NSView {
                 }
                 right -= 6
             }
-            let left: CGFloat = pushed ? 44 : 16
+            // The sidebar's one margin (its rows' icons'), past a back button.
+            let left: CGFloat = pushed ? 44 : Self.margin
             if organization == .desk {
                 // A space's name and its host, the same size, apart: the
                 // name strong, the host quiet.

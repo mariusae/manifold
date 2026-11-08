@@ -1425,8 +1425,9 @@ final class OrgRowView: NSTableCellView {
             }
             let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width) + 4
             let nw = min(wanted, max(0, right - 4))
-            name.frame = NSRect(x: 4, y: (h - 15) / 2 + low, width: nw, height: 15)
-            detail.frame = NSRect(x: 4 + nw + 6, y: (h - 15) / 2 + low, width: max(0, right - nw - 10), height: 15)
+            // At the rows' icons' edge: one margin down the sidebar.
+            name.frame = NSRect(x: 2, y: (h - 15) / 2 + low, width: nw, height: 15)
+            detail.frame = NSRect(x: 2 + nw + 6, y: (h - 15) / 2 + low, width: max(0, right - nw - 8), height: 15)
             detail.alphaValue = 1
             detailIcon.isHidden = true
             return
