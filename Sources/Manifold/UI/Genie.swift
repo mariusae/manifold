@@ -75,46 +75,68 @@ enum Genie {
     static func fly(_ p: GridView.Pictured, to row: NSRect, out: Bool = false, rowPicture: CGImage? = nil, tint: CGColor? = nil,
                     in host: CALayer, over d: Double, scale: CGFloat) {
         guard let image = image(of: p, scale: scale) else { return }
-        let from = p.whole
-        let landed = NSRect(x: row.minX, y: row.midY - from.height / 2, width: from.width, height: from.height)
-        // Into the row; out of it, the same backwards.
-        var frames = [from, landed, row]
-        var times: [Double] = [0, 0.55, 1]
+        flight(p.whole, image, ground: nil, to: row, rowPicture, ground: nil, out: out, tint: tint, fade: true,
+               corner: Radius.control, in: host, over: d, scale: scale)
+    }
+
+    /// One thing flown into another's place and become it (§3.1) — a bar
+    /// into its row, a tile into its card in a switcher: across at its own
+    /// size till its corner's at the other's (level with it, if they're
+    /// near the same height), then made the other's size, its picture
+    /// giving way to the other's on the way. `out`: the same backwards —
+    /// the other grown to its size where it is, then across into its
+    /// place, becoming it. `fade`: gone at the end (into a row that's
+    /// there); else kept as the other till the caller's done. Returns the
+    /// layer flying (to be hurried or put away); `done` once it's there.
+    @discardableResult
+    static func flight(_ a: NSRect, _ aPicture: Any?, ground aGround: CGColor?, to b: NSRect, _ bPicture: Any?, ground bGround: CGColor?,
+                       out: Bool = false, tint: CGColor? = nil, fade: Bool = false, corner: CGFloat = Radius.surface,
+                       in host: CALayer, over d: Double, delay: Double = 0, scale: CGFloat, done: (() -> Void)? = nil) -> CALayer {
+        // Level with it when they're about as tall (a bar, a row); else its
+        // top corner at the other's.
+        let level = a.height <= b.height * 2
+        let landed = NSRect(x: b.minX, y: level ? b.midY - a.height / 2 : b.maxY - a.height, width: a.width, height: a.height)
         func back<T>(_ v: [T]) -> [T] { out ? v.reversed() : v }
         func backTimes(_ t: [Double]) -> [NSNumber] { (out ? t.reversed().map { 1 - $0 } : t).map { NSNumber(value: $0) } }
-        frames = back(frames)
-        let keyTimes = backTimes(times)
-        times = []
-        let begin = CACurrentMediaTime()
+        let frames = back([a, landed, b])
+        let keyTimes = backTimes([0, 0.55, 1])
+        let begin = CACurrentMediaTime() + delay * Motion.slowdown
         let ease = CAMediaTimingFunction(name: .easeInEaseOut)
         let l = CALayer()
-        l.cornerRadius = Radius.control
+        l.cornerRadius = corner
+        l.cornerCurve = .continuous
         l.masksToBounds = true
         l.zPosition = 45
         l.frame = frames.last!
-        l.opacity = 0
+        l.opacity = fade ? 0 : 1
         let pos = CAKeyframeAnimation(keyPath: "position")
         pos.values = frames.map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
         let size = CAKeyframeAnimation(keyPath: "bounds.size")
         size.values = frames.map { NSValue(size: $0.size) }
         for x in [pos, size] { x.keyTimes = keyTimes; x.timingFunctions = [ease, ease] }
-        let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = back([1, 1, 0])
-        fade.keyTimes = backTimes([0, 0.88, 1])
+        var parts: [CAAnimation] = [pos, size]
+        if fade {
+            let o = CAKeyframeAnimation(keyPath: "opacity")
+            o.values = back([1, 1, 0])
+            o.keyTimes = backTimes([0, 0.88, 1])
+            parts.append(o)
+        }
         let group = CAAnimationGroup()
-        group.animations = [pos, size, fade]
+        group.animations = parts
         group.duration = d
         group.beginTime = begin
         group.fillMode = .both
         group.isRemovedOnCompletion = false
-        // Each picture filling it, the bar giving way to the row's on the
-        // way there; the tint over both, deepening as it goes.
-        func layer(_ contents: Any?, _ color: CGColor?, opacity: [Double], at t: [Double]) {
+        // Each picture filling it, the one giving way to the other on the
+        // way; the tint over both, deepening as it goes. A picture of
+        // another shape filled, not squashed (cut at its edges).
+        func layer(_ contents: Any?, _ color: CGColor?, opacity: [Double], at t: [Double], gravity: CALayerContentsGravity) {
             let s = CALayer()
             s.contents = contents
             s.contentsScale = scale
-            s.contentsGravity = .resize
+            s.contentsGravity = gravity
             s.backgroundColor = color
+            s.masksToBounds = true
             s.anchorPoint = .zero
             s.frame = CGRect(origin: .zero, size: frames.last!.size)
             s.opacity = Float(opacity.last!)
@@ -134,15 +156,20 @@ enum Genie {
             l.addSublayer(s)
             s.add(g, forKey: "fly")
         }
-        layer(image, nil, opacity: rowPicture == nil ? [1, 1, 1] : [1, 1, 0], at: [0, 0.35, 0.8])
-        if let rowPicture { layer(rowPicture, nil, opacity: [0, 0, 1], at: [0, 0.35, 0.8]) }
-        if let tint { layer(nil, tint, opacity: [0, 0.18, 0.22], at: [0, 0.5, 1]) }
+        let gravity: CALayerContentsGravity = level ? .resize : .resizeAspectFill
+        layer(aPicture, aGround, opacity: bPicture == nil ? [1, 1, 1] : [1, 1, 0], at: [0, 0.35, 0.8], gravity: gravity)
+        if let bPicture { layer(bPicture, bGround, opacity: [0, 0, 1], at: [0, 0.35, 0.8], gravity: gravity) }
+        if let tint { layer(nil, tint, opacity: [0, 0.18, 0.22], at: [0, 0.5, 1], gravity: .resize) }
         CATransaction.begin()
-        CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
+        CATransaction.setCompletionBlock {
+            if fade { l.removeFromSuperlayer() }
+            done?()
+        }
         host.addSublayer(l)
         l.add(group, forKey: "fly")
         CATransaction.commit()
-        DispatchQueue.main.asyncAfter(deadline: .now() + d + 0.05) { l.removeFromSuperlayer() }
+        if fade { DispatchQueue.main.asyncAfter(deadline: .now() + (d + delay) * Motion.slowdown + 0.05) { l.removeFromSuperlayer() } }
+        return l
     }
 
     /// The tile (`tile`, its picture `image`) into `target` — or, `restoring`,

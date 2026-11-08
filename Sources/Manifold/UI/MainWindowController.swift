@@ -3437,12 +3437,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // The one chosen (or, let be, the one it began from) becomes its tile.
                 content.becomeTile(c.id, from: card, picture: c.picture, at: c.frame, in: root)
             } else if let tile = tiles[c.id] {
-                // Back into its tile, here.
-                items.append(GridView.Morph(from: c.frame, to: tile.whole, leaving: card, shrink: GridView.cardShrink))
+                // Back into its tile, here: grown to its size where it is,
+                // then across into it, becoming it (as a docked bar comes out).
+                let scale = window?.backingScaleFactor ?? 2
+                var l: CALayer?
+                l = Genie.flight(tile.whole, Genie.image(of: tile, scale: scale), ground: tile.ground, to: c.frame, c.picture, ground: c.ground,
+                                 out: true, in: host, over: Motion.spatial * 1.5, scale: scale) { l?.removeFromSuperlayer() }
+                if let l { tileFlights.append(l) }
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = dockedSpot(t, in: place.space) {
-                // Docked, or in another space: back into its chip on the shelf, or its row in the sidebar.
-                items.append(GridView.Morph(from: c.frame, to: row, leaving: card))
+                // Docked: back into its row in the sidebar, as a bar docks — across, then its size, becoming it.
+                let scale = window?.backingScaleFactor ?? 2
+                tileFlights.append(Genie.flight(c.frame, c.picture, ground: c.ground, to: row, sidebar.organizationView.picture(of: t, in: root)?.image, ground: nil,
+                                                fade: true, corner: Radius.control, in: host, over: Motion.spatial * 1.5, scale: scale))
+                _ = card
             } else {
                 // Its tile's in another space: gone, sinking a little.
                 let l = CALayer()
@@ -3561,15 +3569,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Each card a little after the one before, within the time given.
         let stagger = 0.008, staggered = min(Double(cards.count - 1) * stagger, 0.024)
         var items: [GridView.Morph] = []
+        // Tiles into their cards as a bar into its row: across at their
+        // size, then made the card's, becoming it.
+        var flights: [(tile: GridView.Pictured, card: NSRect, picture: CGImage?, ground: CGColor, delay: Double)] = []
         for (i, c) in cards.enumerated() where c.frame != .zero {
             let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             let delay = min(Double(i) * stagger, staggered)
             if let tile = tiles[c.id] {
-                items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, shrink: GridView.cardShrink))
+                flights.append((tile, c.frame, c.picture, c.ground, delay))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = dockedSpot(t, in: place.space) {
-                // Docked, or in another space: out of its chip on the shelf, or its row in the sidebar.
-                items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: delay))
+                // Docked: out of its row in the sidebar, as a docked bar comes out.
+                flights.append((GridView.Pictured(parts: [(row, sidebar.organizationView.picture(of: t, in: root)?.image)], ground: nil),
+                                c.frame, c.picture, c.ground, delay))
+                _ = card
             } else {
                 // Elsewhere: out from under the first.
                 items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: delay))
@@ -3583,10 +3596,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let d = max(settledBy.timeIntervalSinceNow - staggered - 1.0 / 60, 0.05) * Motion.slowdown
             self.debugTilesShown = Date()
             self.tileUnfoldBegan = CACurrentMediaTime()
-            self.tileFlights += GridView.morph(items, in: host, over: d) { [weak self, weak column] in
+            // The cards shown once every flight's there (the morphs' and the tiles').
+            var waiting = flights.count + 1
+            var flown: [CALayer] = []
+            let arrived = { [weak self, weak column] in
+                waiting -= 1
+                guard waiting == 0 else { return }
                 column?.cardsShown = true
+                flown.forEach { $0.removeFromSuperlayer() }
                 self?.debugTilesSettled = Date()
             }
+            let scale = self.window?.backingScaleFactor ?? 2
+            for f in flights {
+                let l = Genie.flight(f.tile.whole, Genie.image(of: f.tile, scale: scale), ground: f.tile.ground, to: f.card, f.picture, ground: f.ground,
+                                     in: host, over: d, delay: f.delay, scale: scale) { arrived() }
+                flown.append(l)
+                self.tileFlights.append(l)
+            }
+            self.tileFlights += GridView.morph(items, in: host, over: d) { arrived() }
             // The column's ground comes in under them.
             if let l = column.layer, let ground = l.backgroundColor {
                 let a = CABasicAnimation(keyPath: "backgroundColor")

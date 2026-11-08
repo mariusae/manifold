@@ -2079,7 +2079,11 @@ final class GridView: NSView, NSDraggingSource {
             self.debugArrival = shown.parts.first?.1.map { $0 as AnyObject }
             let to = over.map { self.convert(shown.whole, to: $0) } ?? shown.whole
             let held = self.flying.filter { $0.name == "waiting" || $0.name == "plate" }
-            self.flying += Self.morph([Morph(from: r, to: to, leaving: card, coming: shown, shrink: Self.cardShrink)], in: host, over: Motion.spatial * 1.5) { [weak self] in
+            // As a bar comes out of its row: the card grown to the tile's
+            // size where it is, then across into its place, becoming it.
+            let scale = self.window?.backingScaleFactor ?? 2
+            self.flying.append(Genie.flight(to, Genie.image(of: shown, scale: scale), ground: shown.ground, to: r, card?.parts.first?.1, ground: card?.ground,
+                                            out: true, in: host, over: Motion.spatial * 1.5, scale: scale) { [weak self] in
                 guard let self, self.landingAt == landing else { return }
                 self.unseen.forEach { $0.alphaValue = 1 }
                 self.unseen = []
@@ -2088,7 +2092,7 @@ final class GridView: NSView, NSDraggingSource {
                 held.forEach { $0.removeFromSuperlayer() }
                 self.flying.forEach { $0.removeFromSuperlayer() }
                 self.flying = []
-            }
+            })
             held.filter { $0.name == "waiting" }.forEach { $0.removeFromSuperlayer() }
         }
     }
