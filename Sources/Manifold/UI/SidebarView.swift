@@ -89,6 +89,8 @@ final class SidebarView: NSView {
     let spaces = SpaceStripView()
     /// What needs you, in every space, over the strip: always there.
     let needsYou = NeedsYouView()
+    /// The hosts to make a space on, over the strip's +.
+    let hostPicker = HostPickerView()
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
     /// Toasts (§4), while it's out: above the copies, as many as are up.
@@ -153,6 +155,7 @@ final class SidebarView: NSView {
             card.addSubview(t)
         }
         for v in [counts, spaces, needsYou, closedRow, transfers, toasts] { card.addSubview(v) }
+        hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         threadsMode.target = self
@@ -213,19 +216,19 @@ final class SidebarView: NSView {
             pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
             top -= Self.pushedHeight + 6
         }
-        // The bar along the bottom: what it lists at the left, the counts
-        // at the right.
-        let by: CGFloat = (Self.barHeight - SidebarTab.size) / 2
+        // The spaces along the very bottom; over them the bar: what it
+        // lists at the left, the counts at the right.
+        spaces.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SpaceStripView.height)
+        let barY = SpaceStripView.height
+        let by: CGFloat = barY + (Self.barHeight - SidebarTab.size) / 2
         var x: CGFloat = 8
         for t in tabs {
             t.frame = NSRect(x: x, y: by, width: SidebarTab.size, height: SidebarTab.size)
             x += SidebarTab.size + 2
         }
         let cw = counts.wantedWidth
-        counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
-        var bottom = Self.barHeight
-        spaces.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: SpaceStripView.height)
-        bottom += SpaceStripView.height + 2
+        counts.frame = NSRect(x: bounds.width - 12 - cw, y: barY, width: cw, height: Self.barHeight)
+        var bottom = barY + Self.barHeight
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
         bottom += nh + 4
@@ -250,6 +253,19 @@ final class SidebarView: NSView {
         organizationView.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: max(0, top - bottom))
         resizeHandle.frame = NSRect(x: bounds.width - 7, y: 0, width: 7, height: bounds.height - Self.headerHeight)
     }
+
+    /// The hosts' list over the + (`rect`, in the window), on top of all.
+    func showHostPicker(_ rows: [HostPickerView.Row], over rect: NSRect) {
+        hostPicker.show(rows)
+        let r = card.convert(rect, from: nil)
+        let h = hostPicker.wantedHeight, w = min(HostPickerView.width, card.bounds.width - 16)
+        let x = min(max(8, r.midX - w / 2), card.bounds.width - 8 - w)
+        hostPicker.frame = NSRect(x: x.rounded(), y: (r.maxY + 6).rounded(), width: w, height: h)
+        if hostPicker.superview == nil || card.subviews.last !== hostPicker { card.addSubview(hostPicker) }
+        hostPicker.isHidden = false
+    }
+
+    func hideHostPicker() { hostPicker.isHidden = true }
 
     /// Shows an organization's tree.
     func setOrganization(_ org: Organization) {

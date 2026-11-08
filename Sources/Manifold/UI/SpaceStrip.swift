@@ -7,7 +7,9 @@ import ManifoldCore
 /// outlined; a dot at a corner for what most wants you in it (needs you,
 /// failed, done and not read); a hairline between one host's and the
 /// next's. Clicked, a space is gone to; the pointer on one peeks at it;
-/// right-clicked, its menu (its colour, its symbol, its name).
+/// right-clicked, its menu (its colour, its symbol, its name). After
+/// them a +: clicked, a new space, on the shown one's host; the pointer
+/// on it, with more than one host, a list of them to make it on.
 final class SpaceStripView: NSView {
     struct Chip: Equatable {
         var id: BlockID
@@ -30,6 +32,10 @@ final class SpaceStripView: NSView {
     /// The pointer on one (its rect in the window), or off them.
     var onHover: ((BlockID?, NSRect) -> Void)?
     var onMenu: ((BlockID) -> NSMenu?)?
+    /// The + clicked.
+    var onNew: (() -> Void)?
+    /// The pointer on the + (its rect in the window), or off it.
+    var onPlusHover: ((NSRect?) -> Void)?
 
     private(set) var chips: [Chip] = []
     private var frames: [NSRect] = []
@@ -105,7 +111,14 @@ final class SpaceStripView: NSView {
             defer { x += Self.side + Self.gap }
             return NSRect(x: x, y: y, width: Self.side, height: Self.side)
         }
+        // The +, a little apart.
+        frames.append(NSRect(x: x + 2, y: y, width: Self.side, height: Self.side))
     }
+
+    /// The +'s index among the frames.
+    private var plus: Int { chips.count }
+    /// Where the + is.
+    var plusRect: NSRect { frames.indices.contains(plus) ? rect(plus) : .zero }
 
     /// Short of room, they're narrowed together, to as little as a sliver.
     private var squeeze: CGFloat {
@@ -121,6 +134,24 @@ final class SpaceStripView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if frames.indices.contains(plus) {
+            // The +: quiet, outlined, filled a little under the pointer.
+            let r = rect(plus)
+            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+            if hovered == plus {
+                Theme.text.withAlphaComponent(0.08).setFill()
+                path.fill()
+            }
+            Theme.text.withAlphaComponent(hovered == plus ? 0.3 : 0.16).setStroke()
+            path.lineWidth = 1
+            path.setLineDash([3, 2], count: 2, phase: 0)
+            path.stroke()
+            if let image = Theme.symbol("plus", size: 11, weight: .semibold, color: hovered == plus ? Theme.text : Theme.secondaryText) {
+                let z = image.size
+                image.draw(in: NSRect(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
             let r = rect(i)
             if c.hostBreak {
@@ -174,9 +205,10 @@ final class SpaceStripView: NSView {
         }
     }
 
+    /// The square under the pointer, or the + (`plus`).
     private func index(at event: NSEvent) -> Int? {
         let p = convert(event.locationInWindow, from: nil)
-        return chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -6).contains(p) }
+        return frames.indices.first { rect($0).insetBy(dx: -Self.gap / 2, dy: -6).contains(p) }
     }
 
     override func updateTrackingAreas() {
@@ -190,7 +222,14 @@ final class SpaceStripView: NSView {
     override func mouseExited(with event: NSEvent) { hover(nil) }
 
     private func hover(_ i: Int?) {
+        let was = hovered
         hovered = i
+        if i == plus {
+            onHover?(nil, .zero)
+            if was != plus { onPlusHover?(convert(rect(plus), to: nil)) }
+            return
+        }
+        if was == plus { onPlusHover?(nil) }
         guard let i else { return onHover?(nil, .zero) ?? () }
         onHover?(chips[i].id, convert(rect(i), to: nil))
     }
@@ -199,11 +238,12 @@ final class SpaceStripView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard let i = index(at: event) else { return }
         onHover?(nil, .zero)
+        if i == plus { return onNew?() ?? () }
         onPick?(chips[i].id)
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        guard let i = index(at: event), let menu = onMenu?(chips[i].id) else { return }
+        guard let i = index(at: event), i != plus, let menu = onMenu?(chips[i].id) else { return }
         onHover?(nil, .zero)
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
@@ -214,7 +254,7 @@ final class SpaceStripView: NSView {
     }
 
     func debugHover(_ i: Int?) {
-        guard let i, chips.indices.contains(i) else { return hover(nil) }
+        guard let i, frames.indices.contains(i) else { return hover(nil) }
         hover(i)
     }
 }
@@ -315,6 +355,7 @@ extension MainWindowController {
                 guard let self, id != self.selected else { return }
                 self.hosts.select(id)
             }
+            wirePlus()
         }
         strip.show(spaceChips())
         refreshNeedsYou()
@@ -440,6 +481,19 @@ extension MainWindowController {
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
+        case "plus":
+            // "spaces plus": the hosts' list over the + (even for one host);
+            // "spaces plus new": the + clicked; "spaces plus pick <i>": host i chosen.
+            switch w.dropFirst().first {
+            case "new": strip.onNew?()
+            case "pick":
+                let rows = sidebar.hostPicker.rows
+                if let i = w.dropFirst(2).first.flatMap(Int.init), rows.indices.contains(i) { sidebar.hostPicker.onPick?(rows[i].host) }
+            case "off": hideHostPicker(now: true)
+            default:
+                showHostPicker(over: strip.convert(strip.plusRect, to: nil), always: true)
+                return sidebar.hostPicker.debugRows + " · picker \(sidebar.hostPicker.frame.integral)"
+            }
         case "drop":
             // "spaces drop <i> [copy]": the focused tile dropped on square i.
             guard let i = w.dropFirst().first.flatMap(Int.init), strip.chips.indices.contains(i), let f = arrangement?.focused else { return "no" }
@@ -618,5 +672,165 @@ extension MainWindowController {
         let before = v.wantedHeight
         v.show(needsYouItems())
         if v.wantedHeight != before { sidebar.needsLayout = true }
+    }
+}
+
+/// The hosts to make a new space on (§3.6), over the strip's + while the
+/// pointer's on it: a row each — whether it's connected, its name, how
+/// many spaces it has — the shown space's host marked. Clicked, a new
+/// space there.
+final class HostPickerView: NSView {
+    struct Row: Equatable {
+        var host: HostID
+        var label: String
+        var spaces: Int
+        var connected: Bool
+        var here: Bool
+    }
+
+    static let headHeight: CGFloat = 24
+    static let rowHeight: CGFloat = 26
+    static let width: CGFloat = 220
+
+    var onPick: ((HostID) -> Void)?
+    /// The pointer in it, or gone out of it.
+    var onInside: ((Bool) -> Void)?
+    private(set) var rows: [Row] = []
+    private(set) var inside = false
+    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    override var isFlipped: Bool { true }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        themed { v in
+            v.layer?.backgroundColor = Theme.panel.cgColor
+            v.layer?.borderColor = Theme.panelBorder.cgColor
+            v.layer?.borderWidth = 0.5
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ new: [Row]) {
+        rows = new
+        hovered = nil
+        needsDisplay = true
+    }
+
+    var wantedHeight: CGFloat { Self.headHeight + CGFloat(rows.count) * Self.rowHeight + 6 }
+
+    private func rowRect(_ i: Int) -> NSRect {
+        NSRect(x: 4, y: Self.headHeight + CGFloat(i) * Self.rowHeight, width: bounds.width - 8, height: Self.rowHeight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSAttributedString(string: "New space on", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: Theme.secondaryText])
+            .draw(at: NSPoint(x: 12, y: 6))
+        for (i, row) in rows.enumerated() {
+            let r = rowRect(i)
+            if hovered == i {
+                Theme.accent.withAlphaComponent(0.85).setFill()
+                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            }
+            let lit = hovered == i
+            let dot = NSRect(x: r.minX + 9, y: r.midY - 3.5, width: 7, height: 7)
+            (row.connected ? Status.done : Theme.tertiaryText).withAlphaComponent(lit ? 1 : 0.9).setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            let count = NSAttributedString(string: row.spaces == 1 ? "1 space" : "\(row.spaces) spaces",
+                                           attributes: [.font: UIType.detail, .foregroundColor: lit ? NSColor.white.withAlphaComponent(0.8) : Theme.tertiaryText])
+            let cz = count.size()
+            count.draw(at: NSPoint(x: r.maxX - 10 - cz.width, y: r.midY - cz.height / 2))
+            var x = dot.maxX + 9
+            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: lit ? .white : Theme.accent) {
+                let z = image.size
+                image.draw(in: NSRect(x: x, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                x += z.width + 6
+            }
+            NSAttributedString(string: row.label, attributes: [.font: UIType.row, .foregroundColor: lit ? NSColor.white : row.connected ? Theme.text : Theme.secondaryText])
+                .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, r.maxX - 16 - cz.width - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+    }
+
+    private func index(at event: NSEvent) -> Int? {
+        let p = convert(event.locationInWindow, from: nil)
+        return rows.indices.first { rowRect($0).contains(p) }
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { inside = true; hovered = index(at: event); onInside?(true) }
+    override func mouseMoved(with event: NSEvent) { hovered = index(at: event) }
+    override func mouseExited(with event: NSEvent) { inside = false; hovered = nil; onInside?(false) }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        guard let i = index(at: event) else { return }
+        onPick?(rows[i].host)
+    }
+
+    var debugRows: String {
+        rows.map { ($0.here ? "✓ " : "") + $0.label + " (\($0.spaces))" + ($0.connected ? "" : " offline") }.joined(separator: " | ")
+    }
+}
+
+extension MainWindowController {
+    /// The hosts a new space can go on, for the +'s list.
+    func hostPickerRows() -> [HostPickerView.Row] {
+        let here = selected?.host ?? focusedHost
+        return hosts.ordered.map { c in
+            .init(host: c.host, label: hosts.label(of: c.host), spaces: allWorkspaces.filter { $0.host == c.host }.count,
+                  connected: c.isConnected || c === hosts.local, here: c.host == here)
+        }
+    }
+
+    /// The + in the strip: clicked, a new space on the shown space's host;
+    /// the pointer on it, with more than one host, the list of them over
+    /// it, kept while the pointer's on either.
+    func wirePlus() {
+        let strip = sidebar.spaces, picker = sidebar.hostPicker
+        strip.onNew = { [weak self] in
+            guard let self else { return }
+            self.hideHostPicker(now: true)
+            self.newWorkspace(on: self.selected?.host ?? self.focusedHost, cwd: nil)
+        }
+        strip.onPlusHover = { [weak self] rect in
+            guard let self else { return }
+            guard let rect else { return self.hideHostPicker() }
+            self.showHostPicker(over: rect)
+        }
+        picker.onInside = { [weak self] inside in if !inside { self?.hideHostPicker() } }
+        picker.onPick = { [weak self] host in
+            guard let self else { return }
+            self.hideHostPicker(now: true)
+            if self.stateView != nil { self.hideStateView() }
+            self.newWorkspace(on: host, cwd: nil)
+        }
+    }
+
+    func showHostPicker(over rect: NSRect, always: Bool = false) {
+        pickerHide?.cancel()
+        let rows = hostPickerRows()
+        guard rows.count > 1 || always else { return }
+        sidebar.showHostPicker(rows, over: rect)
+    }
+
+    /// Put away a moment after the pointer leaves the + and the list, if
+    /// it hasn't come back to either.
+    func hideHostPicker(now: Bool = false) {
+        pickerHide?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, now || !self.sidebar.hostPicker.inside else { return }
+            self.sidebar.hideHostPicker()
+        }
+        pickerHide = work
+        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work) }
     }
 }

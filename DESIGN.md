@@ -755,13 +755,16 @@ order pinned; On Screen, as the grid has them, column by column, a
 hairline between columns; Docked, the latest first — the focused one
 marked, so the sidebar is the table of contents of the screen; clicking
 a tile row focuses it (a docked one comes back where it was). The other
-spaces are **the strip** at the foot, as Arc's spaces are
+spaces are **the strip** along the very bottom, under the bar, as Arc's spaces are
 (`SpaceStripView`): a small square each in its colour, its letter or a
 symbol in it (both chosen from its menu, kept on it as annotations,
 `space.color` and `space.symbol`; unchosen, a colour by its id and its
 name's first letter); the one shown outlined; a dot at a corner for
 what most wants you in it; a hairline between one host's and the
-next's. Clicked, a space is gone to; the pointer on one shows a card of
+next's; after them a + (a new space on the shown one's host; the
+pointer on it, with more than one host, a list of them over it —
+`HostPickerView` — to make it on another, each with whether it's
+connected and how many spaces it has). Clicked, a space is gone to; the pointer on one shows a card of
 its tiles, what wants you first; a two-finger swipe across the sidebar
 goes to the next, or the one before, and the grid slides sideways as
 the strip has them, the sidebar's list sliding with it. A tile, or a

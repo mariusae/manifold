@@ -31,13 +31,16 @@ parts from the Mac's conventions on purpose.
   many tiles it has on screen and docked, then its tiles in sections
   that don't fold — **Pinned**, **On Screen** (as the grid has them,
   column by column, a hairline between columns) and **Docked** (the
-  latest first). Over the bar at the foot runs **the strip**, every
+  latest first). Along the very bottom, under the bar, runs **the strip**, every
   space as a small square, as Arc's spaces are: its colour, its letter
   or a symbol (right-click it to choose either, or to rename it), the
   one shown outlined, a dot for what most wants you there, a hairline
   between hosts. Click a square to go there, rest the pointer on one
   to see its tiles, or swipe two fingers sideways across the sidebar
-  for the next space or the one before. Above the strip, always there,
+  for the next space or the one before. The **+** after the squares
+  makes a new space on the shown one's host; with more than one host,
+  resting the pointer on it lists them, to make it on another. Above
+  the bar, always there,
   is what **needs you** in every space — its space's square, its name,
   what it needs — click one to go to it. Above that sits a quiet row, **Recently
   Closed**, with a count; clicking it pushes that list over the tree,

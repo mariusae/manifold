@@ -924,6 +924,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Tiles leaving the grid flown by hand (to a space's square in the
     /// strip), not seen to go by the grid.
     var flownAway: Set<PlacementID> = []
+    /// The +'s host list, to be put away.
+    var pickerHide: DispatchWorkItem?
 
     private let transfersBadge = TransfersBadge()
 
