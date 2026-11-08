@@ -450,7 +450,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
                 if focused == lastFocused, let responder,
-                   ([threadUI.overlay, sidebar] as [NSView?]).contains(where: { $0.map(responder.isDescendant(of:)) ?? false }) {
+                   ([threadUI.overlay, sidebar, footerMenu.view] as [NSView?]).contains(where: { $0.map(responder.isDescendant(of:)) ?? false }) {
                     // Typing in the threads' overlay or the sidebar (its
                     // composer, its filter): a refresh, the focus where it
                     // was, leaves the keyboard there.
@@ -1410,7 +1410,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func scheduleHide() {
-        guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil else { return }
+        guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil, footerMenu.view == nil else { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.hideSidebar() }
         hideWork = work

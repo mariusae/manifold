@@ -3026,8 +3026,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The pointer on the bar: its buttons shown; else only its icon,
     /// name and status. Their room is kept, so nothing moves as they come.
     var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true) } } }
-    /// Buttons always shown (a fan's card, debugging).
-    static var buttonsAlways = false
+    /// Buttons always shown: a tile's controls stay visible (hidden till
+    /// hovered, they moved the links' pill and hid what could be done).
+    static var buttonsAlways = true
 
     private func showButtons(animated: Bool) {
         let a: CGFloat = pointerIn || Self.buttonsAlways ? 1 : 0

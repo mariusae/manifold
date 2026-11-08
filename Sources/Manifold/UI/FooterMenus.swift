@@ -100,7 +100,7 @@ extension MainWindowController {
             closeFooterMenu()
             if same { return }
         }
-        if !sidebarShown && !pinned { showSidebar(animated: true) }
+        // The sidebar put away: the menu by itself, where its footer would be.
         let m = PopMenu()
         footerMenu = (m, which)
         m.onClose = { [weak self] in self?.closeFooterMenu() }
@@ -124,6 +124,9 @@ extension MainWindowController {
         root.addSubview(m)
         layoutFooterMenu()
         m.focus()
+        // Its field keeps the keyboard: taken again a turn later, after
+        // anything this keystroke set off has had its say.
+        DispatchQueue.main.async { [weak m] in m?.focus() }
         // A click anywhere else puts it away.
         footerMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
             guard let self, let m = self.footerMenu.view, e.window === self.window else { return e }
@@ -147,10 +150,13 @@ extension MainWindowController {
     /// Over the footer, from the sidebar's left, as tall as it needs.
     func layoutFooterMenu() {
         guard let m = footerMenu.view else { return }
-        let foot = root.convert(sidebar.footer.bounds, from: sidebar.footer)
         let w = PopMenu.width
-        let x = max(8, foot.minX + 6)
-        let bottom = foot.maxY + 4
+        var x: CGFloat = 8, bottom: CGFloat = 12
+        if sidebarShown || pinned {
+            let foot = root.convert(sidebar.footer.bounds, from: sidebar.footer)
+            x = max(8, foot.minX + 6)
+            bottom = foot.maxY + 4
+        }
         let h = m.wantedHeight(most: min(560, root.bounds.height - bottom - 20))
         m.frame = NSRect(x: x, y: bottom, width: w, height: h)
     }
@@ -232,9 +238,19 @@ extension MainWindowController {
     func tilesMenu(_ query: String) -> [PopMenu.Section] {
         guard let space = selected, let a = hosts.arrangement(space) else { return [] }
         let q = query.lowercased()
+        // Matched by what's said of it and what's known of it, said or not:
+        // its kind, an agent's command ("claude"), where it runs, its host,
+        // what it's doing.
         func matchesQuery(_ b: Block?) -> Bool {
             guard !q.isEmpty else { return true }
-            return [b.map(Self.linkTitle) ?? "", b?.path ?? "", b?.web?.url ?? ""].contains { $0.lowercased().contains(q) }
+            guard let b else { return false }
+            var words = [Self.linkTitle(b), b.displayTitle, b.path ?? "", b.web?.url ?? "", b.kind.rawValue, b.kind.defaultTitle,
+                         b.agent?.command ?? "", b.terminal?.cwd ?? "", b.place ?? "", hosts.label(of: b.id.host)]
+            if let s = StatusGlyph.remark(b) { words.append(s) }
+            if b.isNote { words.append("note") }
+            if b.agent != nil { words.append("agent") }
+            let all = words.joined(separator: " ").lowercased()
+            return q.split(separator: " ").allSatisfy { all.contains($0) }
         }
         // The space's tiles, the last seen first.
         let far = Date.distantPast
