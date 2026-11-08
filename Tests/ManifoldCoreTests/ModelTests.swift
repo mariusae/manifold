@@ -119,6 +119,12 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     // Growing takes from the neighbors, nearest first; filling leaves slivers.
     for ev in a.growing(n.id, step: 0.1) { a.apply(ev) }
     #expect(abs(a.heights[n.id]! - 0.35) < 1e-9 && abs(a.heights[e.id]! - 0.4) < 1e-9)
+    // Squeezing leaves the others in the column, down to their bars.
+    var squeezed = a
+    for ev in squeezed.squeezing(n.id) { squeezed.apply(ev) }
+    #expect(squeezed.columns[1].map(\.id) == [t2.id, n.id, e.id] && squeezed.docked.isEmpty && squeezed.focused == n.id)
+    #expect(squeezed.heights[t2.id] == ArrangementState.barSliver && squeezed.heights[e.id] == ArrangementState.barSliver)
+    #expect(abs(squeezed.heights[n.id]! - (1 - 2 * ArrangementState.barSliver)) < 1e-9)
     // Filling the column docks the others, their room its; gone to again,
     // one comes back where it was, its room back from the tile that took it.
     let eHeight = a.heights[e.id]!

@@ -3061,7 +3061,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return false
             }
             item.title = isSummarized(f) ? "Show Content" : "Shrink to Summary"
-        case #selector(growTile(_:)), #selector(fillColumn(_:)):
+        case #selector(growTile(_:)), #selector(fillColumn(_:)), #selector(fillColumnKeepingBars(_:)):
             return arrangement?.focused != nil
         case #selector(saveAndClose(_:)):
             return focusedShown.map { $0.block?.kind == .text } ?? false
@@ -3903,6 +3903,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func fillColumn(_ sender: Any?) {
         guard let a = arrangement, let f = a.focused else { return }
         appendToSelected(a.growing(f, whole: true))
+    }
+
+    /// The focused tile all its column but the others' bars (as its bar
+    /// ⌥-clicked): they stay in the grid, not docked.
+    @objc func fillColumnKeepingBars(_ sender: Any?) {
+        guard let f = arrangement?.focused else { return }
+        gridSqueeze(f)
     }
 
     // MARK: Organizations (§3.6)
@@ -8480,6 +8487,13 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement, whole: true))
     }
 
+
+    /// A bar ⌥-clicked: its tile takes the column but for the others'
+    /// bars, which stay in the grid.
+    func gridSqueeze(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        appendToSelected(a.squeezing(placement))
+    }
 
     func gridToggleFull(_ placement: PlacementID) {
         guard let a = arrangement else { return }

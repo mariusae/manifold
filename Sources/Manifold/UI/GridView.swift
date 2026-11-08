@@ -49,6 +49,8 @@ protocol GridDelegate: AnyObject {
     func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
+    /// A bar ⌥-clicked: its tile all the column but the others' bars.
+    func gridSqueeze(_ placement: PlacementID)
     /// ⌥-click: the block's path, folder by folder, each going there.
     func gridPathMenu(for placement: PlacementID) -> NSMenu?
     /// The pill's corner button: the tile maximized over the arrangement,
@@ -296,11 +298,14 @@ final class GridView: NSView, NSDraggingSource {
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
                     // focused — clicked again, a step more; ⌘-clicked, it
-                    // fills its column (Maximize is the corner's). The pointer follows the bar to
+                    // fills its column, the others docked; ⌥-clicked, all
+                    // its column but the others' bars, they staying (Maximize
+                    // is the corner's). The pointer follows the bar to
                     // where it was clicked, once the tile has grown and moved
                     // it, so a click again grows again.
                     self.delegate?.gridFocus(id)
                     if mods.contains(.command) { self.delegate?.gridFill(id); return }
+                    if mods.contains(.option) { self.delegate?.gridSqueeze(id); return }
                     self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
                 }

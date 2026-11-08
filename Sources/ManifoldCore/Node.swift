@@ -286,6 +286,20 @@ extension ArrangementState {
         return [.heights(h)]
     }
 
+    /// A tile taking its column but for the others' bars (a bar ⌥-clicked):
+    /// each other down to a sliver — its bar alone, as the grid draws one
+    /// that short — still in the grid, not docked; the rest this one's.
+    public func squeezing(_ id: PlacementID) -> [Event] {
+        guard let (c, _) = locate(id), columns[c].count > 1 else { return [] }
+        let others = Double(columns[c].count - 1)
+        var h: [PlacementID: Double] = [:]
+        for p in columns[c] { h[p.id] = p.id == id ? 1 - Self.barSliver * others : Self.barSliver }
+        return [.heights(h), .focus(id)]
+    }
+
+    /// A share so small the grid draws only the tile's bar.
+    public static let barSliver = 0.001
+
     /// A tile docked (⌘M, §3.1): out of the grid, its room back where it
     /// came from; still in the space.
     public func docking(_ id: PlacementID) -> [Event] {
