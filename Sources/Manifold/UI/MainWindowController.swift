@@ -962,7 +962,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var commandHeld: DispatchWorkItem?
     var commandMonitor: Any?
 
-    /// Watches ⌘: held alone a third of a second, the spaces' numbers
+    /// Watches ⌘: held alone a quarter of a second, the spaces' numbers
     /// shown on their squares; let go, or another key pressed, gone.
     func watchCommandKey() {
         guard commandMonitor == nil else { return }
@@ -973,7 +973,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if alone {
                 let work = DispatchWorkItem { [weak self] in self?.sidebar.spaces.showsNumbers = true }
                 self.commandHeld = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
             } else if e.type == .flagsChanged || !e.modifierFlags.contains(.command) {
                 self.sidebar.spaces.showsNumbers = false
             }
