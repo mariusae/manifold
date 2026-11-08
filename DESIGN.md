@@ -2929,7 +2929,10 @@ purpose — set down so a later audit reads them as choices, not slips.
   as it goes, and its row a band of it, coming up as the tile arrives;
   what the row says is built up from the left in step with how much of
   the tile has crossed into the sidebar (the genie says, at each step,
-  `Genie.Arrival`), and taken away the same way as it pours out — and the
+  `Genie.Arrival`), each letter coming in the accent and settling to its
+  own colour as the edge moves on (ink settling: an accent copy of the
+  row seen in a band behind the edge), and taken away the same way as it
+  pours out — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put

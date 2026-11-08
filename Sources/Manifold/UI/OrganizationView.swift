@@ -678,7 +678,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             let l = outline.rowView(atRow: i, makeIfNecessary: false)?.layer
             let f = (l?.presentation() ?? l)?.frame ?? .zero
             let m = (l?.mask as? CAGradientLayer).map { m in ((m.presentation() ?? m).locations ?? []).map { String(format: "%.2f", $0.doubleValue) }.joined(separator: ",") } ?? "-"
-            return "\(n?.title ?? "?") y \(Int(f.minY)) h \(Int(f.height)) a \(String(format: "%.2f", (l?.presentation() ?? l)?.opacity ?? 0)) mask \(m)"
+            let ink = l?.sublayers?.first { $0.zPosition == 10 }.flatMap { $0.mask as? CAGradientLayer }.map { m in ((m.presentation() ?? m).locations ?? []).map { String(format: "%.2f", $0.doubleValue) }.joined(separator: ",") }
+            return "\(n?.title ?? "?") y \(Int(f.minY)) h \(Int(f.height)) a \(String(format: "%.2f", (l?.presentation() ?? l)?.opacity ?? 0)) mask \(m)" + (ink.map { " ink \($0)" } ?? "")
         }.joined(separator: " | ")
     }
 
@@ -724,6 +725,31 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             return [NSNumber(value: r), NSNumber(value: r + soft)]
         }
         m.locations = at(progress.last!)
+        // Ink settling: each letter comes in the accent, settling to its
+        // own colour as the edge moves on — a copy of the row in the
+        // accent, seen only in a band just behind the edge.
+        let ink = inkLayer(of: v)
+        let band = 0.22
+        func inkAt(_ q: Double) -> [NSNumber] {
+            let r = q * (1 + soft) - soft
+            return [r - band, r - band * 0.35, r, r + soft].map { NSNumber(value: $0) }
+        }
+        if let ink {
+            let im = CAGradientLayer()
+            im.startPoint = CGPoint(x: 0, y: 0.5)
+            im.endPoint = CGPoint(x: 1, y: 0.5)
+            im.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            im.frame = CGRect(x: 0, y: -40, width: max(v.bounds.width, 1), height: 120)
+            im.locations = inkAt(progress.last!)
+            ink.mask = im
+            layer.addSublayer(ink)
+            let y = CAKeyframeAnimation(keyPath: "locations")
+            y.values = progress.map(inkAt)
+            y.duration = d
+            y.beginTime = CACurrentMediaTime() + delay
+            y.fillMode = .backwards
+            im.add(y, forKey: "ink")
+        }
         layer.mask = m
         let x = CAKeyframeAnimation(keyPath: "locations")
         x.values = progress.map(at)
@@ -731,11 +757,33 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         x.beginTime = CACurrentMediaTime() + delay
         x.fillMode = .backwards
         m.add(x, forKey: "build")
-        if progress.last! >= 1 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay + d + 0.05) { [weak layer, weak m] in
-                if let layer, layer.mask === m { layer.mask = nil }
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + d + 0.05) { [weak layer, weak m] in
+            ink?.removeFromSuperlayer()
+            if progress.last! >= 1, let layer, layer.mask === m { layer.mask = nil }
         }
+    }
+
+    /// A row as it shows, in the accent: its words and icon that colour.
+    private func inkLayer(of v: NSView) -> CALayer? {
+        guard v.bounds.width > 0, v.bounds.height > 0, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return nil }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        guard let picture = rep.cgImage, let ctx = CGContext(data: nil, width: picture.width, height: picture.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                              bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+        let all = CGRect(x: 0, y: 0, width: picture.width, height: picture.height)
+        ctx.draw(picture, in: all)
+        ctx.setBlendMode(.sourceIn)
+        var accent = Theme.accent.cgColor
+        v.effectiveAppearance.performAsCurrentDrawingAppearance { accent = Theme.accent.cgColor }
+        ctx.setFillColor(accent)
+        ctx.fill(all)
+        guard let image = ctx.makeImage() else { return nil }
+        let l = CALayer()
+        l.contents = image
+        l.contentsGravity = .resize
+        l.frame = v.bounds
+        l.zPosition = 10
+        return l
     }
 
     /// Where a tile's row is landing, marked: a band of the tint behind it,
