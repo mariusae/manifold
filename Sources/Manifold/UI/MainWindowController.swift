@@ -929,6 +929,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's tree not made again before this (media time): a
     /// tile's row squeezing shut as it pours out of it.
     var sidebarHeldUntil: CFTimeInterval = 0
+    /// A docked tile's picture as it went (its body's): what it pours back
+    /// out as, a view just shown again having nothing drawn yet (a PDF's).
+    var dockedPictures: [PlacementID: Any] = [:]
 
     private let transfersBadge = TransfersBadge()
 
@@ -4029,7 +4032,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         sidebar.setSpace(title: title(of: a), host: hosts.label(of: id.host), standing: standing,
-                         pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil)
+                         pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil, remote: c?.isRemote == true)
         if sidebar.spaceHost.onHover == nil {
             sidebar.spaceHost.onHover = { [weak self] rect in
                 guard let self, let rect, let window = self.window, let host = self.selected?.host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }
@@ -5403,7 +5406,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if clients.count > 1 {
                 let id = "host:\(c.host.raw)"
                 open.insert(id)
-                let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: "desktopcomputer",
+                let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "desktopcomputer",
                                 count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree)
                 hostStanding(n, c)
                 roots.append(n)

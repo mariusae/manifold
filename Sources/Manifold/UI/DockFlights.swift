@@ -41,8 +41,10 @@ extension MainWindowController {
             }
             for id in down {
                 if let p = parts[id] { f.down[id] = here(p) } else if let b = bars[id] { f.bars[id] = here(b) }
+                if let body = f.down[id]?.parts.first?.1 { dockedPictures[id] = body }
             }
         }
+        dockedPictures = dockedPictures.filter { now.contains($0.key) || seen.docked.contains($0.key) }
         for id in seen.docked.subtracting(now) where a.locate(id) != nil {
             f.up[id] = sidebar.organizationView.row(of: id, in: space, in: root) ?? .zero
         }
@@ -149,7 +151,9 @@ extension MainWindowController {
                 guard let b = a.placement(id)?.block else { continue }
                 let inSidebar = from != .zero
                 if let p = parts[id] {
-                    let tile = here(p)
+                    var tile = here(p)
+                    // As it went, not as it is (nothing drawn yet, maybe).
+                    if let kept = dockedPictures.removeValue(forKey: id), !tile.parts.isEmpty { tile.parts[0].1 = kept }
                     let arrival = Genie.run(tile, target: inSidebar ? Self.slotEnd(from) : edgeSpot(tile.whole), restoring: true, in: host,
                                             scale: scale, tint: tint, boundary: inSidebar ? edge : nil)
                     guard arrival != nil else { continue }

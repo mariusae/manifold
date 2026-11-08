@@ -207,11 +207,14 @@ final class SidebarView: NSView {
             }
             let left: CGFloat = pushed ? 44 : 16
             if organization == .desk {
-                // A space's name and its host, the same size, apart.
-                pushedTitle.frame = NSRect(x: left, y: top - 22, width: max(0, right - left), height: 20)
-                spaceHost.frame = NSRect(x: left, y: top - 48, width: max(0, right - left), height: 20)
-                top -= 54
+                // A space's name and its host, the same size, apart: the
+                // name strong, the host quiet.
+                pushedTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+                pushedTitle.frame = NSRect(x: left, y: top - 20, width: max(0, right - left), height: 18)
+                spaceHost.frame = NSRect(x: left, y: top - 42, width: max(0, right - left), height: 18)
+                top -= 48
             } else {
+                pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
                 pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
                 pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
                 top -= Self.pushedHeight + 6
@@ -348,10 +351,10 @@ final class SidebarView: NSView {
     }
 
     /// The space shown (§3.6): its name over its tiles, and how many.
-    func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?) {
+    func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false) {
         guard organization == .desk else { return }
         pushedTitle.stringValue = title
-        spaceHost.show(host: host, standing: standing, pings: pings)
+        spaceHost.show(host: host, standing: standing, pings: pings, remote: remote)
     }
 
     /// The Inspector's header: the block's name, and what and where it is.
@@ -745,9 +748,9 @@ final class SpaceHostLine: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.image = Theme.symbol("desktopcomputer", size: 13, weight: .regular)
+        icon.image = Theme.symbol("desktopcomputer", size: 11, weight: .regular)
         icon.contentTintColor = Theme.secondaryText
-        label.font = .systemFont(ofSize: 15, weight: .regular)
+        label.font = .systemFont(ofSize: 13, weight: .regular)
         label.textColor = Theme.secondaryText
         label.lineBreakMode = .byTruncatingTail
         for v in [icon, label, sparkline] as [NSView] { addSubview(v) }
@@ -755,7 +758,8 @@ final class SpaceHostLine: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(host: String, standing: String?, pings: (() -> Sparkline.Pings)?) {
+    func show(host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false) {
+        icon.image = Theme.symbol(remote ? "server.rack" : "desktopcomputer", size: 11, weight: .regular)
         label.stringValue = host + (standing.map { " · " + $0 } ?? "")
         label.textColor = standing == nil ? Theme.secondaryText : Status.attention
         sparkline.pings = pings
@@ -773,11 +777,11 @@ final class SpaceHostLine: NSView {
     override func layout() {
         super.layout()
         let h = bounds.height
-        icon.frame = NSRect(x: 0, y: (h - 16) / 2, width: 18, height: 16)
-        let room = bounds.width - 24 - (sparkline.isHidden ? 0 : Sparkline.width + 8)
+        icon.frame = NSRect(x: 0, y: (h - 14) / 2, width: 16, height: 14)
+        let room = bounds.width - 20 - (sparkline.isHidden ? 0 : Sparkline.width + 8)
         label.sizeToFit()
         let lw = min(ceil(label.frame.width), max(0, room))
-        label.frame = NSRect(x: 24, y: ((h - label.frame.height) / 2).rounded(), width: lw, height: label.frame.height)
+        label.frame = NSRect(x: 20, y: ((h - label.frame.height) / 2).rounded(), width: lw, height: label.frame.height)
         sparkline.frame = NSRect(x: label.frame.maxX + 8, y: (h - Sparkline.height) / 2, width: Sparkline.width, height: Sparkline.height)
     }
 
