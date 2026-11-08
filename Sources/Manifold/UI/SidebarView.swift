@@ -218,8 +218,9 @@ final class SidebarView: NSView {
         }
         // The spaces along the very bottom; over them the bar: what it
         // lists at the left, the counts at the right.
-        spaces.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SpaceStripView.height)
-        let barY = SpaceStripView.height
+        let sh = spaces.wantedHeight(width: bounds.width)
+        spaces.frame = NSRect(x: 0, y: 0, width: bounds.width, height: sh)
+        let barY = sh
         let by: CGFloat = barY + (Self.barHeight - SidebarTab.size) / 2
         var x: CGFloat = 8
         for t in tabs {
@@ -231,7 +232,8 @@ final class SidebarView: NSView {
         var bottom = barY + Self.barHeight
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
-        bottom += nh + 4
+        needsYou.isHidden = nh == 0
+        bottom += nh > 0 ? nh + 4 : 0
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
@@ -531,6 +533,11 @@ extension NSMenuItem {
     /// in the SDK we build with (1 is visible; 0, the default, hides it).
     func setSymbol(_ name: String, size: CGFloat) {
         image = Theme.symbol(name, size: size)
+        showImage()
+    }
+
+    /// Its image shown, which macOS 27 hides unless asked.
+    func showImage() {
         if responds(to: Selector(("setPreferredImageVisibility:"))) { setValue(1, forKey: "preferredImageVisibility") }
     }
 }

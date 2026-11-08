@@ -774,8 +774,10 @@ moment, the space opens, for the drop to land where it's wanted. Over
 the strip, always there, is what **needs you** in every space
 (`NeedsYouView`): a row each, its space's square, its symbol and name,
 what it needs in a pill; clicked, gone to in its space; five at most,
-then how many more, which shows them all (and "Fewer" again); none, a
-quiet line saying so.
+then how many more, which shows them all (and "Fewer" again); none,
+not there at all. Squares too many for a row wrap onto another, the
+strip as tall as it takes. A square's menu shows its colours and
+symbols as they'll look.
 Recently Closed (§4), a row at the foot, pushes its list over the tree,
 with a back button and the list's name in the header. The space stays
 the working surface; organizations are how you reach blocks, never

@@ -24,9 +24,11 @@ final class SpaceStripView: NSView {
         var hostBreak: Bool
     }
 
+    /// One row's height; more rows, each `side + gap` more.
     static let height: CGFloat = 36
     static let side: CGFloat = 24
     static let gap: CGFloat = 6
+    static let inset: CGFloat = 10
 
     var onPick: ((BlockID) -> Void)?
     /// The pointer on one (its rect in the window), or off them.
@@ -63,7 +65,7 @@ final class SpaceStripView: NSView {
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let p = convert(sender.draggingLocation, from: nil)
-        let i = chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -6).contains(p) && !chips[$0].current }
+        let i = chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) && !chips[$0].current }
         if i != dropTarget {
             dropTarget = i
             spring?.cancel()
@@ -96,23 +98,46 @@ final class SpaceStripView: NSView {
 
     func show(_ new: [Chip]) {
         guard new != chips else { return }
+        let rows = wantedHeight(width: bounds.width)
         chips = new
+        if wantedHeight(width: bounds.width) != rows { superview?.superview?.needsLayout = true }
         needsLayout = true
         needsDisplay = true
     }
 
+    /// Where each goes at a width, the + last: in rows from the left,
+    /// another row when one's full; between hosts a hairline's room (none
+    /// at a row's start). And which squares have a hairline before them.
+    private func place(width: CGFloat) -> (frames: [NSRect], breaks: Set<Int>) {
+        var out: [NSRect] = [], breaks: Set<Int> = []
+        var x = Self.inset, y = (Self.height - Self.side) / 2
+        for i in 0...chips.count {
+            let isPlus = i == chips.count
+            var lead: CGFloat = isPlus ? 2 : chips[i].hostBreak ? 7 : 0
+            if x > Self.inset, x + lead + Self.side > width - 8 {
+                x = Self.inset
+                y += Self.side + Self.gap
+                lead = 0
+            }
+            if lead == 7 { breaks.insert(i) }
+            x += lead
+            out.append(NSRect(x: x, y: y.rounded(), width: Self.side, height: Self.side))
+            x += Self.side + Self.gap
+        }
+        return (out, breaks)
+    }
+
+    /// Its height at a width: as many rows as it takes.
+    func wantedHeight(width: CGFloat) -> CGFloat {
+        guard let last = place(width: width).frames.last else { return Self.height }
+        return last.maxY + (Self.height - Self.side) / 2
+    }
+
+    private var breaks: Set<Int> = []
+
     override func layout() {
         super.layout()
-        // In a row from the left; between hosts a hairline's room.
-        var x: CGFloat = 10
-        let y = ((bounds.height - Self.side) / 2).rounded()
-        frames = chips.map { c in
-            if c.hostBreak { x += 7 }
-            defer { x += Self.side + Self.gap }
-            return NSRect(x: x, y: y, width: Self.side, height: Self.side)
-        }
-        // The +, a little apart.
-        frames.append(NSRect(x: x + 2, y: y, width: Self.side, height: Self.side))
+        (frames, breaks) = place(width: bounds.width)
     }
 
     /// The +'s index among the frames.
@@ -120,18 +145,8 @@ final class SpaceStripView: NSView {
     /// Where the + is.
     var plusRect: NSRect { frames.indices.contains(plus) ? rect(plus) : .zero }
 
-    /// Short of room, they're narrowed together, to as little as a sliver.
-    private var squeeze: CGFloat {
-        guard let last = frames.last, last.maxX > bounds.width - 8 else { return 1 }
-        return max(0.4, (bounds.width - 18) / (last.maxX - 10))
-    }
-
-    private func rect(_ i: Int) -> NSRect {
-        let k = squeeze, f = frames[i]
-        guard k < 1 else { return f }
-        let side = (Self.side * max(0.75, k)).rounded()
-        return NSRect(x: (10 + (f.minX - 10) * k).rounded(), y: ((bounds.height - side) / 2).rounded(), width: side, height: side)
-    }
+    private func rect(_ i: Int) -> NSRect { frames[i] }
+    func squareRect(_ i: Int) -> NSRect { frames.indices.contains(i) ? frames[i] : .zero }
 
     override func draw(_ dirtyRect: NSRect) {
         if frames.indices.contains(plus) {
@@ -154,7 +169,7 @@ final class SpaceStripView: NSView {
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
             let r = rect(i)
-            if c.hostBreak {
+            if breaks.contains(i) {
                 Theme.divider.setFill()
                 NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
             }
@@ -208,7 +223,7 @@ final class SpaceStripView: NSView {
     /// The square under the pointer, or the + (`plus`).
     private func index(at event: NSEvent) -> Int? {
         let p = convert(event.locationInWindow, from: nil)
-        return frames.indices.first { rect($0).insetBy(dx: -Self.gap / 2, dy: -6).contains(p) }
+        return frames.indices.first { rect($0).insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) }
     }
 
     override func updateTrackingAreas() {
@@ -272,9 +287,13 @@ enum SpaceLook {
     ]
 
     /// Symbols to choose from, as the menu offers them.
-    static let symbols = ["folder", "terminal", "hammer", "wrench.and.screwdriver", "book", "doc.text", "flask", "globe",
-                          "server.rack", "cpu", "chart.bar", "bubble.left.and.bubble.right", "star", "bolt", "leaf", "flame",
-                          "paintbrush", "music.note", "gamecontroller", "house"]
+    static let symbols: [(symbol: String, name: String)] = [
+        ("folder", "Folder"), ("terminal", "Terminal"), ("hammer", "Hammer"), ("wrench.and.screwdriver", "Tools"),
+        ("book", "Book"), ("doc.text", "Document"), ("flask", "Flask"), ("globe", "Globe"),
+        ("server.rack", "Server"), ("cpu", "Chip"), ("chart.bar", "Chart"), ("bubble.left.and.bubble.right", "Conversation"),
+        ("star", "Star"), ("bolt", "Bolt"), ("leaf", "Leaf"), ("flame", "Flame"),
+        ("paintbrush", "Brush"), ("music.note", "Music"), ("gamecontroller", "Game"), ("house", "House"),
+    ]
 
     /// Its colour: chosen, else one of the twelve by its name's hash, steady.
     static func color(of block: Block?) -> NSColor {
@@ -408,6 +427,7 @@ extension MainWindowController {
                 NSBezierPath(ovalIn: r.insetBy(dx: 1, dy: 1)).fill()
                 return true
             }
+            item.showImage()
             item.state = chosenColor == name ? .on : .off
             colors.addItem(item)
         }
@@ -429,11 +449,11 @@ extension MainWindowController {
         letter.state = chosenSymbol == nil ? .on : .off
         symbols.addItem(letter)
         symbols.addItem(.separator())
-        for s in SpaceLook.symbols {
-            let item = NSMenuItem(title: s, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
+        for (s, name) in SpaceLook.symbols {
+            let item = NSMenuItem(title: name, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = (id, SpaceLook.symbolKey, s)
-            item.image = Theme.symbol(s, size: 13)
+            item.setSymbol(s, size: 13)
             item.state = chosenSymbol == s ? .on : .off
             symbols.addItem(item)
         }
@@ -497,7 +517,7 @@ extension MainWindowController {
         case "drop":
             // "spaces drop <i> [copy]": the focused tile dropped on square i.
             guard let i = w.dropFirst().first.flatMap(Int.init), strip.chips.indices.contains(i), let f = arrangement?.focused else { return "no" }
-            let square = root.convert(strip.convert(NSRect(x: 10 + CGFloat(i) * 30, y: 6, width: 24, height: 24), to: nil), from: nil)
+            let square = root.convert(strip.convert(strip.squareRect(i), to: nil), from: nil)
             _ = dropOnSpace(.placement(f), space: strip.chips[i].id, copy: w.last == "copy", square: square)
         case "needspick": if let i = w.dropFirst().first.flatMap(Int.init), sidebar.needsYou.items.indices.contains(i) { sidebar.needsYou.onPick?(sidebar.needsYou.items[i]) }
         case "color", "symbol":
@@ -513,7 +533,7 @@ extension MainWindowController {
 /// symbol and name, what it needs in a pill — the space shown's too, as
 /// the strip has them, left to right, then as each grid has them. Clicked,
 /// gone to, in its space. Five at most, then how many more, clicked, all
-/// of them (and "Fewer" again); none, a quiet line saying so.
+/// of them (and "Fewer" again); none, nothing there at all.
 final class NeedsYouView: NSView {
     struct Item: Equatable {
         var space: BlockID
@@ -554,8 +574,9 @@ final class NeedsYouView: NSView {
     private var hasMoreRow: Bool { items.count > Self.most }
 
     var wantedHeight: CGFloat {
+        guard !items.isEmpty else { return 0 }
         let rows = shown + (hasMoreRow ? 1 : 0)
-        return Self.headHeight + CGFloat(rows) * Self.rowHeight + (items.isEmpty ? 0 : 4)
+        return Self.headHeight + CGFloat(rows) * Self.rowHeight + 4
     }
 
     private func rowRect(_ i: Int) -> NSRect {
@@ -563,12 +584,11 @@ final class NeedsYouView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard !items.isEmpty else { return }
         // A hairline over it, apart from the space's rows.
         Theme.divider.setFill()
         NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
-        let head = items.isEmpty ? "Nothing needs you" : "Needs you"
-        let ink = items.isEmpty ? Theme.tertiaryText : Status.attention
-        NSAttributedString(string: head, attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: ink])
+        NSAttributedString(string: "Needs you", attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: Status.attention])
             .draw(at: NSPoint(x: 18, y: 5))
         if items.count > 1 {
             let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
