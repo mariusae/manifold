@@ -12,7 +12,8 @@ import ManifoldCore
 /// (the tile itself, live, over its card, above the shelf), and moved
 /// along the shelf, scrubs through them; a click puts it back where it
 /// was. The grid gives up the shelf's height while it shows (only while
-/// something's docked).
+/// something's docked). No bar of its own: the tiles float on the window's
+/// ground, each its own shadow, lifted further under the pointer.
 final class DockShelfView: NSView {
     static let height: CGFloat = 60
     static let gap: CGFloat = 6
@@ -63,16 +64,8 @@ final class DockShelfView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = Radius.surface
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 0.5
-        themed { v in
-            v.layer?.backgroundColor = Theme.panel.withAlphaComponent(0.7).cgColor
-            v.layer?.borderColor = Theme.panelBorder.cgColor
-        }
         label.font = UIType.caption
-        label.textColor = Theme.secondaryText
+        label.textColor = Theme.tertiaryText
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = true
         scroll.hasVerticalScroller = false
@@ -189,7 +182,9 @@ final class DockShelfView: NSView {
 
 /// One docked tile on the shelf, at a size: its summary card; a chip, its
 /// symbol and title; or its symbol alone, a dot for its status. One whose
-/// status wants you, edged and tinted in its colour.
+/// status wants you, edged and tinted in its colour. Each floats: a shadow
+/// under it (kept within the shelf's margin, which clips), more when the
+/// pointer's on it.
 final class DockItemView: NSView {
     var item: DockShelfView.Item { didSet { card.content = item.content; needsDisplay = true } }
     var size: DockShelfView.Size = .card {
@@ -197,9 +192,17 @@ final class DockItemView: NSView {
             guard size != oldValue else { return }
             card.isHidden = size != .card
             needsDisplay = true
+            needsLayout = true
         }
     }
-    var hovered = false { didSet { if hovered != oldValue { card.chosen = hovered; needsDisplay = true } } }
+    var hovered = false {
+        didSet {
+            guard hovered != oldValue else { return }
+            card.chosen = hovered
+            needsDisplay = true
+            lift()
+        }
+    }
     private let card: SummaryCard
 
     static func height(_ size: DockShelfView.Size) -> CGFloat { size == .card ? 46 : 30 }
@@ -222,19 +225,42 @@ final class DockItemView: NSView {
         wantsLayer = true
         layer?.cornerRadius = Radius.surface
         layer?.cornerCurve = .continuous
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        lift()
         toolTip = item.content.summary.title
     }
+
+    /// Its shadow: floating, or lifted under the pointer.
+    private func lift() {
+        guard let l = layer else { return }
+        l.shadowOpacity = hovered ? 0.3 : 0.18
+        l.shadowRadius = hovered ? 6 : 4
+        l.shadowOffset = CGSize(width: 0, height: hovered ? -3 : -2)
+    }
+
+    private var radius: CGFloat { size == .card ? Radius.surface : Radius.control + 2 }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func layout() {
         super.layout()
         card.frame = bounds
-        // Its status's colour round it, and a little of it under it.
+        layer?.cornerRadius = radius
+        layer?.shadowPath = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: radius, cornerHeight: radius, transform: nil)
+        // Its status's colour round it, and a little of it under it — on
+        // the panel's ground, not see-through, so its shadow stays under.
         let tone = item.tone
         layer?.borderWidth = tone == nil ? 0 : 1.5
-        layer?.borderColor = tone?.cgColor
-        layer?.backgroundColor = tone?.withAlphaComponent(0.12).cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = tone?.cgColor
+            layer?.backgroundColor = tone.flatMap { Theme.panel.usingColorSpace(.sRGB)?.blended(withFraction: 0.12, of: $0) }?.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsLayout = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
