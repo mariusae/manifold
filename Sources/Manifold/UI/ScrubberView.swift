@@ -34,7 +34,7 @@ final class ScrubberView: NSView {
         }
         guard NSScroller.preferredScrollerStyle == .overlay, !pointerIn, dragging == nil else { return }
         fade = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainActor.unchecked {
                 guard let self else { return }
                 self.fade = nil
                 NSAnimationContext.runAnimationGroup { ctx in

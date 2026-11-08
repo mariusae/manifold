@@ -377,7 +377,7 @@ extension DropTaking {
         if let r = rest, r.view.value === view, hypot(r.point.x - point.x, r.point.y - point.y) < 4 { return }
         rest?.timer.invalidate()
         let timer = Timer(timeInterval: restDelay, repeats: false) { [weak view] _ in
-            MainActor.assumeIsolated {
+            MainActor.unchecked {
                 rest = nil
                 guard let view else { return }
                 DropPalette.open(over: view, sender.draggingPasteboard, at: point)

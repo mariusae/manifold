@@ -865,7 +865,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = window.map { w in
             NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateOcclusion() }
+                MainActor.unchecked { self?.updateOcclusion() }
             }
         }
         occlusionSeen = nil

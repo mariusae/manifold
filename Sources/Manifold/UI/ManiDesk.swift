@@ -47,7 +47,7 @@ final class ManiDesk {
         self.wc = wc
         NotificationCenter.default.addObserver(forName: .manifoldSelectionMade, object: nil, queue: .main) { [weak self] note in
             guard let view = note.object as? PaneContent else { return }
-            MainActor.assumeIsolated { self?.selected(in: view) }
+            MainActor.unchecked { self?.selected(in: view) }
         }
     }
 

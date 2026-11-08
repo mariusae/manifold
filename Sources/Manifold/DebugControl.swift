@@ -576,7 +576,7 @@ enum DebugControl {
             words.removeAll { $0.hasPrefix("badge=") }
             guard words.count > 1, let window = wc?.window else { return "dragpill <out.png> [badge=<symbol>] <path>…" }
             let things = words.dropFirst().map { DragThing(title: $0.lastPathComponent, file: .init(host: Drags.localHost, path: $0, isDirectory: false), text: $0) }
-            let pills = MainActor.assumeIsolated { things.enumerated().map { DragPill.pill($0.element, appearance: window.effectiveAppearance, badge: $0.offset == 0 ? badge : nil) } }
+            let pills = MainActor.unchecked { things.enumerated().map { DragPill.pill($0.element, appearance: window.effectiveAppearance, badge: $0.offset == 0 ? badge : nil) } }
             let size = NSSize(width: pills.map(\.size.width).max() ?? 1, height: pills.reduce(0) { $0 + $1.size.height })
             // At 2×, on the window's ground.
             guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * 2, pixelsHigh: Int(size.height) * 2, bitsPerSample: 8,
@@ -985,7 +985,7 @@ enum DebugControl {
             // "reftip [hover <target>]": what the line by the pointer says
             // (a reference that leads nowhere), the pointer as if over a
             // link to the target first.
-            return MainActor.assumeIsolated {
+            return MainActor.unchecked {
                 if arg.hasPrefix("hover "), let content = wc?.window?.contentView {
                     ReferenceTip.hover(String(arg.dropFirst(6)), in: content)
                 }
@@ -1214,7 +1214,7 @@ enum DebugControl {
             return wc?.debugInspector(arg) ?? "no window"
         case "colordump":
             // "colordump <path>": every named colour and the terminal's config, written there.
-            try? MainActor.assumeIsolated { ColorDump.run() }.write(toFile: arg, atomically: true, encoding: .utf8)
+            try? MainActor.unchecked { ColorDump.run() }.write(toFile: arg, atomically: true, encoding: .utf8)
             return "wrote \(arg)"
         case "layouts":
             // Grid layouts, backdrop drawings, since asked last.

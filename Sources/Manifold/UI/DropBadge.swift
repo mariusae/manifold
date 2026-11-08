@@ -35,7 +35,7 @@ final class DropBadge: NSView {
         badge.isHidden = false
         badge.expiry?.invalidate()
         badge.expiry = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { _ in
-            MainActor.assumeIsolated { badge.isHidden = true }
+            MainActor.unchecked { badge.isHidden = true }
         }
     }
 

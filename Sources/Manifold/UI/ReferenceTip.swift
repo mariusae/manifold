@@ -73,13 +73,13 @@ import ManifoldCore
         tip.isHidden = false
         tip.expiry?.invalidate()
         tip.expiry = seconds.map { s in
-            Timer.scheduledTimer(withTimeInterval: s, repeats: false) { _ in MainActor.assumeIsolated { hide() } }
+            Timer.scheduledTimer(withTimeInterval: s, repeats: false) { _ in MainActor.unchecked { hide() } }
         }
         // Put away by a click, a key, a scroll, or the pointer leaving the
         // view it's for.
         if tip.monitor == nil {
             tip.monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown, .scrollWheel, .mouseMoved]) { event in
-                MainActor.assumeIsolated {
+                MainActor.unchecked {
                     guard let tip = shared, !tip.isHidden else { return }
                     if event.type == .mouseMoved {
                         guard let owner = tip.owner, let w = owner.window else { return }

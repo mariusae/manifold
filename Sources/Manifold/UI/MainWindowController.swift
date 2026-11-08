@@ -203,7 +203,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         HostMenu.submenu = { [weak self] host in self?.hostSubmenu(host) }
         // A site's icon arrived: its pages' rows and bars show it.
         NotificationCenter.default.addObserver(forName: .manifoldFaviconsChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.render() }
+            MainActor.unchecked { self?.render() }
         }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
@@ -2876,7 +2876,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             alert.buttons[0].isEnabled = false
             typed = field
             NotificationCenter.default.addObserver(forName: NSControl.textDidChangeNotification, object: field, queue: .main) { [weak alert] _ in
-                MainActor.assumeIsolated { alert?.buttons.first?.isEnabled = field.stringValue == label }
+                MainActor.unchecked { alert?.buttons.first?.isEnabled = field.stringValue == label }
             }
             alert.window.initialFirstResponder = field
         }
@@ -3239,7 +3239,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func watchWalk() {
         walkLeaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.endWalk(settling: true) }
+            MainActor.unchecked { self?.endWalk(settling: true) }
         }
         walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             if !event.modifierFlags.contains(.command) { self?.endWalk(settling: true) }
@@ -3399,7 +3399,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return nil
         } as Any)
         tileLeaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.endTileWalk(settling: true) }
+            MainActor.unchecked { self?.endTileWalk(settling: true) }
         }
     }
 

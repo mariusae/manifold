@@ -315,7 +315,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         addSubview(stickyHost)
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateStickyHost() }
+            MainActor.unchecked { self?.updateStickyHost() }
         }
     }
 

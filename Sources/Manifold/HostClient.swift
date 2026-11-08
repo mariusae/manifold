@@ -1028,7 +1028,7 @@ final class HostClient {
         // (A test instance pings its local host too, as over a link: MANIFOLD_PING_LOCAL.)
         guard isRemote || ProcessInfo.processInfo.environment["MANIFOLD_PING_LOCAL"] != nil else { return }
         pingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.heartbeat() }
+            MainActor.unchecked { self?.heartbeat() }
         }
     }
 

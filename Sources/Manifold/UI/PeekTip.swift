@@ -91,7 +91,7 @@ final class PeekTip {
             return event
         }
         resigned = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hide() }
+            MainActor.unchecked { self?.hide() }
         }
     }
 

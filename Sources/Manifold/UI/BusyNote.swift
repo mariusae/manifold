@@ -82,7 +82,7 @@ final class BusyNote: NSView {
             if let host, let l = Self.link?(host) {
                 counted = (text.hasSuffix("…") ? String(text.dropLast()) : text, l.label, l.bytes)
                 let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.count() }
+                    MainActor.unchecked { self?.count() }
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 counting = timer

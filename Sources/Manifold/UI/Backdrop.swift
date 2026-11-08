@@ -45,11 +45,11 @@ final class BackdropView: NSView {
         cast = Daylight.cast(at: Date(), from: Daylight.place())
         // The tint changed: its pool drawn again, cross-faded.
         tinted = NotificationCenter.default.addObserver(forName: .manifoldTintChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.redraw(fade: true) }
+            MainActor.unchecked { self?.redraw(fade: true) }
         }
         // Another theme: its wash, cross-faded.
         themed = NotificationCenter.default.addObserver(forName: .manifoldPaletteChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.redraw(fade: true) }
+            MainActor.unchecked { self?.redraw(fade: true) }
         }
     }
 
@@ -71,7 +71,7 @@ final class BackdropView: NSView {
         timer?.tolerance = 30
         if wake == nil {
             wake = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.relight(fade: true) }
+                MainActor.unchecked { self?.relight(fade: true) }
             }
         }
         relight(fade: false)

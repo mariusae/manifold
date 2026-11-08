@@ -1667,7 +1667,7 @@ final class GridView: NSView, NSDraggingSource {
         let start = CACurrentMediaTime(), duration = max(Self.glide, 0.18)
         dividerDragging = true
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-            MainActor.assumeIsolated {
+            MainActor.unchecked {
                 guard let self else { return timer.invalidate() }
                 let x = min((CACurrentMediaTime() - start) / duration, 1)
                 // Eased out: quick, then settling.
@@ -3365,7 +3365,7 @@ enum Pointer {
         // Only Manifold's to move while it's the app in front: a warp
         // asked for a moment before (once a tile's laid out), or by `mani`
         // from elsewhere, isn't taken from whatever's in front now.
-        guard Thread.isMainThread, MainActor.assumeIsolated({ NSApp.isActive }) else { return }
+        guard Thread.isMainThread, MainActor.unchecked({ NSApp.isActive }) else { return }
         guard let main = NSScreen.screens.first else { return }
         CGWarpMouseCursorPosition(CGPoint(x: screen.x, y: main.frame.maxY - screen.y))
         CGAssociateMouseAndMouseCursorPosition(1)
