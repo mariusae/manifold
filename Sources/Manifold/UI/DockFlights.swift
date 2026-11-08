@@ -107,46 +107,73 @@ extension MainWindowController {
         let scale = window?.backingScaleFactor ?? 2
         let d = Genie.duration
         let rows = sidebar.organizationView
+        let tint = Theme.accent.cgColor
+        // The sidebar's edge: a tile's row built up as much of it as is past.
+        let edge = root.convert(sidebar.bounds, from: sidebar).maxX
         // Into its row: a gap opening for the row as the tile pours into
-        // its right end, what it says wiped in from there.
+        // its right end, the row marked, what it says built up from the
+        // left as the tile gets there.
         if !f.down.isEmpty || !f.bars.isEmpty {
             rows.glide(over: d * 0.75, opening: Set(f.down.keys).union(f.bars.keys)) { refreshOrganization(now: true) }
         }
-        // A tile down to its bar: the bar flown to its row, then made its size.
+        // A tile down to its bar: the bar flown to its row, then made its
+        // size, becoming the row on the way.
         for (id, bar) in f.bars {
-            let row = rows.row(of: id, in: space, in: root)
-            Genie.fly(bar, to: row ?? edgeSpot(bar.whole), in: host, over: d, scale: scale)
-            if row != nil { rows.wipe(id, in: true, after: d * 0.55, over: d * 0.4) }
+            if let row = rows.row(of: id, in: space, in: root) {
+                Genie.fly(bar, to: row, rowPicture: rows.picture(of: id, in: root)?.image, tint: tint, in: host, over: d, scale: scale)
+                rows.markLanding(id, tint: tint, arriving: true, over: d)
+                rows.wipe(id, in: true, after: d * 0.6, over: d * 0.4)
+            } else {
+                Genie.fly(bar, to: edgeSpot(bar.whole), tint: tint, in: host, over: d, scale: scale)
+            }
         }
         for (id, tile) in f.down {
             if let row = rows.row(of: id, in: space, in: root) {
-                Genie.run(tile, target: Self.slotEnd(row), restoring: false, in: host, scale: scale)
-                rows.wipe(id, in: true, after: d * 0.35, over: d * 0.6)
+                let arrival = Genie.run(tile, target: Self.slotEnd(row), restoring: false, in: host, scale: scale, tint: tint, boundary: edge)
+                rows.markLanding(id, tint: tint, arriving: true, over: d)
+                if let arrival, arrival.count > 1 { rows.build(id, progress: arrival, over: d) }
             } else {
-                Genie.run(tile, target: edgeSpot(tile.whole), restoring: false, in: host, scale: scale)
+                Genie.run(tile, target: edgeSpot(tile.whole), restoring: false, in: host, scale: scale, tint: tint)
             }
         }
-        // Out of it: the reverse, the row squeezing shut as the tile pours
-        // out, the sidebar not made again till it has.
+        // Out of it: the reverse — what the row says taken away as the tile
+        // pours out (a bar becoming itself again as it flies out), then the
+        // sidebar made again, the rows closing up the slot it leaves.
         var closing = false
         if !f.up.isEmpty {
-            let parts = content.placedParts()
+            let parts = content.placedParts(), bars = content.placedBars()
+            func here(_ p: GridView.Pictured) -> GridView.Pictured {
+                GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+            }
             for (id, from) in f.up {
-                guard let p = parts[id], let b = a.placement(id)?.block else { continue }
-                let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-                var target = edgeSpot(tile.whole)
-                if from != .zero {
-                    target = Self.slotEnd(from)
-                    rows.wipe(id, in: false, after: 0, over: d * 0.4)
-                    closing = true
+                guard let b = a.placement(id)?.block else { continue }
+                let inSidebar = from != .zero
+                if let p = parts[id] {
+                    let tile = here(p)
+                    let arrival = Genie.run(tile, target: inSidebar ? Self.slotEnd(from) : edgeSpot(tile.whole), restoring: true, in: host,
+                                            scale: scale, tint: tint, boundary: inSidebar ? edge : nil)
+                    guard arrival != nil else { continue }
+                    landing += content.tileViews(of: b)
+                    if inSidebar, let arrival, arrival.count > 1 {
+                        rows.markLanding(id, tint: tint, arriving: false, over: d)
+                        rows.build(id, progress: arrival, over: d)
+                        closing = true
+                    }
+                } else if let bar = bars[id] {
+                    let bar = here(bar)
+                    let picture = inSidebar ? rows.picture(of: id, in: root)?.image : nil
+                    Genie.fly(bar, to: inSidebar ? from : edgeSpot(bar.whole), out: true, rowPicture: picture, tint: tint, in: host, over: d, scale: scale)
+                    if let v = content.bar(of: id) { landing.append(v) }
+                    if inSidebar {
+                        rows.markLanding(id, tint: tint, arriving: false, over: d)
+                        rows.wipe(id, in: false, after: 0, over: d * 0.4)
+                        closing = true
+                    }
                 }
-                if Genie.run(tile, target: target, restoring: true, in: host, scale: scale) { landing += content.tileViews(of: b) }
             }
         }
-        // The row wiped out, then the sidebar made again, the rows under
-        // it closing up the slot it leaves.
         if closing {
-            let wait = d * 0.35
+            let wait = d * 0.5
             sidebarHeldUntil = max(sidebarHeldUntil, CACurrentMediaTime() + wait + 0.2)
             DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
                 guard let self else { return }

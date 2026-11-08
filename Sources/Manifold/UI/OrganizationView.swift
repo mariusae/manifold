@@ -695,7 +695,19 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// What a tile's row shows, wiped in from its right (the tile pouring
     /// into it there) — or out, the other way — after `delay`, over `d`.
     func wipe(_ p: PlacementID, in appearing: Bool, after delay: Double, over d: Double) {
-        guard let i = rowIndex(of: p) else { return }
+        let ramp = (0...24).map { k -> Double in
+            let t = Double(k) / 24, e = t * t * (3 - 2 * t)
+            return appearing ? e : 1 - e
+        }
+        build(p, progress: ramp, after: delay, over: d)
+    }
+
+    /// What a tile's row says built up from the left as `progress` has it
+    /// (0, none of it; 1, all), at even steps after `delay`, over `d`: as
+    /// much as has come of the tile pouring into it — or, going down,
+    /// taken away from the right as it pours out.
+    func build(_ p: PlacementID, progress: [Double], after delay: Double = 0, over d: Double) {
+        guard progress.count > 1, let i = rowIndex(of: p) else { return }
         outline.layoutSubtreeIfNeeded()
         guard let v = outline.rowView(atRow: i, makeIfNecessary: true) else { return }
         v.wantsLayer = true
@@ -703,24 +715,61 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         let m = CAGradientLayer()
         m.startPoint = CGPoint(x: 0, y: 0.5)
         m.endPoint = CGPoint(x: 1, y: 0.5)
-        m.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
+        // Shown to its left, a soft edge going right.
+        m.colors = [NSColor.black.cgColor, NSColor.clear.cgColor]
         m.frame = CGRect(x: 0, y: -40, width: max(v.bounds.width, 1), height: 120)
-        let hidden: [NSNumber] = [1.0, 1.35], shown: [NSNumber] = [-0.35, 0.0]
-        m.locations = appearing ? shown : hidden
+        let soft = 0.2
+        func at(_ q: Double) -> [NSNumber] {
+            let r = q * (1 + soft) - soft
+            return [NSNumber(value: r), NSNumber(value: r + soft)]
+        }
+        m.locations = at(progress.last!)
         layer.mask = m
-        let x = CABasicAnimation(keyPath: "locations")
-        x.fromValue = appearing ? hidden : shown
-        x.toValue = appearing ? shown : hidden
+        let x = CAKeyframeAnimation(keyPath: "locations")
+        x.values = progress.map(at)
         x.duration = d
         x.beginTime = CACurrentMediaTime() + delay
         x.fillMode = .backwards
-        x.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak layer, weak m] in
-            if appearing, let layer, layer.mask === m { layer.mask = nil }
+        m.add(x, forKey: "build")
+        if progress.last! >= 1 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay + d + 0.05) { [weak layer, weak m] in
+                if let layer, layer.mask === m { layer.mask = nil }
+            }
         }
-        m.add(x, forKey: "wipe")
+    }
+
+    /// Where a tile's row is landing, marked: a band of the tint behind it,
+    /// coming up as the tile does (`rising`, of `d`), held, then gone after
+    /// it's there — or, going, lit at once and fading as the tile leaves.
+    func markLanding(_ p: PlacementID, tint: CGColor, arriving: Bool, over d: Double) {
+        guard let i = rowIndex(of: p), let v = outline.rowView(atRow: i, makeIfNecessary: true) else { return }
+        v.wantsLayer = true
+        guard let layer = v.layer else { return }
+        let band = CALayer()
+        band.backgroundColor = tint
+        band.cornerRadius = 6
+        band.cornerCurve = .continuous
+        band.frame = v.bounds.insetBy(dx: 4, dy: 1)
+        band.opacity = 0
+        band.zPosition = -1
+        layer.insertSublayer(band, at: 0)
+        let o = CAKeyframeAnimation(keyPath: "opacity")
+        o.values = arriving ? [0, 0.22, 0.22, 0] : [0.22, 0.22, 0]
+        o.keyTimes = arriving ? [0, 0.5, 0.75, 1] : [0, 0.2, 1]
+        o.duration = arriving ? d * 1.6 : d * 0.6
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { band.removeFromSuperlayer() }
+        band.add(o, forKey: "landing")
         CATransaction.commit()
+    }
+
+    /// A picture of a tile's row as it shows, and where it is in `view`.
+    func picture(of p: PlacementID, in view: NSView) -> (rect: NSRect, image: CGImage)? {
+        guard let i = rowIndex(of: p), let v = outline.rowView(atRow: i, makeIfNecessary: true), v.bounds.width > 0, v.bounds.height > 0,
+              let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return nil }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        guard let image = rep.cgImage else { return nil }
+        return (view.convert(outline.rect(ofRow: i), from: outline), image)
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {

@@ -1336,6 +1336,9 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile in view's body and bar, by its block (a block's first), and
     /// its focus ring if it has it.
+    /// A tile's bar, where it shows.
+    func bar(of placement: PlacementID) -> NSView? { pills[placement] }
+
     func tileViews(of block: BlockID) -> [NSView] {
         guard let t = columns.flatMap({ $0 }).first(where: { $0.shown.block?.id == block && shownBody($0) != nil }), let body = shownBody(t) else { return [] }
         return [body] + (pills[t.shown.id].map { [$0] } ?? []) + (t.shown.id == focused && !focusRing.isHidden ? [focusRing] : [])

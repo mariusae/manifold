@@ -2924,7 +2924,12 @@ purpose — set down so a later audit reads them as choices, not slips.
   then the row glides back among those on screen as the tile pours out;
   a tile down to its bar (⌥-clicked's others) has only its bar to pour,
   so the bar flies to its row as wide as it is, then shrinks to the
-  row's size (`Genie.fly`) — and the
+  row's size, becoming the row on the way (`Genie.fly`), and back out
+  the same way. Where it lands is marked: the tile takes on the accent
+  as it goes, and its row a band of it, coming up as the tile arrives;
+  what the row says is built up from the left in step with how much of
+  the tile has crossed into the sidebar (the genie says, at each step,
+  `Genie.Arrival`), and taken away the same way as it pours out — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put

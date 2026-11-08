@@ -33,61 +33,125 @@ enum Genie {
         return ctx.makeImage()
     }
 
-    /// The tile (`tile`, its picture `image`) into `target` — or, `restoring`,
-    /// out of it — over `host` (its terms, y up), over `d`. The strips are
-    /// taken away when it's done.
     /// How long: the Dock's own, about half a second.
     static var duration: Double { Motion.spatial * 2.2 }
 
-    /// A tile into its target or out of it, as `run`; true if it ran.
+    /// How far it's got, through the run: at each of `samples + 1` even
+    /// steps, how much of the tile (0–1) is past the boundary it was given
+    /// — in the sidebar, for its row's title to be built up as it arrives.
+    typealias Arrival = [Double]
+    static let samples = 36
+
+    /// A tile into its target or out of it, as `run`: tinted as it goes
+    /// (`tint`), the way it arrives past `boundary` (an x or y, along the
+    /// way it goes) returned; nil if it didn't run.
     @discardableResult
-    static func run(_ p: GridView.Pictured, target: NSRect, restoring: Bool, in host: CALayer, scale: CGFloat) -> Bool {
-        guard let image = image(of: p, scale: scale) else { return false }
-        run(image, tile: p.whole, target: target, restoring: restoring, in: host, over: duration, scale: scale)
-        return true
+    static func run(_ p: GridView.Pictured, target: NSRect, restoring: Bool, in host: CALayer, scale: CGFloat,
+                    tint: CGColor? = nil, boundary: CGFloat? = nil) -> Arrival? {
+        guard let image = image(of: p, scale: scale) else { return nil }
+        return run(image, tile: p.whole, target: target, restoring: restoring, in: host, over: duration, scale: scale, tint: tint, boundary: boundary)
     }
 
-    /// A bar (a tile down to it) flown to `row`: across to it, as wide as
-    /// it is, its left edge at the row's, then made the row's size, fading
-    /// as it gets there — over `host`, over `d`.
-    static func fly(_ p: GridView.Pictured, to row: NSRect, in host: CALayer, over d: Double, scale: CGFloat) {
+    /// Frames a sublayer through, filling its layer as that goes through `frames`.
+    private static func filling(_ frames: [CGRect], times: [NSNumber]?, d: Double, begin: CFTimeInterval) -> [CAAnimation] {
+        let pos = CAKeyframeAnimation(keyPath: "position")
+        pos.values = frames.map { NSValue(point: NSPoint(x: $0.width / 2, y: $0.height / 2)) }
+        let size = CAKeyframeAnimation(keyPath: "bounds.size")
+        size.values = frames.map { NSValue(size: $0.size) }
+        for x in [pos, size] {
+            x.keyTimes = times
+            x.duration = d
+            x.beginTime = begin
+            x.fillMode = .both
+            x.isRemovedOnCompletion = false
+        }
+        return [pos, size]
+    }
+
+    /// A bar (a tile down to it) flown to `row` — or, `out`, from it: across
+    /// as wide as it is, its left edge at the row's, then made the row's
+    /// size, becoming on the way what the row shows (`rowPicture`), the
+    /// tint over it as it goes; over `host`, over `d`.
+    static func fly(_ p: GridView.Pictured, to row: NSRect, out: Bool = false, rowPicture: CGImage? = nil, tint: CGColor? = nil,
+                    in host: CALayer, over d: Double, scale: CGFloat) {
         guard let image = image(of: p, scale: scale) else { return }
         let from = p.whole
+        let landed = NSRect(x: row.minX, y: row.midY - from.height / 2, width: from.width, height: from.height)
+        // Into the row; out of it, the same backwards.
+        var frames = [from, landed, row]
+        var times: [Double] = [0, 0.55, 1]
+        func back<T>(_ v: [T]) -> [T] { out ? v.reversed() : v }
+        func backTimes(_ t: [Double]) -> [NSNumber] { (out ? t.reversed().map { 1 - $0 } : t).map { NSNumber(value: $0) } }
+        frames = back(frames)
+        let keyTimes = backTimes(times)
+        times = []
+        let begin = CACurrentMediaTime()
+        let ease = CAMediaTimingFunction(name: .easeInEaseOut)
         let l = CALayer()
-        l.contents = image
-        l.contentsScale = scale
-        l.contentsGravity = .resize
         l.cornerRadius = Radius.control
         l.masksToBounds = true
         l.zPosition = 45
-        l.frame = row
+        l.frame = frames.last!
         l.opacity = 0
-        let landed = NSRect(x: row.minX, y: row.midY - from.height / 2, width: from.width, height: from.height)
-        let ease = CAMediaTimingFunction(name: .easeInEaseOut)
         let pos = CAKeyframeAnimation(keyPath: "position")
-        pos.values = [from, landed, row].map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
+        pos.values = frames.map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
         let size = CAKeyframeAnimation(keyPath: "bounds.size")
-        size.values = [from, landed, row].map { NSValue(size: $0.size) }
-        for x in [pos, size] {
-            x.keyTimes = [0, 0.55, 1]
-            x.timingFunctions = [ease, ease]
-        }
+        size.values = frames.map { NSValue(size: $0.size) }
+        for x in [pos, size] { x.keyTimes = keyTimes; x.timingFunctions = [ease, ease] }
         let fade = CAKeyframeAnimation(keyPath: "opacity")
-        fade.values = [1, 1, 0]
-        fade.keyTimes = [0, 0.75, 1]
+        fade.values = back([1, 1, 0])
+        fade.keyTimes = backTimes([0, 0.88, 1])
         let group = CAAnimationGroup()
         group.animations = [pos, size, fade]
         group.duration = d
+        group.beginTime = begin
+        group.fillMode = .both
+        group.isRemovedOnCompletion = false
+        // Each picture filling it, the bar giving way to the row's on the
+        // way there; the tint over both, deepening as it goes.
+        func layer(_ contents: Any?, _ color: CGColor?, opacity: [Double], at t: [Double]) {
+            let s = CALayer()
+            s.contents = contents
+            s.contentsScale = scale
+            s.contentsGravity = .resize
+            s.backgroundColor = color
+            s.anchorPoint = .zero
+            s.frame = CGRect(origin: .zero, size: frames.last!.size)
+            s.opacity = Float(opacity.last!)
+            let o = CAKeyframeAnimation(keyPath: "opacity")
+            o.values = back(opacity)
+            o.keyTimes = backTimes(t)
+            let fill = CAKeyframeAnimation(keyPath: "bounds.size")
+            fill.values = frames.map { NSValue(size: $0.size) }
+            fill.keyTimes = keyTimes
+            fill.timingFunctions = [ease, ease]
+            let g = CAAnimationGroup()
+            g.animations = [o, fill]
+            g.duration = d
+            g.beginTime = begin
+            g.fillMode = .both
+            g.isRemovedOnCompletion = false
+            l.addSublayer(s)
+            s.add(g, forKey: "fly")
+        }
+        layer(image, nil, opacity: rowPicture == nil ? [1, 1, 1] : [1, 1, 0], at: [0, 0.35, 0.8])
+        if let rowPicture { layer(rowPicture, nil, opacity: [0, 0, 1], at: [0, 0.35, 0.8]) }
+        if let tint { layer(nil, tint, opacity: [0, 0.18, 0.22], at: [0, 0.5, 1]) }
         CATransaction.begin()
         CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
         host.addSublayer(l)
         l.add(group, forKey: "fly")
         CATransaction.commit()
+        DispatchQueue.main.asyncAfter(deadline: .now() + d + 0.05) { l.removeFromSuperlayer() }
     }
 
+    /// The tile (`tile`, its picture `image`) into `target` — or, `restoring`,
+    /// out of it — over `host` (its terms, y up), over `d`. The strips are
+    /// taken away when it's done.
+    @discardableResult
     static func run(_ image: CGImage, tile: NSRect, target: NSRect, restoring: Bool, in host: CALayer, over d: Double,
-                    scale: CGFloat, done: @escaping () -> Void = {}) {
-        guard tile.width > 2, tile.height > 2, target.width > 0, target.height > 0 else { return done() }
+                    scale: CGFloat, tint: CGColor? = nil, boundary: CGFloat? = nil, done: @escaping () -> Void = {}) -> Arrival? {
+        guard tile.width > 2, tile.height > 2, target.width > 0, target.height > 0 else { done(); return nil }
         // Along x when the target is more to the side than above or below.
         let alongX = abs(target.midX - tile.midX) >= abs(target.midY - tile.midY)
         // In the way's terms, the target below: `a` along, `c` across.
@@ -101,7 +165,10 @@ enum Genie {
         let (sc0, sc1) = c(tile), (tc0, tc1) = c(target)
         let length = sa1 - sa0
         let n = Int(min(200, max(40, length / 2.5)))
-        let samples = 36
+        let samples = Self.samples
+        // Past the boundary, in the way's terms.
+        let line: CGFloat? = boundary.map { flip ? -$0 : $0 }
+        var arrived = [Double](repeating: 0, count: samples + 1)
         // The funnel's mouth: at the tile's near edge, then moving into it
         // as it bends (the first part), so the tile's near end narrows
         // before anything moves.
@@ -152,6 +219,7 @@ enum Genie {
                 let lo = edge(u0, p), hi = edge(u1, p)
                 let (c0, c1) = funnel((lo + hi) / 2, p)
                 frames.append(rect(lo, hi, c0, c1))
+                if let line, (lo + hi) / 2 <= line { arrived[k] += 1 / Double(n) }
             }
             let strip = CALayer()
             strip.contents = image
@@ -182,9 +250,29 @@ enum Genie {
                 x.calculationMode = .linear
                 strip.add(x, forKey: "genie." + (x.keyPath ?? ""))
             }
+            // The tint over it, deepening as it goes in (lifting as it
+            // comes out): the tile marked, as its row is, going there.
+            if let tint {
+                let t = CALayer()
+                t.backgroundColor = tint
+                t.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+                t.frame = CGRect(origin: .zero, size: frames.last!.size)
+                t.opacity = restoring ? 0 : 0.22
+                strip.addSublayer(t)
+                for x in filling(frames, times: times, d: d, begin: now) { t.add(x, forKey: "fill." + ((x as? CAPropertyAnimation)?.keyPath ?? "")) }
+                let o = CAKeyframeAnimation(keyPath: "opacity")
+                o.values = restoring ? [0.22, 0.22, 0] : [0, 0.16, 0.22]
+                o.keyTimes = restoring ? [0, 0.4, 1] : [0, 0.4, 1]
+                o.duration = d
+                o.beginTime = now
+                o.fillMode = .both
+                o.isRemovedOnCompletion = false
+                t.add(o, forKey: "tint")
+            }
         }
         CATransaction.commit()
         // The completion block runs once the animations above end.
         DispatchQueue.main.asyncAfter(deadline: .now() + d + 0.05) { container.removeFromSuperlayer() }
+        return line == nil ? [] : arrived
     }
 }
