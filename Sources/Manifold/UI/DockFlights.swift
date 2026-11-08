@@ -23,8 +23,8 @@ extension MainWindowController {
     }
 
     /// Before the grid shows `a`: what's to fly, if the space is the one
-    /// last seen — only with the sidebar showing, somewhere to fly to;
-    /// else the grid sees it go as any move.
+    /// last seen — into its row in the sidebar, or, the sidebar put away,
+    /// into the window's left edge, where it slides out from.
     func dockFlights(before a: ArrangementState) -> DockFlights? {
         let now = Set(a.docked.map(\.placement.id))
         let seen = dockSeen
@@ -32,7 +32,7 @@ extension MainWindowController {
         guard let space = selected, stateView == nil, !Motion.reduced, let seen, seen.space == space, seen.docked != now else { return nil }
         var f = DockFlights()
         let down = now.subtracting(seen.docked)
-        if !down.isEmpty, sidebar.organizationView.row(of: down.first!, in: space, in: root) != nil {
+        if !down.isEmpty {
             let parts = content.placedParts()
             for id in down {
                 guard let p = parts[id] else { continue }
@@ -40,9 +40,15 @@ extension MainWindowController {
             }
         }
         for id in seen.docked.subtracting(now) where a.locate(id) != nil {
-            if let row = sidebar.organizationView.row(of: id, in: space, in: root) { f.up[id] = row }
+            f.up[id] = sidebar.organizationView.row(of: id, in: space, in: root) ?? .zero
         }
         return f.down.isEmpty && f.up.isEmpty ? nil : f
+    }
+
+    /// Where a tile docks to with the sidebar put away: a sliver at the
+    /// window's left edge, level with it.
+    private func edgeSpot(_ tile: NSRect) -> NSRect {
+        NSRect(x: root.bounds.minX + 2, y: tile.midY - 10, width: 6, height: 20)
     }
 
     /// How a tile leaving the grid is seen to go: flown, docked with
@@ -63,7 +69,7 @@ extension MainWindowController {
         if from.arrangement == selected, !Motion.reduced, let host = root.layer, let p = content.placedParts()[from.placement.id] {
             let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
             flownAway.insert(from.placement.id)
-            GridView.morph([GridView.Morph(from: tile.whole, to: square, leaving: tile)], in: host, over: Motion.spatial * 1.4)
+            Genie.run(tile, target: square, restoring: false, in: host, scale: window?.backingScaleFactor ?? 2)
         }
         takeOut(from.placement.id, of: from.arrangement)
         return true
@@ -81,32 +87,29 @@ extension MainWindowController {
         return onDesk ? .moved : .closed
     }
 
-    /// After: each flown — a tile shrinking into its row in the sidebar, or
-    /// growing out of it, what it's becoming coming in on the way — the
-    /// tile itself showing once it's there.
+    /// After: each flown, as the Dock's genie — a tile drawn down into its
+    /// row in the sidebar, or poured back out of it — the tile itself
+    /// showing once it's there.
     func flyDock(_ f: DockFlights?) {
         guard let f, let host = root.layer, let a = arrangement, let space = selected else { return }
         content.layoutSubtreeIfNeeded()
-        var items: [GridView.Morph] = []
         var landing: [NSView] = []
+        let scale = window?.backingScaleFactor ?? 2
         if !f.down.isEmpty { refreshOrganization(now: true) }
         for (id, tile) in f.down {
-            if let row = sidebar.organizationView.row(of: id, in: space, in: root) {
-                items.append(GridView.Morph(from: tile.whole, to: row, leaving: tile))
-            }
+            let row = sidebar.organizationView.row(of: id, in: space, in: root) ?? edgeSpot(tile.whole)
+            Genie.run(tile, target: row, restoring: false, in: host, scale: scale)
         }
         if !f.up.isEmpty {
             let parts = content.placedParts()
             for (id, from) in f.up {
                 guard let p = parts[id], let b = a.placement(id)?.block else { continue }
                 let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-                items.append(GridView.Morph(from: from, to: tile.whole, coming: tile))
-                landing += content.tileViews(of: b)
+                let from = from == .zero ? edgeSpot(tile.whole) : from
+                if Genie.run(tile, target: from, restoring: true, in: host, scale: scale) { landing += content.tileViews(of: b) }
             }
         }
-        guard !items.isEmpty else { return }
-        let d = Motion.spatial * 1.4
-        GridView.morph(items, in: host, over: d)
+        let d = Genie.duration
         for v in landing {
             guard let l = v.layer else { continue }
             let x = CAKeyframeAnimation(keyPath: "opacity")

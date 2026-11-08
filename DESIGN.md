@@ -2910,9 +2910,14 @@ purpose — set down so a later audit reads them as choices, not slips.
   middle, one closed goes in a puff — swelling a little as it fades,
   a small cloud bursting where it was and drifting apart, as the Dock's
   poof (only fading, with less motion); one moved to another space
-  shrinks to 86% and fades where it was, or flies into its space's
-  square in the strip, dropped there; one docked flies into its row in
-  the sidebar if that's showing (and back out, undocked) — and the
+  shrinks to 86% and fades where it was, or goes into its space's
+  square in the strip, dropped there; one docked goes into its row in
+  the sidebar (the window's left edge, where the sidebar slides out
+  from, if it's put away), and back out of it undocked — each as the
+  Dock's genie (`Genie`): the tile's picture in strips a few points
+  wide across the way it goes, the funnel first bending into its near
+  end, then the strips pouring down it into the row, the nearest first,
+  each as tall as the funnel where it is (about half a second) — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put
