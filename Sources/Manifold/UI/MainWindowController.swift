@@ -2669,7 +2669,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?, on h: HostID? = nil) {
-        newTileKind = kind
         let f = arrangement?.focused
         let h = h ?? focusedHost
         // ⇧↩ alone: a new column, as ⇧ with ⌥⌘ and a kind's letter.
@@ -5352,13 +5351,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// column by column, top to bottom, a hairline between columns; then
     /// those docked (§3.1), the latest first. The focused tile marked: the
     /// table of contents of the screen.
-    /// The kind a new tile from the sidebar is, by its name: the one
-    /// last made from it or the picker.
-    static let newTileKindKey = "newTileKind"
-    var newTileKind: BlockKinds.Kind? {
-        get { UserDefaults.standard.string(forKey: Self.newTileKindKey).flatMap { name in BlockKinds.matching(name).first { $0.name == name } } }
-        set { UserDefaults.standard.set(newValue?.name, forKey: Self.newTileKindKey) }
-    }
+    /// The kind a new tile from the sidebar is: always a terminal (its
+    /// chevron, ⌘N's picker, for another).
+    var newTileKind: BlockKinds.Kind? { BlockKinds.named("terminal") }
 
     /// The sidebar's New row: "New Terminal" (the kind last made), else
     /// "New Tile…" (⌘N's picker); the pointer on it, a button for the picker.

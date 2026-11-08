@@ -789,9 +789,8 @@ not there at all. Squares too many for a row wrap onto another, the
 strip as tall as it takes. A square's menu shows its colours and
 symbols as they'll look.
 After the space's tiles on screen, a **New** row, as Dia's New Tab:
-"New Terminal" — the kind last made from it or ⌘N's picker — or, before
-any, "New Tile…", the picker; the pointer on it, a chevron for the
-picker, another kind. The pointer on a tile's row shows a × (close it)
+"New Terminal", always; the pointer on it, a chevron for ⌘N's picker,
+another kind. The pointer on a tile's row shows a × (close it)
 and a bin (delete its block, as Delete does). At the very bottom, the
 **footer** (`SidebarFooter`), as Dia's: **Threads** at its left, with
 how many have something not seen — a menu over it (`PopMenu`) of the
