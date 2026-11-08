@@ -108,8 +108,9 @@ final class SidebarView: NSView {
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField(labelWithString: "")
     private var pushed: Bool { organization == .closed || organization == .inspector }
-    /// A header of its own under the window's buttons: a pushed list's, or the threads'.
-    private var titled: Bool { pushed || organization == .threads }
+    /// A header of its own under the window's buttons: a pushed list's, the
+    /// space's (its name, over its tiles), or the threads'.
+    private var titled: Bool { pushed || organization == .threads || organization == .desk }
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
@@ -270,6 +271,13 @@ final class SidebarView: NSView {
     }
 
     @objc private func backClicked() { chooseOrganization(.desk) }
+
+    /// The space shown (§3.6): its name over its tiles, and how many.
+    func setSpace(title: String, subtitle: String) {
+        guard organization == .desk else { return }
+        pushedTitle.stringValue = title
+        pushedSubtitle.stringValue = subtitle
+    }
 
     /// The Inspector's header: the block's name, and what and where it is.
     func setInspected(title: String, subtitle: String) {

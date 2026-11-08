@@ -743,7 +743,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard let n = item as? OrgNode else { return 26 }
         switch n.style {
         case .host: return 30
-        case .section: return 24
+        // A label among a space's rows (no rows of its own): room above it.
+        case .section: return n.hasChildren ? 24 : 34
         case .row: return flat && !n.detail.isEmpty ? 40 : 26
         case .divider: return 9
         }
@@ -1359,11 +1360,13 @@ final class OrgRowView: NSTableCellView {
             return
         }
         if let node, node.style == .section {
-            // A label across: the name in its grey, a count at the right.
+            // A label across: the name in its grey, a count at the right —
+            // low in a tall row (a label among a space's rows), room above.
+            let low: CGFloat = h > 24 ? -(h - 24) / 2 + 1 : 0
             var right = bounds.width - 4
             if !count.isHidden {
                 let w = count.wantedWidth
-                count.frame = NSRect(x: right - w, y: ((h - CountPill.height) / 2).rounded(), width: w, height: CountPill.height)
+                count.frame = NSRect(x: right - w, y: ((h - CountPill.height) / 2 + low).rounded(), width: w, height: CountPill.height)
                 right -= w + 6
             }
             glyph.isHidden = true
@@ -1371,14 +1374,14 @@ final class OrgRowView: NSTableCellView {
             // "1 needs you", in amber, at the right.
             if !trailing.isHidden {
                 let w = ceil((trailing.stringValue as NSString).size(withAttributes: [.font: trailing.font!]).width) + 2
-                trailing.frame = NSRect(x: right - w, y: (h - 15) / 2, width: w, height: 15)
+                trailing.frame = NSRect(x: right - w, y: (h - 15) / 2 + low, width: w, height: 15)
                 trailing.textColor = StatusGlyph.amber
                 right -= w + 8
             }
             let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font!]).width) + 4
             let nw = min(wanted, max(0, right - 4))
-            name.frame = NSRect(x: 4, y: (h - 15) / 2, width: nw, height: 15)
-            detail.frame = NSRect(x: 4 + nw + 6, y: (h - 15) / 2, width: max(0, right - nw - 10), height: 15)
+            name.frame = NSRect(x: 4, y: (h - 15) / 2 + low, width: nw, height: 15)
+            detail.frame = NSRect(x: 4 + nw + 6, y: (h - 15) / 2 + low, width: max(0, right - nw - 10), height: 15)
             detail.alphaValue = 1
             detailIcon.isHidden = true
             return

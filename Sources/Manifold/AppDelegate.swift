@@ -472,9 +472,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(organizeItem)
         // The focused block's properties, in the sidebar (Star's SHOW PROPERTIES).
         item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .option])
-        // The dock as a shelf at the grid's foot too (§3.1): to try against
-        // the sidebar's list alone.
-        item(view, "Show Dock Shelf", #selector(MainWindowController.toggleDockShelf(_:)), "")
         // The sidebar narrowed, whichever way it's organized (§3.6).
         // ⌥⌘.: ⌘. is the system's cancel (a notebook's Interrupt).
         item(view, "Show Only Blocks with a Status", #selector(MainWindowController.toggleSidebarFilter(_:)), ".", [.command, .option])

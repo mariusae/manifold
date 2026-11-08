@@ -398,7 +398,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let old = content
             let leaving = old.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
             content = grid(for: selected)
-            content.frame = gridFrame
+            content.frame = stage.bounds
             content.isHidden = stateView != nil
             if old !== content {
                 if let from = shownArrangement, let to = selected {
@@ -429,7 +429,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let flights = dockFlights(before: a)
             content.departure = { [weak self] v in self?.departure(of: v, flown: flights) ?? .moved }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
-            refreshDockShelf()
             flyDock(flights)
             window.title = title(of: a)
             // The keyboard may be in no view at all (the window's, after
@@ -908,12 +907,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// The dock as a shelf at the grid's foot (View ▸ Show Dock Shelf).
-    let dockShelf = DockShelfView()
     /// The column the last tile to fill one left, and as it was before.
     var columnFill: ColumnFill?
-    /// The space whose dock the shelf last saw, and what was docked: what
-    /// changed since flies between the grid and the shelf.
-    var dockShelfSeen: (space: BlockID?, docked: Set<PlacementID>)?
+    /// The space whose dock was last seen, and what was docked: what
+    /// changed since flies between the grid and the sidebar.
+    var dockSeen: (space: BlockID?, docked: Set<PlacementID>)?
 
     private let transfersBadge = TransfersBadge()
 
@@ -935,10 +933,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if sidebar.layer?.animationKeys()?.isEmpty ?? true { sidebar.frame = sidebarFrame }
         let left = pinned ? w + inset : 0
         stage.frame = NSRect(x: left, y: 0, width: b.width - left, height: b.height)
-        layoutDockShelf()
-        content.frame = gridFrame
+        content.frame = stage.bounds
         stateView?.frame = stage.frame
-        slidingAway?.frame = gridFrame
+        slidingAway?.frame = stage.bounds
         emptyState?.frame = stage.frame
         history?.frame = b
         if !transfersBadge.isHidden {
@@ -3071,9 +3068,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return focusedShown.map { $0.block?.kind == .text } ?? false
         case #selector(deleteFocusedBlock(_:)):
             return focusedShown.map { $0.block?.kind != .arrangement } ?? false
-        case #selector(toggleDockShelf(_:)):
-            item.state = dockShelfOn ? .on : .off
-            return true
         case #selector(dockTile(_:)):
             guard let a = arrangement, let f = a.focused else { return false }
             return a.locate(f) != nil
@@ -3767,7 +3761,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             setUp(g)
             stage.addSubview(g)
         }
-        g.frame = gridFrame
+        g.frame = stage.bounds
         grids[id] = g
         return g
     }
@@ -4004,6 +3998,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected, openAll: self.sidebarFilter != nil)
+            if org == .desk { self.showSpaceHeading() }
             self.organizationShownFor = selected
         }
         organizationWork = work
@@ -4012,6 +4007,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // a key at a time, each made the whole tree again.
         let follows = org == .desk && deskSelectedRow != organizationShownFor
         if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (follows ? 0.05 : 0.25), execute: work) }
+    }
+
+    /// The sidebar's heading for the space shown: its name; how many of
+    /// its tiles are on screen and docked, and its host's name when
+    /// there's more than one.
+    private func showSpaceHeading() {
+        guard let id = selected, let a = hosts.arrangement(id) else { return sidebar.setSpace(title: "", subtitle: "") }
+        var words: [String] = []
+        if hosts.ordered.count > 1 { words.append(hosts.label(of: id.host)) }
+        let shown = a.columns.reduce(0) { $0 + $1.count }
+        words.append(shown == 1 ? "1 tile" : "\(shown) tiles")
+        if !a.docked.isEmpty { words.append("\(a.docked.count) docked") }
+        sidebar.setSpace(title: title(of: a), subtitle: words.joined(separator: " · "))
     }
 
     /// The row the sidebar's tree was last made with chosen.
@@ -5219,138 +5227,92 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }, prefix: "closed")
     }
 
-    /// Workspaces (§3.6): every attached host's, under its host when there
-    /// is more than one, each expanding to its tiles in order (by column,
-    /// top to bottom), then those docked, the selected one open and the
-    /// focused tile marked: the table of contents of the screen.
+    /// The space shown (§3.6), one at a time — the others are the strip's,
+    /// at the sidebar's foot: nothing nested, nothing to fold. Its pinned
+    /// blocks first, in the order pinned (each its tile, or, closed, a row
+    /// to recall it here); then what's on screen, as the grid has it —
+    /// column by column, top to bottom, a hairline between columns; then
+    /// those docked (§3.1), the latest first. The focused tile marked: the
+    /// table of contents of the screen.
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        var open: Set<String> = []
-        func workspace(_ id: BlockID) -> OrgNode? {
-            guard let a = hosts.arrangement(id) else { return nil }
-            let aid = "arr/\(id)"
-            // Every workspace whole (§3.6): nothing folds by itself; one
-            // closed by its chevron stays closed.
-            var tiles: [OrgNode] = []
-            let pinned = pins(of: id).map(\.to)
-            // The grid's tiles, column by column; then, under a hairline,
-            // those docked (§3.1), the latest first.
-            let docked = a.docked.reversed().map(\.placement)
-            for (c, column) in (a.columns + (docked.isEmpty ? [] : [docked])).enumerated() {
-                let isDock = !docked.isEmpty && c == a.columns.count
-                if isDock {
-                    let rule = OrgNode(id: "\(aid)/docked", title: "", symbol: "", detail: "")
-                    rule.style = .divider
-                    tiles.append(rule)
-                }
-                for p in column {
-                    let b = hosts.block(p.block)
-                    // An untitled note by its first words, as its links name it.
-                    let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
-                    guard matches(filter, [title, b?.path]) else { continue }
-                    // What its status says beyond its glyph (not "Done"); else
-                    // its state — docked, maximized — as a small symbol. Edits
-                    // unsaved: the bar's dot after its name.
-                    var notes: [String] = []
-                    if let status = StatusGlyph.remark(b) { notes.append(status) }
-                    if b == nil { notes.append("not attached") }
-                    let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
-                                    symbol: b.map { Theme.symbolName(for: $0) } ?? "questionmark.square.dashed",
-                                    detail: notes.joined(separator: " · "))
-                    n.dirty = b?.text?.isDirty == true
-                    n.stale = b?.text?.stale == true
-                    n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
-                    if isDock {
-                        n.detailSymbol = "dock.arrow.down.rectangle"
-                        n.docked = true
-                        n.tooltip = (n.tooltip.map { $0 + "\n" } ?? "") + "Docked — click to put it back where it was (⌃⇥ goes to it too)"
-                    } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
-                    n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
-                    n.trailing = StatusGlyph.at(of: b).map(Age.short)
-                    n.arrangement = id
-                    n.column = isDock ? nil : c
-                    n.placement = p.id
-                    n.emphasis = id == selected && p.id == a.focused
-                    tiles.append(n)
-                }
-            }
-            // Its pinned blocks first, in the order pinned — each its tiles,
-            // or, closed, a row to recall it here — then a hairline, then
-            // the rest.
-            if !pinned.isEmpty {
-                var top: [OrgNode] = []
-                for block in pinned {
-                    let open = tiles.filter { $0.block == block }
-                    top += open
-                    if !open.isEmpty { continue }
-                    guard let b = hosts.block(block) else { continue }
-                    let title = Self.linkTitle(b)
-                    guard matches(filter, [title, b.path]) else { continue }
-                    let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
-                    n.arrangement = id
-                    n.dimmed = true
-                    n.age = nil
-                    n.action = { [weak self] in self?.recallPinned(block, in: id) }
-                    top.append(n)
-                }
-                var rest = tiles.filter { t in !pinned.contains { $0 == t.block } }
-                // No hairline left over the dock with nothing docked under it.
-                if rest.last?.style == .divider { rest.removeLast() }
-                if !top.isEmpty {
-                    let rule = OrgNode(id: "\(aid)/pins", title: "", symbol: "", detail: "")
-                    rule.style = .divider
-                    tiles = top + (rest.isEmpty ? [] : [rule]) + rest
-                }
-            }
-            let titleMatches = matches(filter, [title(of: a)])
-            guard filter.isEmpty || titleMatches || !tiles.isEmpty else { return nil }
-            let focused = a.focusedPlacement.flatMap { hosts.block($0.block) }
-            let n = OrgNode(id: aid, block: id, title: title(of: a),
-                            symbol: a.placements.count > 1 ? Theme.spaceSymbol : focused.map { Theme.symbolName(for: $0) } ?? Theme.spaceSymbol,
-                            detail: "", count: a.placements.count > 1 ? a.placements.count : nil, children: tiles)
+        guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
+        let aid = "arr/\(id)"
+        let pinned = pins(of: id).map(\.to)
+        func tile(_ p: Placement, docked isDock: Bool, column c: Int?) -> OrgNode? {
+            let b = hosts.block(p.block)
+            // An untitled note by its first words, as its links name it.
+            let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
+            guard matches(filter, [title, b?.path]) else { return nil }
+            // What its status says beyond its glyph (not "Done"); else
+            // its state — docked, maximized — as a small symbol. Edits
+            // unsaved: the bar's dot after its name.
+            var notes: [String] = []
+            if let status = StatusGlyph.remark(b) { notes.append(status) }
+            if b == nil { notes.append("not attached") }
+            let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
+                            symbol: b.map { Theme.symbolName(for: $0) } ?? "questionmark.square.dashed",
+                            detail: notes.joined(separator: " · "))
+            n.dirty = b?.text?.isDirty == true
+            n.stale = b?.text?.stale == true
+            n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
+            n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
+            n.trailing = StatusGlyph.at(of: b).map(Age.short)
+            if isDock {
+                n.docked = true
+                n.tooltip = (n.tooltip.map { $0 + "\n" } ?? "") + "Docked — click to put it back where it was (⌃⇥ goes to it too)"
+            } else if a.full == p.id { n.detailSymbol = "arrow.up.left.and.arrow.down.right" }
             n.arrangement = id
+            n.column = c
+            n.placement = p.id
+            n.emphasis = p.id == a.focused
+            return n
+        }
+        func label(_ title: String, _ key: String, count: Int? = nil) -> OrgNode {
+            let n = OrgNode(id: "\(aid)/\(key)", title: title, symbol: "", detail: "", count: count)
             n.style = .section
-            n.emphasis = id == selected
-            let needing = a.placements.filter { StatusGlyph.look(of: hosts.block($0.block)) == .needsYou }.count
-            if needing > 0 { n.trailing = needing == 1 ? "1 needs you" : "\(needing) need you" }
-            if !tiles.isEmpty { open.insert(aid) }
             return n
         }
-        // Each host's workspaces, in its desk's order, with any of its that
-        // this desk has taken up.
-        var byHost: [(HostClient, [OrgNode])] = []
-        for c in hosts.ordered {
-            var ids = c.desk.order.filter { $0.host == c.host }
-            for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
-            let nodes = ids.compactMap(workspace)
-            // Unnamed spaces called the same (their folder): told apart by
-            // what each is on, after the name.
-            let counts = Dictionary(grouping: nodes, by: \.title).filter { $0.value.count > 1 }
-            for n in nodes where counts[n.title] != nil {
-                guard let id = n.block, let a = hosts.arrangement(id), !a.isNamed,
-                      let on = (a.focusedPlacement ?? a.placements.first).flatMap({ hosts.block($0.block) }) else { continue }
-                n.title += " · " + Self.linkTitle(on)
-            }
-            byHost.append((c, nodes))
-        }
-        guard byHost.count > 1 || Self.debugTwoHosts else { return (byHost.first?.1 ?? [], open) }
-        var roots = byHost.map { c, nodes -> OrgNode in
-            let id = "host:\(c.host.raw)"
-            open.insert(id)
-            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", isGroup: true, children: nodes)
-            n.style = .host
-            hostStanding(n, c)
+        func rule(_ key: String) -> OrgNode {
+            let n = OrgNode(id: "\(aid)/\(key)", title: "", symbol: "", detail: "")
+            n.style = .divider
             return n
         }
-        // Debugging with one host: its spaces split under it and a second
-        // heading, for the headings' own behaviour (`org twohosts`).
-        if Self.debugTwoHosts, byHost.count == 1, byHost[0].1.count > 1 {
-            let (c, nodes) = byHost[0], half = nodes.count / 2
-            let first = OrgNode(id: "host:\(c.host.raw)", title: hosts.label(of: c.host), symbol: "laptopcomputer", isGroup: true, children: Array(nodes[..<half]))
-            let second = OrgNode(id: "host:debug", title: "Second Host", symbol: "server.rack", isGroup: true, children: Array(nodes[half...]))
-            for n in [first, second] { n.style = .host; open.insert(n.id) }
-            roots = [first, second]
+        var out: [OrgNode] = []
+        // Pinned: each its tile (on screen or docked), else a row to recall it.
+        var top: [OrgNode] = []
+        for block in pinned {
+            let shown = a.columns.enumerated().flatMap { c, col in col.filter { $0.block == block }.compactMap { tile($0, docked: false, column: c) } }
+                + a.docked.filter { $0.placement.block == block }.compactMap { tile($0.placement, docked: true, column: nil) }
+            top += shown
+            guard shown.isEmpty, let b = hosts.block(block) else { continue }
+            let title = Self.linkTitle(b)
+            guard matches(filter, [title, b.path]) else { continue }
+            let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
+            n.arrangement = id
+            n.dimmed = true
+            n.age = nil
+            n.action = { [weak self] in self?.recallPinned(block, in: id) }
+            top.append(n)
         }
-        return (roots, open)
+        if !top.isEmpty { out += [label("Pinned", "pinned")] + top }
+        // On screen, column by column.
+        var grid: [OrgNode] = []
+        for (c, column) in a.columns.enumerated() {
+            let rows = column.filter { !pinned.contains($0.block) }.compactMap { tile($0, docked: false, column: c) }
+            guard !rows.isEmpty else { continue }
+            if !grid.isEmpty { grid.append(rule("col/\(c)")) }
+            grid += rows
+        }
+        if !grid.isEmpty { out += [label("On Screen", "screen")] + grid }
+        // Docked, the latest first.
+        let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) }.compactMap { tile($0.placement, docked: true, column: nil) }
+        if !docked.isEmpty {
+            // Its label stands for the space, for a tile flown to it before its row is made.
+            let l = label("Docked", "docked", count: docked.count)
+            l.arrangement = id
+            out += [l] + docked
+        }
+        return (out, [])
     }
 
     /// Files: each host's sparse tree, roots open.
