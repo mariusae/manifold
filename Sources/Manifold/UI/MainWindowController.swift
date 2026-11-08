@@ -402,9 +402,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.isHidden = stateView != nil
             if old !== content {
                 if let from = shownArrangement, let to = selected {
-                    slide(slideDirection(from: from, to: to), leaving: old)
-                    // After the sidebar's had the change.
-                    DispatchQueue.main.async { [weak self] in self?.sidebar.organizationView.travel(from: from, to: to) }
+                    let dir = slideDirection(from: from, to: to)
+                    slide(dir, leaving: old)
+                    // The sidebar's space slides with it, the next turn (its
+                    // tree made then, at once).
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        if self.sidebar.organization == .desk {
+                            self.sidebar.slideSpace(dir) { self.refreshOrganization(now: true) }
+                        } else {
+                            self.refreshSpaceStrip()
+                        }
+                    }
                 } else {
                     old.isHidden = true
                 }
@@ -2149,7 +2158,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A linked block's name on a badge: a note by its title or first words.
-    private static func linkTitle(_ b: Block) -> String { b.kind == .text && b.path == nil ? noteTitle(b) : b.displayTitle }
+    static func linkTitle(_ b: Block) -> String { b.kind == .text && b.path == nil ? noteTitle(b) : b.displayTitle }
 
     /// A block ⇧-dragged onto another: linked, from it to the target.
     func link(_ block: BlockID, to target: BlockID) {
@@ -3669,17 +3678,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Which way a space comes in: as the sidebar has them, one below the
     /// space left comes up from below (1), one above down from above (-1);
     /// by the desk's order where either row doesn't show.
-    private func slideDirection(from a: BlockID, to b: BlockID) -> CGFloat {
-        let org = sidebar.organizationView
-        if let ra = org.spaceRow(a), let rb = org.spaceRow(b), ra.midY != rb.midY { return rb.midY > ra.midY ? 1 : -1 }
+    /// Which way one space is from another: as the strip has them, left to
+    /// right (1, the other's to the right).
+    func slideDirection(from a: BlockID, to b: BlockID) -> CGFloat {
+        let strip = sidebar.spaces.chips.map(\.id)
+        if let i = strip.firstIndex(of: a), let j = strip.firstIndex(of: b), i != j { return j > i ? 1 : -1 }
         let order = allWorkspaces
         guard let i = order.firstIndex(of: a), let j = order.firstIndex(of: b) else { return 1 }
         return j >= i ? 1 : -1
     }
 
     /// The arrangement about to be shown (`content`, its grid shown) slides
-    /// in over the one shown — from below for `dir` 1, from above for -1 —
-    /// whose grid slides out the other way, both live. Only their layers
+    /// in over the one shown — from the right for `dir` 1 (the next in the
+    /// strip), from the left for -1 — whose grid slides out the other way,
+    /// both live. Only their layers
     /// move, so nothing is laid out again on the way. With less motion
     /// asked for, the one fades in over the other.
     private func slide(_ dir: CGFloat, leaving old: GridView) {
@@ -3706,10 +3718,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if Motion.reduced {
             animate(incoming, "opacity", 0, 1, Motion.base, Motion.appear)
         } else {
-            // The stage's layers have y up: below is negative.
-            let h = frame.height
-            animate(incoming, "transform", CATransform3DMakeTranslation(0, -dir * h, 0), CATransform3DIdentity, Motion.spatial, Motion.travel)
-            animate(leaving, "transform", CATransform3DIdentity, CATransform3DMakeTranslation(0, dir * h, 0), Motion.spatial, Motion.travel)
+            let w = frame.width
+            animate(incoming, "transform", CATransform3DMakeTranslation(dir * w, 0, 0), CATransform3DIdentity, Motion.spatial, Motion.travel)
+            animate(leaving, "transform", CATransform3DIdentity, CATransform3DMakeTranslation(-dir * w, 0, 0), Motion.spatial, Motion.travel)
         }
         CATransaction.commit()
     }
@@ -3999,6 +4010,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.sidebar.organizationView.flat = true
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected, openAll: self.sidebarFilter != nil)
             if org == .desk { self.showSpaceHeading() }
+            self.refreshSpaceStrip()
             self.organizationShownFor = selected
         }
         organizationWork = work

@@ -543,6 +543,9 @@ enum DebugControl {
         case "hood":
             // "hood": the focused block's neighborhood view, settled, and its model.
             return wc?.debugNeighborhood(settle: true) ?? "no window"
+        case "spaces":
+            // "spaces [hover <i>|hover off|pick <i>|color <i> <name>|symbol <i> <name>]": the sidebar's strip of spaces.
+            return wc?.debugSpaces(arg) ?? "no window"
         case "dock":
             // "dock": the space's columns, each tile with its share, and what's
             // docked, with where each was; "dock it": the focused tile docked

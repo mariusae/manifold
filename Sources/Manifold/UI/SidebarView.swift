@@ -92,6 +92,9 @@ final class SidebarView: NSView {
         threadsRead.isEnabled = unseen > 0
         threadsRead.toolTip = unseen > 0 ? "Mark All Read (\(unseen))" : "All Read"
     }
+    /// Every space (§3.6), a square each, above the bar: the sidebar shows
+    /// one at a time, and these are the rest.
+    let spaces = SpaceStripView()
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
     /// Toasts (§4), while it's out: above the copies, as many as are up.
@@ -162,7 +165,7 @@ final class SidebarView: NSView {
         filterButton.target = self
         filterButton.action = #selector(filterClicked)
         counts.onClick = { [weak self] in self?.delegate?.sidebarFilter(.status) }
-        for v in [filterButton, counts, closedRow, transfers, toasts] { card.addSubview(v) }
+        for v in [filterButton, counts, spaces, closedRow, transfers, toasts] { card.addSubview(v) }
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         setFilter(nil)
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
@@ -238,6 +241,8 @@ final class SidebarView: NSView {
         let cw = counts.wantedWidth
         counts.frame = NSRect(x: bounds.width - 12 - cw, y: 0, width: cw, height: Self.barHeight)
         var bottom = Self.barHeight
+        spaces.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: SpaceStripView.height)
+        bottom += SpaceStripView.height + 2
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
@@ -271,6 +276,76 @@ final class SidebarView: NSView {
     }
 
     @objc private func backClicked() { chooseOrganization(.desk) }
+
+    /// Another space shown (§3.6): its name and its tiles slide in from
+    /// `dir`'s side (1, the right: the next in the strip), as the grid's
+    /// do, over a picture of the last sliding out. With less motion, only
+    /// changed.
+    func slideSpace(_ dir: CGFloat, change: () -> Void) {
+        let moving: [NSView] = [organizationView, pushedTitle, pushedSubtitle]
+        let region = moving.filter { !$0.isHidden }.map(\.frame).reduce(NSRect.null) { $0.union($1) }
+        guard !Motion.reduced, window != nil, !isHiddenOrHasHiddenAncestor, !region.isEmpty, let host = card.layer,
+              let rep = card.bitmapImageRepForCachingDisplay(in: region) else { return change() }
+        card.cacheDisplay(in: region, to: rep)
+        change()
+        layoutSubtreeIfNeeded()
+        let old = CALayer()
+        old.contents = rep.cgImage
+        old.frame = region
+        old.zPosition = 5
+        host.addSublayer(old)
+        let shift = bounds.width * 0.5
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { old.removeFromSuperlayer() }
+        func move(_ l: CALayer, from: CGFloat, to: CGFloat, fade: (Float, Float)) {
+            let t = CABasicAnimation(keyPath: "transform.translation.x")
+            t.fromValue = from
+            t.toValue = to
+            let o = CABasicAnimation(keyPath: "opacity")
+            o.fromValue = fade.0
+            o.toValue = fade.1
+            let g = CAAnimationGroup()
+            g.animations = [t, o]
+            g.duration = Motion.spatial
+            g.timingFunction = Motion.travel
+            l.add(g, forKey: "space.slide")
+        }
+        old.opacity = 0
+        move(old, from: 0, to: -dir * shift, fade: (1, 0))
+        for v in moving { if let l = v.layer { move(l, from: dir * shift, to: 0, fade: (0, 1)) } }
+        CATransaction.commit()
+    }
+
+    /// A two-finger swipe across the sidebar, sideways: the next space (-1,
+    /// the fingers going left, as Arc's) or the one before — once a swipe.
+    var onSwipe: ((Int) -> Void)?
+    private var swipeMonitor: Any?
+    private var swiped: CGFloat = 0
+    private var swipeDone = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let m = swipeMonitor { NSEvent.removeMonitor(m); swipeMonitor = nil }
+        guard window != nil else { return }
+        swipeMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] e in
+            self?.swipe(e)
+            return e
+        }
+    }
+
+    private func swipe(_ e: NSEvent) {
+        guard e.window === window, e.hasPreciseScrollingDeltas, e.momentumPhase == [],
+              bounds.contains(convert(e.locationInWindow, from: nil)) else { return }
+        if e.phase.contains(.began) { swiped = 0; swipeDone = false }
+        guard e.phase.contains(.changed) || e.phase.contains(.began) else { return }
+        // Sideways, not a scroll up or down that drifts.
+        guard abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) * 1.5 else { return }
+        // As the fingers go, whichever way scrolling is set to go.
+        swiped += e.isDirectionInvertedFromDevice ? e.scrollingDeltaX : -e.scrollingDeltaX
+        guard !swipeDone, abs(swiped) > 70 else { return }
+        swipeDone = true
+        onSwipe?(swiped < 0 ? 1 : -1)
+    }
 
     /// The space shown (§3.6): its name over its tiles, and how many.
     func setSpace(title: String, subtitle: String) {
