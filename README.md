@@ -24,9 +24,7 @@ parts from the Mac's conventions on purpose.
   organized two ways (Spaces · Files, below). It sits beside the content; ⇧⌘/ or ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Over the strip at its foot, at the right, are
-  counts of what needs you, is working and is done and not yet read
-  (no row for them when there are none). The
+  top to move the window. The
   window sits on a wash of soft colour (Look, below). Under Spaces the
   sidebar shows **one space at a time**: its name at the top, and under
   it the host it's on — This Mac or another, a remote's ping times
@@ -34,7 +32,8 @@ parts from the Mac's conventions on purpose.
   then its tiles in sections
   that don't fold — **Pinned**, **On Screen** (as the grid has them,
   column by column, a hairline between columns) and **Docked** (the
-  latest first). Along the very bottom runs **the strip**, every
+  latest first). Along the top, under the window's buttons, as Dia's
+  favourites, runs **the strip**, every
   space as a small square, as Arc's spaces are: its colour, its letter
   or a symbol (right-click it to choose either, or to rename it), the
   one shown outlined, a dot for what most wants you there, a hairline
@@ -1418,7 +1417,7 @@ around it, and comes back with its history.
   word gives way to a dot in its color before the name gives way; in a
   bar it's left of the links and the buttons, by the name. An
   inactive terminal's name is dim. A host's states keep their glyphs.
-  The counts at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
+  What needs you at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile
   not showing — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's

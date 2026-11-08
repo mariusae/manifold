@@ -3996,11 +3996,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let filter = ""
             let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil
-            // The counts: what needs you, what's working, and what's done
-            // or failed and not yet read — one attended to is counted no more.
-            let g = self.statusGroups("")
-            let unread = (g[.done] ?? []).filter { $0.1?.read != true }.count + (g[.failed] ?? []).filter { $0.1?.read != true }.count
-            self.sidebar.setCounts(needsYou: g[.needsYou]?.count ?? 0, working: g[.working]?.count ?? 0, done: unread)
             let reachable = self.hosts.reachable()
             self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
             self.refreshSidebarThreads()

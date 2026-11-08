@@ -226,12 +226,15 @@ final class PopMenu: NSView, NSTextFieldDelegate {
     func debugChip(_ id: String) { if let i = chips.firstIndex(where: { $0.id == id }) { chipsShown = true; chipButtons[i].onClick?() } }
 }
 
-/// A chip of the filter row: a capsule, filled when on.
+/// A chip, as Dia's: a small grey capsule, its word in grey — on, a
+/// little deeper and its word in the text's colour; never loud.
 final class ChipButton: NSView {
     var onClick: (() -> Void)?
     var isOn = false { didSet { needsDisplay = true } }
-    private let title: String
-    private let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    var title: String { didSet { needsDisplay = true } }
+    private var hovering = false { didSet { needsDisplay = true } }
+    static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let height: CGFloat = 24
 
     init(_ title: String) {
         self.title = title
@@ -240,20 +243,71 @@ final class ChipButton: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var wantedWidth: CGFloat { ceil((title as NSString).size(withAttributes: [.font: font]).width) + 24 }
+    var wantedWidth: CGFloat { ceil((title as NSString).size(withAttributes: [.font: Self.font]).width) + 20 }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let r = bounds.insetBy(dx: 0.5, dy: (bounds.height - Self.height) / 2 + 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        (isOn ? Theme.accent : Theme.text.withAlphaComponent(0.08)).setFill()
+        Theme.text.withAlphaComponent(isOn ? 0.15 : hovering ? 0.09 : 0.055).setFill()
         path.fill()
-        let s = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: isOn ? NSColor.white : Theme.text])
+        let s = NSAttributedString(string: title, attributes: [.font: Self.font, .foregroundColor: isOn ? Theme.text : Theme.secondaryText])
         let z = s.size()
         s.draw(at: NSPoint(x: (bounds.width - z.width) / 2, y: (bounds.height - z.height) / 2))
     }
 
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+}
+
+/// One of a few, as chips (in place of a segmented control): the one
+/// chosen on; chosen, its action sent.
+final class ChipGroup: NSControl {
+    private var chips: [ChipButton] = []
+    var labels: [String] = [] {
+        didSet {
+            chips.forEach { $0.removeFromSuperview() }
+            chips = labels.enumerated().map { i, l in
+                let c = ChipButton(l)
+                c.onClick = { [weak self] in
+                    guard let self else { return }
+                    self.selectedSegment = i
+                    self.sendAction(self.action, to: self.target)
+                }
+                addSubview(c)
+                return c
+            }
+            selectedSegment = min(selectedSegment, max(0, labels.count - 1))
+            needsLayout = true
+        }
+    }
+    var selectedSegment = 0 { didSet { for (i, c) in chips.enumerated() { c.isOn = i == selectedSegment } } }
+    var segmentCount: Int { labels.count }
+
+    convenience init(labels: [String]) {
+        self.init(frame: .zero)
+        self.labels = labels
+        self.selectedSegment = 0
+    }
+
+    var wantedWidth: CGFloat { chips.reduce(0) { $0 + $1.wantedWidth } + CGFloat(max(0, chips.count - 1)) * 6 }
+    override func sizeToFit() { setFrameSize(NSSize(width: wantedWidth, height: ChipButton.height)) }
+
+    override func layout() {
+        super.layout()
+        var x: CGFloat = 0
+        for c in chips {
+            c.frame = NSRect(x: x, y: 0, width: c.wantedWidth, height: bounds.height)
+            x += c.wantedWidth + 6
+        }
+    }
 }
 
 /// The menu's rows, drawn: section headers, hairlines, rows with their

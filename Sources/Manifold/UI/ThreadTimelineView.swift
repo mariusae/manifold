@@ -69,8 +69,8 @@ final class ThreadTimelineView: NSView {
     var space: BlockID?
 
     private let titleLabel = NSTextField(labelWithString: "")
-    private let scopeControl = NSSegmentedControl()
-    private let filterControl = NSSegmentedControl(labels: ["All", "Open", "Unread"], trackingMode: .selectOne, target: nil, action: nil)
+    private let scopeControl = ChipGroup()
+    private let filterControl = ChipGroup(labels: ["All", "Open", "Unread"])
     private let readAll = FlatButton("Mark All Read", font: UIType.detail)
     /// Narrow (the sidebar's): no title, scope, filter or Mark All Read —
     /// the sidebar's header has them — and Hand to Agent a glyph.
@@ -105,12 +105,8 @@ final class ThreadTimelineView: NSView {
         super.init(frame: frame)
         titleLabel.font = UIType.title
         titleLabel.lineBreakMode = .byTruncatingTail
-        scopeControl.segmentStyle = .rounded
-        scopeControl.controlSize = .small
         scopeControl.target = self
         scopeControl.action = #selector(scopeChosen)
-        filterControl.segmentStyle = .rounded
-        filterControl.controlSize = .small
         filterControl.selectedSegment = 0
         filterControl.target = self
         filterControl.action = #selector(filterChosen)
@@ -173,11 +169,7 @@ final class ThreadTimelineView: NSView {
         let first = model.runs.isEmpty
         model = m
         titleLabel.stringValue = m.title
-        scopeControl.segmentCount = m.scopes.count
-        for (i, s) in m.scopes.enumerated() {
-            scopeControl.setLabel(s, forSegment: i)
-            scopeControl.setWidth(0, forSegment: i)
-        }
+        if scopeControl.labels != m.scopes { scopeControl.labels = m.scopes }
         scopeControl.selectedSegment = m.scope
         scopeControl.isHidden = m.scopes.count < 2 || compact
         filterControl.selectedSegment = filter.rawValue

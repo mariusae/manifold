@@ -47,11 +47,10 @@ final class SidebarView: NSView {
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
     /// The tree; the bar at the bottom: what it lists — spaces, files or
-    /// threads, an icon each — and the counts of what's doing something.
+    /// threads, an icon each.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
     private let tabs: [SidebarTab] = [.desk, .files, .threads].map { SidebarTab($0) }
-    private let counts = StatusCountsView()
     /// A quiet row above the bar (§4): what's closed and not yet
     /// collected; it opens its list in place of the tree, and again puts
     /// the tree back.
@@ -148,7 +147,7 @@ final class SidebarView: NSView {
             }
             card.addSubview(t)
         }
-        for v in [counts, spaces, needsYou, closedRow, transfers, toasts, footer] { card.addSubview(v) }
+        for v in [spaces, needsYou, closedRow, transfers, toasts, footer] { card.addSubview(v) }
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
@@ -191,6 +190,11 @@ final class SidebarView: NSView {
             tx += SidebarTab.size + 2
         }
         var top = bounds.height - Self.headerHeight
+        // The spaces at the top, under the window's buttons, as Dia's
+        // favourites: whichever list shows under them.
+        let sh = spaces.wantedHeight(width: bounds.width)
+        spaces.frame = NSRect(x: 0, y: top - sh, width: bounds.width, height: sh)
+        top -= sh + 2
         backButton.isHidden = !pushed
         pushedTitle.isHidden = !titled
         pushedSubtitle.isHidden = !titled || organization == .desk
@@ -229,14 +233,7 @@ final class SidebarView: NSView {
         // The spaces along the very bottom; over them the counts of what's
         // doing something, at the right — none, no row for them.
         footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SidebarFooter.height)
-        let fh = SidebarFooter.height
-        let sh = spaces.wantedHeight(width: bounds.width)
-        spaces.frame = NSRect(x: 0, y: fh, width: bounds.width, height: sh)
-        let cw = counts.wantedWidth
-        let barH: CGFloat = cw > 0 ? 26 : 0
-        counts.frame = NSRect(x: bounds.width - 12 - cw, y: fh + sh, width: cw, height: barH)
-        counts.isHidden = cw == 0
-        var bottom = fh + sh + barH
+        var bottom = SidebarFooter.height
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
         needsYou.isHidden = nh == 0
@@ -269,7 +266,9 @@ final class SidebarView: NSView {
         let r = card.convert(rect, from: nil)
         let h = hostPicker.wantedHeight, w = min(HostPickerView.width, card.bounds.width - 16)
         let x = min(max(8, r.midX - w / 2), card.bounds.width - 8 - w)
-        hostPicker.frame = NSRect(x: x.rounded(), y: (r.maxY + 6).rounded(), width: w, height: h)
+        // Under the + (the strip at the top), else over it where there's no room.
+        let below = r.minY - 6 - h
+        hostPicker.frame = NSRect(x: x.rounded(), y: (below >= 8 ? below : r.maxY + 6).rounded(), width: w, height: h)
         if hostPicker.superview == nil || card.subviews.last !== hostPicker { card.addSubview(hostPicker) }
         hostPicker.isHidden = false
     }
@@ -406,11 +405,6 @@ final class SidebarView: NSView {
 
     @objc private func threadsReadClicked() { delegate?.sidebarMarkThreadsRead() }
 
-    /// What's doing something, for the bar's counts (§3.7).
-    func setCounts(needsYou: Int, working: Int, done: Int) {
-        counts.set(needsYou: needsYou, working: working, done: done)
-        needsLayout = true
-    }
 
 
     private func chooseOrganization(_ org: Organization) {
@@ -687,60 +681,6 @@ final class FootRowView: NSView {
     override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
-}
-
-/// The bar's counts of what's doing something (§3.7): needs you, working,
-/// done and not yet read — each its glyph and a number, hidden at zero.
-final class StatusCountsView: NSView {
-    var emphasized = false { didSet { for l in labels { l.textColor = emphasized ? Theme.text : Theme.secondaryText } } }
-    private let glyphs = [StatusGlyph(), StatusGlyph(), StatusGlyph()]
-    private let labels = (0..<3).map { _ in NSTextField(labelWithString: "") }
-    private var values = [0, 0, 0]
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        // Quiet, as the rows are (`StatusMark`): working a still dot, done
-        // the plain check; only what needs you in amber.
-        for (g, look) in zip(glyphs, [StatusGlyph.Look.needsYou, .busy, .done(read: true)]) {
-            g.look = look
-            addSubview(g)
-        }
-        for l in labels {
-            l.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            l.textColor = Theme.secondaryText
-            addSubview(l)
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(needsYou: Int, working: Int, done: Int) {
-        values = [needsYou, working, done]
-        for (l, v) in zip(labels, values) { l.stringValue = "\(v)" }
-        needsLayout = true
-    }
-
-    var wantedWidth: CGFloat {
-        values.enumerated().reduce(0) { w, e in e.element == 0 ? w : w + StatusGlyph.size + 5 + ceil(labels[e.offset].intrinsicContentSize.width) + 14 }
-    }
-
-    override func layout() {
-        super.layout()
-        var x: CGFloat = 0
-        let h = bounds.height
-        for i in 0..<3 {
-            let shown = values[i] > 0
-            glyphs[i].isHidden = !shown
-            labels[i].isHidden = !shown
-            guard shown else { continue }
-            glyphs[i].frame = NSRect(x: x, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
-            x += StatusGlyph.size + 5
-            let lw = ceil(labels[i].intrinsicContentSize.width)
-            labels[i].frame = NSRect(x: x, y: (h - 15) / 2, width: lw, height: 15)
-            x += lw + 14
-        }
-    }
-
 }
 
 /// A space's host, under its name (§3.6): its name — This Mac, or the

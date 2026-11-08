@@ -729,8 +729,8 @@ shown on a band, Threads with a count of those with something not seen.
 beside them, ⌥⌘. — was tried and left: what needs you, always at the
 foot, does what it was mostly for.) The links live on the tile's bar and in the neighborhood map
 (⇧⌥⌘M, or a link's menu) as the one big view of them; what's working,
-done or needing you is the counts at the sidebar's foot, what needs
-you over the strip, and Overview; and time is ⌘O with nothing typed, which is the
+done or needing you is what needs you at the sidebar's foot, the
+strip's dots, and Overview; and time is ⌘O with nothing typed, which is the
 trail.
 
 Two edges make the first two possible. **`contains`** (folder → file or
@@ -755,7 +755,8 @@ order pinned; On Screen, as the grid has them, column by column, a
 hairline between columns; Docked, the latest first — the focused one
 marked, so the sidebar is the table of contents of the screen; clicking
 a tile row focuses it (a docked one comes back where it was). The other
-spaces are **the strip** along the very bottom, as Arc's spaces are
+spaces are **the strip** along the top, under the window's buttons
+(as Dia's favourites are), as Arc's spaces are
 (`SpaceStripView`): a small square each in its colour, its letter or a
 symbol in it (both chosen from its menu, kept on it as annotations,
 `space.color` and `space.symbol`; unchosen, a colour by its id and its
@@ -771,7 +772,7 @@ the strip has them, the sidebar's list sliding with it. A tile, or a
 row, dropped on a square goes to that space docked (⌥, a copy there
 too), flying into the square, and the window stays; held over it a
 moment, the space opens, for the drop to land where it's wanted. Over
-the strip, always there, is what **needs you** in every space
+the footer, there while anything is, is what **needs you** in every space
 (`NeedsYouView`): a row each, its space's square, its symbol and name,
 what it needs in a pill; clicked, gone to in its space; five at most,
 then how many more, which shows them all (and "Fewer" again); none,
