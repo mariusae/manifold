@@ -34,7 +34,7 @@ extension MainWindowController {
             if case .block(let b) = m.target, hosts.block(b)?.agent != nil, b != author.agentBlock { asked.append(b) }
         }
         for word in ThreadText.tags(in: comment) {
-            guard let kind = Self.agentKind(word) else { continue }
+            guard let kind = Self.agentKind(word, usual: desk.settings.agentCommand) else { continue }
             if let a = agentFor(kind, near: th), a != author.agentBlock {
                 if !asked.contains(a) { asked.append(a) }
             } else if author.isYou {
@@ -58,10 +58,10 @@ extension MainWindowController {
     }
 
     /// The kind of agent a tag names: `@claude`, `@codex`; `@agent`, the
-    /// one Settings name.
-    static func agentKind(_ word: String) -> AgentCatalog.Agent? {
+    /// one Settings names (its agent command), else Claude Code.
+    static func agentKind(_ word: String, usual: String = "") -> AgentCatalog.Agent? {
         let w = word.lowercased()
-        if w == "agent" { return AgentCatalog.agent(inCommand: "claude") }
+        if w == "agent" { return AgentCatalog.agent(inCommand: usual) ?? AgentCatalog.agent(inCommand: "claude") }
         return AgentCatalog.known.first { w == $0.command || w == $0.name.lowercased() || $0.name.lowercased().hasPrefix(w) }
     }
 

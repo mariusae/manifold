@@ -1097,7 +1097,7 @@ final class GridView: NSView, NSDraggingSource {
             swell.timingFunction = Motion.appear
             let grp = CAAnimationGroup()
             grp.animations = [fade, swell]
-            grp.duration = d * 0.75
+            grp.duration = d * 0.5
             g.add(grp, forKey: "poof")
         }
         CATransaction.commit()
@@ -1122,23 +1122,23 @@ final class GridView: NSView, NSDraggingSource {
         appearance.performAsCurrentDrawingAppearance { ink = Theme.secondaryText.withAlphaComponent(0.55).cgColor }
         cell.color = ink
         cell.birthRate = 260
-        cell.lifetime = Float(0.55 * Motion.slowdown)
-        cell.lifetimeRange = Float(0.15 * Motion.slowdown)
-        cell.velocity = side * 1.6 / Motion.slowdown
-        cell.velocityRange = side / Motion.slowdown
+        cell.lifetime = Float(0.36 * Motion.slowdown)
+        cell.lifetimeRange = Float(0.1 * Motion.slowdown)
+        cell.velocity = side * 2.4 / Motion.slowdown
+        cell.velocityRange = side * 1.5 / Motion.slowdown
         cell.emissionRange = .pi * 2
         cell.scale = side / 64 * 0.45
         cell.scaleRange = side / 64 * 0.2
-        cell.scaleSpeed = side / 64 * 1.4 / Motion.slowdown
-        cell.alphaSpeed = Float(-1.8 / Motion.slowdown)
+        cell.scaleSpeed = side / 64 * 2.1 / Motion.slowdown
+        cell.alphaSpeed = Float(-2.8 / Motion.slowdown)
         cell.spin = 0.6
         cell.spinRange = 1.5
         e.emitterCells = [cell]
         e.beginTime = CACurrentMediaTime()
         host.addSublayer(e)
         // A burst: born for a moment only, gone once the last has faded.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06 * Motion.slowdown) { e.birthRate = 0 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 * Motion.slowdown) { e.removeFromSuperlayer() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04 * Motion.slowdown) { e.birthRate = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7 * Motion.slowdown) { e.removeFromSuperlayer() }
     }
 
     /// A soft round puff, white, for tinting.
