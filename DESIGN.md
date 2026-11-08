@@ -723,7 +723,7 @@ the graph has to capture everything any organization needs:
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
 Two — and the space's threads (§3.12), which are other things than
-blocks in a tree: the three are icons at the sidebar's foot, the one
+blocks in a tree: the three are icons along the sidebar's top, by its pin, the one
 shown on a band, Threads with a count of those with something not seen.
 (A filter over either tree, to blocks with a status — the lighthouse
 beside them, ⌥⌘. — was tried and left: what needs you, always at the
@@ -755,7 +755,7 @@ order pinned; On Screen, as the grid has them, column by column, a
 hairline between columns; Docked, the latest first — the focused one
 marked, so the sidebar is the table of contents of the screen; clicking
 a tile row focuses it (a docked one comes back where it was). The other
-spaces are **the strip** along the very bottom, under the bar, as Arc's spaces are
+spaces are **the strip** along the very bottom, as Arc's spaces are
 (`SpaceStripView`): a small square each in its colour, its letter or a
 symbol in it (both chosen from its menu, kept on it as annotations,
 `space.color` and `space.symbol`; unchosen, a colour by its id and its
@@ -1277,7 +1277,7 @@ projection, §2.5):
   of another kind marks its place its own way (a terminal's command, a
   PDF's page, a notebook's cell).
 - *As a tile*, for a long conversation — it's a block.
-- *The sidebar's Threads* (⌥⌘3, an icon at its foot beside Spaces and
+- *The sidebar's Threads* (⌥⌘3, an icon along its top beside Spaces and
   Files, with how many have something not seen): the space's threads
   listed by title — the open by what was said last, newest first, then
   the resolved, closed; each with where it's about and how long since,

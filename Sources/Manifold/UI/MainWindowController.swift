@@ -8113,7 +8113,6 @@ extension MainWindowController: SidebarDelegate {
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     /// The sidebar's +: a new workspace with a terminal in it (⌘T).
-    func sidebarNewTab() { newTerminal(nil) }
 
     func sidebarMove(_ arrangement: BlockID, to index: Int) {
         guard let client = hosts.client(of: arrangement) else { return }
@@ -8141,17 +8140,6 @@ extension MainWindowController: SidebarDelegate {
             layoutViews()
             root.layoutSubtreeIfNeeded()
         }
-    }
-
-    func sidebarMoreMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(pinned ? "Hide Sidebar" : "Show Sidebar", symbol: "sidebar.left") { [weak self] in self?.sidebarTogglePinned() })
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Show Logs in Finder", symbol: "folder") {
-            NSWorkspace.shared.activateFileViewerSelecting([Paths.logs])
-        })
-        menu.addItem(ClosureMenuItem("End All Sessions and Quit…", symbol: "power") { [weak self] in self?.stopServer(nil) })
-        return menu
     }
 
     func sidebarResize(to width: CGFloat) {

@@ -18,20 +18,21 @@ parts from the Mac's conventions on purpose.
 
 ## Using it
 
-- The **sidebar** is the spine of the window: the window buttons, New
-  (+) and ⋯ along its top, then one browser over everything you have,
+- The **sidebar** is the spine of the window: the window buttons and,
+  at the right, what it shows — Spaces, Files, Threads, an icon each —
+  along its top, then one browser over everything you have,
   organized two ways (Spaces · Files, below). It sits beside the content; ⇧⌘/ or ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Along the bottom of the sidebar run Spaces, Files
-  and Threads, and, at the right, counts of what needs you, is working
-  and is done and not yet read. The
+  top to move the window. Over the strip at its foot, at the right, are
+  counts of what needs you, is working and is done and not yet read
+  (no row for them when there are none). The
   window sits on a wash of soft colour (Look, below). Under Spaces the
   sidebar shows **one space at a time**: its name at the top, with how
   many tiles it has on screen and docked, then its tiles in sections
   that don't fold — **Pinned**, **On Screen** (as the grid has them,
   column by column, a hairline between columns) and **Docked** (the
-  latest first). Along the very bottom, under the bar, runs **the strip**, every
+  latest first). Along the very bottom runs **the strip**, every
   space as a small square, as Arc's spaces are: its colour, its letter
   or a symbol (right-click it to choose either, or to rename it), the
   one shown outlined, a dot for what most wants you there, a hairline

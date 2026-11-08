@@ -6,9 +6,7 @@ protocol SidebarDelegate: AnyObject {
     func sidebarRemove(_ arrangement: BlockID)
     func sidebarRename(_ arrangement: BlockID)
     func sidebarMove(_ arrangement: BlockID, to index: Int)
-    func sidebarNewTab()
     func sidebarTogglePinned()
-    func sidebarMoreMenu() -> NSMenu
     func sidebarDragChanged(_ dragging: Bool)
     /// The resize handle was dragged to make the sidebar this wide.
     func sidebarResize(to width: CGFloat)
@@ -45,8 +43,6 @@ final class SidebarView: NSView {
     /// Clear over the window's wash when pinned, as Kero's is; a pale sheet when floating over the cards.
     private let card = NSView()
     private let pinButton: IconButton
-    private let newButton: IconButton
-    private let moreButton: IconButton
     private let header = WindowDragView()
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
@@ -113,8 +109,6 @@ final class SidebarView: NSView {
 
     override init(frame: NSRect) {
         pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
-        newButton = IconButton(symbol: "plus", size: 13, weight: .medium, target: nil, action: nil)
-        moreButton = IconButton(symbol: "ellipsis", size: 13, weight: .medium, target: nil, action: nil)
         super.init(frame: frame)
         wantsLayer = true
         if let layer { Elevation.float.apply(to: layer) }
@@ -130,13 +124,6 @@ final class SidebarView: NSView {
         pinButton.action = #selector(togglePinned)
         pinButton.toolTip = "Keep Sidebar Shown (⇧⌘/)"
         card.addSubview(pinButton)
-        newButton.target = self
-        newButton.action = #selector(newClicked)
-        newButton.toolTip = "New Space (⌘T)"
-        card.addSubview(newButton)
-        moreButton.target = self
-        moreButton.action = #selector(moreClicked)
-        card.addSubview(moreButton)
         backButton.target = self
         backButton.action = #selector(backClicked)
         backButton.toolTip = "Back to Spaces"
@@ -190,8 +177,12 @@ final class SidebarView: NSView {
         layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
-        moreButton.frame = NSRect(x: bounds.width - 54, y: bounds.height - 30, width: 20, height: 20)
-        newButton.frame = NSRect(x: bounds.width - 78, y: bounds.height - 30, width: 20, height: 20)
+        // What it lists, an icon each, along the top beside the pin.
+        var tx = pinButton.frame.minX - 6 - CGFloat(tabs.count) * (SidebarTab.size + 2) + 2
+        for t in tabs {
+            t.frame = NSRect(x: tx, y: pinButton.frame.midY - SidebarTab.size / 2, width: SidebarTab.size, height: SidebarTab.size)
+            tx += SidebarTab.size + 2
+        }
         var top = bounds.height - Self.headerHeight
         backButton.isHidden = !pushed
         pushedTitle.isHidden = !titled
@@ -216,20 +207,15 @@ final class SidebarView: NSView {
             pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
             top -= Self.pushedHeight + 6
         }
-        // The spaces along the very bottom; over them the bar: what it
-        // lists at the left, the counts at the right.
+        // The spaces along the very bottom; over them the counts of what's
+        // doing something, at the right — none, no row for them.
         let sh = spaces.wantedHeight(width: bounds.width)
         spaces.frame = NSRect(x: 0, y: 0, width: bounds.width, height: sh)
-        let barY = sh
-        let by: CGFloat = barY + (Self.barHeight - SidebarTab.size) / 2
-        var x: CGFloat = 8
-        for t in tabs {
-            t.frame = NSRect(x: x, y: by, width: SidebarTab.size, height: SidebarTab.size)
-            x += SidebarTab.size + 2
-        }
         let cw = counts.wantedWidth
-        counts.frame = NSRect(x: bounds.width - 12 - cw, y: barY, width: cw, height: Self.barHeight)
-        var bottom = barY + Self.barHeight
+        let barH: CGFloat = cw > 0 ? 26 : 0
+        counts.frame = NSRect(x: bounds.width - 12 - cw, y: sh, width: cw, height: barH)
+        counts.isHidden = cw == 0
+        var bottom = sh + barH
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
         needsYou.isHidden = nh == 0
@@ -437,12 +423,7 @@ final class SidebarView: NSView {
     }
 
     @objc private func togglePinned() { delegate?.sidebarTogglePinned() }
-    @objc private func newClicked() { delegate?.sidebarNewTab() }
 
-    @objc private func moreClicked() {
-        guard let menu = delegate?.sidebarMoreMenu() else { return }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: moreButton.bounds.height + 4), in: moreButton)
-    }
 }
 
 /// The sidebar's right edge, which resizes it: a pill shows on hover.

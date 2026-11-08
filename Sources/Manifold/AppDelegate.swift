@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Secure Keyboard Entry, by hand: on while Manifold is in front.
     @objc func toggleSecureInput(_ sender: Any?) { SecureInput.shared.always.toggle() }
+    @objc func showLogs(_ sender: Any?) { NSWorkspace.shared.activateFileViewerSelecting([Paths.logs]) }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleSecureInput(_:)) { item.state = SecureInput.shared.always ? .on : .off }
@@ -619,7 +620,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Help: the system's search over every menu command (it puts the
         // field in itself), for an app with some ninety of them.
-        NSApp.helpMenu = submenu(main, "Help")
+        let help = submenu(main, "Help")
+        NSApp.helpMenu = help
+        item(help, "Show Logs in Finder", #selector(showLogs(_:)), "")
 
         return main
     }
