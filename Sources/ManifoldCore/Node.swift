@@ -297,6 +297,15 @@ extension ArrangementState {
         return [.heights(h), .focus(id)]
     }
 
+    /// A column a tile filled put back (a click on its bar after a fill):
+    /// those docked back the last first — each to its place beside the
+    /// tiles it was beside, which are back by then — and every share as
+    /// it was.
+    public func unfilling(_ ids: [PlacementID], heights: [PlacementID: Double], focus: PlacementID) -> [Event] {
+        let back = docked.map(\.placement.id).filter(ids.contains).reversed()
+        return back.map { Event.undock($0) } + [.heights(heights), .focus(focus)]
+    }
+
     /// A share so small the grid draws only the tile's bar.
     public static let barSliver = 0.001
 

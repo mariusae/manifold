@@ -422,7 +422,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 guard row >= 0 else { continue }
                 outline.noteHeightOfRows(withIndexesChanged: [row])
                 // The row's view stays: its mark (the current workspace's) set again.
-                (outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView)?.marked = n.style == .section && n.emphasis && n.arrangement != nil
+                if let v = outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView {
+                    v.marked = n.style == .section && n.emphasis && n.arrangement != nil
+                    v.inert = !Self.interactive(n)
+                }
             }
             select(selected)
             // The kept heading as its host's row now says (its pings, its state).
@@ -450,7 +453,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 let row = outline.row(forItem: n)
                 guard row >= 0 else { continue }
                 outline.noteHeightOfRows(withIndexesChanged: [row])
-                (outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView)?.marked = n.style == .section && n.emphasis && n.arrangement != nil
+                if let v = outline.rowView(atRow: row, makeIfNecessary: false) as? SelectionRowView {
+                    v.marked = n.style == .section && n.emphasis && n.arrangement != nil
+                    v.inert = !Self.interactive(n)
+                }
             }
             select(selected)
             DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
@@ -610,8 +616,21 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         // The current workspace's label wears a bar at its left edge.
         if let n = item as? OrgNode {
             v.marked = n.style == .section && n.emphasis && n.arrangement != nil
+            v.inert = !Self.interactive(n)
         }
         return v
+    }
+
+    /// Whether a row does anything clicked or dragged: a block's, one with
+    /// an action, a heading that folds, a host's, one to copy or edit — not
+    /// a label among a space's rows, a hairline, a line saying something.
+    static func interactive(_ n: OrgNode) -> Bool {
+        switch n.style {
+        case .divider: return false
+        case .host: return true
+        case .section, .row:
+            return n.block != nil || n.action != nil || n.hasChildren || n.copies != nil || n.editable != nil
+        }
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {

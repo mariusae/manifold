@@ -131,6 +131,19 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     for ev in a.growing(n.id, whole: true) { a.apply(ev) }
     #expect(abs(a.heights[n.id]! - 1) < 1e-9 && a.isDocked(t2.id) && a.isDocked(e.id))
     #expect(a.columns[1].map(\.id) == [n.id] && a.docked.map(\.placement.id) == [t2.id, e.id])
+    // Put back as it was (a click on its bar): the last docked back
+    // first, so each finds the tiles it was beside — its column whole.
+    var unfilled = a
+    for ev in unfilled.unfilling([t2.id, e.id], heights: [t2.id: 0.25, n.id: 0.35, e.id: 0.4], focus: n.id) { unfilled.apply(ev) }
+    #expect(unfilled.columns[1].map(\.id) == [t2.id, n.id, e.id] && unfilled.docked.isEmpty && unfilled.focused == n.id)
+    // The tile filling it at the bottom: those over it come back over it, in order.
+    var low = a
+    for ev in low.revealing(e.id) { low.apply(ev) }
+    for ev in low.revealing(t2.id) { low.apply(ev) }
+    let column = low.columns[1].map(\.id)
+    for ev in low.growing(e.id, whole: true) { low.apply(ev) }
+    for ev in low.unfilling(column.filter { $0 != e.id }, heights: [:], focus: e.id) { low.apply(ev) }
+    #expect(low.columns[1].map(\.id) == column && low.columns.count == a.columns.count)
     for ev in a.revealing(e.id) { a.apply(ev) }
     #expect(a.columns[1].map(\.id) == [n.id, e.id] && a.isDocked(t2.id))
     #expect(abs(a.heights[e.id]! - eHeight) < 1e-9 && a.focused == e.id)

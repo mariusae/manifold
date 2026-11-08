@@ -444,6 +444,9 @@ final class SelectionRowView: NSTableRowView {
     /// last. `quiet`: a row there to be read, not chosen (no hover).
     struct Panel: Equatable { var first = false; var last = false; var lead: CGFloat = 0; var quiet = false }
     var panel: Panel? { didSet { if panel != oldValue { needsDisplay = true } } }
+    /// Nothing to do with it — a label, a hairline, a line to read: no
+    /// band under the pointer, nothing to suggest it can be clicked.
+    var inert = false { didSet { needsDisplay = true } }
     override var isFloating: Bool { didSet { needsDisplay = true } }
     /// Under the pointer: one row at a time, in every list — a row taking
     /// it takes it from the last. Rows are reused and move under a still
@@ -506,7 +509,7 @@ final class SelectionRowView: NSTableRowView {
             bounds.fill()
         }
         if let p = panel { drawPanel(p) }
-        if hovered, !isSelected, !isGroupRowStyle, panel?.quiet != true {
+        if hovered, !isSelected, !isGroupRowStyle, !inert, panel?.quiet != true {
             Flat.hovered.setFill()
             Flat.rowBand(band).fill()
         }

@@ -8485,7 +8485,7 @@ extension MainWindowController: GridDelegate {
               a.columns[c].map(\.id) == f.after,
               f.after.allSatisfy({ abs(a.height(of: $0) - (f.afterHeights[$0] ?? -1)) < 1e-6 }),
               f.docked.allSatisfy(a.isDocked) else { return false }
-        appendToSelected(f.docked.map { Event.undock($0) } + [.heights(f.before), .focus(placement)])
+        appendToSelected(a.unfilling(f.docked, heights: f.before, focus: placement))
         return true
     }
 

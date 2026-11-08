@@ -497,7 +497,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         DragCursor.ended()
     }
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { SelectionRowView() }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let v = SelectionRowView()
+        v.inert = !selectable(row)
+        return v
+    }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
         if case .section = rows[row] { return true }
