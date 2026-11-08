@@ -437,6 +437,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     return GridView.Tile(shown: shown, view: view(for: shown), links: links(of: p.block))
                 }
             }.filter { !$0.isEmpty }
+            // $EDITOR's stacks, as the space keeps them (a terminal docked
+            // under an editor's tile): known again after a restart.
+            for d in a.docked {
+                guard let top = d.under, stackTops[top] == nil, a.placement(top)?.lens == .editor,
+                      hosts.block(d.placement.block)?.kind == .terminal else { continue }
+                stackTops[top] = d.placement.id
+                stacked.insert(d.placement.id)
+            }
             let flights = dockFlights(before: a)
             content.departure = { [weak self] v in self?.departure(of: v, flown: flights) ?? .moved }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
@@ -576,7 +584,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func shown(_ p: Placement) -> Shown {
         var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
         if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
-        s.stacked = stackTops[p.id] != nil
+        if let t = stackedTerminal(p.id) {
+            s.stackedOver = t.displayTitle
+            s.caption = t.displayTitle
+        }
         s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
         // A space's timeline (§3.12): said so, not the space's name.
         if p.lens == .threads {
@@ -946,6 +957,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var stacked: Set<PlacementID> = []
     /// The tile over each (the $EDITOR's, by its placement), and the one under it.
     var stackTops: [PlacementID: PlacementID] = [:]
+
+    /// The terminal an $EDITOR's tile is over: the tile shows as it —
+    /// its name, its symbol (badged with a document), and Editing.
+    func stackedTerminal(_ p: PlacementID) -> Block? {
+        guard let under = stackTops[p], let space = selected, let a = hosts.arrangement(space),
+              let t = a.docked.first(where: { $0.placement.id == under })?.placement ?? a.placement(under) else { return nil }
+        return hosts.block(t.block)
+    }
 
     private let transfersBadge = TransfersBadge()
 
@@ -5361,6 +5380,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.column = c
             n.placement = p.id
             n.emphasis = p.id == a.focused
+            // An $EDITOR's tile as the terminal it's over, editing.
+            if let t = stackedTerminal(p.id) {
+                n.title = t.displayTitle
+                n.symbol = Theme.symbolName(for: t)
+                n.image = nil
+                n.pill = .note("Editing")
+                n.badge = "doc.fill"
+                n.trailing = nil
+            }
             // The pointer on it: close it (⌘W's), or delete its block.
             let pid = p.id, block = p.block
             n.accessories = [
@@ -8341,6 +8369,12 @@ extension MainWindowController: GridDelegate {
         }
         var c = SummaryCardContent(id: id, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
         c.mark = StatusMark(of: b)
+        // An $EDITOR's tile as its terminal, editing.
+        if let t = stackedTerminal(id) {
+            c.symbol = Theme.symbolName(for: t)
+            c.summary.title = t.displayTitle
+            c.mark?.pill = .note("Editing")
+        }
         return c
     }
 

@@ -438,7 +438,11 @@ it) or ⌥-dropped on it takes its place and docks it *under* itself:
 taken off, the one under comes back in its place and room. An
 `$EDITOR`'s is a pure stack: the editor takes the terminal's place with
 nothing flying, the terminal under it seen nowhere — not among the
-docked, not in ⌃⇥ or ⇧⌘A — a badge on the editor's icon the only sign;
+docked, not in ⌃⇥ or ⇧⌘A — and the editor's tile shows as the
+terminal everywhere (its bar, its sidebar row, ⌃⇥'s card, ⇧⌘A): the
+terminal's name and symbol, a document badged on the symbol, and an
+Editing pill (a word in grey); the stack known again after a restart,
+from the terminal docked under the editor's tile;
 the editor done, it's gone at once (its picture held a moment while the
 terminal draws) and the terminal's there. Docking is
 not pinning: a pin keeps a block in the space for good and says where

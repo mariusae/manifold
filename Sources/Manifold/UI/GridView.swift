@@ -2291,13 +2291,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// the only sign the other's there.
     private let stackBadge: NSImageView = {
         let v = NSImageView()
-        v.image = Theme.symbol("square.stack.fill", size: 7, weight: .bold)
+        v.image = Theme.symbol("doc.fill", size: 7, weight: .bold)
         v.contentTintColor = Theme.secondaryText
         v.wantsLayer = true
         v.layer?.cornerRadius = 5.5
         v.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         v.isHidden = true
-        v.toolTip = "Over the tile it was opened from: closing it brings that back"
+        v.toolTip = "Editing: closing the editor brings the terminal back"
         return v
     }()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
@@ -2725,7 +2725,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// only what differs is touched, or the images and labels would be
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
-        stackBadge.isHidden = !shown.stacked
+        stackBadge.isHidden = shown.stackedOver == nil
         // Shown again as it was — every render, a keystroke's in another
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
@@ -2813,7 +2813,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if glyph.block != shown.block?.id { glyph.block = shown.block?.id }
         if glyph.look != mark.glyph { glyph.look = mark.glyph }
         if glyph.isHidden != (mark.glyph == nil) { glyph.isHidden = mark.glyph == nil }
-        if statusPill.kind != mark.pill { statusPill.kind = mark.pill }
+        let pill: StatusPill.Kind? = shown.stackedOver != nil ? .note("Editing") : mark.pill
+        if statusPill.kind != pill { statusPill.kind = pill }
         shimmer.on = mark.shimmer
         let fade: CGFloat = mark.dim ? 0.6 : 1
         if name.alphaValue != fade { name.alphaValue = fade }

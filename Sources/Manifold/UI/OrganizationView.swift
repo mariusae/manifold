@@ -100,6 +100,9 @@ final class OrgNode {
         var run: () -> Void
     }
     var accessories: [Accessory] = []
+    /// A pill in place of its status's (Editing), and a badge on its icon.
+    var pill: StatusPill.Kind?
+    var badge: String?
     /// In the inspector: a row edited in place (a host's variable), or a
     /// row that, clicked, adds one so (its template).
     var editable: InspectorEditable?
@@ -137,7 +140,7 @@ final class OrgNode {
 
     /// Whether it would draw as another does: what its row shows.
     fileprivate func looksLike(_ o: OrgNode) -> Bool {
-        title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count
+        title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count && pill == o.pill && badge == o.badge
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
             && dirty == o.dirty && stale == o.stale && image === o.image && docked == o.docked
@@ -152,6 +155,7 @@ final class OrgNode {
         dirty = o.dirty; stale = o.stale; image = o.image; docked = o.docked
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
         accessories = o.accessories
+        pill = o.pill; badge = o.badge
     }
 }
 
@@ -1330,6 +1334,15 @@ final class OrgRowView: NSTableCellView {
     private let sparkline = Sparkline()
     /// The hairline a divider row is.
     private let rule = FlatDivider()
+    /// On the icon's corner (an $EDITOR's document over its terminal).
+    private let badge: NSImageView = {
+        let v = NSImageView()
+        v.wantsLayer = true
+        v.layer?.cornerRadius = 5
+        v.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
+        v.isHidden = true
+        return v
+    }()
     private var symbol = ""
     private var detailSymbol = ""
     private var node: OrgNode?
@@ -1362,7 +1375,7 @@ final class OrgRowView: NSTableCellView {
         trailing.alignment = .right
         detailIcon.contentTintColor = Theme.secondaryText
         detailIcon.isHidden = true
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule] { addSubview(v) }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule, badge] { addSubview(v) }
         rule.isHidden = true
         // Its parts drawn into its own layer, not one layer each (those that
         // move, the status glyph and a shimmering name, keep theirs): ten
@@ -1418,7 +1431,9 @@ final class OrgRowView: NSTableCellView {
         glyph.look = mark.glyph
         glyph.isHidden = mark.glyph == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
-        pill.kind = node.style == .section ? nil : mark.pill
+        pill.kind = node.style == .section ? nil : node.pill ?? mark.pill
+        badge.image = node.badge.flatMap { Theme.symbol($0, size: 6.5, weight: .bold, color: Theme.secondaryText) }
+        badge.isHidden = node.badge == nil
         pill.toolTip = node.liveTooltip == nil ? node.tooltip : nil
         shimmer.on = mark.shimmer && node.style != .section
         sparkline.pings = node.pings
@@ -1569,6 +1584,7 @@ final class OrgRowView: NSTableCellView {
         }
         let ix: CGFloat = 0
         icon.frame = NSRect(x: 2 + ix, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
+        badge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 3, width: 10, height: 10)
         var right = bounds.width - 4
         // The pointer on it: its buttons at the right, over what's there.
         if hovering, !accessoryButtons.isEmpty {

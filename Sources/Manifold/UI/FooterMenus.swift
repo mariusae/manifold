@@ -256,10 +256,15 @@ extension MainWindowController {
         let far = Date.distantPast
         func seen(_ id: BlockID) -> Date { hosts.client(of: id)?.node.graph.seen(id)?.date ?? far }
         let placed = (a.columns.flatMap { $0 } + a.docked.map(\.placement))
-            .filter { !stacked.contains($0.id) && matchesQuery(hosts.block($0.block)) }
+            .filter { !stacked.contains($0.id) && (matchesQuery(hosts.block($0.block)) || stackedTerminal($0.id).map(matchesQuery) == true) }
             .sorted { $0.id == a.focused || ($1.id != a.focused && seen($0.block) > seen($1.block)) }
         var tiles = placed.map { p -> PopMenu.Item in
             let b = hosts.block(p.block)
+            // An $EDITOR's tile as its terminal, editing.
+            if let t = stackedTerminal(p.id) {
+                return PopMenu.Item(symbol: Theme.symbolName(for: t), title: Self.linkTitle(t), trailing: "Editing",
+                                    run: { [weak self] in self?.arrive(atTile: p.id) })
+            }
             return PopMenu.Item(symbol: b.map { Theme.symbolName(for: $0) } ?? "square.dashed", image: b?.web.flatMap { Favicons.image(forPage: $0.url) },
                                 title: b.map(Self.linkTitle) ?? "Untitled", trailing: a.isDocked(p.id) ? "Docked" : "",
                                 run: { [weak self] in self?.arrive(atTile: p.id) })

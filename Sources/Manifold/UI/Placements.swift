@@ -17,8 +17,9 @@ struct Shown: Equatable {
     /// Its block's shard's sequence number, which moves with every change
     /// to it: what's shown of it needn't be made again while it's the same.
     var version = 0
-    /// Over another tile in a pure stack ($EDITOR's): a badge on its icon.
-    var stacked = false
+    /// Over a terminal in a pure stack ($EDITOR's): its name, shown as
+    /// it — the terminal's symbol badged with a document, and Editing.
+    var stackedOver: String?
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }
@@ -30,6 +31,7 @@ struct Shown: Equatable {
     var path: String? { block?.path }
     var symbol: String {
         // A coding agent at work in it: the agent's mark.
+        if stackedOver != nil { return Marks.terminal }
         if let a = block?.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
         return block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil)
     }

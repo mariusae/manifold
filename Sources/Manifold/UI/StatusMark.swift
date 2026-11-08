@@ -50,9 +50,12 @@ enum StatusPill {
         case done
         case failed
         case progress(Int)
+        /// A word in grey, not a state that wants anything (Editing).
+        case note(String)
 
         var text: String {
             switch self {
+            case .note(let w): w
             case .needs(let w): w
             case .done: "Done"
             case .failed: "Failed"
@@ -79,7 +82,7 @@ enum StatusPill {
         switch kind {
         case .needs: Status.attention
         case .failed: Status.failed
-        case .done, .progress: Theme.secondaryText
+        case .done, .progress, .note: Theme.secondaryText
         }
     }
 
@@ -87,7 +90,7 @@ enum StatusPill {
         switch kind {
         case .needs: Status.attention.withAlphaComponent(0.16)
         case .failed: Status.failed.withAlphaComponent(0.14)
-        case .done: Pill.ground
+        case .done, .note: Pill.ground
         case .progress: nil
         }
     }
