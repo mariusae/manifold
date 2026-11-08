@@ -95,9 +95,9 @@ final class ThreadTimelineView: NSView {
     private let empty = NSTextField(wrappingLabelWithString: "")
     private let replyingTo = NSTextField(labelWithString: "")
     private let clearReply = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
-    private let composerScroll = NSScrollView()
     let composer = ComposerTextView()
-    private let placeholder = NSTextField(labelWithString: "")
+    private(set) lazy var box = ChatBox(composer: composer)
+    private var placeholder: NSTextField { box.placeholder }
     private var seenTimer: Timer?
     private var runViews: [BlockID: NSView] = [:]
 
@@ -145,31 +145,21 @@ final class ThreadTimelineView: NSView {
         composer.isRichText = true
         composer.importsGraphics = false
         composer.allowsUndo = true
-        composer.drawsBackground = false
-        composer.textContainerInset = NSSize(width: 4, height: 5)
         composer.isVerticallyResizable = true
         composer.textContainer?.widthTracksTextView = true
         composer.onSend = { [weak self] in self?.send() }
-        composer.onChange = { [weak self] in self?.placeholder.isHidden = !(self?.composer.string.isEmpty ?? true) }
+        composer.onChange = { [weak self] in
+            guard let self else { return }
+            self.placeholder.isHidden = !self.composer.string.isEmpty
+            self.box.canSend = !self.composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (self.chosen != nil || self.model.composesNew)
+            self.needsLayout = true
+        }
+        box.onSend = { [weak self] in self?.send() }
         composer.onDrop = { [weak self] dragged, done in
             guard let self, let d = self.delegate else { return done(nil) }
             d.timeline(self, dropped: dragged, done: done)
         }
-        composerScroll.documentView = composer
-        composerScroll.drawsBackground = false
-        composerScroll.hasVerticalScroller = true
-        composerScroll.autohidesScrollers = true
-        composerScroll.wantsLayer = true
-        composerScroll.layer?.cornerRadius = 6
-        composerScroll.layer?.borderWidth = 1
-        placeholder.font = UIType.body
-        placeholder.lineBreakMode = .byTruncatingTail
-        placeholder.textColor = Theme.tertiaryText
-        for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, composerScroll, placeholder] as [NSView] { addSubview(v) }
-        themed { v in
-            v.composerScroll.layer?.borderColor = Flat.line.cgColor
-            v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
-        }
+        for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, box] as [NSView] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -400,6 +390,7 @@ final class ThreadTimelineView: NSView {
         guard !text.isEmpty, chosen != nil || model.composesNew else { return }
         composer.clear()
         placeholder.isHidden = false
+        box.canSend = false
         delegate?.timeline(self, send: text, to: chosen)
     }
 
@@ -448,21 +439,12 @@ final class ThreadTimelineView: NSView {
             titleLabel.frame = NSRect(x: pad, y: y - rowH + 2, width: max(0, titleRight - pad), height: 18)
             y -= rowH + 8
         }
-        let ch: CGFloat = {
-            guard let lm = composer.layoutManager, let tc = composer.textContainer else { return 30 }
-            lm.ensureLayout(for: tc)
-            return min(max(30, ceil(lm.usedRect(for: tc).height + 10)), 120)
-        }()
-        composerScroll.frame = NSRect(x: pad, y: pad, width: w, height: ch)
-        composer.minSize = NSSize(width: w, height: ch)
-        composer.frame.size.width = composerScroll.contentSize.width
-        placeholder.sizeToFit()
-        placeholder.frame.origin = NSPoint(x: pad + 9, y: composerScroll.frame.maxY - placeholder.frame.height - 6)
-        placeholder.frame.size.width = min(placeholder.frame.width, w - 18)
-        replyingTo.frame = NSRect(x: pad, y: composerScroll.frame.maxY + 4, width: w - 20, height: 16)
-        clearReply.frame = NSRect(x: pad + min(w - 20, replyingTo.intrinsicContentSize.width) + 4, y: composerScroll.frame.maxY + 4, width: 16, height: 16)
+        if box.frame.width != w { box.frame.size.width = w; box.layoutSubtreeIfNeeded() }
+        box.frame = NSRect(x: pad, y: pad, width: w, height: box.wantedHeight)
+        replyingTo.frame = NSRect(x: pad, y: box.frame.maxY + 4, width: w - 20, height: 16)
+        clearReply.frame = NSRect(x: pad + min(w - 20, replyingTo.intrinsicContentSize.width) + 4, y: box.frame.maxY + 4, width: 16, height: 16)
         handOver.sizeToFit()
-        handOver.frame = NSRect(x: bounds.width - pad - handOver.frame.width, y: composerScroll.frame.maxY + 2, width: handOver.frame.width, height: 20)
+        handOver.frame = NSRect(x: bounds.width - pad - handOver.frame.width, y: box.frame.maxY + 2, width: handOver.frame.width, height: 20)
         replyingTo.frame.size.width = max(0, handOver.frame.minX - pad - 8)
         let bottom = replyingTo.frame.maxY + 6
         scroll.frame = NSRect(x: pad, y: bottom, width: w, height: max(0, y - bottom))

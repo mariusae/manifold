@@ -41,6 +41,12 @@ struct ThreadChatModel {
     var placeTitle: String = ""
     /// Shown in a tile, or in the overlay: no "open as tile" button.
     var inTile = false
+    /// Its place as a card in the composer's box: its symbol (a page's
+    /// own icon), its name, where it is.
+    var placeSymbol = "doc"
+    var placeImage: NSImage?
+    var placeName = ""
+    var placeWhere = ""
 }
 
 /// A thread as a chat (§3.12): at its head what it's about, and the text
@@ -63,14 +69,13 @@ final class ThreadChatView: NSView {
     private let contextView = NSTextField(wrappingLabelWithString: "")
     private let scroll = NSScrollView()
     private let list = FlippedStack()
-    private let composerScroll = NSScrollView()
     let composer = ComposerTextView()
-    private let placeholder = NSTextField(labelWithString: "")
+    private lazy var box = ChatBox(composer: composer)
+    private var placeholder: NSTextField { box.placeholder }
     private let resolveButton = FlatButton("Resolve", symbol: "checkmark", font: UIType.detail)
     private let tileButton = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
-    private let sendButton = FlatButton("Send", style: .primary, font: UIType.detail)
     /// The most it grows to, where it's fitted (a card).
     var maxHeight: CGFloat = 560
     /// Fitted to its content (a card), else filling what it's given (a tile).
@@ -118,8 +123,6 @@ final class ThreadChatView: NSView {
         composer.isRichText = true
         composer.importsGraphics = false
         composer.allowsUndo = true
-        composer.drawsBackground = false
-        composer.textContainerInset = NSSize(width: 4, height: 5)
         composer.isVerticallyResizable = true
         composer.textContainer?.widthTracksTextView = true
         composer.onSend = { [weak self] in self?.send() }
@@ -128,24 +131,13 @@ final class ThreadChatView: NSView {
             guard let self, let delegate = self.delegate else { return done(nil) }
             delegate.threadChat(self, dropped: dragged, done: done)
         }
-        composerScroll.documentView = composer
-        composerScroll.drawsBackground = false
-        composerScroll.hasVerticalScroller = true
-        composerScroll.autohidesScrollers = true
-        composerScroll.wantsLayer = true
-        composerScroll.layer?.cornerRadius = 6
-        composerScroll.layer?.borderWidth = 1
-        placeholder.font = UIType.body
-        placeholder.textColor = Theme.tertiaryText
         resolveButton.target = self
         resolveButton.action = #selector(toggleResolved)
-        sendButton.target = self
-        sendButton.action = #selector(sendClicked)
-        for v in [header, scroll, composerScroll, placeholder, resolveButton, sendButton] as [NSView] { addSubview(v) }
+        box.onSend = { [weak self] in self?.send() }
+        box.leading = [resolveButton]
+        for v in [header, scroll, box] as [NSView] { addSubview(v) }
         themed { v in
             v.contextView.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
-            v.composerScroll.layer?.borderColor = Flat.line.cgColor
-            v.composerScroll.layer?.backgroundColor = Theme.windowBackground.cgColor
         }
     }
 
@@ -193,6 +185,8 @@ final class ThreadChatView: NSView {
             placeholder.stringValue = t?.resolved == true ? "Reply to reopen…" : "Reply…"
         }
         resolveButton.isHidden = t == nil
+        // A new one: what it'll be about, as a card in the box.
+        box.chips = t == nil && !m.placeName.isEmpty ? [ChatBox.Chip(symbol: m.placeSymbol, image: m.placeImage, title: m.placeName, detail: m.placeWhere)] : []
         resolveButton.title = t?.resolved == true ? "Reopen" : "Resolve"
         resolveButton.symbolName = t?.resolved == true ? "arrow.uturn.backward" : "checkmark"
         composerChanged()
@@ -316,11 +310,9 @@ final class ThreadChatView: NSView {
     private func composerChanged() {
         let empty = composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         placeholder.isHidden = !composer.string.isEmpty
-        sendButton.isEnabled = !empty
+        box.canSend = !empty
         needsLayout = true
     }
-
-    @objc private func sendClicked() { send() }
 
     private func send() {
         let text = composer.message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -341,11 +333,9 @@ final class ThreadChatView: NSView {
 
     // MARK: Layout
 
-    private var composerHeight: CGFloat {
-        guard let lm = composer.layoutManager, let tc = composer.textContainer else { return 30 }
-        lm.ensureLayout(for: tc)
-        let h = lm.usedRect(for: tc).height + composer.textContainerInset.height * 2
-        return min(max(30, ceil(h)), 120)
+    private var boxHeight: CGFloat {
+        if box.frame.width != bounds.width - 24 { box.frame.size.width = bounds.width - 24; box.layoutSubtreeIfNeeded() }
+        return box.wantedHeight
     }
 
     private var headerHeight: CGFloat {
@@ -357,7 +347,7 @@ final class ThreadChatView: NSView {
     var wantedHeight: CGFloat {
         list.layoutSubtreeIfNeeded()
         let content = list.fittingSize.height
-        return min(maxHeight, 12 + headerHeight + 8 + content + 8 + composerHeight + 8 + Flat.buttonHeight + 12)
+        return min(maxHeight, 12 + headerHeight + 8 + content + 8 + boxHeight + 12)
     }
 
     override func layout() {
@@ -367,18 +357,9 @@ final class ThreadChatView: NSView {
         let hh = headerHeight
         header.frame = NSRect(x: pad, y: y - hh, width: w, height: hh)
         y -= hh + 8
-        let buttons: CGFloat = Flat.buttonHeight
-        sendButton.sizeToFit()
-        resolveButton.sizeToFit()
-        sendButton.frame = NSRect(x: bounds.width - pad - sendButton.frame.width, y: pad, width: sendButton.frame.width, height: buttons)
-        resolveButton.frame = NSRect(x: pad, y: pad, width: resolveButton.frame.width, height: buttons)
-        let ch = composerHeight
-        composerScroll.frame = NSRect(x: pad, y: pad + buttons + 8, width: w, height: ch)
-        composer.minSize = NSSize(width: w, height: ch)
-        composer.frame.size.width = composerScroll.contentSize.width
-        placeholder.sizeToFit()
-        placeholder.frame.origin = NSPoint(x: pad + 9, y: composerScroll.frame.maxY - placeholder.frame.height - 6)
-        let listBottom = composerScroll.frame.maxY + 8
+        let bh = boxHeight
+        box.frame = NSRect(x: pad, y: pad, width: w, height: bh)
+        let listBottom = box.frame.maxY + 10
         scroll.frame = NSRect(x: pad, y: listBottom, width: w, height: max(0, y - listBottom))
     }
 

@@ -1263,7 +1263,11 @@ it's on, its place a heading over a hairline — and each event a
 hairline sentence ("Resolved by Claude · 2m"); an agent at work on it
 shows working, as its tile does; at its foot the composer (↩ sends,
 ⇧↩ a line, `@` an agent, drops take references) and Resolve. Replying to
-a resolved thread reopens it.
+a resolved thread reopens it. The composer is a chat app's box
+(`ChatBox`), the same wherever a comment is written: rounded, growing
+with what's written (then scrolling), a new thread's place as a card at
+its top — its icon (a page's own), its name, where it is — Resolve a
+quiet word at its foot, and a round send button.
 
 **Where threads show.** One thread, several lenses (presentation is a
 projection, §2.5):

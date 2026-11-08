@@ -172,7 +172,7 @@ extension MainWindowController {
         guard organization == .threads else { return "not shown" }
         if threadsTimelineMode {
             let m = sidebar.timeline.model
-            return "timeline · \(m.title) · \(m.runs.count) runs · \(m.unseen) unseen · " + m.runs.map { $0.placeTitle + ($0.firstUnseen != nil ? " NEW" : "") }.joined(separator: " | ")
+            return sidebar.timeline.box.debugState + "\ntimeline · \(m.title) · \(m.runs.count) runs · \(m.unseen) unseen · " + m.runs.map { $0.placeTitle + ($0.firstUnseen != nil ? " NEW" : "") }.joined(separator: " | ")
         }
         let (nodes, _) = threadsTree()
         return "list · " + nodes.map { n in n.title + (n.children.isEmpty ? "" : ": " + n.children.map { c in c.title + " [" + c.detail + "]" + (c.count.map { " (\($0))" } ?? "") + " " + (c.trailing ?? "") }.joined(separator: "; ")) }.joined(separator: "\n")

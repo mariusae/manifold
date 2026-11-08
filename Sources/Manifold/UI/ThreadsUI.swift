@@ -122,6 +122,17 @@ extension MainWindowController: ThreadChatDelegate {
             m.placeTitle = title
             m.drift = drift
             m.gone = gone
+            // As a card: its name, and where it is (a page's site, a
+            // file's folder, the host it's on).
+            let b = hosts.block(about.block)
+            let words = title.components(separatedBy: " · ")
+            m.placeName = words.first ?? title
+            var whereIs = Array(words.dropFirst())
+            if let url = b?.web?.url.flatMap({ URL(string: $0) }), let host = url.host { whereIs.insert(host, at: 0) }
+            else if let path = b?.path { whereIs.insert(Self.tilde((path as NSString).deletingLastPathComponent), at: 0) }
+            m.placeWhere = whereIs.joined(separator: " · ")
+            m.placeSymbol = b.map { Theme.symbolName(for: $0) } ?? "doc"
+            m.placeImage = b?.web.flatMap { Favicons.image(forPage: $0.url) }
         }
         if let t = thread {
             m.seenMark = hosts.seenMark(t.id)
@@ -135,6 +146,12 @@ extension MainWindowController: ThreadChatDelegate {
             return AgentIcons.image(a.command, size: 12)
         }
         return m
+    }
+
+    /// A path with the home said as ~.
+    static func tilde(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
     /// What a place is called, where it is now against where it was

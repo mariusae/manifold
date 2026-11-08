@@ -1,0 +1,235 @@
+import AppKit
+
+/// Where a comment is written (§3.12), as a chat app's: a rounded box
+/// that grows with what's written (up to a point, then it scrolls), what
+/// the comment is about as a card at its top — its icon, its name and
+/// where it is — a quiet word at its foot (Resolve), and a round send
+/// button. ↩ sends, ⇧↩ a new line, as the composer has it.
+final class ChatBox: NSView {
+    /// What it's about, as a card in it.
+    struct Chip: Equatable {
+        var symbol: String
+        var image: NSImage?
+        var title: String
+        var detail: String
+
+        static func == (a: Chip, b: Chip) -> Bool { a.symbol == b.symbol && a.image === b.image && a.title == b.title && a.detail == b.detail }
+    }
+
+    let composer: ComposerTextView
+    private let scroll = NSScrollView()
+    let placeholder = NSTextField(labelWithString: "")
+    private let send = SendButton()
+    private var chipViews: [ChipView] = []
+    /// At its foot, at the left (Resolve).
+    var leading: [NSView] = [] {
+        didSet {
+            oldValue.forEach { $0.removeFromSuperview() }
+            leading.forEach { addSubview($0) }
+            needsLayout = true
+        }
+    }
+    var chips: [Chip] = [] {
+        didSet {
+            guard chips != oldValue else { return }
+            chipViews.forEach { $0.removeFromSuperview() }
+            chipViews = chips.map { ChipView($0) }
+            chipViews.forEach { addSubview($0) }
+            needsLayout = true
+        }
+    }
+    var onSend: (() -> Void)?
+    /// The most its words take before they scroll.
+    var maxText: CGFloat = 150
+    var canSend = false { didSet { send.isEnabled = canSend } }
+
+    static let pad: CGFloat = 10
+    static let footHeight: CGFloat = 28
+    static let chipHeight: CGFloat = 46
+
+    init(composer: ComposerTextView) {
+        self.composer = composer
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 14
+        layer?.cornerCurve = .continuous
+        layer?.masksToBounds = false
+        layer?.shadowOpacity = 0.08
+        layer?.shadowRadius = 6
+        layer?.shadowOffset = NSSize(width: 0, height: -1)
+        composer.drawsBackground = false
+        composer.textContainerInset = NSSize(width: 0, height: 2)
+        scroll.documentView = composer
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        placeholder.font = composer.font ?? UIType.body
+        placeholder.textColor = Theme.tertiaryText
+        placeholder.lineBreakMode = .byTruncatingTail
+        send.onClick = { [weak self] in self?.onSend?() }
+        for v in [scroll, placeholder, send] as [NSView] { addSubview(v) }
+        themed { v in
+            // A shade off the panel it's on, its edge a hairline.
+            v.layer?.backgroundColor = Theme.panel.blended(withFraction: 0.55, of: .textBackgroundColor)?.cgColor ?? Theme.panel.cgColor
+            v.layer?.borderColor = Flat.line.cgColor
+            v.layer?.borderWidth = 0.5
+            v.layer?.shadowColor = NSColor.black.cgColor
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Its words' height, as they're laid out at its width.
+    private var textHeight: CGFloat {
+        guard let lm = composer.layoutManager, let tc = composer.textContainer else { return 22 }
+        lm.ensureLayout(for: tc)
+        let h = lm.usedRect(for: tc).height + composer.textContainerInset.height * 2
+        return min(max(22, ceil(h)), maxText)
+    }
+
+    /// Its height at its width now: its card, its words, its foot.
+    var wantedHeight: CGFloat {
+        Self.pad + (chipViews.isEmpty ? 0 : Self.chipHeight + 8) + textHeight + 6 + Self.footHeight + Self.pad - 4
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let pad = Self.pad, w = bounds.width - pad * 2
+        var y = bounds.height - pad
+        if let chip = chipViews.first {
+            let cw = min(w, chip.wantedWidth)
+            chip.frame = NSRect(x: pad, y: y - Self.chipHeight, width: cw, height: Self.chipHeight)
+            y -= Self.chipHeight + 8
+        }
+        chipViews.dropFirst().forEach { $0.frame = .zero }
+        let foot = pad - 4
+        send.frame = NSRect(x: bounds.width - pad + 2 - Self.footHeight, y: foot, width: Self.footHeight, height: Self.footHeight)
+        var x = pad - 4
+        for v in leading {
+            if v.isHidden { continue }
+            (v as? NSControl)?.sizeToFit()
+            let size = v is NSControl ? v.frame.size : v.fittingSize
+            v.frame = NSRect(x: x, y: foot + (Self.footHeight - size.height) / 2, width: size.width, height: size.height)
+            x += v.frame.width + 6
+        }
+        let textBottom = foot + Self.footHeight + 6
+        let th = max(22, y - textBottom)
+        scroll.frame = NSRect(x: pad - 4, y: textBottom, width: w + 4, height: th)
+        composer.minSize = NSSize(width: scroll.contentSize.width, height: th)
+        composer.frame.size.width = scroll.contentSize.width
+        placeholder.sizeToFit()
+        placeholder.frame = NSRect(x: pad + 1, y: scroll.frame.maxY - placeholder.frame.height - 2,
+                                   width: min(placeholder.frame.width, w - 4), height: placeholder.frame.height)
+    }
+
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(composer) }
+
+    var debugState: String {
+        "box \(frame.integral) placeholder “\(placeholder.stringValue)” hidden \(placeholder.isHidden) at \(placeholder.frame.integral) text “\(composer.string)” send \(canSend)"
+    }
+}
+
+/// The round send button: the accent, an arrow up; quiet till there's
+/// something to send.
+final class SendButton: NSView {
+    var onClick: (() -> Void)?
+    var isEnabled = false { didSet { needsDisplay = true } }
+    private var pressed = false { didSet { needsDisplay = true } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        toolTip = "Send (↩)"
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 1, dy: 1)
+        let fill = isEnabled ? (pressed ? Theme.accent.blended(withFraction: 0.2, of: .black) ?? Theme.accent : Theme.accent) : Theme.text.withAlphaComponent(0.12)
+        fill.setFill()
+        NSBezierPath(ovalIn: r).fill()
+        let ink: NSColor = isEnabled ? .white : Theme.tertiaryText
+        if let image = Theme.symbol("arrow.up", size: 12, weight: .bold, color: ink) {
+            let z = image.size
+            image.draw(in: NSRect(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height))
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) { if isEnabled { pressed = true } }
+    override func mouseUp(with event: NSEvent) {
+        let was = pressed
+        pressed = false
+        if was, bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() }
+    }
+}
+
+/// What a comment's about, as a card in the box: its icon on a little
+/// square, its name over where it is.
+final class ChipView: NSView {
+    private let icon = NSImageView()
+    private let title = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
+    private let square = NSView()
+
+    init(_ chip: ChatBox.Chip) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.cornerCurve = .continuous
+        square.wantsLayer = true
+        square.layer?.cornerRadius = 7
+        square.layer?.cornerCurve = .continuous
+        icon.image = chip.image ?? Theme.symbol(chip.symbol, size: 13, weight: .regular)
+        icon.imageScaling = .scaleProportionallyDown
+        icon.contentTintColor = Theme.secondaryText
+        title.stringValue = chip.title
+        title.font = .systemFont(ofSize: 12.5, weight: .medium)
+        title.textColor = Theme.text
+        title.lineBreakMode = .byTruncatingTail
+        detail.stringValue = chip.detail
+        detail.font = UIType.detail
+        detail.textColor = Theme.secondaryText
+        detail.lineBreakMode = .byTruncatingTail
+        detail.isHidden = chip.detail.isEmpty
+        for v in [square, icon, title, detail] as [NSView] { addSubview(v) }
+        themed { v in
+            v.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
+            v.square.layer?.backgroundColor = Theme.panel.blended(withFraction: 0.6, of: .textBackgroundColor)?.cgColor
+            v.square.layer?.borderColor = Flat.line.cgColor
+            v.square.layer?.borderWidth = 0.5
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    var wantedWidth: CGFloat {
+        title.sizeToFit()
+        detail.sizeToFit()
+        return min(300, 8 + 32 + 10 + max(title.frame.width, detail.isHidden ? 0 : detail.frame.width) + 14)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let h = bounds.height
+        square.frame = NSRect(x: 7, y: (h - 32) / 2, width: 32, height: 32)
+        icon.frame = square.frame.insetBy(dx: 8, dy: 8)
+        let x = square.frame.maxX + 10, w = max(0, bounds.width - x - 10)
+        if detail.isHidden {
+            title.frame = NSRect(x: x, y: (h - 17) / 2, width: w, height: 17)
+        } else {
+            title.frame = NSRect(x: x, y: h / 2, width: w, height: 17)
+            detail.frame = NSRect(x: x, y: h / 2 - 16, width: w, height: 15)
+        }
+    }
+}
