@@ -196,7 +196,8 @@ final class SidebarView: NSView {
         // favourites: whichever list shows under them.
         let sh = spaces.wantedHeight(width: bounds.width)
         spaces.frame = NSRect(x: 0, y: top - sh, width: bounds.width, height: sh)
-        top -= sh + 2
+        // Some room between them and the space's name.
+        top -= sh + 12
         backButton.isHidden = !pushed
         pushedTitle.isHidden = !titled
         pushedSubtitle.isHidden = !titled || organization == .desk
