@@ -669,7 +669,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     @objc private func rowClicked() {
         let row = outline.clickedRow
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
-        if let action = node.action {
+        if !flat, node.hasChildren, (NSApp.currentEvent?.modifierFlags ?? []).intersection([.command, .option, .shift]).isEmpty {
+            // In a tree (Files), a folder clicked opens or closes; double-
+            // clicked, or with ⌘ or ⌥, it's gone to.
+            if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
+        } else if let action = node.action {
             action()
         } else if node.style == .section, node.block != nil, node.arrangement != nil, node.column == nil {
             // A workspace's label: gone to. (Its chevron opens and closes it.)
@@ -678,10 +682,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             // A host's heading, a group's label: clicked, it opens or closes
             // (a host's shown in the inspector too).
             if node.style == .host, node.id.hasPrefix("host:") { delegate?.organizationInspect(host: String(node.id.dropFirst(5))) }
-            if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
-        } else if !flat, node.hasChildren, (NSApp.currentEvent?.modifierFlags ?? []).intersection([.command, .option, .shift]).isEmpty {
-            // In a tree (Files), a folder clicked opens or closes; double-
-            // clicked, or with ⌘ or ⌥, it's gone to.
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         } else if node.block != nil {
             delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
@@ -694,10 +694,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         let row = outline.clickedRow
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
         if delegate?.organizationActivate(node) == true { return }
-        if !flat, node.hasChildren, node.block != nil {
+        if !flat, node.hasChildren, node.block != nil || node.action != nil {
             // The click before it opened or closed it: put back, and it's gone to.
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
-            delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
+            if let action = node.action { action() } else { delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? []) }
             return
         }
         guard node.hasChildren else { return }
@@ -932,11 +932,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             if node.hasChildren { if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) } }
             return "toggled"
         }
-        if let action = node.action { action(); return "ran" }
         if !flat, node.hasChildren, !command {
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
             return "toggled: now \(outline.isItemExpanded(node)) rows \(outline.numberOfRows)"
         }
+        if let action = node.action { action(); return "ran" }
         if node.block != nil { delegate?.organizationOpen(node, modifiers: command ? [.command] : []); return "opened" }
         if node.style == .host, node.id.hasPrefix("host:") { delegate?.organizationInspect(host: String(node.id.dropFirst(5))) }
         if node.hasChildren {
