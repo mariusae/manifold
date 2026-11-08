@@ -6867,9 +6867,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
               exact: Bool = false) {
         hideStateView()
         // ⌥⇧⌘ and a kind's letter: a new column, wherever its kind goes.
-        let place = inNewColumn ? Where.beside : place
+        var place = inNewColumn ? Where.beside : place
         inNewColumn = false
-        let id = arrangement ?? arrangementForPlacing()
+        // Beside or over the tile that asked for it: in that tile's space,
+        // whichever is shown now (an answer come after you've gone on to
+        // another space stays where it was asked for).
+        let opener: PlacementID? = switch place { case .besideOpener(let p), .over(let p): p; default: nil }
+        let home = opener.flatMap(spaceHolding)
+        if let home, home != selected, case .over(let p) = place { place = .besideOpener(p) }
+        let id = arrangement ?? home ?? arrangementForPlacing()
         guard let a = hosts.arrangement(id) else { return }
         let fresh = { ULID.make() }
         let events: [Event]
@@ -6884,7 +6890,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             events = a.bringing(block, lens: lens, inNewColumnAt: i, newPlacement: fresh)
         case .besideOpener(let p):
             guard let c = a.columnIndex(of: p), let from = a.placement(p)?.block else {
-                return show(block, lens: lens, .here, kind: kind, context: context)
+                return show(block, lens: lens, .here, kind: kind, context: context, in: id)
             }
             events = a.bringing(block, lens: lens, inColumn: c, below: p, exact: exact, newPlacement: fresh)
             hosts.link(from: from, to: block, kind: kind, context: context)
@@ -10772,9 +10778,18 @@ extension MainWindowController: TerminalViewDelegate {
     func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
         let place = inNewColumn ? Where.beside : place
         inNewColumn = false
+        // In the space it was asked for in, wherever you are once it's made.
+        let space = selected
         whenMade(id, what: what, made: { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
-            self?.show(id, lens: lens, place, kind: .opened, context: context)
+            guard let self else { return }
+            self.show(id, lens: lens, place, kind: .opened, context: context,
+                      in: space.flatMap { self.hosts.arrangement($0) != nil && self.allWorkspaces.contains($0) ? $0 : nil })
         }
+    }
+
+    /// The space a tile is in (on screen or docked), if it's on the desk.
+    func spaceHolding(_ placement: PlacementID) -> BlockID? {
+        allWorkspaces.first { hosts.arrangement($0)?.placement(placement) != nil }
     }
 
     /// Something a host is making for a click (a command's output, a turn,
