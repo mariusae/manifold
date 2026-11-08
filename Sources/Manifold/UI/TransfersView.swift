@@ -97,6 +97,9 @@ final class TransfersView: NSView {
 }
 
 final class TransferRowView: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     let item: Transfers.Item
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")

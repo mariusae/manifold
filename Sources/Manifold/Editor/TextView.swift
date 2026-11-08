@@ -2924,8 +2924,11 @@ final class TextView: NSView, NSTextInputClient {
     override func mouseMoved(with event: NSEvent) {
         // Something over it (a popup, another tile's): not a peek's place.
         guard isUnderPointer else { return endPeek() }
-        // Over the blame: its commit, said; not a name's peek.
-        if blameHover(convert(event.locationInWindow, from: nil)) { return updateCursor() }
+        // Over the blame: its commit, said; not a name's peek — a click goes to it.
+        if blameHover(convert(event.locationInWindow, from: nil)) {
+            overClickable = true
+            return updateCursor()
+        }
         notePeek(at: convert(event.locationInWindow, from: nil), event: event)
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
@@ -2935,6 +2938,7 @@ final class TextView: NSView, NSTextInputClient {
         overLink = over
         overChip = chip
         overSelection = inSelection(at)
+        noteSpots(at)
         // Set on every move, not only when it changes: come from a line
         // between tiles, or from under a popup, it was left as theirs.
         updateCursor()
@@ -2944,7 +2948,19 @@ final class TextView: NSView, NSTextInputClient {
         let at = convert(event.locationInWindow, from: nil)
         overChip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)
         overSelection = inSelection(at)
+        overLink = linkTarget(at: at) != nil
+        noteSpots(at)
         updateCursor()
+    }
+
+    /// What else is under the pointer that isn't text: a thread's badge or
+    /// the blame (clicked, they open), the definition's bar (taken hold of).
+    private var overClickable = false
+    private var overScopeBar = false
+
+    private func noteSpots(_ at: NSPoint) {
+        overClickable = threadMark(at: at) != nil
+        overScopeBar = scopeBar.map { $0.rect.contains(at) } ?? false
     }
 
     /// Over what's selected: taken hold of, to drag it out.
@@ -2962,8 +2978,12 @@ final class TextView: NSView, NSTextInputClient {
 
     private func updateCursor() {
         guard isUnderPointer else { return }
+        if overClickable { return NSCursor.pointingHand.set() }
+        if overScopeBar { return NSCursor.openHand.set() }
         if overChip { return NSCursor.arrow.set() }
-        if overSelection, !overLink { return NSCursor.openHand.set() }
+        // A link (or a name ⌘ shows as one) wins over a selection's hand.
+        let linked = overLink || hoveredLink.map { !$0.isEmpty } == true
+        if overSelection, !linked { return NSCursor.openHand.set() }
         (overLink || hoveredLink.map { !$0.isEmpty } == true ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 

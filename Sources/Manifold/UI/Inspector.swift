@@ -298,6 +298,9 @@ final class InspectorList: NSView {
 /// A section's heading: its triangle, its name, how many rows it holds
 /// when it's folded.
 private final class InspectorHeading: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     let onClick: () -> Void
     private let title: String
     private let open: Bool

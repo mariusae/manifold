@@ -1350,6 +1350,9 @@ final class PickerPanel: NSPanel {
 /// name, on the tint), or a count at the foot (its symbol and how many,
 /// in the accent once chosen). Clicked, toggled.
 final class KindToken: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     enum Style: Equatable {
         case chip
         case count(Int, on: Bool)

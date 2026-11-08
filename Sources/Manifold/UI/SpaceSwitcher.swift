@@ -67,6 +67,9 @@ final class SpaceSwitcherView: NSView {
         weak var owner: SpaceSwitcherView?
         override var isFlipped: Bool { true }
         override func draw(_ dirtyRect: NSRect) { owner?.drawCards() }
+        // A card clicked goes there: the pointing hand.
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+        override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
         override func mouseDown(with event: NSEvent) {}
         override func mouseUp(with event: NSEvent) { owner?.mouseUp(with: event) }
     }

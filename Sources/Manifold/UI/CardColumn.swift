@@ -63,7 +63,10 @@ final class SummaryCard: NSView {
     }
     /// Clicked, where it stands in for its tile; elsewhere a click is its
     /// container's.
-    var onClick: (() -> Void)?
+    var onClick: (() -> Void)? { didSet { window?.invalidateCursorRects(for: self) } }
+    // Standing in for a tile, clicked: the pointing hand.
+    override func resetCursorRects() { if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) } }
+    override func cursorUpdate(with event: NSEvent) { (onClick != nil ? NSCursor.pointingHand : NSCursor.arrow).set() }
 
     override func mouseDown(with event: NSEvent) {
         guard let onClick else { return super.mouseDown(with: event) }
@@ -409,8 +412,14 @@ final class CardColumnView: NSView {
     /// Over the cards, the pointing hand: each is a place to click — set on
     /// every move too, as what's under the column (a terminal, a text)
     /// hears the pointer's moves through it and would set its own.
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    override func mouseEntered(with event: NSEvent) { NSCursor.pointingHand.set() }
+    override func cursorUpdate(with event: NSEvent) { setCursor(event) }
+    override func mouseEntered(with event: NSEvent) { setCursor(event) }
+
+    /// The hand over a card; between them (a click there lets it go), the arrow.
+    private func setCursor(_ event: NSEvent) {
+        guard isUnderPointer else { return }
+        (card(at: event.locationInWindow) != nil ? NSCursor.pointingHand : NSCursor.arrow).set()
+    }
 
     private func card(at windowPoint: NSPoint) -> Int? {
         let p = document.convert(windowPoint, from: nil)
@@ -418,7 +427,7 @@ final class CardColumnView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        NSCursor.pointingHand.set()
+        setCursor(event)
         if !followsPointer {
             // The pointer moved over the cards is the pointer wanted.
             guard let seen = pointerSeenAt else { pointerSeenAt = event.locationInWindow; return }

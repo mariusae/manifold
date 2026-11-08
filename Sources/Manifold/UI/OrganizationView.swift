@@ -1273,6 +1273,9 @@ final class CountPill: NSView {
 /// A host's heading kept at the top of the sidebar (`updateStickyHost`):
 /// its row's own view, as the list sets it; clicked, its row is scrolled to.
 final class StickyHostView: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     var onClick: (() -> Void)?
     private let row = OrgRowView()
     private var shown: OrgNode?

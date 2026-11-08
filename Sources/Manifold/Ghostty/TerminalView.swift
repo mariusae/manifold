@@ -935,7 +935,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         super.updateTrackingAreas()
     }
 
-    override func cursorUpdate(with event: NSEvent) { if isUnderPointer { cursor.set() } }
+    override func cursorUpdate(with event: NSEvent) { if isUnderPointer { shownCursor.set() } }
+
+    /// A ⌘ link under the pointer: the hand, whatever the terminal asks for
+    /// (its own I-beam set again at every move took it back).
+    private var overCommandLink = false
+    /// The cursor to show: the hand over a ⌘ link, else the terminal's.
+    private var shownCursor: NSCursor { overCommandLink ? .pointingHand : cursor }
 
     func setCursor(_ shape: ghostty_action_mouse_shape_e) {
         switch shape {
@@ -949,7 +955,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         case GHOSTTY_MOUSE_SHAPE_GRABBING: cursor = .closedHand
         default: cursor = .arrow
         }
-        if let window, window.isKeyWindow, isUnderPointer { cursor.set() }
+        if let window, window.isKeyWindow, isUnderPointer { shownCursor.set() }
     }
 
     private func mods(_ flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e { Self.ghosttyMods(flags) }
@@ -1405,7 +1411,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         showLinks(links, hovered: hovered)
         // A reference under it that leads nowhere says so.
         ReferenceTip.hover(hovered.map { links[$0].link.target }, in: self)
-        (hovered != nil ? NSCursor.pointingHand : cursor).set()
+        overCommandLink = hovered != nil
+        shownCursor.set()
     }
 
     /// A program's own link (OSC 8) under the pointer, as ghostty says, or
@@ -1433,6 +1440,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     private func clearLinks() {
+        overCommandLink = false
         ReferenceTip.hover(nil, in: self)
         if let surface { ghostty_surface_manifold_links(surface, nil, 0, 0, -1, 0) }
         glow.showLinks(nil, color: TextView.linkColor, cellHeight: 0)
@@ -1584,7 +1592,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     override func mouseMoved(with event: NSEvent) {
         guard isUnderPointer else { return }
         sendMousePos(event)
-        if window?.isKeyWindow == true { cursor.set() }
+        if window?.isKeyWindow == true { shownCursor.set() }
     }
     override func mouseDragged(with event: NSEvent) { if pendingLink == nil { sendMousePos(event) } }
     override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
@@ -1592,7 +1600,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     override func mouseEntered(with event: NSEvent) {
         sendMousePos(event)
-        if isUnderPointer, window?.isKeyWindow == true { cursor.set() }
+        if isUnderPointer, window?.isKeyWindow == true { shownCursor.set() }
     }
 
     override func mouseExited(with event: NSEvent) {

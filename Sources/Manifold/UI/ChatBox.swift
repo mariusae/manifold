@@ -167,6 +167,9 @@ final class ChatBox: NSView {
 /// The round send button: the accent, an arrow up; quiet till there's
 /// something to send.
 final class SendButton: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     var onClick: (() -> Void)?
     var isEnabled = false { didSet { needsDisplay = true } }
     private var pressed = false { didSet { needsDisplay = true } }

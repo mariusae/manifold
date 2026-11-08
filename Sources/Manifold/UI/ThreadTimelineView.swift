@@ -454,6 +454,9 @@ final class ThreadTimelineView: NSView {
 
 /// A run's box: tinted when chosen, quieter when resolved; clicked, chosen.
 final class RunBox: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     var onClick: (() -> Void)?
     private let chosen: Bool
     private let resolved: Bool

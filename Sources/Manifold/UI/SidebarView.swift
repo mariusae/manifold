@@ -481,7 +481,10 @@ final class ResizeHandleView: NSView {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseDown(with event: NSEvent) { dragging = true }
-    override func mouseDragged(with event: NSEvent) { onDrag?(event.locationInWindow.x) }
+    override func mouseDragged(with event: NSEvent) {
+        NSCursor.resizeLeftRight.set()
+        onDrag?(event.locationInWindow.x)
+    }
 
     override func mouseUp(with event: NSEvent) {
         dragging = false
@@ -560,6 +563,9 @@ final class ClosureMenuItem: NSMenuItem {
 /// threads), its icon — strong and on a band when it's the one shown — and
 /// a count of what's new in it, in a dot at its corner.
 final class SidebarTab: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     static let size: CGFloat = 26
     let organization: Organization
     var onClick: (() -> Void)?

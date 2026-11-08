@@ -1041,9 +1041,20 @@ final class OutputTextView: NSTextView {
         hover(event)
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        super.flagsChanged(with: event)
-        hover(event)
+    /// ⌘ down or up with the pointer still: heard wherever the keyboard
+    /// is (a cell's code, mostly), not only when this has it.
+    private var flagsMonitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let m = flagsMonitor { NSEvent.removeMonitor(m) }
+        flagsMonitor = nil
+        guard window != nil else { return }
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] e in
+            guard let self, e.window === self.window else { return e }
+            if self.isUnderPointer || self.hoverRange != nil { self.hover(e) }
+            return e
+        }
     }
 
     override func mouseExited(with event: NSEvent) {

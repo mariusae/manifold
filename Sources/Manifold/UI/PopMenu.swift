@@ -229,6 +229,9 @@ final class PopMenu: NSView, NSTextFieldDelegate {
 /// A chip, as Dia's: a small grey capsule, its word in grey — on, a
 /// little deeper and its word in the text's colour; never loud.
 final class ChipButton: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     var onClick: (() -> Void)?
     var isOn = false { didSet { needsDisplay = true } }
     var title: String { didSet { needsDisplay = true } }

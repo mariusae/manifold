@@ -3325,14 +3325,24 @@ final class RowDividerView: NSView {
     var onDoubleClick: (() -> Void)?
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeUpDown) }
-    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
+    // Its own, not the window's arrow (a cursor update unanswered goes up to it).
+    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeUpDown.set() }
+    override func mouseDown(with event: NSEvent) {
+        NSCursor.resizeUpDown.set()
+        if event.clickCount == 2 { onDoubleClick?() }
+    }
 
     override func mouseDragged(with event: NSEvent) {
         guard let superview else { return }
+        // Held the whole drag, the pointer gone past the line where it stops.
+        NSCursor.resizeUpDown.set()
         onDrag?(superview.convert(event.locationInWindow, from: nil).y)
     }
 
-    override func mouseUp(with event: NSEvent) { onEnd?() }
+    override func mouseUp(with event: NSEvent) {
+        onEnd?()
+        window?.invalidateCursorRects(for: self)
+    }
 }
 
 extension NSView {
@@ -3495,10 +3505,12 @@ final class DividerView: NSView {
     var onDoubleClick: (() -> Void)?
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
 
     override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
 
     override func mouseDragged(with event: NSEvent) {
+        NSCursor.resizeLeftRight.set()
         guard let superview else { return }
         onDrag?(superview.convert(event.locationInWindow, from: nil).x)
     }

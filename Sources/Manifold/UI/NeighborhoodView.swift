@@ -401,7 +401,8 @@ final class GraphCanvas: NSView, NSDraggingSource {
 
     override func mouseMoved(with event: NSEvent) {
         hovered = node(at: convert(event.locationInWindow, from: nil))
-        if hovered != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        // Only when it's what's under the pointer (not under a popup over it).
+        if isUnderPointer { (hovered != nil ? NSCursor.pointingHand : NSCursor.arrow).set() }
     }
 
     override func mouseExited(with event: NSEvent) { hovered = nil }

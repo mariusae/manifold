@@ -32,6 +32,9 @@ final class SidebarFooter: NSView {
 /// A button of the footer: a symbol, maybe a word, maybe a count; a band
 /// under the pointer, and while its menu's open.
 final class FooterButton: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     var onClick: (() -> Void)?
     var open = false { didSet { needsDisplay = true } }
     var count: Int = 0 { didSet { if count != oldValue { needsDisplay = true } } }

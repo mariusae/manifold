@@ -868,8 +868,15 @@ enum DragCursor {
         for w in NSApp.windows {
             w.enableCursorRects()
             guard w.isVisible, w.frame.contains(p), let content = w.contentView else { continue }
-            let under = content.superview?.hitTest(w.convertPoint(fromScreen: p)) ?? content
+            let at = w.convertPoint(fromScreen: p)
+            let under = content.superview?.hitTest(at) ?? content
             w.invalidateCursorRects(for: under)
+            // Asked again at once (a view that sets its cursor as the pointer
+            // moves — a terminal, an editor — showed the arrow till it moved).
+            if let e = NSEvent.mouseEvent(with: .mouseMoved, location: at, modifierFlags: NSEvent.modifierFlags, timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+                under.cursorUpdate(with: e)
+            }
         }
     }
 }

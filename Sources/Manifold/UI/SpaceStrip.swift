@@ -11,6 +11,9 @@ import ManifoldCore
 /// them a +: clicked, a new space, on the shown one's host; the pointer
 /// on it, with more than one host, a list of them to make it on.
 final class SpaceStripView: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     struct Chip: Equatable {
         var id: BlockID
         var title: String
@@ -596,6 +599,9 @@ extension MainWindowController {
 /// gone to, in its space. Five at most, then how many more, clicked, all
 /// of them (and "Fewer" again); none, nothing there at all.
 final class NeedsYouView: NSView {
+    // Clickable: the pointing hand (not the window's arrow), as the rest are.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     struct Item: Equatable {
         var space: BlockID
         var tile: PlacementID

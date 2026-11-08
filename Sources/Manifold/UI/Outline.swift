@@ -214,7 +214,9 @@ final class OutlineTicks: NSView {
         super.updateTrackingAreas()
     }
 
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+    // Clicked, it opens: the pointing hand.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     override func mouseEntered(with event: NSEvent) {
         hovering = true

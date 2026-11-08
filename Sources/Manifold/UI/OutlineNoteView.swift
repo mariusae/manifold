@@ -2233,15 +2233,33 @@ final class NoteOutlineTextView: NSTextView {
         let point = convert(event.locationInWindow, from: nil)
         let shown = layout.characterRange(forGlyphRange: layout.glyphRange(forBoundingRect: visibleRect, in: container), actualGlyphRange: nil)
         return layout.handleHit(at: point, origin: textContainerOrigin, among: shown) != nil
-            || layout.foldPillHit(at: point, origin: textContainerOrigin) != nil
+    }
+
+    /// Over what a click opens — a thread's mark, a block's card, a fold's
+    /// pill: the pointing hand.
+    private func overClickable(_ event: NSEvent) -> Bool {
+        let point = convert(event.locationInWindow, from: nil)
+        if threadMarks.keys.contains(where: { threadMarkRect(row: $0)?.insetBy(dx: -2, dy: -2).contains(point) == true }) { return true }
+        guard let layout = layoutManager as? NoteOutlineLayoutManager else { return false }
+        if layout.foldPillHit(at: point, origin: textContainerOrigin) != nil { return true }
+        return paragraphRanges.contains { layout.cardRect(of: $0, origin: textContainerOrigin)?.1.contains(point) == true }
+    }
+
+    /// The cursor for where the pointer is, if it's not the text's own.
+    private func ownCursor(_ event: NSEvent) -> NSCursor? {
+        if onPictureGrip(convert(event.locationInWindow, from: nil)) { return Self.gripCursor }
+        if overClickable(event) { return .pointingHand }
+        if overHandle(event) { return .arrow }
+        return nil
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         hoveredRow = row(under: convert(event.locationInWindow, from: nil))
         hoverPicture(at: convert(event.locationInWindow, from: nil))
-        if onPictureGrip(convert(event.locationInWindow, from: nil)) { Self.gripCursor.set() }
-        else if overHandle(event) { NSCursor.arrow.set() }
+        // Set on every move, so coming back onto the text from a handle or a
+        // grip, it's the I-beam again (not left as theirs).
+        if let c = ownCursor(event) { c.set() } else if isUnderPointer, linkTarget(at: convert(event.locationInWindow, from: nil)) == nil { NSCursor.iBeam.set() }
         // A link to a block that's gone says so as the pointer comes onto it.
         ReferenceTip.hover(linkTarget(at: convert(event.locationInWindow, from: nil)), in: self)
     }
@@ -2287,8 +2305,7 @@ final class NoteOutlineTextView: NSTextView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        if onPictureGrip(convert(event.locationInWindow, from: nil)) { Self.gripCursor.set() }
-        else if overHandle(event) { NSCursor.arrow.set() } else { super.cursorUpdate(with: event) }
+        if let c = ownCursor(event) { c.set() } else { super.cursorUpdate(with: event) }
     }
 
     /// A line where rows dragged over would go.

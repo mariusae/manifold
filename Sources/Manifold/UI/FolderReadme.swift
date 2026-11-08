@@ -100,6 +100,7 @@ final class FolderReadme: NSView {
         override func resetCursorRects() {
             if resizes { addCursorRect(bounds, cursor: .resizeUpDown) }
         }
+        override func cursorUpdate(with event: NSEvent) { (resizes ? NSCursor.resizeUpDown : NSCursor.arrow).set() }
 
         override func mouseDown(with event: NSEvent) {
             start = event.locationInWindow

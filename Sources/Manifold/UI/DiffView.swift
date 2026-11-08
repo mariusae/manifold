@@ -759,6 +759,8 @@ final class DiffRowsView: NSView, NSDraggingSource {
 
     private func updateCursor(_ event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil), side = side(at: p), i = Int(p.y / rowHeight)
+        // A thread's mark: clicked, its thread.
+        if let m = threadLines[i], threadMarkRect(line: i, m).insetBy(dx: -2, dy: -2).contains(p) { return NSCursor.pointingHand.set() }
         if inSelection(p) { return NSCursor.openHand.set() }
         let inText = i >= 0 && i < lineCount && p.x >= textX(side: side) + hOffset - 4 && text(line: i, side: side) != nil
         (inText ? NSCursor.iBeam : NSCursor.arrow).set()
@@ -1034,6 +1036,10 @@ final class DiffRowsView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         [.copy, .link, .generic]
     }
+
+    // The drag's cursor as every other drag has it, and the right one after.
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 
     override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
