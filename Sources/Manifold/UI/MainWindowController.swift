@@ -103,7 +103,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Blocks whose terminal just closed; they get a new one after a moment
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
-    private var recentlyClosed: Set<BlockID> = []
+    private(set) var recentlyClosed: Set<BlockID> = []
     private var sidebarShown = false {
         // The copies' badge only while the sidebar (which shows them) is away.
         didSet { if sidebarShown != oldValue { transfersChanged() } }
@@ -381,7 +381,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
             // Seen going, where it was, as its neighbours take its room.
-            if view.superview === content { content.fadeAway(view) }
+            if view.superview === content { content.poof(view) }
             view.removeFromSuperview()
             view.destroy()
             views.removeValue(forKey: id)
@@ -427,6 +427,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }.filter { !$0.isEmpty }
             let flights = dockFlights(before: a)
+            content.departure = { [weak self] v in self?.departure(of: v, flown: flights) ?? .moved }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             refreshDockShelf()
             flyDock(flights)
@@ -3419,8 +3420,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // Back into its tile, here.
                 items.append(GridView.Morph(from: c.frame, to: tile.whole, leaving: card, shrink: GridView.cardShrink))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
-                      let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
-                // Docked, or in another space: back into its row in the sidebar.
+                      let row = dockedSpot(t, in: place.space) {
+                // Docked, or in another space: back into its chip on the shelf, or its row in the sidebar.
                 items.append(GridView.Morph(from: c.frame, to: row, leaving: card))
             } else {
                 // Its tile's in another space: gone, sinking a little.
@@ -3491,7 +3492,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// the one stepped to chosen; the focused tile to become the first,
     /// the rest to come from their tiles here, or out from under it.
     private func prepareTileSwitcher() {
-        guard let w = tileWalk, tileSwitcher == nil, NSEvent.modifierFlags.contains(.option) || debugHeld else { return }
+        guard let w = tileWalk, tileSwitcher == nil, NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return }
         let entries = w.places.compactMap { p -> SummaryCardContent? in
             guard let t = p.tile, let b = hosts.arrangement(p.space)?.placement(t)?.block, var c = cardContent(for: b, view: views[t], id: t) else { return nil }
             // Where it is, if not here.
@@ -3546,8 +3547,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let tile = tiles[c.id] {
                 items.append(GridView.Morph(from: tile.whole, to: c.frame, leaving: tile, coming: card, shrink: GridView.cardShrink))
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
-                      let row = sidebar.organizationView.row(of: t, in: place.space, in: root) {
-                // Docked, or in another space: out of its row in the sidebar.
+                      let row = dockedSpot(t, in: place.space) {
+                // Docked, or in another space: out of its chip on the shelf, or its row in the sidebar.
                 items.append(GridView.Morph(from: row, to: c.frame, coming: card, delay: delay))
             } else {
                 // Elsewhere: out from under the first.

@@ -2885,7 +2885,12 @@ purpose — set down so a later audit reads them as choices, not slips.
   as the sidebar has it (from below for one lower, from above for one
   higher), a band gliding down the sidebar with it; a tile placed comes
   in where it lands, seen at once and growing from 86% about its
-  middle, one closed shrinks to 86% and fades where it was, and the
+  middle, one closed goes in a puff — swelling a little as it fades,
+  a small cloud bursting where it was and drifting apart, as the Dock's
+  poof (only fading, with less motion); one moved to another space
+  shrinks to 86% and fades where it was; one docked flies down into its
+  chip on the shelf, or, the shelf off, into its row in the sidebar if
+  that's showing (and back out of either, undocked) — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put

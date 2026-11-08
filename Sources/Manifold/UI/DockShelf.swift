@@ -407,24 +407,33 @@ extension MainWindowController {
 
     // MARK: Flying
 
-    /// Tiles going down into the shelf (their pictures as they were in the
-    /// grid) and coming back up out of it (their chips'), in the window's
-    /// root's terms.
+    /// Tiles going down into the dock (their pictures as they were in the
+    /// grid) and coming back up out of it (from where: a chip on the
+    /// shelf, pictured, else a row in the sidebar), in the root's terms.
     struct DockFlights {
         var down: [PlacementID: GridView.Pictured] = [:]
-        var up: [PlacementID: GridView.Pictured] = [:]
+        var up: [PlacementID: (from: NSRect, chip: GridView.Pictured?)] = [:]
     }
 
-    /// Before the grid shows `a`: what's to fly, if the shelf shows and the
-    /// space is the one it last saw.
+    /// Where a docked tile (or one in another space) is to be seen, in the
+    /// root's terms: its chip on the shelf, else its row in the sidebar
+    /// (its space's, till its own is made) — nil, neither showing.
+    func dockedSpot(_ id: PlacementID, in space: BlockID) -> NSRect? {
+        if space == selected, !dockShelf.isHidden, let chip = dockShelf.chip(id) { return root.convert(chip.bounds, from: chip) }
+        return sidebar.organizationView.row(of: id, in: space, in: root)
+    }
+
+    /// Before the grid shows `a`: what's to fly, if the space is the one
+    /// last seen — down only where there's somewhere to fly to (the shelf,
+    /// or the sidebar showing); else the grid sees it go as any move.
     func dockFlights(before a: ArrangementState) -> DockFlights? {
         let now = Set(a.docked.map(\.placement.id))
         let seen = dockShelfSeen
         dockShelfSeen = (selected, now)
-        guard dockShelfOn, stateView == nil, !Motion.reduced, let seen, seen.space == selected, seen.docked != now else { return nil }
+        guard let space = selected, stateView == nil, !Motion.reduced, let seen, seen.space == space, seen.docked != now else { return nil }
         var f = DockFlights()
         let down = now.subtracting(seen.docked)
-        if !down.isEmpty {
+        if !down.isEmpty, dockShelfOn || sidebar.organizationView.row(of: down.first!, in: space, in: root) != nil {
             let parts = content.placedParts()
             for id in down {
                 guard let p = parts[id] else { continue }
@@ -432,31 +441,50 @@ extension MainWindowController {
             }
         }
         for id in seen.docked.subtracting(now) where a.locate(id) != nil {
-            f.up[id] = dockShelf.pictured(id, in: root)
+            if let chip = dockShelf.isHidden ? nil : dockShelf.pictured(id, in: root) {
+                f.up[id] = (chip.whole, chip)
+            } else if let row = sidebar.organizationView.row(of: id, in: space, in: root) {
+                f.up[id] = (row, nil)
+            }
         }
         return f.down.isEmpty && f.up.isEmpty ? nil : f
     }
 
-    /// After: each flown — a tile shrinking into its chip, a chip growing
-    /// into its tile, what it's becoming coming in on the way — the chip or
-    /// the tile itself showing once it's there.
+    /// How a tile leaving the grid is seen to go: flown, docked with
+    /// somewhere to fly to; in a puff, closed (gone from the desk, or on
+    /// its way); else moved.
+    func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
+        if f?.down[v.placement] != nil { return .flown }
+        if recentlyClosed.contains(v.block) { return .closed }
+        let onDesk = allWorkspaces.contains { hosts.arrangement($0)?.placement(v.placement) != nil }
+        return onDesk ? .moved : .closed
+    }
+
+    /// After: each flown — a tile shrinking into its chip (or its row, the
+    /// shelf off), a chip growing into its tile (or out of its row), what
+    /// it's becoming coming in on the way — the chip or the tile itself
+    /// showing once it's there.
     func flyDock(_ f: DockFlights?) {
-        guard let f, let host = root.layer, let a = arrangement else { return }
+        guard let f, let host = root.layer, let a = arrangement, let space = selected else { return }
         content.layoutSubtreeIfNeeded()
         dockShelf.layoutSubtreeIfNeeded()
         var items: [GridView.Morph] = []
         var landing: [NSView] = []
+        if !f.down.isEmpty, !dockShelfOn { refreshOrganization(now: true) }
         for (id, tile) in f.down {
-            guard let chip = dockShelf.pictured(id, in: root), let v = dockShelf.chip(id) else { continue }
-            items.append(GridView.Morph(from: tile.whole, to: chip.whole, leaving: tile, coming: chip))
-            landing.append(v)
+            if dockShelfOn, let chip = dockShelf.pictured(id, in: root), let v = dockShelf.chip(id) {
+                items.append(GridView.Morph(from: tile.whole, to: chip.whole, leaving: tile, coming: chip))
+                landing.append(v)
+            } else if let row = sidebar.organizationView.row(of: id, in: space, in: root) {
+                items.append(GridView.Morph(from: tile.whole, to: row, leaving: tile))
+            }
         }
         if !f.up.isEmpty {
             let parts = content.placedParts()
-            for (id, chip) in f.up {
+            for (id, from) in f.up {
                 guard let p = parts[id], let b = a.placement(id)?.block else { continue }
                 let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-                items.append(GridView.Morph(from: chip.whole, to: tile.whole, leaving: chip, coming: tile))
+                items.append(GridView.Morph(from: from.from, to: tile.whole, leaving: from.chip, coming: tile))
                 landing += content.tileViews(of: b)
             }
         }

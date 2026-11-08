@@ -210,7 +210,11 @@ final class GridView: NSView, NSDraggingSource {
         }
         let incoming = Set(columns.flatMap { $0.map(\.shown.id) })
         for v in views where !incoming.contains(v.placement) && v.superview === self {
-            fadeAway(v)
+            switch departure?(v) ?? .moved {
+            case .flown: break
+            case .closed: poof(v)
+            case .moved: fadeAway(v)
+            }
             v.removeFromSuperview()
         }
         for (id, p) in pills where !incoming.contains(id) {
@@ -1057,14 +1061,102 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.commit()
     }
 
-    /// A tile closed (or moved away): a picture of it where it was,
-    /// shrinking and fading, as its neighbours' edges slide into the room
-    /// it leaves — what went, seen going. Its view goes at once, as before.
-    func fadeAway(_ v: PaneContent) {
+    /// How a tile leaves the grid: closed (gone from the desk), flown
+    /// somewhere by its window's controller (docked, into the shelf or its
+    /// row), or moved (to another space).
+    enum Departure { case closed, flown, moved }
+    /// Asked of each tile leaving as the grid's shown; moved, unasked.
+    var departure: ((PaneContent) -> Departure)?
+
+    /// A tile closed: gone in a puff — its picture swelling a little as it
+    /// fades, a small cloud bursting where it was and drifting apart, as
+    /// the Dock's poof. With less motion, only faded.
+    func poof(_ v: PaneContent) {
+        guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer else { return fadeAway(v) }
+        let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
+        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = 1.05
+        let d = Motion.spatial
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { ghosts.forEach { $0.removeFromSuperlayer() } }
+        for g in ghosts {
+            host.addSublayer(g)
+            g.opacity = 0
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            fade.timingFunction = Motion.appear
+            let o = g.position
+            let swell = CABasicAnimation(keyPath: "transform")
+            swell.fromValue = CATransform3DIdentity
+            swell.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
+            swell.timingFunction = Motion.appear
+            let grp = CAAnimationGroup()
+            grp.animations = [fade, swell]
+            grp.duration = d * 0.75
+            g.add(grp, forKey: "poof")
+        }
+        CATransaction.commit()
+        Self.puff(in: host, over: card, appearance: effectiveAppearance)
+    }
+
+    /// The cloud: soft puffs born over the middle of `r` at once, swelling,
+    /// drifting out and fading.
+    static func puff(in host: CALayer, over r: NSRect, appearance: NSAppearance) {
+        let e = CAEmitterLayer()
+        e.frame = host.bounds
+        e.zPosition = 31
+        e.emitterPosition = CGPoint(x: r.midX, y: r.midY)
+        e.emitterShape = .rectangle
+        e.emitterMode = .volume
+        e.emitterSize = CGSize(width: min(r.width * 0.5, 260), height: min(r.height * 0.4, 120))
+        e.renderMode = .unordered
+        let side = min(max(min(r.width, r.height) * 0.22, 34), 90)
+        let cell = CAEmitterCell()
+        cell.contents = puffImage
+        var ink = NSColor.white.cgColor
+        appearance.performAsCurrentDrawingAppearance { ink = Theme.secondaryText.withAlphaComponent(0.55).cgColor }
+        cell.color = ink
+        cell.birthRate = 260
+        cell.lifetime = Float(0.55 * Motion.slowdown)
+        cell.lifetimeRange = Float(0.15 * Motion.slowdown)
+        cell.velocity = side * 1.6 / Motion.slowdown
+        cell.velocityRange = side / Motion.slowdown
+        cell.emissionRange = .pi * 2
+        cell.scale = side / 64 * 0.45
+        cell.scaleRange = side / 64 * 0.2
+        cell.scaleSpeed = side / 64 * 1.4 / Motion.slowdown
+        cell.alphaSpeed = Float(-1.8 / Motion.slowdown)
+        cell.spin = 0.6
+        cell.spinRange = 1.5
+        e.emitterCells = [cell]
+        e.beginTime = CACurrentMediaTime()
+        host.addSublayer(e)
+        // A burst: born for a moment only, gone once the last has faded.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06 * Motion.slowdown) { e.birthRate = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 * Motion.slowdown) { e.removeFromSuperlayer() }
+    }
+
+    /// A soft round puff, white, for tinting.
+    private static let puffImage: CGImage? = {
+        let n = 64
+        guard let ctx = CGContext(data: nil, width: n, height: n, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [CGColor(gray: 1, alpha: 1), CGColor(gray: 1, alpha: 0.5), CGColor(gray: 1, alpha: 0)] as CFArray,
+                                 locations: [0, 0.45, 1]) else { return nil }
+        let c = CGPoint(x: n / 2, y: n / 2)
+        ctx.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: CGFloat(n) / 2, options: [])
+        return ctx.makeImage()
+    }()
+
+    /// Pictures of a tile's body and bar, where they are, each on its
+    /// ground, for it to be seen going.
+    private func ghosts(of v: PaneContent) -> [CALayer]? {
         let bar = pills[v.placement]
-        guard window != nil, !isHiddenOrHasHiddenAncestor, !v.isHidden, let host = layer else { return }
+        guard window != nil, !isHiddenOrHasHiddenAncestor else { return nil }
+        // Its body, or (too short for it) the summary in its place; its bar.
+        let body: NSView? = v.isHidden ? tileSummaries[v.placement] : v
         var ghosts: [CALayer] = []
-        for part in [v as NSView, bar].compactMap({ $0 }) where !part.isHidden && part.bounds.width > 20 {
+        for part in [body, bar].compactMap({ $0 }) where !part.isHidden && part.superview === self && part.bounds.width > 20 {
             guard let image = Self.ghostPicture(of: part) else { continue }
             let g = CALayer()
             g.contents = image
@@ -1082,7 +1174,14 @@ final class GridView: NSView, NSDraggingSource {
             g.zPosition = 30
             ghosts.append(g)
         }
-        guard !ghosts.isEmpty else { return }
+        return ghosts.isEmpty ? nil : ghosts
+    }
+
+    /// A tile moved away: a picture of it where it was, shrinking and
+    /// fading, as its neighbours' edges slide into the room it leaves —
+    /// what went, seen going. Its view goes at once, as before.
+    func fadeAway(_ v: PaneContent) {
+        guard let ghosts = ghosts(of: v), let host = layer else { return }
         let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
         let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = Motion.reduced ? 1 : 0.86
         CATransaction.begin()

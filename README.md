@@ -72,7 +72,7 @@ parts from the Mac's conventions on purpose.
   first, as ⌥⇥ walks every space's: let go quickly and it goes to the
   one before, so a tap goes back and forth between two (⌃⇧⇥, the
   farthest); held a moment, their summary cards come, a docked one's out
-  of its row in the sidebar, each ⇥ a card further, and letting go goes
+  of its chip on the shelf or its row in the sidebar, each ⇥ a card further, and letting go goes
   to the one chosen (Escape leaves things be). ⌃⇥ is the space's in
   every tile, a terminal's too, so tmux and Emacs don't get it. Docking
   isn't pinning: a pin keeps a block in the space for good; a docked
@@ -1632,8 +1632,9 @@ named measures (DESIGN.md §11). The system's own alerts are left as they are.
 
 Things move where moving says something, briefly, and never what you
 type into: a tile placed grows in where it lands as the edges of the
-others slide aside for it, one closed shrinks away where it was as
-their edges slide into its room, one moved (⌥⇧⌘ and an arrow, or
+others slide aside for it, one closed goes in a puff, as the Dock's
+poof, as their edges slide into its room, one docked flies into its
+chip on the shelf or its row in the sidebar (and back out, undocked), one moved (⌥⇧⌘ and an arrow, or
 dragged and dropped) goes over the rest, its bar and all, from where it
 was to where it's put as theirs slide out of its way, one gone to
 has its focus ring swell and glow a moment; one too short for its
