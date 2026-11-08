@@ -251,6 +251,7 @@ extension MainWindowController {
             sidebar.onSwipe = { [weak self] step in self?.switchSpace(by: step) }
         }
         strip.show(spaceChips())
+        refreshNeedsYou()
     }
 
     /// The space `step` along the strip from the one shown (1, the next),
@@ -372,10 +373,164 @@ extension MainWindowController {
         case "hover": strip.debugHover(w.dropFirst().first.flatMap(Int.init))
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
+        case "needs": return sidebar.needsYou.debugRows
+        case "needspick": if let i = w.dropFirst().first.flatMap(Int.init), sidebar.needsYou.items.indices.contains(i) { sidebar.needsYou.onPick?(sidebar.needsYou.items[i]) }
         case "color", "symbol":
             if let id = chip(w.dropFirst().first) { setSpaceLook(id, w[0] == "color" ? SpaceLook.colorKey : SpaceLook.symbolKey, w.count > 2 ? w[2] : "") }
         default: break
         }
         return strip.debugChips
+    }
+}
+
+/// What needs you, in every space (§3.6), at the sidebar's foot, always
+/// there whichever space is shown: a row each — its space's square, its
+/// symbol and name, what it needs in a pill — the space shown's too, as
+/// the strip has them, left to right, then as each grid has them. Clicked,
+/// gone to, in its space. Five at most, then how many more; none, a quiet
+/// line saying so.
+final class NeedsYouView: NSView {
+    struct Item: Equatable {
+        var space: BlockID
+        var tile: PlacementID
+        var title: String
+        var symbol: String
+        var spaceLetter: String
+        var spaceSymbol: String?
+        var spaceColor: NSColor
+        var need: String
+    }
+
+    static let headHeight: CGFloat = 22
+    static let rowHeight: CGFloat = 24
+    static let most = 5
+
+    var onPick: ((Item) -> Void)?
+    var onMore: (() -> Void)?
+    private(set) var items: [Item] = []
+    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+
+    override var isFlipped: Bool { true }
+
+    func show(_ new: [Item]) {
+        guard new != items else { return }
+        items = new
+        hovered = nil
+        invalidateIntrinsicContentSize()
+        needsDisplay = true
+    }
+
+    var wantedHeight: CGFloat {
+        let rows = min(items.count, Self.most) + (items.count > Self.most ? 1 : 0)
+        return Self.headHeight + CGFloat(max(rows, items.isEmpty ? 0 : rows)) * Self.rowHeight + (items.isEmpty ? 0 : 4)
+    }
+
+    private func rowRect(_ i: Int) -> NSRect {
+        NSRect(x: 6, y: Self.headHeight + CGFloat(i) * Self.rowHeight, width: bounds.width - 12, height: Self.rowHeight)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // A hairline over it, apart from the space's rows.
+        Theme.divider.setFill()
+        NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
+        let head = items.isEmpty ? "Nothing needs you" : "Needs you"
+        let ink = items.isEmpty ? Theme.tertiaryText : Status.attention
+        NSAttributedString(string: head, attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: ink])
+            .draw(at: NSPoint(x: 18, y: 5))
+        if items.count > 1 {
+            let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
+            n.draw(at: NSPoint(x: bounds.width - 18 - n.size().width, y: 6))
+        }
+        for (i, item) in items.prefix(Self.most).enumerated() {
+            let r = rowRect(i)
+            if hovered == i {
+                Theme.text.withAlphaComponent(0.07).setFill()
+                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            }
+            // Its space's square, small.
+            let sq = NSRect(x: r.minX + 8, y: r.midY - 8, width: 16, height: 16)
+            item.spaceColor.withAlphaComponent(0.28).setFill()
+            NSBezierPath(roundedRect: sq, xRadius: 4, yRadius: 4).fill()
+            let sInk = item.spaceColor.blended(withFraction: 0.25, of: Theme.text) ?? item.spaceColor
+            if let s = item.spaceSymbol, let image = Theme.symbol(s, size: 8.5, weight: .semibold, color: sInk) {
+                let z = image.size
+                image.draw(in: NSRect(x: (sq.midX - z.width / 2).rounded(), y: (sq.midY - z.height / 2).rounded(), width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            } else {
+                let t = NSAttributedString(string: item.spaceLetter, attributes: [.font: NSFont.systemFont(ofSize: 9, weight: .bold), .foregroundColor: sInk])
+                let z = t.size()
+                t.draw(at: NSPoint(x: (sq.midX - z.width / 2).rounded(), y: (sq.midY - z.height / 2).rounded()))
+            }
+            if let image = Theme.symbol(item.symbol, size: 11, weight: .regular, color: Theme.secondaryText) {
+                let z = image.size
+                image.draw(in: NSRect(x: sq.maxX + 8, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            let pill = StatusPill.Kind.needs(item.need)
+            let ps = StatusPill.size(pill)
+            let pr = NSRect(x: r.maxX - 6 - ps.width, y: (r.midY - ps.height / 2).rounded(), width: ps.width, height: ps.height)
+            StatusPill.draw(pill, in: pr)
+            let x = sq.maxX + 28
+            NSAttributedString(string: item.title, attributes: [.font: UIType.row, .foregroundColor: Theme.text])
+                .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, pr.minX - 8 - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+        if items.count > Self.most {
+            let r = rowRect(Self.most)
+            NSAttributedString(string: "\(items.count - Self.most) more…", attributes: [.font: UIType.detail, .foregroundColor: hovered == Self.most ? Theme.text : Theme.secondaryText])
+                .draw(at: NSPoint(x: r.minX + 8, y: r.midY - 7))
+        }
+    }
+
+    private func index(at event: NSEvent) -> Int? {
+        let p = convert(event.locationInWindow, from: nil)
+        let n = min(items.count, Self.most) + (items.count > Self.most ? 1 : 0)
+        return (0..<n).first { rowRect($0).contains(p) }
+    }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseMoved(with event: NSEvent) { hovered = index(at: event) }
+    override func mouseExited(with event: NSEvent) { hovered = nil }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {
+        guard let i = index(at: event) else { return }
+        if i == Self.most { onMore?() } else { onPick?(items[i]) }
+    }
+
+    var debugRows: String {
+        items.isEmpty ? "nothing needs you" : items.map { "\($0.spaceLetter) \($0.title) [\($0.need)]" }.joined(separator: " | ")
+    }
+}
+
+extension MainWindowController {
+    /// What needs you, in every space: as the strip has them, then as each
+    /// grid has them (on screen, then docked).
+    func needsYouItems() -> [NeedsYouView.Item] {
+        var out: [NeedsYouView.Item] = []
+        for chip in sidebar.spaces.chips {
+            guard let a = hosts.arrangement(chip.id) else { continue }
+            for p in a.columns.flatMap({ $0 }) + a.docked.reversed().map(\.placement) {
+                guard let b = hosts.block(p.block), StatusGlyph.look(of: b) == .needsYou else { continue }
+                out.append(.init(space: chip.id, tile: p.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
+                                 spaceLetter: chip.letter, spaceSymbol: chip.symbol, spaceColor: chip.color,
+                                 need: StatusPill.words(b.statusRecord?.kind)))
+            }
+        }
+        return out
+    }
+
+    func refreshNeedsYou() {
+        let v = sidebar.needsYou
+        if v.onPick == nil {
+            v.onPick = { [weak self] item in self?.go(to: Settled(space: item.space, tile: item.tile)) }
+            v.onMore = { [weak self] in self?.sidebarFilter(.status) }
+        }
+        let before = v.wantedHeight
+        v.show(needsYouItems())
+        if v.wantedHeight != before { sidebar.needsLayout = true }
     }
 }

@@ -95,6 +95,8 @@ final class SidebarView: NSView {
     /// Every space (§3.6), a square each, above the bar: the sidebar shows
     /// one at a time, and these are the rest.
     let spaces = SpaceStripView()
+    /// What needs you, in every space, over the strip: always there.
+    let needsYou = NeedsYouView()
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
     /// Toasts (§4), while it's out: above the copies, as many as are up.
@@ -165,7 +167,7 @@ final class SidebarView: NSView {
         filterButton.target = self
         filterButton.action = #selector(filterClicked)
         counts.onClick = { [weak self] in self?.delegate?.sidebarFilter(.status) }
-        for v in [filterButton, counts, spaces, closedRow, transfers, toasts] { card.addSubview(v) }
+        for v in [filterButton, counts, spaces, needsYou, closedRow, transfers, toasts] { card.addSubview(v) }
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         setFilter(nil)
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
@@ -243,6 +245,9 @@ final class SidebarView: NSView {
         var bottom = Self.barHeight
         spaces.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: SpaceStripView.height)
         bottom += SpaceStripView.height + 2
+        let nh = needsYou.wantedHeight
+        needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
+        bottom += nh + 4
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.

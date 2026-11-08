@@ -3470,7 +3470,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Goes to a place: its space shown, its tile back from the dock (or
     /// from behind a maximized one) and focused, the pointer on it.
-    private func go(to p: Settled) {
+    func go(to p: Settled) {
         guard let t = p.tile, let a = hosts.arrangement(p.space), a.placement(t) != nil else { return NSSound.beep() }
         if stateView != nil { hideStateView() }
         if selected != p.space { hosts.select(p.space) }
