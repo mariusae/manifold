@@ -1749,8 +1749,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// height — taken from or given to the biggest other in its column.
     func debugLanguages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) { host.languages(path, done: done) }
 
-    /// Host headings with one host, its spaces under two (`org twohosts`).
-    static var debugTwoHosts = false
 
     func debugTileHeight(_ title: String, _ points: CGFloat) -> String {
         guard let a = arrangement else { return "no workspace" }

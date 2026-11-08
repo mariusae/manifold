@@ -28,26 +28,28 @@ parts from the Mac's conventions on purpose.
   lighthouse (the filter, ⌥⌘.), and, at the right, counts of what needs you,
   is working and is done and not yet read, which turn the filter on. The
   window sits on a wash of soft colour (Look, below). Under Spaces the
-  tree is one shape, always: a host's
-  heading, then each of its spaces, then every tile in it, in
-  order. Nothing folds by itself; the current space wears a bar at
-  its left edge, and a space's chevron closes it until you open it
-  again (remembered). Only tiles have icons; a space's label is its
-  name and a count of its tiles, a block's row has a second line for
-  what it says. Above the bar at the foot sits a quiet row, **Recently
+  sidebar shows **one space at a time**: its name at the top, with how
+  many tiles it has on screen and docked, then its tiles in sections
+  that don't fold — **Pinned**, **On Screen** (as the grid has them,
+  column by column, a hairline between columns) and **Docked** (the
+  latest first). Over the bar at the foot runs **the strip**, every
+  space as a small square, as Arc's spaces are: its colour, its letter
+  or a symbol (right-click it to choose either, or to rename it), the
+  one shown outlined, a dot for what most wants you there, a hairline
+  between hosts. Click a square to go there, rest the pointer on one
+  to see its tiles, or swipe two fingers sideways across the sidebar
+  for the next space or the one before. Above the strip, always there,
+  is what **needs you** in every space — its space's square, its name,
+  what it needs — click one to go to it. Above that sits a quiet row, **Recently
   Closed**, with a count; clicking it pushes that list over the tree,
   the header showing a back button, the list's name and what it holds,
   as Safari's Bookmarks does; it isn't in
   the tree itself. Under **Spaces**, the sidebar is
-  the table of contents of the screen: a space's tiles in order, then,
-  after a hairline, those **docked**, the latest first, their names a
-  step dimmer. Click a tile to focus it (a docked one goes back where it
-  was), a space to go to it, double-click
-  one to name it; drag a block from anywhere in the sidebar onto a tile
-  to bring it in beside, onto a space for its active column, or
-  between spaces for one of its own, and drag spaces to
-  reorder them (among their host's, under its row) and hosts' rows to
-  reorder the hosts (an order of this Mac's own, in Spaces and Files).
+  the table of contents of the screen. Click a tile to focus it (a
+  docked one goes back where it was); drag a row onto a tile to bring
+  it in beside, and drag a tile or a row onto a space's square in the
+  strip to send it there, docked (⌥ copies it) — or hold it there a
+  moment and the space opens, to drop it where you want it.
 - A **space** is a grid (DESIGN.md §3.1): columns of tiles,
   every tile a block, all of them visible, as acme tiles its windows.
   A space is what you made it: a block brought in stays until
@@ -63,8 +65,8 @@ parts from the Mac's conventions on purpose.
   the Column (⌃⇧⌘=) gives it the whole column and **docks** the
   others. **Dock** (⌘M, or Dock in a bar's menu) takes a tile out of the
   grid to have it out of the way and still going: its room goes back
-  where it came from, and it's listed under its space in the sidebar,
-  after a hairline, the latest docked first. Go to it again — ⌃⇥, its
+  where it came from, and it's listed in the sidebar under Docked, the
+  latest docked first. Go to it again — ⌃⇥, its
   row, a link, ⌘O — and it goes back where it was: under the tile it was
   under (else over the one it was over, else a column of its own where
   its was, as wide), taking its room back from the tiles that took it.
@@ -72,18 +74,12 @@ parts from the Mac's conventions on purpose.
   first, as ⌥⇥ walks every space's: let go quickly and it goes to the
   one before, so a tap goes back and forth between two (⌃⇧⇥, the
   farthest); held a moment, their summary cards come, a docked one's out
-  of its chip on the shelf or its row in the sidebar, each ⇥ a card further, and letting go goes
+  of its row in the sidebar, each ⇥ a card further, and letting go goes
   to the one chosen (Escape leaves things be). ⌃⇥ is the space's in
   every tile, a terminal's too, so tmux and Emacs don't get it. Docking
   isn't pinning: a pin keeps a block in the space for good; a docked
-  tile is only out of the grid for now. **View ▸ Show Dock Shelf** shows
-  the docked tiles along the grid's foot too, in one short row of chips
-  floating on the window's ground: first any whose status wants you
-  (needs you, failed, done and not read) — always a chip with its
-  status's pill, tinted — then the latest used. The rest cut their
-  titles short to fit, then show just their symbols; the pointer on one
-  peeks at the tile itself, live, above the shelf, and a click puts it
-  back. A tile docked flies down into its chip, and back out of it.
+  tile is only out of the grid for now. A tile docked flies into its
+  row in the sidebar, and back out of it.
   The same summary is everywhere a block is shown small. **A tile shrinks
   in steps**, one ladder — its content, its summary card, its bar alone
   — as a presentation of the room it has, not a
@@ -295,10 +291,9 @@ parts from the Mac's conventions on purpose.
   with it out, the walk keeps the space's row in view. ⌘1–9 and ⇧⌘[ /
   ⇧⌘] switch spaces too, as does the Dock icon's menu: every space,
   under its host when there are several, the one shown checked. However
-  you go, the space comes in as the sidebar has them — up from below
-  for one lower in the list, down from above for one higher — and a band
-  in the tint glides down the sidebar from the space left to the one
-  gone to, and fades there. A file or
+  you go, the space comes in as the strip has them — from the right for
+  one further along, from the left for one before — and the sidebar's
+  list slides with it. A file or
   folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
 - **⌥⇥** walks the same trail tile by tile, in every space: the
@@ -643,9 +638,9 @@ around it, and comes back with its history.
   are: each space keeps an index of them, updated as they change, so a
   word is found among tens of thousands of symbols in about a
   millisecond — and all of a terminal's commands, not only its last 500.
-- **Naming** a space (⇧⌘R, or double-click it in the sidebar)
+- **Naming** a space (⇧⌘R, or Rename in its square's menu in the strip)
   calls it that in place of what it holds; it keeps nothing more than
-  any space does. Named spaces wear a bookmark in the sidebar.
+  any space does.
 - **Terminals go dormant**, not away: a terminal off screen with an idle
   shell for eight hours (Settings ▸ Terminals) has its shell ended and
   its transcript kept. Brought back, it starts a new shell under the old
@@ -1637,7 +1632,7 @@ Things move where moving says something, briefly, and never what you
 type into: a tile placed grows in where it lands as the edges of the
 others slide aside for it, one closed goes in a puff, as the Dock's
 poof, as their edges slide into its room, one docked flies into its
-chip on the shelf or its row in the sidebar (and back out, undocked), one moved (⌥⇧⌘ and an arrow, or
+row in the sidebar (and back out, undocked), one moved (⌥⇧⌘ and an arrow, or
 dragged and dropped) goes over the rest, its bar and all, from where it
 was to where it's put as theirs slide out of its way, one gone to
 has its focus ring swell and glow a moment; one too short for its

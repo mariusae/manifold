@@ -427,8 +427,8 @@ day over what's behind the window, blurred — showing through.
 
 A tile is **docked** (⌘M) to be out of the way and kept going: out of
 the grid, its room back where it came from, still in its space (and
-running) — listed under the space in the sidebar, after a hairline, the
-latest docked first, and among ⌃⇥'s cards. Gone to again (⌃⇥, its row,
+running) — listed in the sidebar under the space's Docked, the latest
+docked first, and among ⌃⇥'s cards. Gone to again (⌃⇥, its row,
 a link, ⌘O), it goes back where it was: under the tile it was under
 (else over the one it was over, else a column of its own where its
 was, as wide), its room taken back from the tiles that took it
@@ -438,23 +438,11 @@ it) or ⌥-dropped on it takes its place and docks it *under* itself:
 taken off, the one under comes back in its place and room. Docking is
 not pinning: a pin keeps a block in the space for good and says where
 it sits among the space's rows; a docked tile is only out of the grid
-for now. **The dock as a shelf** is a view option (View ▸ Show Dock
-Shelf), to try against the sidebar's list: the space's docked tiles in
-one short row along the grid's foot, centred, the grid giving up its
-height while something's docked — first those whose status wants you
-(needs you, failed, done and not read), then as ⌃⇥ would reach them,
-the latest used first. No bar, no label: each is a chip (its symbol and
-title) floating on the window's ground with its own shadow, all one
-height. They take the room there is: as wide as their titles, else
-narrower, the titles cut, else their symbols alone; a tile whose status
-wants you stays a chip with its status's pill, tinted in its colour —
-told once, not by an edge as well. The pointer on one lifts it
-(brighter, its shadow deeper — not the accent, which is the keyboard's)
-and peeks at it — the tile itself, live, over its card, above the
-shelf — and moved along, scrubs through them; a click puts it back
-where it was, grown a little to show some. Docking flies the tile down
-into its chip, its picture shrinking as the chip comes in; undocking,
-the chip grows back out into the tile, so where it went is seen.
+for now. Docking flies the tile into its row in the sidebar (if the
+sidebar's showing), its picture shrinking into the row; undocking, back
+out of it into the tile, so where it went is seen. (A shelf of docked
+tiles along the grid's foot was tried as a view option, and left: the
+sidebar's list does the job.)
 (Docking took the place of stacks — tiles stashed behind
 another in its column, shown as sheets over its bar and fanned out —
 which were used only to put a tile away for a while. Older logs' stacks
@@ -731,7 +719,7 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Spaces** | spaces and what they place and pin (§3): one shape, nothing folding by itself, the current space barred at its left, a space closed by its chevron staying closed, its docked tiles after a hairline, quieter | the spaces |
+| **Spaces** | the space shown and what it places and pins (§3), one space at a time: its pinned blocks, what's on screen as the grid has it (column by column, a hairline between), its docked tiles — nothing nested, nothing folding | the space shown; the others in the strip at the foot |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
 Two — and the space's threads (§3.12), which are other things than
@@ -765,9 +753,30 @@ instead), a filter, a row at the foot (by space, by file, the inbox,
 the counts), and the same row — symbol, title, a count, a detail,
 fading with age — with the same gestures everywhere (the one rule,
 §3.7), a picture of the tile on hover, the Neighborhood Map in the menu.
-Under Spaces, every space shows its tiles, in order, the focused one
+Under Spaces, **one space at a time**: its name heads the list (with
+how many tiles are on screen and docked, and its host when there's more
+than one), then its tiles in sections that don't fold — Pinned, in the
+order pinned; On Screen, as the grid has them, column by column, a
+hairline between columns; Docked, the latest first — the focused one
 marked, so the sidebar is the table of contents of the screen; clicking
-a tile row focuses it, and a block dragged onto a space is shown there.
+a tile row focuses it (a docked one comes back where it was). The other
+spaces are **the strip** at the foot, as Arc's spaces are
+(`SpaceStripView`): a small square each in its colour, its letter or a
+symbol in it (both chosen from its menu, kept on it as annotations,
+`space.color` and `space.symbol`; unchosen, a colour by its id and its
+name's first letter); the one shown outlined; a dot at a corner for
+what most wants you in it; a hairline between one host's and the
+next's. Clicked, a space is gone to; the pointer on one shows a card of
+its tiles, what wants you first; a two-finger swipe across the sidebar
+goes to the next, or the one before, and the grid slides sideways as
+the strip has them, the sidebar's list sliding with it. A tile, or a
+row, dropped on a square goes to that space docked (⌥, a copy there
+too), flying into the square, and the window stays; held over it a
+moment, the space opens, for the drop to land where it's wanted. Over
+the strip, always there, is what **needs you** in every space
+(`NeedsYouView`): a row each, its space's square, its symbol and name,
+what it needs in a pill; clicked, gone to in its space; five at most,
+then how many more; none, a quiet line saying so.
 Recently Closed (§4), a row at the foot, pushes its list over the tree,
 with a back button and the list's name in the header. The space stays
 the working surface; organizations are how you reach blocks, never
@@ -783,7 +792,7 @@ it shows by itself past ten blocks. A block clicked there goes by the
 one rule — gone to, ⌘ beside the tile you were on, ⌥ over. Overview is
 not a space: nothing is placed, nothing is logged.
 
-A host's heading stays at the top of the list while its rows are
+Under Files, a host's heading stays at the top of the list while its rows are
 scrolled past it (`OrganizationView.updateStickyHost`): a copy of its
 row (`StickyHostView`) over the list, pushed up by the next host's
 heading as it arrives — not the outline's floating group rows, which
@@ -2887,15 +2896,15 @@ purpose — set down so a later audit reads them as choices, not slips.
   spinner's 2 s loop, the backdrop's 0.6 s wash, the scroller's fade
   after a second (as the system's), predicted echo's glow.
 - **What moves, moves where it goes, and says so:** a space comes in
-  as the sidebar has it (from below for one lower, from above for one
-  higher), a band gliding down the sidebar with it; a tile placed comes
+  as the strip has it (from the right for one further along, from the
+  left for one before), the sidebar's list sliding with it; a tile placed comes
   in where it lands, seen at once and growing from 86% about its
   middle, one closed goes in a puff — swelling a little as it fades,
   a small cloud bursting where it was and drifting apart, as the Dock's
   poof (only fading, with less motion); one moved to another space
-  shrinks to 86% and fades where it was; one docked flies down into its
-  chip on the shelf, or, the shelf off, into its row in the sidebar if
-  that's showing (and back out of either, undocked) — and the
+  shrinks to 86% and fades where it was, or flies into its space's
+  square in the strip, dropped there; one docked flies into its row in
+  the sidebar if that's showing (and back out, undocked) — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put

@@ -576,17 +576,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
     }
 
-    /// The row `selected` highlighted, or none.
-    // MARK: Going to a space
-
-    /// A space's row, where it shows (the outline's terms, top down).
-    func spaceRow(_ id: BlockID) -> NSRect? {
-        for r in 0..<outline.numberOfRows {
-            if let n = outline.item(atRow: r) as? OrgNode, n.style == .section, n.arrangement == id { return outline.rect(ofRow: r) }
-        }
-        return nil
-    }
-
     /// A tile's row (its space's, the space folded), in `view`'s terms —
     /// if it's in sight: the sidebar shown and the row not scrolled away.
     func row(of placement: PlacementID, in space: BlockID, in view: NSView) -> NSRect? {
@@ -600,45 +589,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard let r = found, scroll.contentView.documentVisibleRect.intersects(r) else { return nil }
         let shown = view.convert(r, from: outline)
         return view.bounds.intersects(shown) ? shown : nil
-    }
-
-    /// Going from one space to another: a band in the tint glides from the
-    /// one's row to the other's, as the window's grids slide past, and
-    /// fades there — where you've gone, in the list you went by. With less
-    /// motion asked for, it only lights there.
-    func travel(from old: BlockID?, to new: BlockID) {
-        guard window != nil, !isHiddenOrHasHiddenAncestor, let end = spaceRow(new) else { return }
-        // Sprung open by a drag: its own band is there already.
-        if let s = sprung, s.space == new, -s.at.timeIntervalSinceNow < 2 { sprung = nil; return }
-        traveller?.removeFromSuperview()
-        let band = TravelBand()
-        traveller = band
-        outline.addSubview(band)
-        let start = old.flatMap(spaceRow) ?? end
-        band.frame = Motion.reduced ? end : start
-        band.alphaValue = 1
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = start == end ? 0 : Motion.spatial
-            ctx.timingFunction = Motion.travel
-            band.animator().frame = end
-        }, completionHandler: { [weak band] in
-            NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.6 * Motion.slowdown
-                ctx.timingFunction = Motion.disappear
-                band?.animator().alphaValue = 0
-            }, completionHandler: { [weak self, weak band] in
-                band?.removeFromSuperview()
-                if self?.traveller === band { self?.traveller = nil }
-            })
-        })
-    }
-    private var traveller: TravelBand?
-
-    /// Debugging: where the band is, if it's on its way.
-    var debugTraveller: String {
-        guard let t = traveller else { return "none" }
-        let f = t.layer?.presentation()?.frame ?? t.frame
-        return "band y=\(Int(f.minY)) h=\(Int(f.height)) alpha=\(String(format: "%.2f", t.layer?.presentation()?.opacity ?? Float(t.alphaValue)))"
     }
 
     /// Rows scrolled into view, the last one given surely (a ⌘` walk's
@@ -914,9 +864,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var springNode: String?
     private var springWork: DispatchWorkItem?
     private var springBand: SpringBand?
-    /// A space just sprung open: its band already marks it, so the band
-    /// that goes from space to space doesn't come to it too (`travel`).
-    private var sprung: (space: BlockID, at: Date)?
     /// Debugging: a drag held over the rows, whatever the mouse does.
     var debugHeld = false
 
@@ -961,7 +908,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 self.springNode = nil
                 self.springWork = nil
                 self.springBand = nil
-                if let a = node.arrangement { self.sprung = (a, Date()) }
                 self.delegate?.organizationSpring(node)
                 band.fade(over: 0.6 * Motion.slowdown)
             }
@@ -1530,17 +1476,3 @@ private final class SpringBand: NSView {
     }
 }
 
-/// The band that goes from space to space (`OrganizationView.travel`): a
-/// row band in the tint, taking no clicks.
-private final class TravelBand: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        Theme.accent.withAlphaComponent(0.22).setFill()
-        Flat.rowBand(bounds).fill()
-    }
-}

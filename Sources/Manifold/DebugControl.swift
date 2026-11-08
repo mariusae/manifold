@@ -122,9 +122,6 @@ enum DebugControl {
         case "handle":
             // "handle on|off": the focused tile's icon's handle folded out or in; "handle": how it is.
             return wc?.debugHandle(arg) ?? "no window"
-        case "travel":
-            // The sidebar's band going from space to space, if it is.
-            return wc?.debugOrganization.debugTraveller ?? "no window"
         case "shimmerstrip":
             // "shimmerstrip <out.png> [frames] [which]": a shimmering name's
             // row (the first, or the which-th) at points along its sweep,
@@ -1071,8 +1068,6 @@ enum DebugControl {
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
             // "org sticky [y]": the host's heading kept at the top (scrolled to y first).
             if a.first == "sticky" { return wc.debugOrganization.debugSticky(a.count > 1 ? a[1] : "") }
-            // "org twohosts": host headings with one host, its spaces split under two.
-            if a.first == "twohosts" { MainWindowController.debugTwoHosts.toggle(); wc.render(); return "\(MainWindowController.debugTwoHosts)" }
             // "org filter on|off": the sidebar narrowed to blocks with a status (⌥⌘.).
             if a.first == "filter", a.count >= 2 { wc.setSidebarFilter(a[1] == "on" ? .status : nil); return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {

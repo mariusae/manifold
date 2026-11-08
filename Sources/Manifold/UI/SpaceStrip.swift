@@ -68,7 +68,8 @@ final class SpaceStripView: NSView {
                     self?.onSpring?(id)
                 }
                 spring = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+                // As long as the system springs a folder open (none, if it's off).
+                if let delay = OrganizationView.springDelay { DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3, execute: work) }
             }
         }
         guard i != nil else { return [] }
