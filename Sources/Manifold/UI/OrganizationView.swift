@@ -37,42 +37,6 @@ enum Organization: String, CaseIterable {
     }
 }
 
-/// What the sidebar can be narrowed to (§3.6), whichever organization it
-/// shows: each a test of a block. The rows it admits stay, with the way
-/// to each — its host, its space, its folders — and the rest go (`OrgNode.filtered`).
-enum SidebarFilter: String, CaseIterable {
-    /// Blocks with a status (§3.7): working, needing you, done or failed.
-    case status
-
-    var title: String {
-        switch self {
-        case .status: "Blocks with a Status"
-        }
-    }
-    /// The bar's button, off and on.
-    func image(on: Bool) -> NSImage {
-        switch self {
-        case .status: Lighthouse.image(on: on)
-        }
-    }
-    /// Said where there's nothing it admits.
-    var nothing: String {
-        switch self {
-        case .status: "No block has a status"
-        }
-    }
-
-    func admits(_ block: Block) -> Bool {
-        switch self {
-        case .status:
-            switch StatusGlyph.look(of: block) {
-            case .working?, .needsYou?, .done?, .failed?: true
-            default: false
-            }
-        }
-    }
-}
-
 /// A row of an organization: a block, or a grouping of them (a folder, a
 /// day, an edge kind), with what's under it — given, or made when opened.
 final class OrgNode {
@@ -162,48 +126,6 @@ final class OrgNode {
 
     /// The children given, never loading any.
     fileprivate var givenChildren: [OrgNode] { given }
-
-    /// The rows `keep` says to, and the way to each: a row stays if it's
-    /// kept or anything under it is; a hairline stays only between rows
-    /// that do; a row's count is of the rows
-    /// under it admitted. Rows made for one showing: their children are
-    /// pruned in place.
-    static func filtered(_ nodes: [OrgNode], keep: (OrgNode) -> Bool) -> [OrgNode] {
-        var admitted = 0
-        return filtered(nodes, keep: keep, admitted: &admitted)
-    }
-
-    private static func filtered(_ nodes: [OrgNode], keep: (OrgNode) -> Bool, admitted: inout Int) -> [OrgNode] {
-        var kept = [Bool](repeating: false, count: nodes.count)
-        for (i, n) in nodes.enumerated() {
-            let own = n.style != .divider && keep(n)
-            if own { admitted += 1 }
-            if n.hasChildren {
-                var under = 0
-                n.given = filtered(n.children, keep: keep, admitted: &under)
-                n.loadChildren = nil
-                n.loaded = true
-                if n.count != nil { n.count = under }
-                admitted += under
-            }
-            kept[i] = n.style != .divider && (own || !n.given.isEmpty)
-        }
-        // A hairline between kept rows.
-        for (i, n) in nodes.enumerated() where n.style == .divider {
-            kept[i] = kept[..<i].contains(true) && kept[(i + 1)...].contains(true)
-        }
-        return nodes.indices.filter { kept[$0] }.map { nodes[$0] }
-    }
-
-    /// Every row under these that has rows under it.
-    static func groups(_ nodes: [OrgNode]) -> Set<String> {
-        var ids: Set<String> = []
-        for n in nodes where !n.given.isEmpty {
-            ids.insert(n.id)
-            ids.formUnion(groups(n.given))
-        }
-        return ids
-    }
 
     /// Whether it would draw as another does: what its row shows.
     fileprivate func looksLike(_ o: OrgNode) -> Bool {
@@ -332,8 +254,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var expandedByDefault: Set<String> = []
     /// Rows closed by hand: remembered (the client's state keeps them).
     var collapsedByHand: Set<String> = []
-    /// While a filter shows: what was open and closed by hand before it.
-    private var unfiltered: (open: Set<String>, closed: Set<String>)?
     var onCollapsedChanged: ((Set<String>) -> Void)?
     private var trackedRow: Int = -1
     private var selecting = false
@@ -487,23 +407,8 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     }
 
     /// Shows a tree; rows open as they were, or as `openByDefault` says
-    /// the first time; the row `selected` is highlighted. `openAll`: every
-    /// row open, whatever was closed by hand (a filter's: the way to each
-    /// row it admits shown whole).
-    func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil, openAll: Bool = false) {
-        // Opened for a filter, then as it was: what was open and closed
-        // before kept aside, and back after (nothing opened or closed
-        // while filtered is remembered).
-        if openAll, unfiltered == nil {
-            unfiltered = (expanded, collapsedByHand)
-            collapsedByHand = []
-        } else if !openAll, let (open, closed) = unfiltered {
-            unfiltered = nil
-            expanded = open
-            collapsedByHand = closed
-            roots = []
-        }
-        let openByDefault = openAll ? OrgNode.groups(nodes) : openByDefault
+    /// the first time; the row `selected` is highlighted.
+    func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
         // The same rows in the same places (most of what comes, as the
         // sidebar is made again after each change): the new values taken
         // over and only the rows that look different redrawn — a reload
@@ -713,7 +618,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.insert(n.id)
-            if collapsedByHand.remove(n.id) != nil, unfiltered == nil { onCollapsedChanged?(collapsedByHand) }
+            if collapsedByHand.remove(n.id) != nil { onCollapsedChanged?(collapsedByHand) }
         }
     }
 
@@ -722,7 +627,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.remove(n.id)
             collapsedByHand.insert(n.id)
-            if unfiltered == nil { onCollapsedChanged?(collapsedByHand) }
+            onCollapsedChanged?(collapsedByHand)
         }
     }
 

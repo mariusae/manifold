@@ -1068,8 +1068,6 @@ enum DebugControl {
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
             // "org sticky [y]": the host's heading kept at the top (scrolled to y first).
             if a.first == "sticky" { return wc.debugOrganization.debugSticky(a.count > 1 ? a[1] : "") }
-            // "org filter on|off": the sidebar narrowed to blocks with a status (⌥⌘.).
-            if a.first == "filter", a.count >= 2 { wc.setSidebarFilter(a[1] == "on" ? .status : nil); return wc.debugOrganization.debugRows() }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {
                 return wc.debugOrganization.debugClick(row: row, command: a.contains("cmd"), double: a.contains("double"))
             }

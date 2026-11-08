@@ -724,18 +724,13 @@ the graph has to capture everything any organization needs:
 
 Two — and the space's threads (§3.12), which are other things than
 blocks in a tree: the three are icons at the sidebar's foot, the one
-shown on a band, Threads with a count of those with something not seen —
-and a filter over either tree (`SidebarFilter`, ⌥⌘., the lighthouse
-beside them): a test of each block — the first, blocks with a status,
-working, needing you, done or failed — that keeps the rows it admits
-and the way to each (`OrgNode.filtered`: a row stays if it or anything
-under it is admitted; counts are of what's admitted), every
-row on the way open, what was open and closed by hand kept aside and
-put back. It knows nothing of the trees, so a filter more is a case
-more. The links live on the tile's bar and in the neighborhood map
+shown on a band, Threads with a count of those with something not seen.
+(A filter over either tree, to blocks with a status — the lighthouse
+beside them, ⌥⌘. — was tried and left: what needs you, always at the
+foot, does what it was mostly for.) The links live on the tile's bar and in the neighborhood map
 (⇧⌥⌘M, or a link's menu) as the one big view of them; what's working,
-done or needing you is the counts at the sidebar's foot, which turn the
-filter on, and Overview; and time is ⌘O with nothing typed, which is the
+done or needing you is the counts at the sidebar's foot, what needs
+you over the strip, and Overview; and time is ⌘O with nothing typed, which is the
 trail.
 
 Two edges make the first two possible. **`contains`** (folder → file or
@@ -776,7 +771,8 @@ moment, the space opens, for the drop to land where it's wanted. Over
 the strip, always there, is what **needs you** in every space
 (`NeedsYouView`): a row each, its space's square, its symbol and name,
 what it needs in a pill; clicked, gone to in its space; five at most,
-then how many more; none, a quiet line saying so.
+then how many more, which shows them all (and "Fewer" again); none, a
+quiet line saying so.
 Recently Closed (§4), a row at the foot, pushes its list over the tree,
 with a back button and the list's name in the header. The space stays
 the working surface; organizations are how you reach blocks, never

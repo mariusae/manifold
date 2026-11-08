@@ -458,8 +458,8 @@ extension MainWindowController {
 /// there whichever space is shown: a row each — its space's square, its
 /// symbol and name, what it needs in a pill — the space shown's too, as
 /// the strip has them, left to right, then as each grid has them. Clicked,
-/// gone to, in its space. Five at most, then how many more; none, a quiet
-/// line saying so.
+/// gone to, in its space. Five at most, then how many more, clicked, all
+/// of them (and "Fewer" again); none, a quiet line saying so.
 final class NeedsYouView: NSView {
     struct Item: Equatable {
         var space: BlockID
@@ -477,8 +477,11 @@ final class NeedsYouView: NSView {
     static let most = 5
 
     var onPick: ((Item) -> Void)?
-    var onMore: (() -> Void)?
+    /// Its height changed (more shown, or fewer).
+    var onResize: (() -> Void)?
     private(set) var items: [Item] = []
+    /// All of them shown, not the first five.
+    private var all = false
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
@@ -486,14 +489,19 @@ final class NeedsYouView: NSView {
     func show(_ new: [Item]) {
         guard new != items else { return }
         items = new
+        if items.count <= Self.most { all = false }
         hovered = nil
         invalidateIntrinsicContentSize()
         needsDisplay = true
     }
 
+    /// Rows of items shown, and whether a row after them says more (or fewer).
+    private var shown: Int { all ? items.count : min(items.count, Self.most) }
+    private var hasMoreRow: Bool { items.count > Self.most }
+
     var wantedHeight: CGFloat {
-        let rows = min(items.count, Self.most) + (items.count > Self.most ? 1 : 0)
-        return Self.headHeight + CGFloat(max(rows, items.isEmpty ? 0 : rows)) * Self.rowHeight + (items.isEmpty ? 0 : 4)
+        let rows = shown + (hasMoreRow ? 1 : 0)
+        return Self.headHeight + CGFloat(rows) * Self.rowHeight + (items.isEmpty ? 0 : 4)
     }
 
     private func rowRect(_ i: Int) -> NSRect {
@@ -512,7 +520,7 @@ final class NeedsYouView: NSView {
             let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
             n.draw(at: NSPoint(x: bounds.width - 18 - n.size().width, y: 6))
         }
-        for (i, item) in items.prefix(Self.most).enumerated() {
+        for (i, item) in items.prefix(shown).enumerated() {
             let r = rowRect(i)
             if hovered == i {
                 Theme.text.withAlphaComponent(0.07).setFill()
@@ -545,16 +553,16 @@ final class NeedsYouView: NSView {
             NSAttributedString(string: item.title, attributes: [.font: UIType.row, .foregroundColor: Theme.text])
                 .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, pr.minX - 8 - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
-        if items.count > Self.most {
-            let r = rowRect(Self.most)
-            NSAttributedString(string: "\(items.count - Self.most) more…", attributes: [.font: UIType.detail, .foregroundColor: hovered == Self.most ? Theme.text : Theme.secondaryText])
+        if hasMoreRow {
+            let r = rowRect(shown)
+            NSAttributedString(string: all ? "Fewer" : "\(items.count - Self.most) more…", attributes: [.font: UIType.detail, .foregroundColor: hovered == shown ? Theme.text : Theme.secondaryText])
                 .draw(at: NSPoint(x: r.minX + 8, y: r.midY - 7))
         }
     }
 
     private func index(at event: NSEvent) -> Int? {
         let p = convert(event.locationInWindow, from: nil)
-        let n = min(items.count, Self.most) + (items.count > Self.most ? 1 : 0)
+        let n = shown + (hasMoreRow ? 1 : 0)
         return (0..<n).first { rowRect($0).contains(p) }
     }
 
@@ -569,7 +577,14 @@ final class NeedsYouView: NSView {
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         guard let i = index(at: event) else { return }
-        if i == Self.most { onMore?() } else { onPick?(items[i]) }
+        if hasMoreRow, i == shown {
+            all.toggle()
+            hovered = nil
+            needsDisplay = true
+            onResize?()
+        } else {
+            onPick?(items[i])
+        }
     }
 
     var debugRows: String {
@@ -598,7 +613,7 @@ extension MainWindowController {
         let v = sidebar.needsYou
         if v.onPick == nil {
             v.onPick = { [weak self] item in self?.go(to: Settled(space: item.space, tile: item.tile)) }
-            v.onMore = { [weak self] in self?.sidebarFilter(.status) }
+            v.onResize = { [weak self] in self?.sidebar.needsLayout = true }
         }
         let before = v.wantedHeight
         v.show(needsYouItems())

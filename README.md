@@ -20,13 +20,12 @@ parts from the Mac's conventions on purpose.
 
 - The **sidebar** is the spine of the window: the window buttons, New
   (+) and ⋯ along its top, then one browser over everything you have,
-  organized two ways (Spaces · Files, below), narrowed at a key to
-  the blocks with a status (⌥⌘., below). It sits beside the content; ⇧⌘/ or ⌃⌘S (or the button at its top
+  organized two ways (Spaces · Files, below). It sits beside the content; ⇧⌘/ or ⌃⌘S (or the button at its top
   right) makes it slide out over the content when the mouse goes to the
   window's left edge instead. Drag its right edge to resize it, and its
-  top to move the window. Along the bottom of the sidebar run Spaces and Files, the
-  lighthouse (the filter, ⌥⌘.), and, at the right, counts of what needs you,
-  is working and is done and not yet read, which turn the filter on. The
+  top to move the window. Along the bottom of the sidebar run Spaces, Files
+  and Threads, and, at the right, counts of what needs you, is working
+  and is done and not yet read. The
   window sits on a wash of soft colour (Look, below). Under Spaces the
   sidebar shows **one space at a time**: its name at the top, with how
   many tiles it has on screen and docked, then its tiles in sections
@@ -390,16 +389,7 @@ parts from the Mac's conventions on purpose.
   box in a task list — a quote with its mark, and on an empty item ends
   it. The bar's menu has Show Raw Markdown, kept per tile. Markdown
   files get the same.
-- **Blocks with a status** (⌥⌘., View ▸ Show Only Blocks with a Status,
-  the lighthouse at the sidebar's foot, or its counts) narrows the
-  sidebar, whichever way it's organized, to the blocks that are working,
-  need you, or are done or failed — and the way to each: its host and
-  space in Spaces, its folders in Files — every row on the
-  way open, each count of what's shown. The lighthouse fills, lit, while
-  it's on; ⌥⌘. again, or a click, shows everything as it was, what you
-  had open and closed kept. Nothing to show says so. The filter is one
-  of a kind that may grow: it tests each block, and the trees it narrows
-  don't know which. The **Inbox** is the blocks whose status wants
+- The **Inbox** is the blocks whose status wants
   attention — done or failed and not yet read, or needing you — by host
   and space; reading a block (focusing it) takes it out, and there is
   nothing to clear by hand. **⌘J** (Go ▸ Next in

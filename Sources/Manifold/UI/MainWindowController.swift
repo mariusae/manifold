@@ -3114,8 +3114,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.state = organization == .threads ? .on : .off
         case #selector(toggleInspector(_:)):
             item.state = inspector?.isVisible == true ? .on : .off
-        case #selector(toggleSidebarFilter(_:)):
-            item.state = sidebarFilter != nil ? .on : .off
         default:
             break
         }
@@ -3952,20 +3950,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func organizeByFiles(_ sender: Any?) { setOrganization(.files) }
     @objc func organizeByThreads(_ sender: Any?) { setOrganization(.threads) }
 
-    /// What the sidebar is narrowed to (§3.6), whichever organization
-    /// shows: only the rows the filter admits, and the way to each.
-    private(set) var sidebarFilter: SidebarFilter?
-
-    /// ⌘.: the sidebar narrowed to blocks with a status, or not.
-    @objc func toggleSidebarFilter(_ sender: Any?) { setSidebarFilter(sidebarFilter == nil ? .status : nil) }
-
-    func setSidebarFilter(_ f: SidebarFilter?) {
-        sidebarFilter = f
-        sidebar.setFilter(f)
-        if f != nil, !sidebarShown { showSidebar(animated: true) }
-        refreshOrganization(now: true)
-    }
-
     func setOrganization(_ org: Organization, show: Bool = true) {
         var state = hosts.state.window
         state.organization = org.rawValue
@@ -3990,14 +3974,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let filter = ""
-            var (nodes, open) = self.organizationTree(org, filter: filter)
+            let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil
-            // Narrowed: the rows the filter admits and the way to each, all open.
-            if let f = self.sidebarFilter {
-                nodes = OrgNode.filtered(nodes) { n in n.style == .row && n.block.flatMap { self.hosts.block($0) }.map(f.admits) == true }
-                if nodes.isEmpty { nodes = [OrgNode(id: "filter:none", title: f.nothing, symbol: "circle.dashed")] }
-                open = []
-            }
             // The counts: what needs you, what's working, and what's done
             // or failed and not yet read — one attended to is counted no more.
             let g = self.statusGroups("")
@@ -4009,7 +3987,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = true
-            self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected, openAll: self.sidebarFilter != nil)
+            self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
             if org == .desk { self.showSpaceHeading() }
             self.refreshSpaceStrip()
             self.organizationShownFor = selected
@@ -8130,7 +8108,6 @@ extension MainWindowController: SidebarDelegate {
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
     func sidebarThreadsMode(timeline: Bool) { setThreadsMode(timeline: timeline) }
     func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
-    func sidebarFilter(_ filter: SidebarFilter?) { setSidebarFilter(filter) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     /// The sidebar's +: a new workspace with a terminal in it (⌘T).
