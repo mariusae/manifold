@@ -3,19 +3,20 @@ import ManifoldCore
 
 /// The dock as a shelf (§3.1), a view option to try against the sidebar's
 /// list (View ▸ Show Dock Shelf): the space's docked tiles along the foot
-/// of the grid, in one short row — first those whose status wants you
-/// (needs you, failed, done and not read), then as ⌃⇥ would reach them,
-/// the latest used first. They take the room there is, one size for all:
-/// cards (a title and a line), else chips (a title), else only their
-/// symbols — except a tile whose status wants you, which stays a card,
-/// edged and tinted in its status's colour. The pointer on one peeks at it
-/// (the tile itself, live, over its card, above the shelf), and moved
-/// along the shelf, scrubs through them; a click puts it back where it
-/// was. The grid gives up the shelf's height while it shows (only while
-/// something's docked). No bar of its own: the tiles float on the window's
-/// ground, each its own shadow, lifted further under the pointer.
+/// of the grid, in one short row, centred — first those whose status wants
+/// you (needs you, failed, done and not read), then as ⌃⇥ would reach them,
+/// the latest used first. Each is a chip, its symbol and title, as wide as
+/// that wants; short of room, the chips give up the ends of their titles,
+/// then show their symbols alone — but for one whose status wants you,
+/// which stays a chip with its status's pill, tinted. No bar of its own:
+/// they float on the window's ground, each its own shadow, lifted under
+/// the pointer, which peeks at the tile (itself, live, above the shelf) and,
+/// moved along, scrubs through them; a click puts it back where it was.
+/// The grid gives up the shelf's height while it shows (only while
+/// something's docked). Docking flies a tile down into its chip, and
+/// undocking back out of it.
 final class DockShelfView: NSView {
-    static let height: CGFloat = 60
+    static let height: CGFloat = 44
     static let gap: CGFloat = 6
     static let pad: CGFloat = 7
 
@@ -24,11 +25,14 @@ final class DockShelfView: NSView {
         var content: SummaryCardContent
         var look: StatusGlyph.Look?
         var id: PlacementID { content.id }
-        /// Its status wants you: a card always, in its colour.
-        var alerting: Bool {
+        /// Its status wants you: a chip always, its pill on it, tinted.
+        var alerting: Bool { pill != nil }
+        var pill: StatusPill.Kind? {
             switch look {
-            case .needsYou, .failed(read: false), .done(read: false): true
-            default: false
+            case .needsYou: content.mark?.pill ?? .needs(StatusPill.words(nil))
+            case .failed(read: false): .failed
+            case .done(read: false): .done
+            default: nil
             }
         }
         var tone: NSColor? {
@@ -42,19 +46,20 @@ final class DockShelfView: NSView {
     }
 
     /// How much of each shows, by the room there is.
-    enum Size: Int, CaseIterable { case card, chip, icon }
+    enum Size { case chip, icon }
 
-    /// A card clicked: its tile back where it was.
+    /// A chip clicked: its tile back where it was.
     var onPick: ((PlacementID) -> Void)?
     /// The pointer on one (its rect in the window), or off the shelf.
     var onHover: ((PlacementID?, NSRect) -> Void)?
 
     private let scroll = NSScrollView()
     private let strip = FlippedView()
-    private let label = NSTextField(labelWithString: "Docked")
     private var items: [Item] = []
     private var views: [DockItemView] = []
-    private(set) var size: Size = .card
+    private(set) var size: Size = .chip
+    /// The widest a plain chip is let be, as the room allows.
+    private var cap = DockItemView.widest
     private var hovered: Int? {
         didSet {
             guard hovered != oldValue else { return }
@@ -64,15 +69,12 @@ final class DockShelfView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        label.font = UIType.caption
-        label.textColor = Theme.tertiaryText
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = true
         scroll.hasVerticalScroller = false
         scroll.autohidesScrollers = true
         scroll.horizontalScrollElasticity = .allowed
         scroll.documentView = strip
-        addSubview(label)
         addSubview(scroll)
     }
 
@@ -94,37 +96,40 @@ final class DockShelfView: NSView {
         needsLayout = true
     }
 
-    /// The width each takes at a size (an alerting one, a card at any).
-    private func width(_ item: Item, _ size: Size) -> CGFloat {
-        DockItemView.width(item, item.alerting ? .card : size)
+    /// The width each takes, at a size and a plain chip's widest.
+    private func width(_ item: Item, _ size: Size, cap: CGFloat) -> CGFloat {
+        if item.alerting { return DockItemView.natural(item) }
+        return size == .icon ? DockItemView.iconWidth : min(cap, DockItemView.natural(item))
     }
 
-    private func total(_ size: Size) -> CGFloat {
-        Self.pad * 2 + items.reduce(0) { $0 + width($1, size) } + CGFloat(max(0, items.count - 1)) * Self.gap
+    private func total(_ size: Size, cap: CGFloat) -> CGFloat {
+        items.reduce(0) { $0 + width($1, size, cap: cap) } + CGFloat(max(0, items.count - 1)) * Self.gap
     }
 
     override func layout() {
         super.layout()
-        // The word at the left, the tiles after it, one short row.
-        label.sizeToFit()
-        label.frame.origin = NSPoint(x: Self.pad + 5, y: ((bounds.height - label.frame.height) / 2).rounded())
-        let left = label.frame.maxX + 4
-        scroll.frame = NSRect(x: left, y: 0, width: max(0, bounds.width - left), height: bounds.height)
-        // The biggest size that fits them all; else the least, scrolled.
-        let room = scroll.contentSize.width
-        size = Size.allCases.first { total($0) <= room } ?? .icon
-        strip.frame = NSRect(x: 0, y: 0, width: max(total(size), room), height: scroll.contentSize.height)
-        var x = Self.pad
+        scroll.frame = bounds
+        let room = scroll.contentSize.width - 2 * Self.pad
+        // Chips as wide as they'd be; else narrower, their titles cut, to a
+        // point; else symbols alone (scrolled, if even they don't fit).
+        size = .chip
+        cap = DockItemView.widest
+        while total(.chip, cap: cap) > room, cap > DockItemView.narrowest { cap -= 2 }
+        if total(.chip, cap: cap) > room { size = .icon }
+        let used = total(size, cap: cap)
+        strip.frame = NSRect(x: 0, y: 0, width: max(used + 2 * Self.pad, scroll.contentSize.width), height: scroll.contentSize.height)
+        var x = ((strip.bounds.width - used) / 2).rounded()
+        let h = DockItemView.height
         for (v, item) in zip(views, items) {
-            let s: Size = item.alerting ? .card : size
-            v.size = s
-            let w = width(item, size), h = DockItemView.height(s)
+            v.size = item.alerting ? .chip : size
+            let w = width(item, size, cap: cap)
             v.frame = NSRect(x: x, y: ((strip.bounds.height - h) / 2).rounded(), width: w, height: h)
             x += w + Self.gap
         }
     }
 
-    // The tiles are the shelf's to click and hover, not their own.
+    // The chips are the shelf's to click and hover, not their own — and
+    // only where one is: between them, what's behind (the grid's ground).
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, frame.contains(point) else { return nil }
         return self
@@ -162,9 +167,24 @@ final class DockShelfView: NSView {
         onPick?(items[i].id)
     }
 
+    /// A tile's chip, for it to be flown to or from.
+    func chip(_ id: PlacementID) -> NSView? {
+        views.first { $0.item.id == id && $0.superview != nil }
+    }
+
+    /// Its chip, pictured, where it is in `view`'s terms.
+    func pictured(_ id: PlacementID, in view: NSView) -> GridView.Pictured? {
+        guard let v = views.first(where: { $0.item.id == id }), v.bounds.width > 0 else { return nil }
+        let hovered = v.hovered
+        v.hovered = false
+        defer { v.hovered = hovered }
+        v.displayIfNeeded()
+        return GridView.Pictured(parts: [(view.convert(v.bounds, from: v), GridView.ghostPicture(of: v))], ground: v.ground.cgColor)
+    }
+
     /// Debugging: the size, and its tiles in order, the hovered marked.
     var debugItems: String {
-        "\(size) · " + items.enumerated().map { i, item in
+        "\(size)\(size == .chip ? " ≤\(Int(cap))" : "") · " + items.enumerated().map { i, item in
             (hovered == i ? ">" : " ") + item.content.summary.title + (item.alerting ? " [\(item.look.map { "\($0)" } ?? "")]" : "")
         }.joined(separator: " | ")
     }
@@ -180,107 +200,97 @@ final class DockShelfView: NSView {
     }
 }
 
-/// One docked tile on the shelf, at a size: its summary card; a chip, its
-/// symbol and title; or its symbol alone, a dot for its status. One whose
-/// status wants you, edged and tinted in its colour. Each floats: a shadow
-/// under it (kept within the shelf's margin, which clips), more when the
-/// pointer's on it.
+/// One docked tile on the shelf: a chip, its symbol and title (cut short
+/// as it must), else its symbol alone, a dot at its corner while it works.
+/// One whose status wants you, its status's pill after its title and a
+/// tint of its colour — the one way it's told. Each floats: a shadow
+/// under it (kept within the shelf's margin, which clips), lifted under
+/// the pointer — brighter, its shadow deeper, not in the accent (that's
+/// where the keyboard is).
 final class DockItemView: NSView {
-    var item: DockShelfView.Item { didSet { card.content = item.content; needsDisplay = true } }
-    var size: DockShelfView.Size = .card {
-        didSet {
-            guard size != oldValue else { return }
-            card.isHidden = size != .card
-            needsDisplay = true
-            needsLayout = true
-        }
-    }
+    var item: DockShelfView.Item { didSet { toolTip = item.content.summary.title; needsDisplay = true } }
+    var size: DockShelfView.Size = .chip { didSet { if size != oldValue { needsDisplay = true } } }
     var hovered = false {
         didSet {
             guard hovered != oldValue else { return }
-            card.chosen = hovered
             needsDisplay = true
             lift()
         }
     }
-    private let card: SummaryCard
 
-    static func height(_ size: DockShelfView.Size) -> CGFloat { size == .card ? 46 : 30 }
+    static let height: CGFloat = 30
+    static let iconWidth: CGFloat = 30
+    /// A plain chip's widest, and narrowest before it's a symbol alone.
+    static let widest: CGFloat = 170
+    static let narrowest: CGFloat = 84
+    private static let radius: CGFloat = Radius.control + 2
+    private static let titleX: CGFloat = 28
 
-    static func width(_ item: DockShelfView.Item, _ size: DockShelfView.Size) -> CGFloat {
-        switch size {
-        case .card: return 180
-        case .chip:
-            let w = (item.content.summary.title as NSString).size(withAttributes: [.font: UIType.label]).width
-            return min(150, ceil(w) + 38)
-        case .icon: return 30
-        }
+    /// As wide as all it says wants: its symbol, its title, its pill.
+    static func natural(_ item: DockShelfView.Item) -> CGFloat {
+        let title = ceil((item.content.summary.title as NSString).size(withAttributes: [.font: UIType.label]).width)
+        let pill = item.pill.map { StatusPill.size($0).width + 8 } ?? 0
+        let w = titleX + title + pill + 10
+        return item.alerting ? min(w, 260) : w
     }
 
     init(_ item: DockShelfView.Item) {
         self.item = item
-        card = SummaryCard(item.content)
         super.init(frame: .zero)
-        addSubview(card)
         wantsLayer = true
-        layer?.cornerRadius = Radius.surface
-        layer?.cornerCurve = .continuous
         layer?.masksToBounds = false
         layer?.shadowColor = NSColor.black.cgColor
         lift()
         toolTip = item.content.summary.title
     }
 
+    required init?(coder: NSCoder) { fatalError() }
+
     /// Its shadow: floating, or lifted under the pointer.
     private func lift() {
         guard let l = layer else { return }
-        l.shadowOpacity = hovered ? 0.3 : 0.18
+        l.shadowOpacity = hovered ? 0.32 : 0.18
         l.shadowRadius = hovered ? 6 : 4
         l.shadowOffset = CGSize(width: 0, height: hovered ? -3 : -2)
     }
 
-    private var radius: CGFloat { size == .card ? Radius.surface : Radius.control + 2 }
-
-    required init?(coder: NSCoder) { fatalError() }
-
     override func layout() {
         super.layout()
-        card.frame = bounds
-        layer?.cornerRadius = radius
-        layer?.shadowPath = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: radius, cornerHeight: radius, transform: nil)
-        // Its status's colour round it, and a little of it under it — on
-        // the panel's ground, not see-through, so its shadow stays under.
-        let tone = item.tone
-        layer?.borderWidth = tone == nil ? 0 : 1.5
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = tone?.cgColor
-            layer?.backgroundColor = tone.flatMap { Theme.panel.usingColorSpace(.sRGB)?.blended(withFraction: 0.12, of: $0) }?.cgColor
-        }
+        layer?.shadowPath = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: Self.radius, cornerHeight: Self.radius, transform: nil)
     }
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsLayout = true
+    /// Its fill: the panel's, a little of its status's colour in it, a
+    /// little brighter under the pointer — opaque, its shadow under it.
+    var ground: NSColor {
+        var c = Theme.panel.usingColorSpace(.sRGB) ?? Theme.panel
+        if let tone = item.tone { c = c.blended(withFraction: 0.16, of: tone) ?? c }
+        if hovered { c = c.blended(withFraction: 0.08, of: Theme.text) ?? c }
+        return c
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard size != .card else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Radius.control + 2, yRadius: Radius.control + 2)
-        (hovered ? Theme.accent.withAlphaComponent(0.14) : Theme.panel).setFill()
+        let path = NSBezierPath(roundedRect: r, xRadius: Self.radius, yRadius: Self.radius)
+        ground.setFill()
         path.fill()
-        (hovered ? Theme.accent.withAlphaComponent(0.6) : Flat.line).setStroke()
-        path.lineWidth = 1
+        (item.tone?.withAlphaComponent(0.35) ?? Flat.line).setStroke()
+        path.lineWidth = 0.5
         path.stroke()
-        let ink = item.tone ?? Theme.text
-        if let image = Theme.symbol(item.content.symbol, size: 12, weight: .medium, color: ink) {
+        if let image = Theme.symbol(item.content.symbol, size: 12, weight: .medium, color: hovered ? Theme.text : Theme.secondaryText) {
             let s = image.size
             let x = size == .icon ? (bounds.width - s.width) / 2 : 9
             image.draw(in: NSRect(x: x.rounded(), y: ((bounds.height - s.height) / 2).rounded(), width: s.width, height: s.height))
         }
         if size == .chip {
+            var right = bounds.width - 10
+            if let pill = item.pill {
+                let ps = StatusPill.size(pill)
+                let pr = NSRect(x: right - ps.width, y: ((bounds.height - ps.height) / 2).rounded(), width: ps.width, height: ps.height)
+                StatusPill.draw(pill, in: pr)
+                right = pr.minX - 8
+            }
             let title = NSAttributedString(string: item.content.summary.title, attributes: [.font: UIType.label, .foregroundColor: Theme.text])
-            title.draw(with: NSRect(x: 28, y: (bounds.height - 16) / 2, width: bounds.width - 34, height: 16),
+            title.draw(with: NSRect(x: Self.titleX, y: ((bounds.height - 16) / 2).rounded(), width: max(0, right - Self.titleX), height: 16),
                        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
         // Working: a dot at its corner, as its row's glyph says it.
@@ -393,5 +403,73 @@ extension MainWindowController {
         default: break
         }
         return "\(dockShelfOn ? "on" : "off")\(dockShelf.isHidden ? " hidden" : " shown \(NSStringFromRect(dockShelf.frame))") · grid \(NSStringFromRect(content.frame)) · \(dockShelf.debugItems)"
+    }
+
+    // MARK: Flying
+
+    /// Tiles going down into the shelf (their pictures as they were in the
+    /// grid) and coming back up out of it (their chips'), in the window's
+    /// root's terms.
+    struct DockFlights {
+        var down: [PlacementID: GridView.Pictured] = [:]
+        var up: [PlacementID: GridView.Pictured] = [:]
+    }
+
+    /// Before the grid shows `a`: what's to fly, if the shelf shows and the
+    /// space is the one it last saw.
+    func dockFlights(before a: ArrangementState) -> DockFlights? {
+        let now = Set(a.docked.map(\.placement.id))
+        let seen = dockShelfSeen
+        dockShelfSeen = (selected, now)
+        guard dockShelfOn, stateView == nil, !Motion.reduced, let seen, seen.space == selected, seen.docked != now else { return nil }
+        var f = DockFlights()
+        let down = now.subtracting(seen.docked)
+        if !down.isEmpty {
+            let parts = content.placedParts()
+            for id in down {
+                guard let p = parts[id] else { continue }
+                f.down[id] = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+            }
+        }
+        for id in seen.docked.subtracting(now) where a.locate(id) != nil {
+            f.up[id] = dockShelf.pictured(id, in: root)
+        }
+        return f.down.isEmpty && f.up.isEmpty ? nil : f
+    }
+
+    /// After: each flown — a tile shrinking into its chip, a chip growing
+    /// into its tile, what it's becoming coming in on the way — the chip or
+    /// the tile itself showing once it's there.
+    func flyDock(_ f: DockFlights?) {
+        guard let f, let host = root.layer, let a = arrangement else { return }
+        content.layoutSubtreeIfNeeded()
+        dockShelf.layoutSubtreeIfNeeded()
+        var items: [GridView.Morph] = []
+        var landing: [NSView] = []
+        for (id, tile) in f.down {
+            guard let chip = dockShelf.pictured(id, in: root), let v = dockShelf.chip(id) else { continue }
+            items.append(GridView.Morph(from: tile.whole, to: chip.whole, leaving: tile, coming: chip))
+            landing.append(v)
+        }
+        if !f.up.isEmpty {
+            let parts = content.placedParts()
+            for (id, chip) in f.up {
+                guard let p = parts[id], let b = a.placement(id)?.block else { continue }
+                let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
+                items.append(GridView.Morph(from: chip.whole, to: tile.whole, leaving: chip, coming: tile))
+                landing += content.tileViews(of: b)
+            }
+        }
+        guard !items.isEmpty else { return }
+        let d = Motion.spatial * 1.4
+        GridView.morph(items, in: host, over: d)
+        for v in landing {
+            guard let l = v.layer else { continue }
+            let x = CAKeyframeAnimation(keyPath: "opacity")
+            x.values = [0, 0]
+            x.keyTimes = [0, 1]
+            x.duration = d
+            l.add(x, forKey: "landing")
+        }
     }
 }

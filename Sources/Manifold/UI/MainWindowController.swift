@@ -426,8 +426,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     return GridView.Tile(shown: shown, view: view(for: shown), links: links(of: p.block))
                 }
             }.filter { !$0.isEmpty }
+            let flights = dockFlights(before: a)
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             refreshDockShelf()
+            flyDock(flights)
             window.title = title(of: a)
             // The keyboard may be in no view at all (the window's, after
             // the view it was in went, as a closed editor's does).
@@ -906,6 +908,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The dock as a shelf at the grid's foot (View ▸ Show Dock Shelf).
     let dockShelf = DockShelfView()
+    /// The space whose dock the shelf last saw, and what was docked: what
+    /// changed since flies between the grid and the shelf.
+    var dockShelfSeen: (space: BlockID?, docked: Set<PlacementID>)?
 
     private let transfersBadge = TransfersBadge()
 

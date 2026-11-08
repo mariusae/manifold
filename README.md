@@ -77,12 +77,13 @@ parts from the Mac's conventions on purpose.
   every tile, a terminal's too, so tmux and Emacs don't get it. Docking
   isn't pinning: a pin keeps a block in the space for good; a docked
   tile is only out of the grid for now. **View ▸ Show Dock Shelf** shows
-  the docked tiles along the grid's foot too, in one short row: first
-  any whose status wants you (needs you, failed, done and not read) —
-  always a full card, edged in its colour — then the latest used. The
-  rest shrink to the room there is, from cards to titles to just their
-  symbols; the pointer on one peeks at the tile itself, live, above the
-  shelf, and a click puts it back.
+  the docked tiles along the grid's foot too, in one short row of chips
+  floating on the window's ground: first any whose status wants you
+  (needs you, failed, done and not read) — always a chip with its
+  status's pill, tinted — then the latest used. The rest cut their
+  titles short to fit, then show just their symbols; the pointer on one
+  peeks at the tile itself, live, above the shelf, and a click puts it
+  back. A tile docked flies down into its chip, and back out of it.
   The same summary is everywhere a block is shown small. **A tile shrinks
   in steps**, one ladder — its content, its summary card, its bar alone
   — as a presentation of the room it has, not a
