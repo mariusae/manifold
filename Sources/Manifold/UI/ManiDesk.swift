@@ -1262,7 +1262,7 @@ final class ManiDesk {
                 // $EDITOR: over the terminal that ran it, which comes back
                 // when the editing is done.
                 if let ws = scope.workspace, ws != wc.selected { hosts.select(ws) }
-                wc.showOver(block, lens: lens, over: opener, again: true, context: arg.lastPathComponent)
+                wc.showOver(block, lens: lens, over: opener, again: true, stack: true, context: arg.lastPathComponent)
             } else {
                 try place(block, lens: lens, r, scope, context: "mani open")
             }

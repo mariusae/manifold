@@ -161,6 +161,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         root.addSubview(toast.window)
         toast.stack = sidebar.toasts
         toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
+        toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
         root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
@@ -574,6 +575,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private func shown(_ p: Placement) -> Shown {
         var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
         if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
+        s.stacked = stackTops[p.id] != nil
         s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
         // A space's timeline (§3.12): said so, not the space's name.
         if p.lens == .threads {
@@ -937,6 +939,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A docked tile's picture as it went (its body's): what it pours back
     /// out as, a view just shown again having nothing drawn yet (a PDF's).
     var dockedPictures: [PlacementID: Any] = [:]
+    /// Tiles under an $EDITOR's (§3.1): a pure stack — the one under is
+    /// seen nowhere (not docked in the sidebar, not in ⌃⇥ or ⇧⌘A) and
+    /// comes back only when the one over it goes; neither flies.
+    var stacked: Set<PlacementID> = []
+    /// The tile over each (the $EDITOR's, by its placement), and the one under it.
+    var stackTops: [PlacementID: PlacementID] = [:]
 
     private let transfersBadge = TransfersBadge()
 
@@ -1085,6 +1093,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Put away once it's back: a deletion waiting on the toast then
         // finds the block placed again, and isn't done.
         defer { toast.hide() }
+        reopenLast()
+    }
+
+    /// A deletion undone: its block's tiles back, the latest closed first,
+    /// as many as it had — not whatever was closed last (another
+    /// deletion's, under way at the same time), and no other toast touched.
+    func reopenClosed(block: BlockID, tiles n: Int) {
+        for _ in 0..<n {
+            guard let k = closedStack.lastIndex(where: { if case let .tile(_, _, _, p, _) = $0 { return p.block == block } else { return false } }) else { return }
+            closedStack.append(closedStack.remove(at: k))
+            reopenLast()
+        }
+    }
+
+    private func reopenLast() {
         while let last = closedStack.popLast() {
             switch last {
             case let .workspace(id, index):
@@ -2658,8 +2681,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.show(text, action: "Undo", for: loses.isEmpty ? 4 : 6, countdown: true, then: { [weak self] in
             self?.deleteNow(block)
         }) { [weak self] in
-            guard let self else { return }
-            for _ in 0..<tiles { self.reopenClosed(nil) }
+            self?.reopenClosed(block: block, tiles: tiles)
         }
         layoutViews()
     }
@@ -3302,7 +3324,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func tileTrail(space: BlockID? = nil) -> [Settled] {
         var home: [PlacementID: BlockID] = [:]
         for w in allWorkspaces where space == nil || space == w {
-            for p in hosts.arrangement(w)?.placements ?? [] where !recentlyClosed.contains(p.block) { home[p.id] = w }
+            for p in hosts.arrangement(w)?.placements ?? [] where !recentlyClosed.contains(p.block) && !stacked.contains(p.id) { home[p.id] = w }
         }
         var out: [Settled] = []
         var seen: Set<PlacementID> = []
@@ -5387,7 +5409,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // the first time, and from its button for another kind).
         out.append(newTileRow(in: id))
         // Docked, the latest first.
-        let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) }.compactMap { tile($0.placement, docked: true, column: nil) }
+        let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) && !stacked.contains($0.placement.id) }.compactMap { tile($0.placement, docked: true, column: nil) }
         if !docked.isEmpty {
             // Its label stands for the space, for a tile flown to it before its row is made.
             let l = label("Docked", "docked", count: docked.count)
@@ -6837,7 +6859,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// block gets a second tile, over the opener (an `$EDITOR` that must
     /// end when its own tile is taken off).
     @discardableResult
-    func showOver(_ block: BlockID, lens: Lens, over opener: PlacementID, again: Bool = false, kind: LinkKind = .opened, context: String? = nil) -> PlacementID? {
+    func showOver(_ block: BlockID, lens: Lens, over opener: PlacementID, again: Bool = false, stack: Bool = false, kind: LinkKind = .opened, context: String? = nil) -> PlacementID? {
         hideStateView()
         guard let a = arrangement, let (c, i) = a.locate(opener), let from = a.placement(opener)?.block else {
             show(block, lens: lens, .here, kind: kind, context: context)
@@ -6849,6 +6871,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return t.id
         }
         let p = Placement(block: block, lens: lens)
+        if stack {
+            stacked.insert(opener)
+            stackTops[p.id] = opener
+        }
         var events: [Event] = [.place(p, column: c, at: i + 1), .dock(opener, heir: p.id), .focus(p.id)]
         // Over a maximized tile, it's the maximized one now.
         if a.full == opener { events.append(.full(p.id)) }

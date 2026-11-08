@@ -39,13 +39,13 @@ extension MainWindowController {
             func here(_ p: GridView.Pictured) -> GridView.Pictured {
                 GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
             }
-            for id in down {
+            for id in down where !stacked.contains(id) {
                 if let p = parts[id] { f.down[id] = here(p) } else if let b = bars[id] { f.bars[id] = here(b) }
                 if let body = f.down[id]?.parts.first?.1 { dockedPictures[id] = body }
             }
         }
         dockedPictures = dockedPictures.filter { now.contains($0.key) || seen.docked.contains($0.key) }
-        for id in seen.docked.subtracting(now) where a.locate(id) != nil {
+        for id in seen.docked.subtracting(now) where a.locate(id) != nil && !stacked.contains(id) {
             f.up[id] = sidebar.organizationView.row(of: id, in: space, in: root) ?? .zero
         }
         return f.down.isEmpty && f.bars.isEmpty && f.up.isEmpty ? nil : f
@@ -55,6 +55,29 @@ extension MainWindowController {
     static func slotEnd(_ row: NSRect) -> NSRect {
         let w = min(row.width, row.height * 1.4)
         return NSRect(x: row.maxX - w - 6, y: row.minY, width: w, height: row.height)
+    }
+
+    /// A tile's picture where it was, held over what comes in its place
+    /// till that has drawn, then faded.
+    private func holdPicture(of v: PaneContent) {
+        guard let view = v as? NSView, let host = root.layer, view.window != nil, let picture = GridView.ghostPicture(of: view) else { return }
+        let l = CALayer()
+        l.contents = picture
+        l.contentsGravity = .resize
+        l.frame = root.convert(view.bounds, from: view)
+        l.zPosition = 44
+        host.addSublayer(l)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.beginTime = CACurrentMediaTime() + 0.15
+        fade.duration = Motion.fast
+        fade.fillMode = .backwards
+        l.opacity = 0
+        l.add(fade, forKey: "held")
+        CATransaction.commit()
     }
 
     /// Where a tile docks to with the sidebar put away: a sliver at the
@@ -88,6 +111,15 @@ extension MainWindowController {
     }
 
     func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
+        // Going under an $EDITOR: gone as it takes its place, nothing seen.
+        if stacked.contains(v.placement) { return .flown }
+        // An $EDITOR done: off the stack at once, its picture held a moment
+        // over what's under it while that draws.
+        if let under = stackTops.removeValue(forKey: v.placement) {
+            stacked.remove(under)
+            holdPicture(of: v)
+            return .flown
+        }
         if f?.down[v.placement] != nil || f?.bars[v.placement] != nil || flownAway.remove(v.placement) != nil { return .flown }
         if recentlyClosed.contains(v.block) { return .closed }
         // Still on the desk — this tile, or its block in another space's

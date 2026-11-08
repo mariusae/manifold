@@ -2287,6 +2287,19 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private lazy var shimmer = Shimmer(name)
     /// The block's host, when it isn't the workspace's (§8).
     private let hostPill = HostPill()
+    /// On the icon, when it's over another in a pure stack ($EDITOR's):
+    /// the only sign the other's there.
+    private let stackBadge: NSImageView = {
+        let v = NSImageView()
+        v.image = Theme.symbol("square.stack.fill", size: 7, weight: .bold)
+        v.contentTintColor = Theme.secondaryText
+        v.wantsLayer = true
+        v.layer?.cornerRadius = 5.5
+        v.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
+        v.isHidden = true
+        v.toolTip = "Over the tile it was opened from: closing it brings that back"
+        return v
+    }()
     private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
@@ -2471,7 +2484,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.delegate = self
         editor.isHidden = true
         handle.onIn = { [weak self] in self?.icon.isHidden = false }
-        for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill] { addSubview(v) }
+        for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -2712,6 +2725,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// only what differs is touched, or the images and labels would be
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
+        stackBadge.isHidden = !shown.stacked
         // Shown again as it was — every render, a keystroke's in another
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
@@ -2844,6 +2858,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var x: CGFloat = 10
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
+        stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in

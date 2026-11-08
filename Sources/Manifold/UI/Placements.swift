@@ -17,6 +17,8 @@ struct Shown: Equatable {
     /// Its block's shard's sequence number, which moves with every change
     /// to it: what's shown of it needn't be made again while it's the same.
     var version = 0
+    /// Over another tile in a pure stack ($EDITOR's): a badge on its icon.
+    var stacked = false
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

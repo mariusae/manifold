@@ -17,6 +17,8 @@ final class ToastView: NSView {
     private var action: (() -> Void)?
     /// Done once its time is up and its action wasn't taken.
     private var then: (() -> Void)?
+    /// Waiting to do something when its time's up.
+    var isPending: Bool { then != nil }
     /// The time left: a shading behind its words, as wide as what's left
     /// (in `track`, its shape, which clips it to the rounded corners).
     private let track = CALayer()
@@ -306,13 +308,22 @@ final class Toasts {
     /// The newest up.
     private var latest: ToastView? { sidebarToasts.last ?? (window.isHidden ? nil : window) }
 
+    /// The sidebar brought out, for toasts that must each be seen (deletions).
+    var reveal: () -> Void = {}
+
     func show(_ text: String, action name: String = "Restore", for seconds: Double = 8, countdown: Bool = false,
               then: (() -> Void)? = nil, _ action: @escaping () -> Void) {
-        guard inSidebar(), let stack else {
+        // One that waits to do something (a deletion's Undo, counting
+        // down) is never put in another's place: each its own, stacked in
+        // the sidebar — brought out for it if it's away.
+        let pending = then != nil
+        if pending, !inSidebar(), stack != nil { reveal() }
+        guard inSidebar() || pending, let stack else {
             return window.show(text, action: name, for: seconds, countdown: countdown, then: then, action)
         }
-        // The same words again, up already: that one's, not another.
-        if let same = sidebarToasts.first(where: { $0.text == text }) { same.hide() }
+        // The same words again, up already: that one's, not another (unless
+        // either waits to do something: "Deleted “Untitled”" twice is two).
+        if !pending, let same = sidebarToasts.first(where: { $0.text == text && !$0.isPending }) { same.hide() }
         let t = ToastView()
         t.compact = true
         stack.add(t)
