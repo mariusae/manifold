@@ -54,6 +54,15 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate let zoomLabel = NSTextField(labelWithString: "")
     fileprivate let layoutButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
     fileprivate var sidebar: TileSidebar?
+    fileprivate var stripHovered = false {
+        didSet {
+            guard stripHovered != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                for v in stripControls { v.animator().alphaValue = stripHovered ? 1 : 0 }
+            }
+        }
+    }
     /// The sidebar's pages, once it's made.
     fileprivate var pages: PDFPagesView?
     fileprivate var sidebarRestored = false
@@ -189,6 +198,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
     override func layout() {
         super.layout()
+        updateTrackingAreas()
         var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.barHeight)
         if pdfView != nil {
             layoutControls()
@@ -203,9 +213,11 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
                 content.size.width -= w
             }
         } else {
-            header.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width * 0.6, height: 16)
-            note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
+            // Its path is the bar's: here only what it is (its size), at the right.
+            header.frame = .zero
+            note.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width - 24, height: 16)
         }
+        header.isHidden = true
         pdfView?.frame = content
         scroll.frame = content
         let size = coming.fittingSize
@@ -396,8 +408,11 @@ extension MediaView: Searchable {
             place(previousButton, width: 22)
             right -= 8
         }
-        header.frame = NSRect(x: 12, y: bounds.height - 24, width: max(0, right - 12), height: 16)
+        header.frame = .zero
         note.frame = .zero
+        // At rest only where it's at ("3 of 40"); the pointer on the strip,
+        // the arrows, zoom and layout too.
+        for v in stripControls { v.alphaValue = stripHovered ? 1 : 0 }
     }
 
     /// The document in: its pages counted, its contents read, the
@@ -496,6 +511,26 @@ extension MediaView: Searchable {
         for i in 0..<doc.pageCount { doc.page(at: i)?.rotation += degrees }
         p.layoutDocumentView()
         if let at { p.go(to: at) }
+    }
+
+    /// The strip's controls that come only under the pointer.
+    fileprivate var stripControls: [NSView] { [previousButton, nextButton, zoomOutButton, zoomInButton, zoomLabel, layoutButton] }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.userInfo?["strip"] != nil }.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: NSRect(x: 0, y: bounds.height - Self.barHeight, width: bounds.width, height: Self.barHeight),
+                                       options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["strip": true]))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["strip"] != nil else { return super.mouseEntered(with: event) }
+        stripHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["strip"] != nil else { return super.mouseExited(with: event) }
+        stripHovered = false
     }
 
     // MARK: The sidebar

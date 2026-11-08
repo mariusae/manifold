@@ -2919,6 +2919,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 right -= 22
             }
         }
+        if !pointerIn { showButtons(animated: false) }
         // The links' pill sits before the buttons (the grid puts it there,
         // by `rightTaken`); the status before it, by the name, whatever
         // else shows.
@@ -2990,16 +2991,40 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var iconSpot: NSRect { icon.frame.insetBy(dx: -8, dy: -6) }
     private var trackedSpot: NSRect?
 
-    // The pointer on the icon: its handle folds out, to be taken.
+    // The pointer on the icon: its handle folds out, to be taken. On the
+    // bar: its buttons come (§3.1, as Dia's tabs' ×), gone again after.
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
         trackedSpot = iconSpot
-        addTrackingArea(NSTrackingArea(rect: iconSpot, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self))
+        addTrackingArea(NSTrackingArea(rect: iconSpot, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["icon": true]))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: ["bar": true]))
     }
 
-    override func mouseEntered(with event: NSEvent) { setHandle(NSEvent.pressedMouseButtons == 0) }
-    override func mouseExited(with event: NSEvent) { setHandle(false) }
+    override func mouseEntered(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["bar"] != nil { return pointerIn = true }
+        setHandle(NSEvent.pressedMouseButtons == 0)
+    }
+    override func mouseExited(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["bar"] != nil { return pointerIn = false }
+        setHandle(false)
+    }
+
+    /// The pointer on the bar: its buttons shown; else only its icon,
+    /// name and status. Their room is kept, so nothing moves as they come.
+    var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true) } } }
+    /// Buttons always shown (a fan's card, debugging).
+    static var buttonsAlways = false
+
+    private func showButtons(animated: Bool) {
+        let a: CGFloat = pointerIn || Self.buttonsAlways ? 1 : 0
+        let all = [close, corner, sidebarButton] + ownButtons
+        guard animated, !Motion.reduced else { for b in all { b.alphaValue = a }; return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.fast
+            for b in all { b.animator().alphaValue = a }
+        }
+    }
 
     private func setHandle(_ out: Bool) {
         guard handle.out != out else { return }

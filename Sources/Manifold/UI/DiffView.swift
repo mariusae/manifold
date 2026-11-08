@@ -169,14 +169,15 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     override func layout() {
         super.layout()
-        header.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width * 0.6, height: 16)
-        note.frame = NSRect(x: bounds.width * 0.6 + 12, y: bounds.height - 24, width: bounds.width * 0.4 - 24, height: 16)
+        // What's compared is the bar's; here only how much changed, at the right.
+        header.isHidden = true
+        note.frame = NSRect(x: 12, y: bounds.height - Self.strip + 4, width: bounds.width - 24, height: 16)
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
             left = TileSidebar.width(in: bounds.width)
-            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - 32)
+            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - Self.strip)
         }
-        var top = bounds.height - 32
+        var top = bounds.height - Self.strip
         if let commitHeader {
             let h = commitHeader.height(width: bounds.width - left, limit: (top * 0.45).rounded())
             commitHeader.frame = NSRect(x: left, y: top - h, width: bounds.width - left, height: h)
@@ -460,7 +461,9 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }()
     var outline: Outline? { changesOutline }
     /// Under the header (what's compared, and how much changed).
-    var outlineInset: CGFloat { 32 }
+    var outlineInset: CGFloat { Self.strip }
+    /// The line over the changes: how much changed.
+    static let strip: CGFloat = 22
     private var sidebar: TileSidebar?
     private var marks: [Int] = []
     var hasSidebar: Bool { true }

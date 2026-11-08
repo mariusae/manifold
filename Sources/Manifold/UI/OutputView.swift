@@ -50,6 +50,31 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     /// Narrower than this, the buttons are their symbols alone.
     static let titledWidth: CGFloat = 380
     private var copied = false
+    private var headerHovered = false {
+        didSet {
+            guard headerHovered != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                for b in [back, copy] { b.animator().alphaValue = headerHovered ? 1 : 0 }
+            }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.userInfo?["header"] != nil }.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: header.frame, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["header": true]))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseEntered(with: event) }
+        headerHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseExited(with: event) }
+        headerHovered = false
+    }
     /// Where Copy puts it (another, in debugging).
     var pasteboard = NSPasteboard.general
 
@@ -60,7 +85,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = TerminalPalette.current(for: $0).background.cgColor }
         header.wantsLayer = true
-        header.themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.04).cgColor }
+
         prompt.lineBreakMode = .byTruncatingTail
         prompt.textColor = Theme.text
         outcome.lineBreakMode = .byTruncatingTail
@@ -168,7 +193,10 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         finder.layout(in: findArea)
         // The command over how it went, at the left; the buttons at the
         // right, their titles dropped when the tile is narrow.
-        let titled = w >= Self.titledWidth
+        // Glyphs, shown under the pointer (Dia's way); the copy's check says it took.
+        let titled = false
+        for b in [back, copy] { b.alphaValue = headerHovered || copied ? 1 : 0 }
+        updateTrackingAreas()
         back.title = titled ? "Show in Terminal" : ""
         copy.title = titled ? (copied ? "Copied" : "Copy") : ""
         copy.symbolName = copied ? "checkmark" : "doc.on.doc"

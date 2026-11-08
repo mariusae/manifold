@@ -59,10 +59,36 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private var shownHome: String?
     private var focusedCell: String?
     private var ticker: Timer?
+    /// The pointer on the header: its tools (new cell, restart, more) shown.
+    private var headerHovered = false {
+        didSet {
+            guard headerHovered != oldValue else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Motion.fast
+                tools.animator().alphaValue = headerHovered ? 1 : 0
+            }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.userInfo?["header"] != nil }.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: header.frame, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["header": true]))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseEntered(with: event) }
+        headerHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseExited(with: event) }
+        headerHovered = false
+    }
 
     var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
     var isDead: Bool { false }
-    static let headerHeight: CGFloat = 40
+    static let headerHeight: CGFloat = 32
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
@@ -192,13 +218,12 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
             glyph.look = nil
             name = nb?.shell ?? "shell"
         }
-        shellIcon.isHidden = glyph.look != nil
-        let s = NSMutableAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: Theme.text])
-        s.append(NSAttributedString(string: "  " + place, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.secondaryText]))
-        if let doing {
-            s.append(NSAttributedString(string: "  ·  " + doing, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.secondaryText]))
-        }
-        status.attributedStringValue = s
+        // Its shell and place, and its state's glyph, are the bar's: here
+        // only what it's doing.
+        _ = (name, place)
+        glyph.isHidden = true
+        shellIcon.isHidden = true
+        status.attributedStringValue = NSAttributedString(string: doing ?? "", attributes: [.font: UIType.detail, .foregroundColor: Theme.secondaryText])
         let stoppable = nb?.running != nil || !(nb?.queued.isEmpty ?? true)
         runs.set(2, enabled: stoppable, tint: stoppable ? Theme.statusError : nil)
     }
@@ -215,7 +240,9 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         let t = tools.intrinsicContentSize, rn = runs.intrinsicContentSize
         tools.frame = NSRect(x: w - 10 - t.width, y: mid - t.height / 2, width: t.width, height: t.height)
         runs.frame = NSRect(x: tools.frame.minX - 8 - rn.width, y: mid - rn.height / 2, width: rn.width, height: rn.height)
-        status.frame = NSRect(x: 36, y: mid - 8, width: max(0, runs.frame.minX - 46), height: 17)
+        status.frame = NSRect(x: 12, y: mid - 8, width: max(0, runs.frame.minX - 22), height: 17)
+        tools.alphaValue = headerHovered ? 1 : 0
+        updateTrackingAreas()
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, h - Self.headerHeight))
         layoutCells()
     }

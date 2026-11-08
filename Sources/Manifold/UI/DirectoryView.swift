@@ -430,10 +430,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         homeChanged()
     }
 
+    /// Make Project is the tile menu's (Dia's way: no button for what's
+    /// done once); the header's stays hidden.
     private func updateMakeProject() {
-        let hide = project != nil || !looksLikeProject
-        guard makeProject.isHidden != hide else { return }
-        makeProject.isHidden = hide
+        makeProject.isHidden = true
         needsLayout = true
     }
 
@@ -997,16 +997,19 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             homeButton.frame = NSRect(x: fieldEnd - 28, y: (midY - Flat.buttonHeight / 2).rounded(), width: 28, height: Flat.buttonHeight)
             fieldEnd = homeButton.frame.minX - 6
         }
+        // Make Project is the tile menu's alone; the project's button gives
+        // way before the field gets too narrow to type in.
+        makeProject.frame = .zero
+        let fieldLeast: CGFloat = 140
         if !toProject.isHidden {
             toProject.sizeToFit()
             toProject.frame.size.width = min(toProject.frame.width, 180)
-            toProject.frame.origin = NSPoint(x: fieldEnd - toProject.frame.width, y: (midY - toProject.frame.height / 2).rounded())
-            fieldEnd = toProject.frame.minX - 6
-        }
-        if !makeProject.isHidden {
-            makeProject.sizeToFit()
-            makeProject.frame.origin = NSPoint(x: fieldEnd - makeProject.frame.width, y: (midY - makeProject.frame.height / 2).rounded())
-            fieldEnd = makeProject.frame.minX - 6
+            if fieldEnd - toProject.frame.width - 6 - up.frame.maxX - 6 >= fieldLeast {
+                toProject.frame.origin = NSPoint(x: fieldEnd - toProject.frame.width, y: (midY - toProject.frame.height / 2).rounded())
+                fieldEnd = toProject.frame.minX - 6
+            } else {
+                toProject.frame = .zero
+            }
         }
         searchBox.frame = NSRect(x: up.frame.maxX + 6, y: midY - Flat.fieldHeight / 2, width: max(60, fieldEnd - up.frame.maxX - 6), height: Flat.fieldHeight)
         // A project's homepage: its strip under the header, its sidebar at

@@ -82,7 +82,8 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         branchLabel.lineBreakMode = .byTruncatingTail
         refresh.target = self
         refresh.action = #selector(refreshClicked)
-        refresh.toolTip = "Look again"
+        refresh.toolTip = "Refresh"
+        refresh.alphaValue = 0
         for v in [header, branchLabel, refresh] { addSubview(v) }
 
         let column = NSTableColumn(identifier: .init("row"))
@@ -193,13 +194,31 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.userInfo?["strip"] != nil }.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: NSRect(x: 0, y: bounds.height - 26, width: bounds.width, height: 26),
+                                       options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["strip": true]))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["strip"] != nil { refresh.animator().alphaValue = 1 } else { super.mouseEntered(with: event) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["strip"] != nil { refresh.animator().alphaValue = 0 } else { super.mouseExited(with: event) }
+    }
+
     override func layout() {
         super.layout()
         let w = bounds.width
-        header.frame = NSRect(x: 12, y: bounds.height - 24, width: w * 0.55, height: 16)
-        refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 26, width: 20, height: 20)
-        branchLabel.frame = NSRect(x: w * 0.55 + 16, y: bounds.height - 24, width: w * 0.45 - 16 - 36, height: 16)
-        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 32)
+        updateTrackingAreas()
+        // Where it is is the bar's; here the branch, and refresh under the pointer.
+        header.isHidden = true
+        branchLabel.alignment = .left
+        branchLabel.frame = NSRect(x: 12, y: bounds.height - 20, width: max(0, w - 12 - 36), height: 16)
+        refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 22, width: 20, height: 20)
+        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 26)
         let tall = split.frame.height >= Self.paneFrom
         if paneBox.isHidden == tall {
             paneBox.isHidden = !tall
