@@ -62,7 +62,8 @@ final class SidebarView: NSView {
     private let threadsMode = IconButton(symbol: "list.bullet", size: 12, weight: .medium, target: nil, action: nil)
     private let threadsFilter = IconButton(symbol: "line.3.horizontal.decrease.circle", size: 13, weight: .medium, target: nil, action: nil)
     private let threadsRead = IconButton(symbol: "checkmark.circle", size: 13, weight: .medium, target: nil, action: nil)
-    private var threadsControls: [NSView] { [threadsMode, threadsFilter, threadsRead] }
+    /// The timeline's buttons in the header (the mode's gone: the list is the footer's menu).
+    private var threadsControls: [NSView] { [threadsFilter, threadsRead] }
     /// Threads shown as the timeline, not the list.
     var threadsTimeline = false {
         didSet {
@@ -162,6 +163,7 @@ final class SidebarView: NSView {
         setThreadsFilter(narrowed: false, unseen: 0)
         timeline.compact = true
         timeline.isHidden = true
+        threadsMode.isHidden = true
         for v in threadsControls + [timeline] { v.isHidden = true; card.addSubview(v) }
         card.addSubview(organizationView)
 
@@ -373,10 +375,11 @@ final class SidebarView: NSView {
 
     /// How many are closed awaiting collection: the foot row, hidden at zero.
     func setFoot(closed n: Int) {
+        // No row of its own at the foot: ⇧⌘A's menu (the footer's chevron) has it.
         closedRow.count = n
-        closedRow.isHidden = n == 0 && organization != .closed
+        closedRow.isHidden = true
         guard organization == .closed else { return needsLayout = true }
-        pushedSubtitle.stringValue = n == 1 ? "1 closed, awaiting collection" : "\(n) closed, awaiting collection"
+        pushedSubtitle.stringValue = n == 1 ? "1 closed" : "\(n) closed"
         needsLayout = true
     }
 

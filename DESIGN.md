@@ -1305,7 +1305,8 @@ projection, §2.5):
   space's or its project's — filled while it narrows them), Mark All
   Read. A row clicked is read in the overlay; ⌘, a tile of its own; ⌥,
   its place.
-- *The timeline*, in the sidebar or a tile of its own. A run's heading
+- *The timeline*, in the sidebar (its Threads are the timeline alone:
+  the list by title is the footer's menu) or a tile of its own. A run's heading
   clicked goes to its place and reads the thread in the overlay (a
   space's thread, the overlay alone); its ↖↘ pops it out, a tile of its
   own. A thread popped out, an agent asked, a walk's step — anything

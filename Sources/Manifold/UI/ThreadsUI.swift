@@ -267,6 +267,9 @@ extension MainWindowController: ThreadChatDelegate {
         // Closed by a click in the window or ⎋, not by Manifold going to the back.
         pop.behavior = .semitransient
         pop.animates = false
+        // Frosted and without its arrow, as the other menus and cards are
+        // (the system's own switch; skipped where it hasn't one).
+        if pop.responds(to: Selector(("setShouldHideAnchor:"))) { pop.setValue(true, forKey: "shouldHideAnchor") }
         pop.contentViewController = vc
         threadUI.popover = pop
         threadUI.card = card

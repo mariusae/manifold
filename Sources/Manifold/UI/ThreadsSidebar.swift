@@ -9,14 +9,13 @@ import ManifoldCore
 extension MainWindowController {
     private static let threadsTimelineKey = "ThreadsSidebarTimeline"
 
-    /// Threads shown in the sidebar as the timeline rather than the list.
-    var threadsTimelineMode: Bool {
-        UserDefaults.standard.bool(forKey: Self.threadsTimelineKey)
-    }
+    /// The sidebar's Threads are the timeline: the list by title is the
+    /// footer's menu (one way to each thing, as Dia's).
+    var threadsTimelineMode: Bool { true }
 
     func setThreadsMode(timeline: Bool) {
-        UserDefaults.standard.set(timeline, forKey: Self.threadsTimelineKey)
-        sidebar.threadsTimeline = timeline
+        _ = timeline
+        sidebar.threadsTimeline = true
         sidebar.timeline.marksWhenOpened = nil
         refreshOrganization(now: true)
     }

@@ -125,7 +125,7 @@ private final class MentionList: NSView {
         for (i, c) in choices.enumerated() {
             let r = rowRect(i)
             if i == selected {
-                Theme.accent.withAlphaComponent(0.16).setFill()
+                Theme.text.withAlphaComponent(0.09).setFill()
                 NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
             }
             let iconRect = NSRect(x: r.minX + 7, y: r.midY - 7, width: 14, height: 14)

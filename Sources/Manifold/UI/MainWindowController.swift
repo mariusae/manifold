@@ -2591,7 +2591,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             return items
         }
         finder.showOutline(Finder.OutlineScope(provider: provider, start: nil,
-                                               placeholder: "New block or space: its letter or name, then what it takes — w example.com; @host for another",
+                                               placeholder: "New…  (t, n, w example.com, @host)",
                                                hint: "Make a block", keys: "↩ Here    ⇧↩ New Column    ⌘↩ Beside    ⌥↩ Over    ⎋ Close"),
                            over: window)
     }
@@ -6213,7 +6213,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             known.formUnion(client.node.blocks.compactMap { $0.kind == .text || $0.kind == .image || $0.kind == .pdf ? $0.path : nil })
         }
         finder.show(corpus: corpus, actions: actions, files: files, knownPaths: known, scope: .names,
-                    reach: selected == nil ? .all : .space, placeholder: "Open quickly…", over: window)
+                    reach: selected == nil ? .all : .space, placeholder: "Open…", over: window)
     }
 
     /// The projects (§2.6) the desk's tiles are in, each once: whether it's
@@ -7160,14 +7160,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f].map { (f, $0) } }.flatMap { f, view in
             guard let outline = view.outline, !outline.items.isEmpty else { return nil }
             return Finder.OutlineScope(provider: { query in self.tileOutlineItems(f, view, outline, query) }, start: outline.current,
-                                       placeholder: "Go to a place in this tile…", hint: "This tile's outline", reach: .tile)
+                                       placeholder: "Go to in this tile…", hint: "This tile", reach: .tile)
         }
         // Each query looked up in the space's index (kept as outlines
         // change), not the outlines gone through again.
         let space = Finder.OutlineScope(provider: { [weak self] query in
             guard let self, let a = self.arrangement else { return [] }
             return self.spaceOutlineRows(a, query: query)
-        }, start: spaceOutlineStart(a), placeholder: "Go to a tile, or a place in its outline…", hint: "The space, by column and tile, headings within", reach: .space)
+        }, start: spaceOutlineStart(a), placeholder: "Go to…", hint: "The space", reach: .space)
         if let tile { finder.showOutline(tile, wider: space, over: window) } else { finder.showOutline(space, over: window) }
     }
 

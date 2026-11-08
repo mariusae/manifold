@@ -380,9 +380,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private var shown: [FinderItem] = []
     private var listing = 0
 
-    private static let width: CGFloat = 640
-    private static let fieldHeight: CGFloat = 56
-    private static let rowHeight: CGFloat = 46
+    private static let width: CGFloat = 580
+    private static let fieldHeight: CGFloat = 48
+    private static let rowHeight: CGFloat = 34
     private static let excerptHeight: CGFloat = 88
     private static let cardHeight: CGFloat = SummaryCard.height
     private static let visibleRows = 9
@@ -409,20 +409,23 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         panel.onResign = { [weak self] in self?.close() }
         panel.onCommandReturn = { [weak self] in self?.openSelected() }
 
-        // Flat, as the other panels are: their background, not the glass.
-        let background = FlatBackground()
+        // Frosted, as the sidebar's menus are (Dia's).
+        let background = NSVisualEffectView()
+        background.material = .popover
+        background.blendingMode = .behindWindow
+        background.state = .active
         panel.contentView = background
 
         let glass = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!
-            .withSymbolConfiguration(.init(pointSize: 20, weight: .regular))!)
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))!)
         glass.contentTintColor = Theme.secondaryText
-        glass.frame = NSRect(x: 18, y: 0, width: 24, height: Self.fieldHeight)
+        glass.frame = NSRect(x: 16, y: 0, width: 22, height: Self.fieldHeight)
         background.addSubview(glass)
 
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = UIType.display
+        field.font = .systemFont(ofSize: 17)
         field.placeholderString = "Open quickly…"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
@@ -433,7 +436,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         table.backgroundColor = .clear
         table.rowHeight = Self.rowHeight
         table.intercellSpacing = NSSize(width: 0, height: 2)
-        table.style = .inset
+        table.style = .plain
         table.selectionHighlightStyle = .regular
         table.addTableColumn(NSTableColumn(identifier: .init("item")))
         table.dataSource = self
@@ -849,17 +852,17 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func updateHint() {
         if outline != nil {
             let what = outlineScope?.hint ?? "The space, by column and tile, headings within"
-            hint.stringValue = what + (otherOutline != nil ? "    ⌘P \(otherOutline!.reach == .tile ? "This tile" : "The space")" : "") + "    " + (outlineScope?.keys ?? "↩ Go    ⎋ Close")
+            _ = what
+            hint.stringValue = otherOutline != nil ? "⌘P \(otherOutline!.reach == .tile ? "This tile" : "The space")" : ""
             return
         }
-        // With the counts at the foot, the keys alone.
-        let keys = Self.keys
+        // Where else it can look, quietly; the keys are the menus' and ↩'s (no legend, as Dia's).
         let wider = reach == .all ? "⌘O This space" : "⌘O All spaces"
         let what = switch scope {
-        case .names: "\(wider)    ⇧⌘O In them    "
-        case .blocks: "⇧⌘O \(reach == .all ? "This space" : "All spaces")    ⌘O By name    "
+        case .names: "\(wider)   ⇧⌘O In them"
+        case .blocks: "⇧⌘O \(reach == .all ? "This space" : "All spaces")   ⌘O By name"
         }
-        hint.stringValue = (countRow.frame.width > 0 ? "" : what) + keys
+        hint.stringValue = countRow.frame.width > 0 ? "" : what
     }
 
     /// Sizes the panel to its results, keeping its top where it is.
@@ -882,17 +885,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         }
         // The chips before the query, its first letter after them.
         let chipsWidth = chipRow.frame.width
-        chipRow.frame.origin = NSPoint(x: 52, y: height - Self.fieldHeight + (Self.fieldHeight - KindToken.chipHeight) / 2)
+        chipRow.frame.origin = NSPoint(x: 46, y: height - Self.fieldHeight + (Self.fieldHeight - KindToken.chipHeight) / 2)
         // Where it looks, at the field's end, always.
         let marker = reachMarker.wanted
         reachMarker.frame = NSRect(x: Self.width - 16 - marker.width, y: height - Self.fieldHeight + (Self.fieldHeight - marker.height) / 2,
                                    width: marker.width, height: marker.height)
         let markerRoom = marker.width > 0 ? marker.width + 12 : 0
-        field.frame = NSRect(x: 52 + chipsWidth, y: height - Self.fieldHeight + 13, width: Self.width - 70 - chipsWidth - markerRoom, height: 30)
+        field.frame = NSRect(x: 46 + chipsWidth, y: height - Self.fieldHeight + 12, width: Self.width - 64 - chipsWidth - markerRoom, height: 24)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
         // The counts in what the keys leave them.
-        let keysWidth = ceil((Self.keys as NSString).size(withAttributes: [.font: UIType.footnote]).width)
-        layoutCounts(width: Self.width - keysWidth - 40)
+        layoutCounts(width: Self.width - 40)
         countRow.frame.origin = NSPoint(x: 10, y: (hintHeight - KindToken.countHeight) / 2)
         updateHint()
         let hintX = countRow.frame.width > 0 ? countRow.frame.maxX + 12 : 10
@@ -1032,10 +1034,20 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         return true
     }
 
+    /// The chosen row's card moved with it: the two rows made again.
+    private func cardMoved(from was: Int, to now: Int) {
+        let rows = IndexSet([was, now].filter { $0 >= 0 && $0 < shown.count })
+        guard !rows.isEmpty else { return }
+        table.noteHeightOfRows(withIndexesChanged: rows)
+        table.reloadData(forRowIndexes: rows, columnIndexes: [0])
+    }
+
     private func move(_ by: Int) {
         guard !shown.isEmpty else { return }
         let row = min(max(table.selectedRow + by, 0), shown.count - 1)
+        let was = table.selectedRow
         table.selectRowIndexes([row], byExtendingSelection: false)
+        cardMoved(from: was, to: row)
         table.scrollRowToVisible(row)
     }
 
@@ -1074,7 +1086,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         guard shown.indices.contains(row) else { return Self.rowHeight }
         let item = shown[row]
         if item.excerpt != nil { return Self.excerptHeight }
-        if item.block != nil, let s = summary(for: item) { return SummaryCard.height(for: s) }
+        // A block's card only for the row chosen; the rest a line each.
+        if row == table.selectedRow, item.block != nil, let s = summary(for: item) { return SummaryCard.height(for: s) }
         return Self.rowHeight
     }
 
@@ -1085,7 +1098,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             cell.show(item, excerpt: excerpt)
             return cell
         }
-        if var content = summary(for: item) {
+        if row == table.selectedRow, var content = summary(for: item) {
             // A block: its card, where the finder's own word (here, linked,
             // recent) stands, after any state of its own; its age in a pill.
             let state = content.summary.note.flatMap { $0.range(of: #"^(now|\d+[mhd])$"#, options: .regularExpression) == nil ? $0 : nil }
@@ -1137,7 +1150,7 @@ final class FileCell: NSTableCellView {
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
     // As a summary card sets them, a file's row and a block's alike.
-    private static let titleFont = UIType.title
+    private static let titleFont = NSFont.systemFont(ofSize: 13)
     private static let detailFont = UIType.detail
 
     /// A symbol's image, made once.
@@ -1202,12 +1215,11 @@ final class FileCell: NSTableCellView {
         let noteWidth = min(160, ceil(note.attributedStringValue.size().width) + 4)
         note.frame = NSRect(x: right - noteWidth, y: (h - 15) / 2, width: noteWidth, height: 15)
         let textX = x + 32, textWidth = max(0, note.frame.minX - 8 - textX)
-        if detail.isHidden {
-            title.frame = NSRect(x: textX, y: (h - 19) / 2, width: textWidth, height: 19)
-        } else {
-            title.frame = NSRect(x: textX, y: h - 5 - 19, width: textWidth, height: 19)
-            detail.frame = NSRect(x: textX, y: h - 5 - 19 - 1 - 16, width: textWidth, height: 16)
-        }
+        // One line, as Dia's: the name, then where it is in grey after it.
+        let wanted = ceil((title.stringValue as NSString).size(withAttributes: [.font: Self.titleFont]).width) + 4
+        let tw = detail.isHidden ? textWidth : min(wanted, textWidth * 0.7)
+        title.frame = NSRect(x: textX, y: ((h - 19) / 2).rounded(), width: tw, height: 19)
+        detail.frame = NSRect(x: textX + tw + 8, y: ((h - 16) / 2).rounded() - 0.5, width: max(0, textWidth - tw - 8), height: 16)
     }
 }
 
@@ -1292,7 +1304,7 @@ final class ExcerptCell: NSTableCellView {
         symbol.image = FileCell.image(item.symbol)
         title.attributedStringValue = Self.marking(item.title, item.marked, font: UIType.title,
                                                    bold: .systemFont(ofSize: 13, weight: .bold), color: Theme.text)
-        detail.stringValue = item.detail.uppercased()
+        detail.stringValue = item.detail
         excerpt.attributedStringValue = Self.marking(text, item.marked, font: UIType.body,
                                                      bold: .systemFont(ofSize: 12, weight: .semibold), color: Theme.secondaryText)
         note.stringValue = item.note
@@ -1387,12 +1399,13 @@ final class KindToken: NSView {
         let h = bounds.height
         switch style {
         case .chip:
-            (hovered ? Theme.selection.blended(withFraction: 0.25, of: Theme.accent) ?? Theme.selection : Theme.selection).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+            // A chip, as the rest are: a quiet grey capsule.
+            Theme.text.withAlphaComponent(hovered ? 0.15 : 0.1).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: h / 2, yRadius: h / 2).fill()
         case let .count(_, on):
             if on || hovered {
-                (on ? Theme.selection : Theme.hover).setFill()
-                NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+                Theme.text.withAlphaComponent(on ? 0.12 : 0.06).setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: h / 2, yRadius: h / 2).fill()
             }
         }
         let iconX: CGFloat = style == .chip ? 8 : 5, iconWidth: CGFloat = style == .chip ? 16 : 14
@@ -1455,13 +1468,14 @@ final class ReachMarker: NSView {
     override func draw(_ dirtyRect: NSRect) {
         for (r, rect) in rects() {
             let on = r == current
+            // As a chip: on, a grey capsule and the text's colour; else quiet.
             if on {
-                Theme.accent.withAlphaComponent(0.16).setFill()
+                Theme.text.withAlphaComponent(0.12).setFill()
                 NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
             }
             let s = NSAttributedString(string: r.title, attributes: [
-                .font: on ? NSFont.systemFont(ofSize: Self.font.pointSize, weight: .semibold) : Self.font,
-                .foregroundColor: on ? Theme.accent : Theme.tertiaryText,
+                .font: NSFont.systemFont(ofSize: Self.font.pointSize, weight: .medium),
+                .foregroundColor: on ? Theme.text : Theme.tertiaryText,
             ])
             let size = s.size()
             s.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))

@@ -738,7 +738,7 @@ final class HostPickerView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = 12
         layer?.cornerCurve = .continuous
         themed { v in
             v.layer?.backgroundColor = Theme.panel.cgColor
@@ -767,10 +767,11 @@ final class HostPickerView: NSView {
         for (i, row) in rows.enumerated() {
             let r = rowRect(i)
             if hovered == i {
-                Theme.accent.withAlphaComponent(0.85).setFill()
-                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+                Theme.text.withAlphaComponent(0.09).setFill()
+                NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
             }
-            let lit = hovered == i
+            // A grey band under the pointer, as the menus have it.
+            let lit = false
             let dot = NSRect(x: r.minX + 9, y: r.midY - 3.5, width: 7, height: 7)
             (row.connected ? Status.done : Theme.tertiaryText).withAlphaComponent(lit ? 1 : 0.9).setFill()
             NSBezierPath(ovalIn: dot).fill()
