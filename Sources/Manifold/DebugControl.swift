@@ -1066,6 +1066,8 @@ enum DebugControl {
             guard let wc else { return "no window" }
             if a.first == "show", a.count >= 2, let org = Organization(rawValue: a[1]) { wc.setOrganization(org); return "ok" }
             if a.first == "rows" { return wc.debugOrganization.debugRows() }
+            if a.first == "views" { return wc.debugOrganization.debugRowViews() }
+            if a.first == "presented", a.count >= 3, let f = Int(a[1]), let t = Int(a[2]) { return wc.debugOrganization.debugPresented(f, t) }
             // "org sticky [y]": the host's heading kept at the top (scrolled to y first).
             if a.first == "sticky" { return wc.debugOrganization.debugSticky(a.count > 1 ? a[1] : "") }
             if a.first == "click", a.count >= 2, let row = Int(a[1]) {

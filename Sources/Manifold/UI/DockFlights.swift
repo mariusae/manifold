@@ -45,6 +45,12 @@ extension MainWindowController {
         return f.down.isEmpty && f.up.isEmpty ? nil : f
     }
 
+    /// A row's right end, where a tile pours into it.
+    static func slotEnd(_ row: NSRect) -> NSRect {
+        let w = min(row.width, row.height * 1.4)
+        return NSRect(x: row.maxX - w - 6, y: row.minY, width: w, height: row.height)
+    }
+
     /// Where a tile docks to with the sidebar put away: a sliver at the
     /// window's left edge, level with it.
     private func edgeSpot(_ tile: NSRect) -> NSRect {
@@ -95,21 +101,49 @@ extension MainWindowController {
         content.layoutSubtreeIfNeeded()
         var landing: [NSView] = []
         let scale = window?.backingScaleFactor ?? 2
-        if !f.down.isEmpty { refreshOrganization(now: true) }
-        for (id, tile) in f.down {
-            let row = sidebar.organizationView.row(of: id, in: space, in: root) ?? edgeSpot(tile.whole)
-            Genie.run(tile, target: row, restoring: false, in: host, scale: scale)
+        let d = Genie.duration
+        let rows = sidebar.organizationView
+        // Into its row: a gap opening for the row as the tile pours into
+        // its right end, what it says wiped in from there.
+        if !f.down.isEmpty {
+            rows.glide(over: d * 0.75, opening: Set(f.down.keys)) { refreshOrganization(now: true) }
         }
+        for (id, tile) in f.down {
+            if let row = rows.row(of: id, in: space, in: root) {
+                Genie.run(tile, target: Self.slotEnd(row), restoring: false, in: host, scale: scale)
+                rows.wipe(id, in: true, after: d * 0.35, over: d * 0.6)
+            } else {
+                Genie.run(tile, target: edgeSpot(tile.whole), restoring: false, in: host, scale: scale)
+            }
+        }
+        // Out of it: the reverse, the row squeezing shut as the tile pours
+        // out, the sidebar not made again till it has.
+        var closing = false
         if !f.up.isEmpty {
             let parts = content.placedParts()
             for (id, from) in f.up {
                 guard let p = parts[id], let b = a.placement(id)?.block else { continue }
                 let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-                let from = from == .zero ? edgeSpot(tile.whole) : from
-                if Genie.run(tile, target: from, restoring: true, in: host, scale: scale) { landing += content.tileViews(of: b) }
+                var target = edgeSpot(tile.whole)
+                if from != .zero {
+                    target = Self.slotEnd(from)
+                    rows.wipe(id, in: false, after: 0, over: d * 0.4)
+                    closing = true
+                }
+                if Genie.run(tile, target: target, restoring: true, in: host, scale: scale) { landing += content.tileViews(of: b) }
             }
         }
-        let d = Genie.duration
+        // The row wiped out, then the sidebar made again, the rows under
+        // it closing up the slot it leaves.
+        if closing {
+            let wait = d * 0.35
+            sidebarHeldUntil = max(sidebarHeldUntil, CACurrentMediaTime() + wait + 0.2)
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                guard let self else { return }
+                self.sidebarHeldUntil = 0
+                self.sidebar.organizationView.glide(over: d * 0.5) { self.refreshOrganization(now: true) }
+            }
+        }
         for v in landing {
             guard let l = v.layer else { continue }
             let x = CAKeyframeAnimation(keyPath: "opacity")

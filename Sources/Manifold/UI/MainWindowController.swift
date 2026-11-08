@@ -926,6 +926,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var flownAway: Set<PlacementID> = []
     /// The +'s host list, to be put away.
     var pickerHide: DispatchWorkItem?
+    /// The sidebar's tree not made again before this (media time): a
+    /// tile's row squeezing shut as it pours out of it.
+    var sidebarHeldUntil: CFTimeInterval = 0
 
     private let transfersBadge = TransfersBadge()
 
@@ -3975,6 +3978,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         organizationStale = false
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            // Held (a row closing): made once it's shut.
+            let wait = self.sidebarHeldUntil - CACurrentMediaTime()
+            if wait > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.refreshOrganization(now: true) }
+                return
+            }
             let filter = ""
             let (nodes, open) = self.organizationTree(org, filter: filter)
             let selected = org == .desk ? self.deskSelectedRow : nil

@@ -557,8 +557,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         func set(_ list: [OrgNode]) { if let parent { parent.given = list } else { roots = list } }
         let diff = new.map(\.id).difference(from: current.map(\.id))
         for case let .remove(offset, _, _) in diff.removals.reversed() {
-            current.remove(at: offset)
+            let gone = current.remove(at: offset)
             set(current)
+            _ = gone
             outline.removeItems(at: [offset], inParent: parent, withAnimation: [])
         }
         for case let .insert(offset, _, _) in diff.insertions {
@@ -606,9 +607,120 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         case .host: return 30
         // A label among a space's rows (no rows of its own): room above it.
         case .section: return n.hasChildren ? 24 : 34
-        case .row: return flat && !n.detail.isEmpty ? 40 : 26
+        case .row: return Self.fullHeight(n, flat: flat)
         case .divider: return 9
         }
+    }
+
+    static func fullHeight(_ n: OrgNode, flat: Bool) -> CGFloat { flat && !n.detail.isEmpty ? 40 : 26 }
+
+    // MARK: Slots (a tile docked into its row, or out of it)
+
+    /// The rows made again (`change`) and seen to move there over `d`:
+    /// each row still here sliding from where it was to where it is, a
+    /// tile's row new here (`opening`) growing open from nothing — the
+    /// slot a docked tile pours into, the rows under it making room.
+    func glide(over d: Double, opening: Set<PlacementID> = [], _ change: () -> Void) {
+        var was: [String: CGFloat] = [:]
+        let seen = outline.rows(in: outline.visibleRect)
+        for i in seen.lowerBound..<seen.upperBound {
+            if let n = outline.item(atRow: i) as? OrgNode { was[n.id] = outline.rect(ofRow: i).minY }
+        }
+        change()
+        outline.layoutSubtreeIfNeeded()
+        guard d > 0 else { return }
+        let now = outline.rows(in: outline.visibleRect)
+        CATransaction.begin()
+        for i in now.lowerBound..<now.upperBound {
+            guard let n = outline.item(atRow: i) as? OrgNode, let v = outline.rowView(atRow: i, makeIfNecessary: false) else { continue }
+            v.wantsLayer = true
+            guard let l = v.layer else { continue }
+            let y = outline.rect(ofRow: i).minY
+            if let p = n.placement, opening.contains(p) {
+                // The slot: opening from nothing where it is (not sliding
+                // from where the tile's row was among those on screen).
+                let x = CABasicAnimation(keyPath: "transform.scale.y")
+                x.fromValue = 0.01
+                x.toValue = 1
+                x.duration = d
+                x.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                l.add(x, forKey: "open")
+            } else if let from = was[n.id] {
+                guard abs(from - y) > 0.5 else { continue }
+                // The row views' layers run as the outline does (flipped).
+                let x = CABasicAnimation(keyPath: "transform.translation.y")
+                x.fromValue = from - y
+                x.toValue = 0
+                x.duration = d
+                x.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                l.add(x, forKey: "glide")
+            } else if false {
+                let x = CABasicAnimation(keyPath: "transform.scale.y")
+                x.fromValue = 0.01
+                x.toValue = 1
+                x.duration = d
+                x.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                l.add(x, forKey: "open")
+            }
+        }
+        CATransaction.commit()
+    }
+
+    private func rowIndex(of p: PlacementID) -> Int? {
+        (0..<outline.numberOfRows).first { (outline.item(atRow: $0) as? OrgNode)?.placement == p }
+    }
+
+    /// Debugging: rows `from`..<`to` as their layers are right now
+    /// (mid-animation): each row view's presented frame and its mask's.
+    func debugPresented(_ from: Int, _ to: Int) -> String {
+        (from..<min(to, outline.numberOfRows)).map { i in
+            let n = outline.item(atRow: i) as? OrgNode
+            let l = outline.rowView(atRow: i, makeIfNecessary: false)?.layer
+            let f = (l?.presentation() ?? l)?.frame ?? .zero
+            let m = (l?.mask as? CAGradientLayer).map { m in ((m.presentation() ?? m).locations ?? []).map { String(format: "%.2f", $0.doubleValue) }.joined(separator: ",") } ?? "-"
+            return "\(n?.title ?? "?") y \(Int(f.minY)) h \(Int(f.height)) a \(String(format: "%.2f", (l?.presentation() ?? l)?.opacity ?? 0)) mask \(m)"
+        }.joined(separator: " | ")
+    }
+
+    /// Debugging: each row's rect, its row view's and cell's frames.
+    func debugRowViews() -> String {
+        (0..<outline.numberOfRows).map { i in
+            let n = outline.item(atRow: i) as? OrgNode
+            let rv = outline.rowView(atRow: i, makeIfNecessary: false)
+            let cell = outline.view(atColumn: 0, row: i, makeIfNecessary: false)
+            return "\(i) \(n?.title ?? "?") rect \(outline.rect(ofRow: i).integral) row \(rv?.frame.integral ?? .zero) cell \(cell?.frame.integral ?? .zero) hidden \(cell?.isHidden ?? true) mask \(rv?.layer?.mask != nil) alpha \(cell?.alphaValue ?? 0)"
+        }.joined(separator: "\n")
+    }
+
+    /// What a tile's row shows, wiped in from its right (the tile pouring
+    /// into it there) — or out, the other way — after `delay`, over `d`.
+    func wipe(_ p: PlacementID, in appearing: Bool, after delay: Double, over d: Double) {
+        guard let i = rowIndex(of: p) else { return }
+        outline.layoutSubtreeIfNeeded()
+        guard let v = outline.rowView(atRow: i, makeIfNecessary: true) else { return }
+        v.wantsLayer = true
+        guard let layer = v.layer else { return }
+        let m = CAGradientLayer()
+        m.startPoint = CGPoint(x: 0, y: 0.5)
+        m.endPoint = CGPoint(x: 1, y: 0.5)
+        m.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
+        m.frame = CGRect(x: 0, y: -40, width: max(v.bounds.width, 1), height: 120)
+        let hidden: [NSNumber] = [1.0, 1.35], shown: [NSNumber] = [-0.35, 0.0]
+        m.locations = appearing ? shown : hidden
+        layer.mask = m
+        let x = CABasicAnimation(keyPath: "locations")
+        x.fromValue = appearing ? hidden : shown
+        x.toValue = appearing ? shown : hidden
+        x.duration = d
+        x.beginTime = CACurrentMediaTime() + delay
+        x.fillMode = .backwards
+        x.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak layer, weak m] in
+            if appearing, let layer, layer.mask === m { layer.mask = nil }
+        }
+        m.add(x, forKey: "wipe")
+        CATransaction.commit()
     }
 
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {

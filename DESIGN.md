@@ -2916,8 +2916,13 @@ purpose — set down so a later audit reads them as choices, not slips.
   from, if it's put away), and back out of it undocked — each as the
   Dock's genie (`Genie`): the tile's picture in strips a few points
   wide across the way it goes, the funnel first bending into its near
-  end, then the strips pouring down it into the row, the nearest first,
-  each as tall as the funnel where it is (about half a second) — and the
+  end, then the strips pouring down it into the row's right end, the
+  nearest first, each as tall as the funnel where it is (about half a
+  second); the row's slot opens as it pours, the rows round it gliding
+  to make room (`OrganizationView.glide`), and what the row says is
+  wiped in from the right as the tile gets there — undocked, wiped out,
+  then the row glides back among those on screen as the tile pours out
+  — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put
