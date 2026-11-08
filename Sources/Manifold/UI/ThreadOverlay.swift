@@ -134,6 +134,13 @@ extension MainWindowController {
         switch w.first {
         case nil: commentHere(nil)
         case "close": closeThreadOverlay()
+        case "type":
+            // "threadoverlay type <text>": typed into the composer; "accept": the @ list's choice.
+            threadUI.overlay?.chat.composer.debugType(w.count > 1 ? w[1] : "")
+            return threadUI.overlay?.chat.composer.mentions.debugRows ?? "no overlay"
+        case "accept":
+            threadUI.overlay?.chat.composer.debugAccept()
+            return threadUI.overlay.map { "“\($0.chat.composer.message)” blocks \($0.chat.composer.mentionedBlocks.count)" } ?? "no overlay"
         case "mentions", "message":
             // The composer's `@` list, or what it would send.
             guard let o = threadUI.overlay else { return "no overlay" }

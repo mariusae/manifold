@@ -12,9 +12,14 @@ final class ChatBox: NSView {
         var image: NSImage?
         var title: String
         var detail: String
+        /// A reference in what's written (its block's id): a × takes it out.
+        var mention: String? = nil
 
-        static func == (a: Chip, b: Chip) -> Bool { a.symbol == b.symbol && a.image === b.image && a.title == b.title && a.detail == b.detail }
+        static func == (a: Chip, b: Chip) -> Bool { a.symbol == b.symbol && a.image === b.image && a.title == b.title && a.detail == b.detail && a.mention == b.mention }
     }
+
+    /// A card for a block referred to in what's written (the window's).
+    static var chipFor: ((String) -> Chip?)?
 
     let composer: ComposerTextView
     private let scroll = NSScrollView()
@@ -29,14 +34,33 @@ final class ChatBox: NSView {
             needsLayout = true
         }
     }
-    var chips: [Chip] = [] {
-        didSet {
-            guard chips != oldValue else { return }
-            chipViews.forEach { $0.removeFromSuperview() }
-            chipViews = chips.map { ChipView($0) }
-            chipViews.forEach { addSubview($0) }
-            needsLayout = true
+    /// What it's about (a new thread's place), first.
+    var chips: [Chip] = [] { didSet { if chips != oldValue { rebuildCards() } } }
+    /// Then a card for each block referred to in what's written, as Dia's.
+    private var mentionChips: [Chip] = []
+
+    /// The references' cards made again from what's written.
+    func updateMentions() {
+        let made = composer.mentionedBlocks.compactMap { id -> Chip? in
+            guard var c = Self.chipFor?(id) else { return nil }
+            c.mention = id
+            return c
         }
+        guard made != mentionChips else { return }
+        mentionChips = made
+        rebuildCards()
+    }
+
+    private func rebuildCards() {
+        chipViews.forEach { $0.removeFromSuperview() }
+        chipViews = (chips + mentionChips).map { c in
+            let v = ChipView(c)
+            if let id = c.mention { v.onRemove = { [weak self] in self?.composer.removeMention(id) } }
+            return v
+        }
+        chipViews.forEach { addSubview($0, positioned: .below, relativeTo: scroll) }
+        needsLayout = true
+        superview?.needsLayout = true
     }
     var onSend: (() -> Void)?
     /// The most its words take before they scroll.
@@ -102,12 +126,17 @@ final class ChatBox: NSView {
         super.layout()
         let pad = Self.pad, w = bounds.width - pad * 2
         var y = bounds.height - pad
-        if let chip = chipViews.first {
-            let cw = min(w, chip.wantedWidth)
-            chip.frame = NSRect(x: pad, y: y - Self.chipHeight, width: cw, height: Self.chipHeight)
+        // The cards in a row, as many as fit; the rest cut at the edge.
+        if !chipViews.isEmpty {
+            var x = pad
+            for chip in chipViews {
+                let cw = min(200, chip.wantedWidth)
+                chip.frame = NSRect(x: x, y: y - Self.chipHeight, width: cw, height: Self.chipHeight)
+                chip.isHidden = x >= pad + w - 30
+                x += cw + 8
+            }
             y -= Self.chipHeight + 8
         }
-        chipViews.dropFirst().forEach { $0.frame = .zero }
         let foot = pad - 4
         send.frame = NSRect(x: bounds.width - pad + 2 - Self.footHeight, y: foot, width: Self.footHeight, height: Self.footHeight)
         var x = pad - 4
@@ -176,6 +205,9 @@ final class ChipView: NSView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let square = NSView()
+    /// Taken out (a reference's card), by its × under the pointer.
+    var onRemove: (() -> Void)? { didSet { remove.isHidden = true } }
+    private let remove = IconButton(symbol: "xmark.circle.fill", size: 12, weight: .regular, target: nil, action: nil)
 
     init(_ chip: ChatBox.Chip) {
         super.init(frame: .zero)
@@ -197,7 +229,11 @@ final class ChipView: NSView {
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
         detail.isHidden = chip.detail.isEmpty
-        for v in [square, icon, title, detail] as [NSView] { addSubview(v) }
+        for v in [square, icon, title, detail, remove] as [NSView] { addSubview(v) }
+        remove.isHidden = true
+        remove.contentTintColor = Theme.secondaryText
+        remove.toolTip = "Remove"
+        remove.onClick = { [weak self] in self?.onRemove?() }
         themed { v in
             v.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
             v.square.layer?.backgroundColor = Theme.panel.blended(withFraction: 0.6, of: .textBackgroundColor)?.cgColor
@@ -207,6 +243,15 @@ final class ChipView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { if onRemove != nil { remove.isHidden = false } }
+    override func mouseExited(with event: NSEvent) { remove.isHidden = true }
 
     var wantedWidth: CGFloat {
         title.sizeToFit()
@@ -223,6 +268,7 @@ final class ChipView: NSView {
         super.layout()
         let h = bounds.height
         square.frame = NSRect(x: 7, y: (h - 32) / 2, width: 32, height: 32)
+        remove.frame = NSRect(x: bounds.width - 20, y: bounds.height - 20, width: 18, height: 18)
         icon.frame = square.frame.insetBy(dx: 8, dy: 8)
         let x = square.frame.maxX + 10, w = max(0, bounds.width - x - 10)
         if detail.isHidden {

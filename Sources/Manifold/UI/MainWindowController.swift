@@ -162,6 +162,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.stack = sidebar.toasts
         toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
         toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
+        ChatBox.chipFor = { [weak self] id in self?.mentionChip(id) }
         root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.

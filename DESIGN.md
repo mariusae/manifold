@@ -1287,7 +1287,12 @@ a resolved thread reopens it. The composer is a chat app's box
 (`ChatBox`), the same wherever a comment is written: rounded, growing
 with what's written (then scrolling), a new thread's place as a card at
 its top — its icon (a page's own), its name, where it is — Resolve a
-quiet word at its foot, and a round send button.
+quiet word at its foot, and a round send button. As Dia's: each block
+referred to (`@`) is a card in that row too, a × on it taking it out;
+in the words it's its icon and its name in grey, swept by a rainbow as
+it resolves (magic text), each letter settling as it passes; and `@`'s
+list is in parts under small grey headers (Agents, Ask, In this space,
+Files, Elsewhere), a line a row, the chosen on the accent.
 
 **Where threads show.** One thread, several lenses (presentation is a
 projection, §2.5):

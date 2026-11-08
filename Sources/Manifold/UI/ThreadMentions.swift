@@ -16,6 +16,10 @@ struct MentionChoice {
     /// `@title`.
     var link: String?
     var icon: NSImage? = nil
+    /// Its part of the list, a small header over each (Agents, Here, Files…).
+    var category = ""
+    /// The block it stands for: a card of it over the composer while it's in.
+    var block: BlockID? = nil
 }
 
 extension NSAttributedString.Key {
@@ -23,6 +27,8 @@ extension NSAttributedString.Key {
     static let mentionLink = NSAttributedString.Key("ManifoldMentionLink")
     /// And what was typed for it (put back by ⌫).
     static let mentionTyped = NSAttributedString.Key("ManifoldMentionTyped")
+    /// The block it stands for (its id), for its card.
+    static let mentionBlock = NSAttributedString.Key("ManifoldMentionBlock")
 }
 
 /// The list, in a panel of its own over the composer's window: it never
@@ -93,20 +99,25 @@ final class MentionPopover {
     }
 }
 
-/// The rows: a symbol, a title, a detail in grey; the selected on the
-/// accent's band.
+/// The rows, as Dia's: in parts under small grey headers (Agents, Here,
+/// Files), a line each — its icon and title, a detail in grey — the
+/// chosen on the accent, its words white.
 private final class MentionList: NSView {
-    var choices: [MentionChoice] = [] { didSet { needsDisplay = true } }
+    var choices: [MentionChoice] = [] { didSet { lay(); needsDisplay = true } }
     var selected = 0 { didSet { needsDisplay = true } }
     var onChoose: ((MentionChoice) -> Void)?
-    static let rowHeight: CGFloat = 26
+    static let rowHeight: CGFloat = 24
+    static let headerHeight: CGFloat = 22
     static let width: CGFloat = 300
     override var isFlipped: Bool { true }
+    /// Each row's rect, and each header's (its title, its top).
+    private var rows: [NSRect] = []
+    private var headers: [(String, CGFloat)] = []
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = Radius.surface
+        layer?.cornerRadius = 10
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 0.5
         themed { v in
@@ -117,34 +128,50 @@ private final class MentionList: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    var wantedSize: NSSize { NSSize(width: Self.width, height: CGFloat(choices.count) * Self.rowHeight + 8) }
+    private func lay() {
+        rows = []
+        headers = []
+        var y: CGFloat = 5
+        var last: String?
+        for c in choices {
+            if !c.category.isEmpty, c.category != last {
+                headers.append((c.category.uppercased(), y))
+                y += Self.headerHeight
+                last = c.category
+            }
+            rows.append(NSRect(x: 5, y: y, width: Self.width - 10, height: Self.rowHeight))
+            y += Self.rowHeight
+        }
+        height = y + 5
+    }
 
-    private func rowRect(_ i: Int) -> NSRect { NSRect(x: 4, y: 4 + CGFloat(i) * Self.rowHeight, width: bounds.width - 8, height: Self.rowHeight) }
+    private var height: CGFloat = 10
+    var wantedSize: NSSize { NSSize(width: Self.width, height: height) }
 
     override func draw(_ dirtyRect: NSRect) {
-        for (i, c) in choices.enumerated() {
-            let r = rowRect(i)
-            if i == selected {
-                Theme.text.withAlphaComponent(0.09).setFill()
-                NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
+        for (title, y) in headers {
+            NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: Theme.tertiaryText, .kern: 0.4])
+                .draw(at: NSPoint(x: 13, y: y + 7))
+        }
+        for (i, c) in choices.enumerated() where rows.indices.contains(i) {
+            let r = rows[i]
+            let lit = i == selected
+            if lit {
+                Theme.accent.setFill()
+                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
             }
             let iconRect = NSRect(x: r.minX + 7, y: r.midY - 7, width: 14, height: 14)
             if let icon = c.icon {
                 icon.draw(in: iconRect)
-            } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium) {
-                let tinted = NSImage(size: iconRect.size, flipped: false) { rect in
-                    let s = image.size
-                    image.draw(in: NSRect(x: (rect.width - s.width) / 2, y: (rect.height - s.height) / 2, width: s.width, height: s.height))
-                    (c.link == nil || c.icon != nil ? Theme.accent : Theme.secondaryText).set()
-                    rect.fill(using: .sourceAtop)
-                    return true
-                }
-                tinted.draw(in: iconRect)
+            } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium, color: lit ? .white : Theme.secondaryText) {
+                let z = image.size
+                image.draw(in: NSRect(x: iconRect.midX - z.width / 2, y: iconRect.midY - z.height / 2, width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
-            let title = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: Theme.text])
-            let detail = NSAttributedString(string: c.detail, attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])
+            let title = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: lit ? NSColor.white : Theme.text])
+            let detail = NSAttributedString(string: c.detail, attributes: [.font: UIType.footnote, .foregroundColor: lit ? NSColor.white.withAlphaComponent(0.75) : Theme.tertiaryText])
             let x = iconRect.maxX + 8
-            let tw = min(title.size().width, r.width - (x - r.minX) - 8)
+            let tw = min(title.size().width + 2, r.width - (x - r.minX) - 8)
             title.draw(with: NSRect(x: x, y: r.midY - 8, width: tw, height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             let dx = x + tw + 8
             if dx < r.maxX - 20 {
@@ -155,7 +182,7 @@ private final class MentionList: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        guard let i = choices.indices.first(where: { rowRect($0).contains(p) }) else { return }
+        guard let i = rows.indices.first(where: { rows[$0].contains(p) }) else { return }
         selected = i
         onChoose?(choices[i])
     }
@@ -208,10 +235,22 @@ extension ComposerTextView {
         let typed = (string as NSString).substring(with: token.range)
         let piece = NSMutableAttributedString()
         if let link = c.link {
-            piece.append(NSAttributedString(string: c.title, attributes: plainAttributes.merging([
-                .foregroundColor: Theme.accent, .backgroundColor: Theme.accent.withAlphaComponent(0.12),
-                .mentionLink: link, .mentionTyped: typed,
-            ]) { $1 }))
+            // As Dia's: its icon, then its name in grey — one piece, sent as its link.
+            var marks: [NSAttributedString.Key: Any] = [.foregroundColor: Theme.secondaryText, .mentionLink: link, .mentionTyped: typed]
+            if let b = c.block { marks[.mentionBlock] = b.description }
+            let attrs = plainAttributes.merging(marks) { $1 }
+            let icon = c.icon ?? Theme.symbol(c.symbol, size: 11, weight: .medium, color: Theme.secondaryText)
+            if let icon {
+                let a = NSTextAttachment()
+                a.image = icon
+                let size: CGFloat = 13, font = (attrs[.font] as? NSFont) ?? UIType.body
+                a.bounds = NSRect(x: 0, y: (font.capHeight - size) / 2, width: size, height: size)
+                let m = NSMutableAttributedString(attachment: a)
+                m.addAttributes(attrs, range: NSRange(location: 0, length: m.length))
+                piece.append(m)
+                piece.append(NSAttributedString(string: "\u{2009}", attributes: attrs))
+            }
+            piece.append(NSAttributedString(string: c.title, attributes: attrs))
         } else {
             piece.append(NSAttributedString(string: "@" + c.title, attributes: plainAttributes))
         }
@@ -221,6 +260,63 @@ extension ComposerTextView {
         didChangeText()
         setSelectedRange(NSRange(location: token.range.location + piece.length, length: 0))
         typingAttributes = plainAttributes
+        if c.link != nil { shimmer(NSRange(location: token.range.location, length: piece.length - 1)) }
+    }
+
+    /// Magic text, as Dia's: a reference just resolved swept by a rainbow,
+    /// left to right, each letter settling to its grey as it passes.
+    func shimmer(_ range: NSRange) {
+        guard let lm = layoutManager, range.length > 0, !Motion.reduced else { return }
+        let start = CACurrentMediaTime(), d = 0.9 * Motion.slowdown
+        let n = range.length
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self, weak lm] timer in
+            MainActor.unchecked {
+                guard let self, let lm, let storage = self.textStorage, NSMaxRange(range) <= storage.length else { return timer.invalidate() }
+                let t = (CACurrentMediaTime() - start) / d
+                if t >= 1 {
+                    lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
+                    return timer.invalidate()
+                }
+                for k in 0..<n {
+                    let u = Double(k) / Double(max(n - 1, 1))
+                    // The sweep's front at t·1.4: behind it settled, at it the colours.
+                    let behind = t * 1.4 - u
+                    let c: NSColor
+                    if behind < 0 { c = Theme.secondaryText.withAlphaComponent(0.25) }
+                    else if behind > 0.45 { c = Theme.secondaryText }
+                    else {
+                        let rainbow = NSColor(hue: CGFloat((u * 0.8 + t * 0.6).truncatingRemainder(dividingBy: 1)), saturation: 0.65, brightness: 0.9, alpha: 1)
+                        c = rainbow.blended(withFraction: CGFloat(behind / 0.45), of: Theme.secondaryText) ?? rainbow
+                    }
+                    lm.addTemporaryAttribute(.foregroundColor, value: c, forCharacterRange: NSRange(location: range.location + k, length: 1))
+                }
+            }
+        }
+    }
+
+    /// The blocks referred to in what's written, in order, each once.
+    var mentionedBlocks: [String] {
+        guard let storage = textStorage else { return [] }
+        var out: [String] = []
+        storage.enumerateAttribute(.mentionBlock, in: NSRange(location: 0, length: storage.length)) { v, _, _ in
+            if let id = v as? String, !out.contains(id) { out.append(id) }
+        }
+        return out
+    }
+
+    /// A reference taken out of what's written (its card's ×), and the space after it.
+    func removeMention(_ id: String) {
+        guard let storage = textStorage else { return }
+        var ranges: [NSRange] = []
+        storage.enumerateAttribute(.mentionBlock, in: NSRange(location: 0, length: storage.length)) { v, r, _ in
+            if (v as? String) == id { ranges.append(r) }
+        }
+        for var r in ranges.reversed() {
+            if NSMaxRange(r) < storage.length, (storage.string as NSString).character(at: NSMaxRange(r)) == 0x20 { r.length += 1 }
+            guard shouldChangeText(in: r, replacementString: "") else { continue }
+            storage.replaceCharacters(in: r, with: "")
+            didChangeText()
+        }
     }
 
     /// ⌫ just after a pill: what was typed for it, back.
@@ -262,7 +358,7 @@ extension MainWindowController {
                 listed.insert(b.id)
                 out.append(MentionChoice(symbol: "sparkle", title: b.displayTitle, detail: a.name + (here.contains(b.id) ? " · here" : " · running"),
                                          link: "[\(b.displayTitle.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(b.id)))",
-                                         icon: AgentIcons.image(a.command, size: 14)))
+                                         icon: AgentIcons.image(a.command, size: 14), category: "Agents", block: b.id))
             }
             // The words that ask one (the nearest at work, or one started):
             // with nothing typed, only those at work and the one Settings
@@ -273,18 +369,26 @@ extension MainWindowController {
                 guard q.isEmpty ? atWork || a.command == usual : a.command.hasPrefix(q) || a.name.lowercased().hasPrefix(q) else { continue }
                 out.append(MentionChoice(symbol: "sparkle", title: a.command,
                                          detail: atWork ? "asks \(a.name)" : "starts \(a.name)",
-                                         link: nil, icon: AgentIcons.image(a.command, size: 14)))
+                                         link: nil, icon: AgentIcons.image(a.command, size: 14), category: "Ask"))
             }
             // Then what ⌘O finds.
             let room = max(0, 9 - out.count)
             if room > 0, let ranked = FinderRanking.rank(query, corpus, limit: room + listed.count + 8) {
                 for c in ranked.rows {
                     guard let id = c.block, !listed.contains(id), out.count < 9, self.hosts.block(id)?.kind != .thread else { continue }
+                    let b = self.hosts.block(id)
                     out.append(MentionChoice(symbol: c.symbol, title: c.title, detail: c.detail.isEmpty ? c.note : c.detail,
-                                             link: "[\(c.title.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(id)))"))
+                                             link: "[\(c.title.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(id)))",
+                                             icon: b?.web.flatMap { Favicons.image(forPage: $0.url) },
+                                             category: here.contains(id) ? "In this space" : (b?.path != nil ? "Files" : "Elsewhere"), block: id))
                 }
             }
-            return out
+            // Each part together, in this order, as ranked within it.
+            let order = ["Agents", "Ask", "In this space", "Files", "Elsewhere"]
+            return out.enumerated().sorted { a, b in
+                let i = order.firstIndex(of: a.element.category) ?? order.count, j = order.firstIndex(of: b.element.category) ?? order.count
+                return i != j ? i < j : a.offset < b.offset
+            }.map(\.element)
         }
     }
 }

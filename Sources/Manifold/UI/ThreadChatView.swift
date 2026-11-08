@@ -311,6 +311,7 @@ final class ThreadChatView: NSView {
         let empty = composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         placeholder.isHidden = !composer.string.isEmpty
         box.canSend = !empty
+        box.updateMentions()
         needsLayout = true
     }
 
@@ -644,6 +645,13 @@ final class ComposerTextView: NSTextView {
         mentions.onChoose = { [weak self] c in self?.choose(c) }
         mentions.show(choices, at: caret, in: window)
     }
+
+    /// Debugging: typed in, as at the keyboard; the list's choice taken.
+    func debugType(_ text: String) {
+        window?.makeFirstResponder(self)
+        insertText(text, replacementRange: selectedRange())
+    }
+    func debugAccept() { acceptMention() }
 
     private func acceptMention() {
         guard let c = mentions.selected else { return mentions.hide() }

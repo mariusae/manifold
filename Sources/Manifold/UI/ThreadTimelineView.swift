@@ -147,6 +147,7 @@ final class ThreadTimelineView: NSView {
         composer.onChange = { [weak self] in
             guard let self else { return }
             self.placeholder.isHidden = !self.composer.string.isEmpty
+            self.box.updateMentions()
             self.box.canSend = !self.composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (self.chosen != nil || self.model.composesNew)
             self.needsLayout = true
         }
