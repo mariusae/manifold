@@ -533,9 +533,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // with one, the windows).
         item(go, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
         item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
-        // ⌥⇥: the same trail, tile by tile, in every space.
-        item(go, "Switch to Recent Tile", #selector(MainWindowController.walkTiles(_:)), "\t", [.option])
-        item(go, "Switch to Recent Tile, Backward", #selector(MainWindowController.walkTilesBack(_:)), "\t", [.option, .shift])
+        // ⌥⇥: the spaces, the most recent first, as cards of their grids.
+        item(go, "Switch Space", #selector(MainWindowController.walkSpaces(_:)), "\t", [.option])
+        item(go, "Switch Space, Backward", #selector(MainWindowController.walkSpacesBack(_:)), "\t", [.option, .shift])
         // ⌃⇥, as ⌃⇥ goes round a browser's tabs: this space's tiles, those
         // docked too (§3.1).
         item(go, "Switch to Recent Tile in Space", #selector(MainWindowController.walkSpaceTiles(_:)), "\t", [.control])

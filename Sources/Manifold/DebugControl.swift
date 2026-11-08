@@ -409,6 +409,8 @@ enum DebugControl {
             return wc?.debugThreads(arg) ?? "no window"
         case "timeline":
             return wc?.debugTimeline(arg) ?? "no window"
+        case "spaceswitch":
+            return wc?.debugSpaceSwitch(arg) ?? "no window"
         case "footer":
             return wc?.debugFooter(arg) ?? "no window"
         case "threadoverlay":

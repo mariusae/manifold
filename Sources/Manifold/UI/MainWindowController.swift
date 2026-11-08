@@ -73,7 +73,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// only passed on a walk aren't in it, and it doesn't wait on a host to
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
-    private var settled: [Settled] = []
+    private(set) var settled: [Settled] = []
     /// ⌥⇥'s walk, while option is held: the places in the order it began
     /// with, how far along it is, and what shows its cards if it's held.
     private var tileWalk: (places: [Settled], index: Int, show: DispatchWorkItem)?
@@ -291,7 +291,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Each block's tile as last pictured, for its card while it's out of
     /// sight: taken as a tile is docked, collapsed or maximized over, as
     /// its workspace is left, and whenever its card is shown.
-    private var tilePictures: [BlockID: NSImage] = [:]
+    private(set) var tilePictures: [BlockID: NSImage] = [:]
 
     /// Rendering now, and a render asked for meanwhile.
     private var rendering = false
@@ -949,6 +949,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var footerMenu: (view: PopMenu?, which: FooterMenu) = (nil, .threads)
     var footerMonitor: Any?
     var tilesShowAll = false
+    /// ⌥⇥'s walk through the spaces: their order, the one chosen; its
+    /// cards, shown; what shows them, and what watches ⌥ and ⎋.
+    var spaceSwitch: (order: [BlockID], index: Int)?
+    var spaceSwitcher: SpaceSwitcherView?
+    var spaceSwitchShow: DispatchWorkItem?
+    var spaceSwitchMonitors: [Any] = []
     /// ⌘ held a moment: the strip's numbers shown, till it's let go.
     var commandHeld: DispatchWorkItem?
     var commandMonitor: Any?
@@ -3316,7 +3322,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var debugFlights: String { GridView.describe(tileFlights) }
 
     /// Debugging: ⌘ taken as held, for "walk".
-    private var debugHeld = false
+    var debugHeld = false
 
     /// "walk step|back|end|escape|unheard|order": ⌘` pressed with ⌘ held,
     /// ⌘ let go, Escape, ⌘ let go unheard; or the walk and ⌘`'s order.

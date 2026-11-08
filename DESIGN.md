@@ -601,8 +601,8 @@ destination:
    restarts and crosses hosts; ⌘[ ⌘] walk a tile's own, where it goes on
    in place (a page, a preview, a listing).
 3. **The switchers are the trail at three scales**, as ⌘⇥ and ⌘` are
-   the Mac's at two: ⌘` walks its spaces, ⌥⇥ its tiles in every space,
-   ⌃⇥ this space's — its docked tiles too, a card each (out of its row
+   the Mac's at two: ⌘` and ⌥⇥ its spaces (⌥⇥ as cards, a picture of
+   each space's grid: `SpaceSwitcherView`), ⌃⇥ this space's tiles — its docked tiles too, a card each (out of its row
    in the sidebar, and back), one settled on going back where it was.
    Each walks while its modifier is held and
    settles where it's let go, so a tap goes back and forth between two;

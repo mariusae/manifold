@@ -300,20 +300,15 @@ parts from the Mac's conventions on purpose.
   list slides with it. A file or
   folder dropped on the Dock icon opens in the space shown, as a
   path clicked there does: a tile of its own, or gone to where it is.
-- **⌥⇥** walks the same trail tile by tile, in every space: the
-  tiles most recently settled on first. Let go quickly and it goes to
-  the one before, so a tap goes back and forth between two (⌥⇧⇥, the
-  farthest); held a moment, the tiles come as a column of their summary
-  cards over the space — the focused tile becoming the first, the rest
-  coming out of their tiles here, or — docked, or in another space —
-  their rows in the sidebar, each one elsewhere naming its
-  space — each ⇥ a card further, and letting go goes to the one chosen:
-  its space comes in if it's another, its card becomes its tile there,
-  and the rest go back to their tiles and rows (Escape, or a click away, leaves things be; a card clicked
-  goes there). Tiles only passed on the way don't count as gone to, and
-  one settled on settles its space for ⌘\` too: the switchers are one
-  trail at three scales — ⌘\` its spaces, ⌥⇥ its tiles, ⌃⇥ the space's
-  (its docked tiles too).
+- **⌥⇥** switches spaces, the most recently settled on first (⌘\`'s
+  order): a tap goes back to the space before; held a moment, the
+  spaces come as cards over the window — each a picture of its grid,
+  its tiles in their columns at their sizes (their last pictures, else
+  their symbols and names), the focused one ringed, its square, name,
+  host and what wants you there, how many are docked — each ⇥ a card
+  further (⇧⇥ back), and letting go goes to the one chosen (Escape
+  stays; a card clicked goes there). ⌃⇥ is the space's tiles; the
+  switchers are the trail at two scales, spaces and tiles.
   Back (⌃-) is the other way over it: a stack of every place, within
   blocks too, walked one step at a time. ⌥⇥ is taken from a terminal
   too, as ⌃⇥ is (Meta-Tab, with Option as Meta).
