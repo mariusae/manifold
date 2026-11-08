@@ -31,6 +31,14 @@ final class SpaceStripView: NSView {
     static let inset: CGFloat = SidebarView.margin
 
     var onPick: ((BlockID) -> Void)?
+    /// ⌘ held: each square's number (⌘1 to ⌘8; ⌘9 the last), in a badge.
+    var showsNumbers = false { didSet { if showsNumbers != oldValue { needsDisplay = true } } }
+
+    /// The number ⌘ and which goes to square `i`, if any.
+    func number(_ i: Int) -> Int? {
+        if i == chips.count - 1 { return chips.count <= 9 ? i + 1 : 9 }
+        return i < 8 ? i + 1 : nil
+    }
     /// The pointer on one (its rect in the window), or off them.
     var onHover: ((BlockID?, NSRect) -> Void)?
     var onMenu: ((BlockID) -> NSMenu?)?
@@ -198,6 +206,15 @@ final class SpaceStripView: NSView {
                 let t = NSAttributedString(string: c.letter, attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: ink])
                 let z = t.size()
                 t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
+            }
+            // ⌘ held: its number, over its bottom right, as a key's badge.
+            if showsNumbers, let n = number(i) {
+                let t = NSAttributedString(string: "\(n)", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .bold), .foregroundColor: Theme.panel])
+                let z = t.size()
+                let b = NSRect(x: r.maxX - 9, y: r.maxY - 9, width: max(13, z.width + 6), height: 13)
+                Theme.text.withAlphaComponent(0.85).setFill()
+                NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
+                t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
             }
             // What most wants you there, at its top right.
             if let tone = Self.tone(c.status) {
@@ -512,6 +529,7 @@ extension MainWindowController {
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
+        case "numbers": strip.showsNumbers = w.dropFirst().first != "off"
         case "host":
             // "spaces host [hover]": the heading's host line; with hover, its card.
             if w.dropFirst().first == "hover" {

@@ -163,6 +163,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
         toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
         ChatBox.chipFor = { [weak self] id in self?.mentionChip(id) }
+        watchCommandKey()
         root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
@@ -948,6 +949,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var footerMenu: (view: PopMenu?, which: FooterMenu) = (nil, .threads)
     var footerMonitor: Any?
     var tilesShowAll = false
+    /// ⌘ held a moment: the strip's numbers shown, till it's let go.
+    var commandHeld: DispatchWorkItem?
+    var commandMonitor: Any?
+
+    /// Watches ⌘: held alone a third of a second, the spaces' numbers
+    /// shown on their squares; let go, or another key pressed, gone.
+    func watchCommandKey() {
+        guard commandMonitor == nil else { return }
+        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] e in
+            guard let self else { return e }
+            let alone = e.type == .flagsChanged && e.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .command
+            self.commandHeld?.cancel()
+            if alone {
+                let work = DispatchWorkItem { [weak self] in self?.sidebar.spaces.showsNumbers = true }
+                self.commandHeld = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+            } else if e.type == .flagsChanged || !e.modifierFlags.contains(.command) {
+                self.sidebar.spaces.showsNumbers = false
+            }
+            return e
+        }
+    }
     /// A docked tile's picture as it went (its body's): what it pours back
     /// out as, a view just shown again having nothing drawn yet (a PDF's).
     var dockedPictures: [PlacementID: Any] = [:]
@@ -3889,8 +3912,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var picturing = 0
 
+    /// ⌘1 to ⌘8: the strip's squares in order (as their badges number
+    /// them with ⌘ held); ⌘9 the last.
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
-        let order = allWorkspaces
+        let order = sidebar.spaces.chips.isEmpty ? allWorkspaces : sidebar.spaces.chips.map(\.id)
         guard !order.isEmpty else { return }
         let n = sender.tag
         let i = n == 9 ? order.count - 1 : n - 1
