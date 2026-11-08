@@ -373,7 +373,7 @@ private final class SectionLabel: NSTextField {
         isBordered = false
         drawsBackground = false
         stringValue = words
-        font = UIType.caption
+        font = UIType.section
         textColor = Theme.secondaryText
     }
     required init?(coder: NSCoder) { fatalError() }

@@ -805,7 +805,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         case .foot: break
         case let .group(b):
             cell.textField?.stringValue = id == "command" ? (blockTitle(b) ?? b.description) : ""
-            cell.textField?.font = .systemFont(ofSize: 11, weight: .semibold)
+            cell.textField?.font = UIType.section
             cell.textField?.textColor = Theme.secondaryText
         case let .process(e, depth):
             switch id {

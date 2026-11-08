@@ -33,7 +33,7 @@ final class StateView: NSView {
     private let modes = FlatSegments(symbols: ["list.bullet", "square.grid.2x2", "rectangle.grid.1x2"])
     private let filter = FlatSegments(titles: ["This Space", "Agents"], font: UIType.body)
     private var cards: [BlockID: SummaryCard] = [:]
-    private let leave = IconButton(symbol: "xmark", size: 12, weight: .medium, target: nil, action: nil)
+    private let leave = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
     private let scroll = ClippingScrollView()
     private let document = FlippedView()
     private var items: [Item] = []

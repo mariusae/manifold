@@ -112,11 +112,12 @@ final class SummaryCard: NSView {
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
         if chosen {
-            Theme.accent.withAlphaComponent(0.08).setFill()
+            // Chosen: a grey band and a darker edge, not the accent's.
+            Theme.text.withAlphaComponent(0.05).setFill()
             path.fill()
             let ring = NSBezierPath(roundedRect: card.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.surface - 0.5, yRadius: Radius.surface - 0.5)
             ring.lineWidth = 1.5
-            EdgeColor.accentStrong.setStroke()
+            Theme.text.withAlphaComponent(0.35).setStroke()
             ring.stroke()
         } else {
             EdgeColor.subtle.setStroke()

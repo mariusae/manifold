@@ -288,6 +288,8 @@ final class ThreadTimelineView: NSView {
         }
         let box = RunBox(column, chosen: chosen == id, resolved: resolved)
         box.onClick = { [weak self] in self?.choose(id) }
+        // Its buttons under the pointer, or while it's the one replied to.
+        box.hoverViews = chosen == id ? [] : [popOut, reply, resolve]
         return box
     }
 
@@ -474,14 +476,34 @@ final class RunBox: NSView {
         themed { v in
             // A card a shade lighter than what it's on, an edge round it.
             v.layer?.backgroundColor = Theme.panel.cgColor
-            v.layer?.borderColor = (v.chosen ? Theme.accent.withAlphaComponent(0.7) : Theme.cardBorder).cgColor
-            v.layer?.borderWidth = v.chosen ? 1.5 : 0.5
+            // No edge at rest (spacing parts them); chosen, a grey one.
+            v.layer?.borderColor = Theme.text.withAlphaComponent(0.3).cgColor
+            v.layer?.borderWidth = v.chosen ? 1 : 0
         }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func mouseDown(with event: NSEvent) { onClick?() }
+
+    /// Shown only with the pointer on it.
+    var hoverViews: [NSView] = [] { didSet { for v in hoverViews { v.alphaValue = 0 } } }
+
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { fade(1) }
+    override func mouseExited(with event: NSEvent) { fade(0) }
+
+    private func fade(_ a: CGFloat) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.fast
+            for v in hoverViews { v.animator().alphaValue = a }
+        }
+    }
 }
 
 /// Words that go somewhere, clicked: a symbol before them.

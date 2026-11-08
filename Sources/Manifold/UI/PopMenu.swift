@@ -378,7 +378,7 @@ final class PopMenuList: NSView {
             let r = NSRect(x: 0, y: r0.minY, width: w, height: r0.height)
             switch l {
             case .header(let t):
-                NSAttributedString(string: t, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: Theme.secondaryText])
+                NSAttributedString(string: t, attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText])
                     .draw(at: NSPoint(x: 16, y: r.minY + 8))
             case .rule:
                 Theme.divider.setFill()

@@ -64,7 +64,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
         layer?.zPosition = 10
         for f in [field, replaceField] {
             f.delegate = self
-            f.font = .systemFont(ofSize: 12.5)
+            f.font = UIType.row
             f.isBordered = false
             f.drawsBackground = false
             f.focusRingType = .none
@@ -224,7 +224,7 @@ final class LinePill: NSView, NSTextFieldDelegate {
         layer?.masksToBounds = true
         layer?.zPosition = 10
         field.delegate = self
-        field.font = .systemFont(ofSize: 12.5)
+        field.font = UIType.row
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none

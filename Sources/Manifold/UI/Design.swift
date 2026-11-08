@@ -36,6 +36,9 @@ enum UIType {
     static let body = NSFont.systemFont(ofSize: 12)
     static let detail = NSFont.systemFont(ofSize: 11.5)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .medium)
+    /// A section's small header, everywhere one names a group of rows
+    /// (Dia's: small, semibold, in grey).
+    static let section = NSFont.systemFont(ofSize: 11, weight: .semibold)
     /// A lens's own header line (a diff's, a git block's, a picture's).
     static let label = NSFont.systemFont(ofSize: 12, weight: .medium)
     /// A note under a table or a pane, a footer's words.

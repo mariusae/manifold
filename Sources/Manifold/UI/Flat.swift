@@ -264,7 +264,7 @@ final class FlatButton: NSButton {
 
     private var on: Bool { toggles && state == .on }
     private var ink: NSColor {
-        style == .primary ? .white : on ? Tints.accentText : Theme.text
+        style == .primary ? .white : Theme.text
     }
     private var symbol: NSImage? { symbolName.flatMap { Theme.symbol($0, size: (font?.pointSize ?? 12) - 1, weight: .medium) } }
     private var label: NSAttributedString {
@@ -337,20 +337,18 @@ final class FlatButton: NSButton {
         ctx?.saveGState()
         defer { ctx?.restoreGState() }
         if !isEnabled { ctx?.setAlpha(0.4) }
+        // A capsule, as Dia's chips: a faint grey, no line round it; on, a
+        // deeper grey (not the accent); the primary alone in the accent.
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control)
+        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
         let pressed = isHighlighted && isEnabled, over = hovering && isEnabled
         switch style {
         case .primary:
             Tints.accentFill.blended(withFraction: pressed ? 0.2 : over ? 0.1 : 0, of: .black)?.setFill()
             path.fill()
         case .normal:
-            (on ? Theme.accent.withAlphaComponent(pressed ? 0.22 : 0.14)
-                : pressed ? Flat.pressed : over ? Flat.hovered : Flat.fill).setFill()
+            Theme.text.withAlphaComponent(on ? (pressed ? 0.2 : 0.15) : pressed ? 0.14 : over ? 0.1 : 0.06).setFill()
             path.fill()
-            path.lineWidth = 1
-            (on ? EdgeColor.accentSoft : Flat.line).setStroke()
-            path.stroke()
         }
         // The symbol and the words, centered together (a turning symbol,
         // its own view's).
@@ -487,12 +485,15 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
 
     override func draw(_ dirtyRect: NSRect) {
         if let h = hovered, h != selectedSegment, items.indices.contains(h) {
-            Flat.hovered.setFill()
-            NSBezierPath(roundedRect: rect(h), xRadius: Radius.control, yRadius: Radius.control).fill()
+            Theme.text.withAlphaComponent(0.06).setFill()
+            let hr = rect(h)
+            NSBezierPath(roundedRect: hr, xRadius: hr.height / 2, yRadius: hr.height / 2).fill()
         }
         if items.indices.contains(selectedSegment) {
-            Flat.chosen().setFill()
-            NSBezierPath(roundedRect: band(to: selectedSegment), xRadius: Radius.control, yRadius: Radius.control).fill()
+            // As a chip on: a grey capsule (Dia's), not the tint's band.
+            Theme.text.withAlphaComponent(0.12).setFill()
+            let br = band(to: selectedSegment)
+            NSBezierPath(roundedRect: br, xRadius: br.height / 2, yRadius: br.height / 2).fill()
         }
         for (i, item) in items.enumerated() {
             let r = rect(i)

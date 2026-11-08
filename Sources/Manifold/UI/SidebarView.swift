@@ -581,11 +581,12 @@ final class SidebarTab: NSView {
         icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
         badge.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
         badge.alignment = .center
-        badge.textColor = .white
+        // A grey count, as the pills are.
+        badge.textColor = Theme.text
         badge.wantsLayer = true
         badge.layer?.cornerRadius = 6
         badge.drawsBackground = false
-        badge.themed { $0.layer?.backgroundColor = Theme.accent.cgColor }
+        badge.themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.14).cgColor }
         for v in [icon, badge] { addSubview(v) }
         let keys: [Organization: String] = [.desk: "⌥⌘1", .files: "⌥⌘2", .threads: "⌥⌘3"]
         toolTip = organization.title + (keys[organization].map { " (\($0))" } ?? "")

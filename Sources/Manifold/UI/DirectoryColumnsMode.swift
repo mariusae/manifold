@@ -537,7 +537,7 @@ final class ColumnHeaderCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.id
-        label.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        label.font = UIType.section
         label.textColor = Theme.secondaryText
         label.lineBreakMode = .byTruncatingTail
         addSubview(label)

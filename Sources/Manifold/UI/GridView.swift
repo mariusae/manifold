@@ -2231,15 +2231,12 @@ final class HostPill: NSView {
         wantsLayer = true
         layer?.cornerRadius = Radius.capsule(Self.height)
         layer?.cornerCurve = .continuous
-        layer?.borderWidth = 0.5
-        themed {
-            $0.layer?.backgroundColor = Theme.accent.withAlphaComponent(0.12).cgColor
-            $0.layer?.borderColor = Theme.accent.withAlphaComponent(0.35).cgColor
-        }
+        // A quiet grey capsule, as the chips are (not the accent's).
+        themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.07).cgColor }
         icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
-        icon.contentTintColor = Theme.accent
+        icon.contentTintColor = Theme.secondaryText
         label.font = UIType.caption
-        label.textColor = Tints.accentText
+        label.textColor = Theme.secondaryText
         label.lineBreakMode = .byTruncatingTail
         addSubview(icon)
         addSubview(label)
@@ -2821,9 +2818,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func updateColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (hovered ? EdgeColor.accentStrong : EdgeColor.subtle).cgColor
+            glass.layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : EdgeColor.subtle).cgColor
         }
-        glass.layer?.borderWidth = hovered ? 1.5 : 0
+        glass.layer?.borderWidth = hovered ? 1 : 0
         name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
         icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
     }

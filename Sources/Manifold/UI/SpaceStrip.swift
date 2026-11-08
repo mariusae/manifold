@@ -602,7 +602,7 @@ final class NeedsYouView: NSView {
         // A hairline over it, apart from the space's rows.
         Theme.divider.setFill()
         NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
-        NSAttributedString(string: "Needs you", attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: Status.attention])
+        NSAttributedString(string: "Needs you", attributes: [.font: UIType.section, .foregroundColor: Status.attention])
             .draw(at: NSPoint(x: SidebarView.margin + 2, y: 5))
         if items.count > 1 {
             let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
@@ -762,7 +762,7 @@ final class HostPickerView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSAttributedString(string: "New space on", attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: Theme.secondaryText])
+        NSAttributedString(string: "New space on", attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText])
             .draw(at: NSPoint(x: 12, y: 6))
         for (i, row) in rows.enumerated() {
             let r = rowRect(i)

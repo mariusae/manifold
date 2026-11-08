@@ -1439,7 +1439,7 @@ final class OrgRowView: NSTableCellView {
             name.font = UIType.title
             name.textColor = Theme.text
         case .section:
-            name.font = .systemFont(ofSize: 11.5, weight: .semibold)
+            name.font = UIType.section
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)

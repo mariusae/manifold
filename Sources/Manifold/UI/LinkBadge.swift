@@ -467,7 +467,7 @@ final class LinkBadge: NSView {
         private func colour() {
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (depth > 0 ? Self.behind(depth) : LinkCapsule.fill).cgColor
-                layer?.borderColor = (hovered ? EdgeColor.accentStrong : LinkCapsule.edge).cgColor
+                layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : LinkCapsule.edge).cgColor
             }
         }
         /// The greys behind the front face: darker than its fill, light or dark.

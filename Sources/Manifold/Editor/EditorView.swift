@@ -1208,7 +1208,7 @@ final class EditorBanner: NSView {
         themed {
             $0.layer?.backgroundColor = NSColor.themed { $0.code.changedOnDisk }.cgColor
         }
-        label.font = .systemFont(ofSize: 12.5)
+        label.font = UIType.body
         label.textColor = Theme.text
         for b in [reload, keep] { b.target = self }
         reload.action = #selector(reloadClicked)

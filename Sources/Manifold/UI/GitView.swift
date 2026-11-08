@@ -76,7 +76,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         header.font = UIType.label
         header.textColor = Theme.secondaryText
         header.lineBreakMode = .byTruncatingMiddle
-        branchLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        branchLabel.font = UIType.label
         branchLabel.textColor = Theme.text
         branchLabel.alignment = .right
         branchLabel.lineBreakMode = .byTruncatingTail
@@ -575,7 +575,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             return c
         }()
         cell.imageView?.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 8, weight: .bold, color: Theme.secondaryText)
-        cell.textField?.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]).truncatingTail()
+        cell.textField?.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText]).truncatingTail()
         cell.setAccessibilityLabel(title + (folded ? ", folded" : ""))
         return cell
     }
@@ -614,11 +614,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             let letters = (s.index == " " ? "·" : s.index) + (s.workTree == " " ? "·" : s.workTree)
             let color: NSColor = s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor)
             let a = NSMutableAttributedString(string: letters + "  ", attributes: [.font: mono, .foregroundColor: color])
-            a.append(NSAttributedString(string: s.path, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
+            a.append(NSAttributedString(string: s.path, attributes: [.font: UIType.row, .foregroundColor: Theme.text]))
             f.attributedStringValue = a.truncatingTail()
         case .allChanges:
             let a = NSMutableAttributedString(string: "±   ", attributes: [.font: mono, .foregroundColor: Theme.secondaryText])
-            a.append(NSAttributedString(string: "All changes as one diff", attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: Theme.text]))
+            a.append(NSAttributedString(string: "All changes as one diff", attributes: [.font: UIType.row, .foregroundColor: Theme.text]))
             a.append(NSAttributedString(string: vcs == .sapling ? "   sl diff" : "   git diff", attributes: [.font: mono, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = a.truncatingTail()
         case let .commit(c):
