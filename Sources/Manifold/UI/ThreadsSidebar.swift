@@ -112,12 +112,12 @@ extension MainWindowController {
         }
         let id = t.id
         // Clicked, read in the overlay (its place a click from there); ⌘,
-        // a tile beside; ⌥, the place itself.
+        // a tile of its own; ⌥, the place itself.
         n.action = { [weak self] in
             guard let self else { return }
             let mods = NSApp.currentEvent?.modifierFlags ?? []
             if mods.contains(.command) {
-                self.show(id, lens: .thread, .beside, kind: .opened, context: "from the sidebar")
+                self.popOutThread(id)
             } else if mods.contains(.option) {
                 self.goToPlace(ofThread: id)
             } else {
@@ -160,7 +160,14 @@ extension MainWindowController {
         case "list": setOrganization(.threads); setThreadsMode(timeline: false)
         case "timeline": setOrganization(.threads); setThreadsMode(timeline: true)
         case "close": setOrganization(.desk)
-        default: break
+        default:
+            // "sidebarthreads head <i>|popout <i>": run i's heading clicked, or its pop-out.
+            let w = arg.split(separator: " ")
+            let runs = sidebar.timeline.model.runs
+            if w.count == 2, let i = Int(w[1]), runs.indices.contains(i) {
+                if w[0] == "head" { timeline(sidebar.timeline, goToPlaceOf: runs[i].thread.id) }
+                if w[0] == "popout" { timeline(sidebar.timeline, popOut: runs[i].thread.id) }
+            }
         }
         guard organization == .threads else { return "not shown" }
         if threadsTimelineMode {

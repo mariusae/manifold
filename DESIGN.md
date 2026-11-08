@@ -1284,9 +1284,16 @@ projection, §2.5):
   a count of what's not seen — or the timeline. Its header's buttons:
   the other way to show them, the filter (all, open or unread; the
   space's or its project's — filled while it narrows them), Mark All
-  Read. A row clicked is read in the overlay; ⌘, a tile beside; ⌥, its
-  place.
-- *The timeline*, in the sidebar or a tile of its own.
+  Read. A row clicked is read in the overlay; ⌘, a tile of its own; ⌥,
+  its place.
+- *The timeline*, in the sidebar or a tile of its own. A run's heading
+  clicked goes to its place and reads the thread in the overlay (a
+  space's thread, the overlay alone); its ↖↘ pops it out, a tile of its
+  own. A thread popped out, an agent asked, a walk's step — anything
+  made or shown without a place asked for — goes where acme puts a new
+  window: in the active column, below its biggest tile; a new column
+  only when asked for one (⌥⇧⌘ and a kind's letter, ⇧↩ in ⌘N's picker,
+  `mani show --column`).
 - *The overlay*, anywhere (below).
 
 **The timeline.** All the activity that's relevant, newest last, as a

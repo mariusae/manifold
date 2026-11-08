@@ -2064,7 +2064,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let client = hosts.client(b.id.host) else { return NSSound.beep() }
             let command = desk.settings.agentCommand + " '" + prompt.replacingOccurrences(of: "'", with: "'\\''") + "'"
             let agent = client.newAgent(cwd: b.path?.deletingLastPathComponent ?? b.place, command: command)
-            show(agent, lens: .agent, .beside, context: "asked about \(name)")
+            show(agent, lens: .agent, .here, context: "asked about \(name)")
         }
     }
 
@@ -3988,7 +3988,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             self.refreshSidebarThreads()
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
-            self.sidebar.organizationView.flat = true
+            self.sidebar.organizationView.flat = org != .files
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
             if org == .desk { self.showSpaceHeading() }
             self.refreshSpaceStrip()
@@ -8901,7 +8901,7 @@ extension MainWindowController: GridDelegate {
                 w.tile = next
             }
         } else {
-            show(id, lens: lens, .beside, context: "a step of a walk")
+            show(id, lens: lens, .here, context: "a step of a walk")
             w.tile = arrangement?.tile(of: id, lens: lens)?.id
         }
         codeWalk = w

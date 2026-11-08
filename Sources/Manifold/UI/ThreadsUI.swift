@@ -302,7 +302,8 @@ extension MainWindowController: ThreadChatDelegate {
     func threadChatOpenTile(_ view: ThreadChatView) {
         guard let id = view.threadID else { return }
         threadUI.popover?.close()
-        show(id, lens: .thread, .beside, kind: .opened, context: "a thread opened")
+        if threadUI.overlay?.chat === view { closeThreadOverlay() }
+        popOutThread(id)
     }
 
     func threadChat(_ view: ThreadChatView, dropped: Dragged, done: @escaping (String?) -> Void) {
@@ -624,7 +625,7 @@ extension MainWindowController: ThreadTimelineDelegate {
     /// Show Threads: the space's timeline, as a tile beside.
     @objc func showThreads(_ sender: Any?) {
         guard let space = selected else { return NSSound.beep() }
-        show(space, lens: .threads, .beside, kind: .opened, context: "threads")
+        show(space, lens: .threads, .here, kind: .opened, context: "threads")
     }
 
     // MARK: ThreadTimelineDelegate
@@ -649,8 +650,31 @@ extension MainWindowController: ThreadTimelineDelegate {
         hosts.addToThread(thread, resolve ? .resolved : .reopened)
     }
 
+    /// A run's heading clicked: its place gone to (a space's thread has
+    /// none but the space) and the thread read in the overlay — unless it's
+    /// the overlay's own timeline, which reads it there.
     func timeline(_ view: ThreadTimelineView, goToPlaceOf thread: BlockID) {
-        goToPlace(ofThread: thread)
+        let inOverlay = threadUI.overlay?.timeline === view
+        if !aboutTheSpace(thread) { goToPlace(ofThread: thread) }
+        if inOverlay { return showThreadOverlay(nil, thread: thread) }
+        DispatchQueue.main.async { [weak self] in self?.showThreadOverlay(nil, thread: thread) }
+    }
+
+    func timeline(_ view: ThreadTimelineView, popOut thread: BlockID) {
+        if threadUI.overlay?.timeline === view { closeThreadOverlay() }
+        popOutThread(thread)
+    }
+
+    /// A thread as a tile of its own, placed as acme places a window: in
+    /// the active column, below its biggest tile.
+    func popOutThread(_ id: BlockID) {
+        show(id, lens: .thread, .here, kind: .opened, context: "a thread opened")
+    }
+
+    /// Whether a thread is about the space itself (no place but it).
+    func aboutTheSpace(_ thread: BlockID) -> Bool {
+        guard let about = hosts.block(thread)?.thread?.about else { return true }
+        return hosts.block(about.block)?.kind == .arrangement
     }
 
     func timeline(_ view: ThreadTimelineView, follow address: String) {
@@ -675,9 +699,7 @@ extension MainWindowController: ThreadTimelineDelegate {
     /// thread, its tile.
     func goToPlace(ofThread id: BlockID) {
         guard let about = hosts.block(id)?.thread?.about else { return }
-        if hosts.block(about.block)?.kind == .arrangement {
-            return show(id, lens: .thread, .beside, kind: .opened, context: "a thread")
-        }
+        if hosts.block(about.block)?.kind == .arrangement { return popOutThread(id) }
         open(Self.address(about.block, anchor: about.anchor), from: arrangement?.focused)
     }
 }

@@ -9,6 +9,8 @@ protocol ThreadTimelineDelegate: AnyObject {
     func timeline(_ view: ThreadTimelineView, resolve: Bool, _ thread: BlockID)
     /// A thread's place gone to.
     func timeline(_ view: ThreadTimelineView, goToPlaceOf thread: BlockID)
+    /// A thread popped out: a tile of its own.
+    func timeline(_ view: ThreadTimelineView, popOut thread: BlockID)
     /// A link in a comment, or an agent's pill, followed.
     func timeline(_ view: ThreadTimelineView, follow address: String)
     /// The scope or filter changed: shown again.
@@ -268,12 +270,18 @@ final class ThreadTimelineView: NSView {
             : FlatButton(resolveWord, font: UIType.footnote)
         reply.toolTip = replyWord
         resolve.toolTip = resolveWord
+        let popOut = compact ? FlatButton("", symbol: "arrow.up.left.and.arrow.down.right", font: UIType.footnote) : FlatButton("Open", font: UIType.footnote)
+        popOut.toolTip = "Open as a Tile"
         if compact, chosen == run.thread.id { reply.contentTintColor = Theme.accent }
-        let head = NSStackView(views: [place, NSView(), reply, resolve])
+        let head = NSStackView(views: [place, NSView(), popOut, reply, resolve])
         head.spacing = 6
         place.strong = true
         let id = run.thread.id
         reply.onClick = { [weak self] in self?.choose(id) }
+        popOut.onClick = { [weak self] in
+            guard let self else { return }
+            self.delegate?.timeline(self, popOut: id)
+        }
         resolve.onClick = { [weak self] in
             guard let self else { return }
             self.delegate?.timeline(self, resolve: !resolved, id)
