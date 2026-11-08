@@ -11,6 +11,8 @@ import AppKit
 final class ToastView: NSView {
     private let label = NSTextField(labelWithString: "")
     private let button = FlatButton("Restore")
+    /// Put away now, under the pointer (Dia's ×), for one with nothing to do.
+    private let dismiss = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
     private var hideWork: DispatchWorkItem?
     private var action: (() -> Void)?
     /// Done once its time is up and its action wasn't taken.
@@ -50,6 +52,10 @@ final class ToastView: NSView {
         button.action = #selector(act)
         addSubview(label)
         addSubview(button)
+        dismiss.toolTip = "Dismiss"
+        dismiss.onClick = { [weak self] in self?.hide() }
+        dismiss.alphaValue = 0
+        addSubview(dismiss)
         bar.anchorPoint = NSPoint(x: 0, y: 0.5)
         track.cornerRadius = Radius.surface
         track.cornerCurve = .continuous
@@ -74,6 +80,8 @@ final class ToastView: NSView {
         finishPending()
         let arriving = isHidden
         label.stringValue = text
+        // "OK" only put it away: no button for that (it goes by itself, or ×).
+        let name = name == "OK" ? "" : name
         button.title = name
         button.isHidden = name.isEmpty
         self.action = action
@@ -140,11 +148,13 @@ final class ToastView: NSView {
     override func mouseEntered(with event: NSEvent) {
         pointerOn = true
         if !isHidden { freeze() }
+        if button.isHidden { dismiss.animator().alphaValue = 1 }
     }
 
     override func mouseExited(with event: NSEvent) {
         pointerOn = false
         if !isHidden, hideWork == nil { run() }
+        dismiss.animator().alphaValue = 0
     }
 
     /// Its time up: what waits on it done, and away.
@@ -231,8 +241,9 @@ final class ToastView: NSView {
         let inset: CGFloat = 4
         let bw = button.isHidden ? 0 : ceil(button.intrinsicContentSize.width)
         button.frame = NSRect(x: bounds.width - inset - bw, y: (h - Flat.buttonHeight) / 2, width: bw, height: Flat.buttonHeight)
+        dismiss.frame = NSRect(x: bounds.width - inset - 22, y: (h - 20) / 2, width: 20, height: 20)
         let left: CGFloat = 10
-        label.frame = NSRect(x: left, y: (h - 17) / 2, width: max(0, (button.isHidden ? bounds.width - inset : button.frame.minX - 8) - left), height: 17)
+        label.frame = NSRect(x: left, y: (h - 17) / 2, width: max(0, (button.isHidden ? dismiss.frame.minX - 4 : button.frame.minX - 8) - left), height: 17)
         label.toolTip = label.stringValue
         // The whole of it, the shading's room.
         CATransaction.begin()

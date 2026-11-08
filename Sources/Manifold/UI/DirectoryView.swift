@@ -389,7 +389,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         guard let model else { return }
         modes.selectedSegment = mode == .columns ? 1 : 0
         // A search in the tree (ranked), a filter in columns (their order kept).
-        search.placeholderString = mode == .columns ? "Filter, or ? to search in files" : "Find a file, or ? to search in files"
+        search.placeholderString = "Filter, or ? to search"
         let v: DirectoryMode = mode == .columns ? DirectoryColumnsMode(owner: self, model: model) : DirectoryTreeMode(owner: self, model: model)
         v.clipsToBounds = true
         addSubview(v, positioned: .below, relativeTo: header)
@@ -480,8 +480,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         // The sidebar has the right: no preview beside the tree.
         (content as? DirectoryTreeMode)?.previews = !home
         // Its field searches the project; elsewhere, it finds files here.
-        search.placeholderString = home ? "Search \(project?.name ?? "the project"): symbols, files, text"
-            : mode == .columns ? "Filter, or ? to search in files" : "Find a file, or ? to search in files"
+        search.placeholderString = home ? "Search \(project?.name ?? "the project")" : "Filter, or ? to search"
         if home, model?.filtering == true { model?.setFilter("") }
         if !home, !search.stringValue.isEmpty, model?.filter != search.stringValue, !searchingContents { model?.setFilter(search.stringValue) }
         // Something in the field already (kept with the tile, or typed
@@ -941,7 +940,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         }
         if searchingContents {
             let text = search.stringValue.dropFirst().trimmingCharacters(in: .whitespaces)
-            footer.stringValue = text.isEmpty ? "Type what to search the files for" : "⏎ searches the files for “\(text)”"
+            footer.stringValue = text.isEmpty ? "" : "↩ searches for “\(text)”"
             footer.isHidden = false
             needsLayout = true
             return

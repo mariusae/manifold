@@ -17,7 +17,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     private let outline = TreeOutline()
     private let right = NSView()
     private let preview = FilePreviewView()
-    private let nothing = NSTextField(labelWithString: "Choose a file to preview it")
+    private let nothing = NSTextField(labelWithString: "")
     /// Open folders, relative to the root.
     private var expanded: Set<String>
     /// Each folder's shown entries, as last asked for.

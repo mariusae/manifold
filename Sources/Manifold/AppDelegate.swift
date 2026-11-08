@@ -278,9 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Source control in one place: the project's, its smartlog, the
         // file against its last commit, the file's history.
         let source = NSMenu(title: "Source Control")
-        // New ▸ Source Control's and Smartlog's (⌥⌘G, ⌥⌘L), here too.
-        item(source, "Source Control for This Project", #selector(MainWindowController.showGit(_:)), "")
-        item(source, "Interactive Smartlog", #selector(MainWindowController.showSmartlog(_:)), "")
+        // (The project's and its smartlog are New ▸'s, ⌥⌘G and ⌥⌘L.)
         item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
         item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
         // Each line's commit, in a column beside the line numbers.
@@ -349,9 +347,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(code, "Highlight Uses", #selector(TextView.highlightUses(_:)), "e", [.command, .control])
         item(code, "Clear Highlights", #selector(TextView.clearHighlights(_:)), "")
         code.addItem(.separator())
-        item(code, "Describe with an Agent", #selector(MainWindowController.describeWithAgent(_:)), "")
-        item(code, "Explain with an Agent", #selector(MainWindowController.explainWithAgent(_:)), "")
-        item(code, "Walk Through with an Agent", #selector(MainWindowController.walkWithAgent(_:)), "")
+        // An agent asked about the selection: one item, its three ways under it.
+        let ask = NSMenu(title: "Ask an Agent")
+        item(ask, "Describe", #selector(MainWindowController.describeWithAgent(_:)), "")
+        item(ask, "Explain", #selector(MainWindowController.explainWithAgent(_:)), "")
+        item(ask, "Walk Through", #selector(MainWindowController.walkWithAgent(_:)), "")
+        let askItem = NSMenuItem(title: "Ask an Agent", action: nil, keyEquivalent: "")
+        askItem.submenu = ask
+        code.addItem(askItem)
         // The project's SCIP index (§2.5): references across its files.
         item(code, "Index Project", #selector(EditorView.indexProject(_:)), "")
         item(code, "Show Documentation", #selector(EditorView.showDocumentation(_:)), "h", [.command, .control])
@@ -431,6 +434,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(outline, "Focus In", #selector(NoteOutlineTextView.focusIn(_:)), right, [.command, .option, .control])
         item(outline, "Focus Out", #selector(NoteOutlineTextView.focusOut(_:)), left, [.command, .option, .control])
         item(outline, "Unfocus", #selector(NoteOutlineTextView.unfocus(_:)), "")
+        // Its folds too (they were View's): an outline's all in one place.
+        outline.addItem(.separator())
+        item(outline, "Collapse", #selector(NoteOutlineTextView.collapse(_:)), "9", [.command, .control])
+        item(outline, "Expand", #selector(NoteOutlineTextView.expand(_:)), "0", [.command, .control])
+        item(outline, "Collapse All", #selector(NoteOutlineTextView.collapseAll(_:)), "9", [.command, .option])
+        item(outline, "Expand All", #selector(NoteOutlineTextView.expandAll(_:)), "0", [.command, .option])
+        item(outline, "Collapse Completely", #selector(NoteOutlineTextView.collapseCompletely(_:)), "")
+        item(outline, "Expand Completely", #selector(NoteOutlineTextView.expandCompletely(_:)), "")
         let outlineItem = NSMenuItem(title: "Outline", action: nil, keyEquivalent: "")
         outlineItem.submenu = outline
         edit.addItem(outlineItem)
@@ -497,23 +508,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // menu keeps a key for one item only.
         item(view, "Use Groups", #selector(DirectoryView.toggleGroups(_:)), "g", [.command, .control])
         view.addItem(.separator())
-        // An outline's folds (the outliner takes the keys itself, before
-        // the menu).
-        item(view, "Collapse", #selector(NoteOutlineTextView.collapse(_:)), "9", [.command, .control])
-        item(view, "Expand", #selector(NoteOutlineTextView.expand(_:)), "0", [.command, .control])
-        item(view, "Collapse All", #selector(NoteOutlineTextView.collapseAll(_:)), "9", [.command, .option])
-        item(view, "Expand All", #selector(NoteOutlineTextView.expandAll(_:)), "0", [.command, .option])
-        item(view, "Collapse Completely", #selector(NoteOutlineTextView.collapseCompletely(_:)), "")
-        item(view, "Expand Completely", #selector(NoteOutlineTextView.expandCompletely(_:)), "")
-        view.addItem(.separator())
         item(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
 
         // Go: finding a place and getting there.
         let go = submenu(main, "Go")
         item(go, "Open Quickly…", #selector(MainWindowController.openDocument(_:)), "o")
         item(go, "Find in Blocks…", #selector(MainWindowController.findInBlocks(_:)), "o", [.command, .shift])
-        item(go, "Outline…", #selector(MainWindowController.goToTile(_:)), "p")
-        item(go, "Filter Outline", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
+        item(go, "Go To…", #selector(MainWindowController.goToTile(_:)), "p")
+        item(go, "Find in Outline…", #selector(MainWindowController.searchOutline(_:)), "p", [.command, .shift])
         // The project the focused tile is in, its homepage (⌃⌘P).
         item(go, "Go to Project", #selector(MainWindowController.goToNearestProject(_:)), "p", [.command, .control])
         // ⌘L is one key for two things, by the tile: a line, in an editor
@@ -591,7 +593,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         moveItem.submenu = moveMenu
         tile.addItem(moveItem)
         tile.addItem(.separator())
-        tile.addItem(.separator())
         // ⌘., the system's cancel: a notebook's running cell.
         item(tile, "Interrupt", #selector(MainWindowController.interruptTile(_:)), ".")
         tile.addItem(.separator())
@@ -606,7 +607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ⌘T, as a browser's new tab (⇧⌘T reopens what was closed, ⇧⌘[ ⇧⌘]
         // go between them): a space with a terminal.
         item(space, "New Space", #selector(MainWindowController.newTerminal(_:)), "t")
-        item(space, "Name Space…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
+        item(space, "Rename Space…", #selector(MainWindowController.renameTab(_:)), "r", [.command, .shift])
         item(space, "Overview", #selector(MainWindowController.showWorkspaceOverview(_:)), "'")
         space.addItem(.separator())
         // ⇧⌘W, as the Mac closes a window: ⌘W's bigger thing.

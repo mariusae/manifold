@@ -54,7 +54,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let split = NSSplitView()
     private let listBox = NSView()
     private let paneBox = NSView()
-    private let paneNote = NSTextField(labelWithString: "Choose a change or a commit to see it")
+    private let paneNote = NSTextField(labelWithString: "")
     private var pane: DiffView?
     private var paneSubject: DiffSubject?
     private var paneWork: DispatchWorkItem?

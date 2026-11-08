@@ -192,7 +192,7 @@ final class ThreadTimelineView: NSView {
             list.addArrangedSubview(fill(v))
         }
         empty.isHidden = !m.runs.isEmpty
-        empty.stringValue = filter == .unread ? "Nothing unread." : "No threads yet. Select something and press ⌥⌘M to start one, or write below to start one about the space."
+        empty.stringValue = filter == .unread ? "Nothing unread." : "No threads yet. ⌥⌘M starts one."
         if let c = chosen, !m.runs.contains(where: { $0.thread.id == c }) { chosen = nil }
         updateReplying()
         needsLayout = true
@@ -371,9 +371,9 @@ final class ThreadTimelineView: NSView {
             clearReply.isHidden = false
             placeholder.stringValue = "Reply…"
         } else {
-            replyingTo.stringValue = model.composesNew ? "A new thread about the space" : "Choose a thread to reply to"
+            replyingTo.stringValue = model.composesNew ? "A new thread" : "Choose a thread"
             clearReply.isHidden = true
-            placeholder.stringValue = model.composesNew ? "Start a thread… (@claude asks an agent)" : "Reply…"
+            placeholder.stringValue = model.composesNew ? "Start a thread…" : "Reply…"
         }
         composer.isEditable = chosen != nil || model.composesNew
         placeholder.isHidden = !composer.string.isEmpty

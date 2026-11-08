@@ -683,7 +683,7 @@ around it, and comes back with its history.
   (open, checked, none), `#`, `>`, `[ ]` or `1.` typed at a row's start
   its kind, ```` ``` ```` (a language after it, or not) then Return a code
   block, the caret in it (Return past its closing fence, a row after it), a bullet clicked to fold what's under it (← and → fold and
-  unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 all of them; View ▸ Collapse and Expand), a
+  unfold rows, ⌃⌘9 ⌃⌘0 too, ⌥⌘9 ⌥⌘0 all of them; Edit ▸ Outline ▸ Collapse and Expand), a
   bullet dragged to move a row with its children, in or out as it's
   dropped; Escape selects rows (↑ ↓, ⇧ to extend, Space checks them off,
   Delete deletes them, Return or Escape back to the text); emphasis,
@@ -1100,8 +1100,8 @@ around it, and comes back with its history.
   A folded function with a note describing it shows the note in its
   body's place. A caret come into what's folded (gone to, found) opens
   it.
-- **Asking an agent about code**: Describe, Explain and Walk Through
-  with an Agent (an editor's menu, Code ▸) hand the place — the
+- **Asking an agent about code**: Ask an Agent ▸ Describe, Explain or
+  Walk Through (an editor's menu, Code ▸) hand the place — the
   selection's, else the declaration the caret is in — to the agent in
   the space most lately used (else a new one beside), asking it for a
   note that describes it (linked `--as describes`, so it shows under the
@@ -1193,7 +1193,7 @@ around it, and comes back with its history.
   at its top), clicked to go there, ⌘- or ⇧-clicked to choose several,
   and dragged out as pages — a link to each in a note, a reference for
   an agent, the page itself as a PDF to the Finder or Mail. Shown or not, it's kept with the tile.
-- **Filter Outline** (⇧⌘P — ⌘P's outline, in the tile — or the bar's
+- **Find in Outline…** (⇧⌘P — ⌘P's outline, in the tile — or the bar's
   menu): the focused tile's own sidebar — its commands, headings,
   symbols, contents or files — shown if it wasn't, the pointer going to
   the **filter field** at its top, what was typed there last still there;

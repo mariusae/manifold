@@ -104,7 +104,7 @@ final class ThreadChatView: NSView {
         header.addArrangedSubview(contextView)
         placeRow.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         contextView.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
-        tileButton.toolTip = "Open the thread as a tile"
+        tileButton.toolTip = "Open as a Tile"
         tileButton.target = self
         tileButton.action = #selector(openTile)
 
@@ -180,7 +180,7 @@ final class ThreadChatView: NSView {
             list.addArrangedSubview(eventRow("\(name) is working on it…", icon: m.icon(agent)))
         }
         if t == nil {
-            placeholder.stringValue = "Comment… (↩ sends, @claude asks an agent)"
+            placeholder.stringValue = "Comment…"
         } else {
             placeholder.stringValue = t?.resolved == true ? "Reply to reopen…" : "Reply…"
         }

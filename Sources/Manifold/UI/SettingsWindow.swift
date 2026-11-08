@@ -208,15 +208,15 @@ final class AppearancePane: SettingsPane {
         showScheme = s
         row("Appearance", scheme)
         colorThemes.onPick = { [weak self] p in self?.source.change { (a: inout Appearance) in a.colorTheme = p.id } }
-        row("Theme", colorThemes, note: "Every color: the window and its backdrop, text, terminals' palettes, diffs, the preview's page. Each in light and dark.")
+        row("Theme", colorThemes, note: "Every colour, light and dark.")
         tints.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.tint = t } }
-        row("Accent", tints, note: "The focus ring, what's chosen, the caret and selections, and a pool of light in the backdrop. Theme: the theme's own; any other, over it.")
+        row("Accent", tints, note: "The focus ring, the caret, selections.")
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
         row("Fonts", themes, top: true)
         advanced.target = self
         advanced.action = #selector(toggleAdvanced)
-        row("", advanced, note: "A Typography pane, and a Custom theme: each role's face, size, spacing and OpenType features.")
+        row("", advanced, note: "A Typography pane and a Custom theme.")
         let (editor, e) = segments(["Editing Font", "Monospaced"], [EditorFont.proportional, .monospaced]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.editorFont = v }
         }
@@ -227,7 +227,7 @@ final class AppearancePane: SettingsPane {
             self?.source.change { (a: inout Appearance) in a.contrastCorrection = v }
         }
         showContrast = c
-        row("Contrast", contrast, note: "Text in a program's own colors that doesn't reach WCAG AA on its background is moved in lightness, keeping its hue, until it does.")
+        row("Contrast", contrast, note: "Programs' colours lifted to WCAG AA.")
     }
 
     override func refresh() {
@@ -657,7 +657,7 @@ final class TerminalsPane: SettingsPane {
             self?.source.change { (s: inout Settings) in s.terminalDormantAfterHours = v }
         }
         showDormancy = d
-        row("End Idle Shells", dormancy, note: "A terminal off screen this long with its shell idle has the shell ended; its transcript stays, and it starts again when shown.")
+        row("End Idle Shells", dormancy, note: "Ends an idle shell off screen; it starts again when shown.")
     }
 
     @objc private func copyOnSelectClicked() {

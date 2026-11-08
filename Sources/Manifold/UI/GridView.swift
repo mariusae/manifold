@@ -2208,9 +2208,6 @@ final class GridView: NSView, NSDraggingSource {
     }
 }
 
-/// The dot in a tile's bar for a text with unsaved edits: grey, or amber
-/// when the file also changed on disk beneath them. Clicked, it saves, or
-/// (amber) asks which of the two to keep.
 /// The host a block lives on, when that isn't its workspace's host: a
 /// capsule after the name — a server's symbol and the host's name — the
 /// same on every kind of block.

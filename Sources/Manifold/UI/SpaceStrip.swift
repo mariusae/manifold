@@ -446,6 +446,7 @@ extension MainWindowController {
         colors.addItem(auto)
         let colorItem = NSMenuItem(title: "Colour", action: nil, keyEquivalent: "")
         colorItem.submenu = colors
+        colorItem.setSymbol("paintpalette", size: 12)
         menu.addItem(colorItem)
 
         let symbols = NSMenu()
@@ -466,15 +467,18 @@ extension MainWindowController {
         }
         let symbolItem = NSMenuItem(title: "Symbol", action: nil, keyEquivalent: "")
         symbolItem.submenu = symbols
+        symbolItem.setSymbol("star.square", size: 12)
         menu.addItem(symbolItem)
         menu.addItem(.separator())
-        let rename = NSMenuItem(title: "Rename…", action: #selector(renameSpaceFromStrip(_:)), keyEquivalent: "")
+        let rename = NSMenuItem(title: "Rename Space…", action: #selector(renameSpaceFromStrip(_:)), keyEquivalent: "")
         rename.target = self
         rename.representedObject = id
+        rename.setSymbol("pencil", size: 12)
         menu.addItem(rename)
-        let remove = NSMenuItem(title: "Take Off the Desk", action: #selector(removeSpaceFromStrip(_:)), keyEquivalent: "")
+        let remove = NSMenuItem(title: "Remove Space", action: #selector(removeSpaceFromStrip(_:)), keyEquivalent: "")
         remove.target = self
         remove.representedObject = id
+        remove.setSymbol("xmark", size: 12)
         menu.addItem(remove)
         return menu
     }

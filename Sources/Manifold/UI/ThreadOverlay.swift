@@ -35,7 +35,7 @@ final class ThreadOverlayView: NSView {
         close.toolTip = "Close (⎋)"
         popOut.target = self
         popOut.action = #selector(popOutClicked)
-        popOut.toolTip = "Open the Thread as a Tile"
+        popOut.toolTip = "Open as a Tile"
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.textColor = Theme.text
         titleLabel.lineBreakMode = .byTruncatingMiddle

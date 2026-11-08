@@ -109,7 +109,7 @@ final class SidebarView: NSView {
     private let pushedSubtitle = NSTextField(labelWithString: "")
     /// Under a space's name: the host it's on, a remote's ping times by it.
     let spaceHost = SpaceHostLine()
-    private var pushed: Bool { organization == .closed || organization == .inspector }
+    private var pushed: Bool { organization == .closed }
     /// A header of its own under the window's buttons: a pushed list's, the
     /// space's (its name, over its tiles), or the threads'.
     private var titled: Bool { pushed || organization == .threads || organization == .desk }
@@ -366,13 +366,6 @@ final class SidebarView: NSView {
         spaceHost.show(host: host, standing: standing, pings: pings, remote: remote)
     }
 
-    /// The Inspector's header: the block's name, and what and where it is.
-    func setInspected(title: String, subtitle: String) {
-        guard organization == .inspector else { return }
-        pushedTitle.stringValue = title
-        pushedSubtitle.stringValue = subtitle
-    }
-
     /// How many are closed awaiting collection: the foot row, hidden at zero.
     func setFoot(closed n: Int) {
         // No row of its own at the foot: ⇧⌘A's menu (the footer's chevron) has it.
@@ -437,7 +430,7 @@ final class SidebarView: NSView {
             card.themed { [weak self] v in self?.applyCard(v) }
         }
         pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
-        pinButton.toolTip = pinned ? "Let Sidebar Slide Out (⌃⌘S)" : "Keep Sidebar Shown (⌃⌘S)"
+        pinButton.toolTip = pinned ? "Let Sidebar Slide Out (⇧⌘/)" : "Keep Sidebar Shown (⇧⌘/)"
     }
 
     @objc private func togglePinned() { delegate?.sidebarTogglePinned() }

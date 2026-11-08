@@ -5214,7 +5214,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if f != nil { actions.append(row("Copy Contents", "⇧⌘C", "doc.on.doc") { [weak self] in self?.copyContents(nil) }) }
         if space != nil {
             if b.id != selected { actions.append(row("Go to Space", "", Theme.spaceSymbol) { [weak self] in self?.hosts.select(b.id) }) }
-            actions.append(row("Name…", "", "pencil") { [weak self] in self?.rename(b.id) })
+            actions.append(row("Rename Space…", "", "pencil") { [weak self] in self?.rename(b.id) })
             actions.append(row("Remove Space", "", "xmark") { [weak self] in self?.removeFromDesk(b.id) })
         }
         for item in copyItems(for: b.id) {
@@ -8726,8 +8726,8 @@ extension MainWindowController: GridDelegate {
         if let t = hosts.block(block)?.text, t.isDirty {
             menu.addItem(.separator())
             if t.stale {
-                menu.addItem(ClosureMenuItem("Reload from Disk, Losing the Edits", symbol: "arrow.clockwise") { [weak self] in self?.hosts.propose(.readFile(block)) })
-                menu.addItem(ClosureMenuItem("Overwrite with the Edits", symbol: "square.and.arrow.down") { [weak self] in self?.save(block, from: placement) })
+                menu.addItem(ClosureMenuItem("Reload", symbol: "arrow.clockwise") { [weak self] in self?.hosts.propose(.readFile(block)) })
+                menu.addItem(ClosureMenuItem("Keep Mine", symbol: "square.and.arrow.down") { [weak self] in self?.save(block, from: placement) })
             } else {
                 menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "s") { [weak self] in self?.save(block, from: placement) })
             }
@@ -8741,7 +8741,7 @@ extension MainWindowController: GridDelegate {
             menu.addItem(pin)
         }
         if views[placement]?.outline != nil {
-            menu.addItem(ClosureMenuItem("Filter Outline", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
+            menu.addItem(ClosureMenuItem("Find in Outline…", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
                 guard let self else { return }
                 self.focus(placement)
                 self.searchOutline(of: placement)
@@ -11041,7 +11041,7 @@ extension MainWindowController: OrganizationViewDelegate {
             return menu
         }
         if let arr = node.arrangement, node.column == nil {
-            menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.rename(arr) })
+            menu.addItem(ClosureMenuItem("Rename Space…", symbol: "pencil") { [weak self] in self?.rename(arr) })
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.space(arr), open: true) })
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Remove Space", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
