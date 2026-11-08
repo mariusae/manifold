@@ -104,7 +104,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
     private(set) var recentlyClosed: Set<BlockID> = []
-    private var sidebarShown = false {
+    private(set) var sidebarShown = false {
         // The copies' badge only while the sidebar (which shows them) is away.
         didSet { if sidebarShown != oldValue { transfersChanged() } }
     }
@@ -122,7 +122,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     var selected: BlockID? { hosts.state.selected }
     var arrangement: ArrangementState? { hosts.arrangement(selected) }
-    private var pinned: Bool { hosts.state.window.sidebarPinned }
+    var pinned: Bool { hosts.state.window.sidebarPinned }
 
     init(hosts: Hosts) {
         self.hosts = hosts
@@ -929,6 +929,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar's tree not made again before this (media time): a
     /// tile's row squeezing shut as it pours out of it.
     var sidebarHeldUntil: CFTimeInterval = 0
+    /// The footer's menu, open, and which; its click-outside watcher; the
+    /// tiles' menu showing them all.
+    var footerMenu: (view: PopMenu?, which: FooterMenu) = (nil, .threads)
+    var footerMonitor: Any?
+    var tilesShowAll = false
     /// A docked tile's picture as it went (its body's): what it pours back
     /// out as, a view just shown again having nothing drawn yet (a PDF's).
     var dockedPictures: [PlacementID: Any] = [:]
@@ -1357,7 +1362,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The sidebar wasn't made again while it was put away.
     private var organizationStale = false
 
-    private func showSidebar(animated: Bool) {
+    func showSidebar(animated: Bool) {
         guard !sidebarShown else { return }
         sidebarShown = true
         if organizationStale { refreshOrganization(now: true) }
@@ -2591,7 +2596,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                            over: window)
     }
 
-    private func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?, on h: HostID? = nil) {
+    func makeFromPicker(_ kind: BlockKinds.Kind, _ what: String?, on h: HostID? = nil) {
+        newTileKind = kind
         let f = arrangement?.focused
         let h = h ?? focusedHost
         // ⇧↩ alone: a new column, as ⇧ with ⌥⌘ and a kind's letter.
@@ -4451,7 +4457,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// What's closed and not yet collected on a host (§4): what exists
     /// and nothing reaches — the last seen first.
-    private func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
+    func closedItems(on c: HostClient, reachable: Set<BlockID>) -> [Block] {
         let far = Stamp(wall: 0, logical: 0, host: c.host)
         // Not a diff only ever shown in a git tile's pane: never seen
         // since it was made, it was never closed.
@@ -5253,6 +5259,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// column by column, top to bottom, a hairline between columns; then
     /// those docked (§3.1), the latest first. The focused tile marked: the
     /// table of contents of the screen.
+    /// The kind a new tile from the sidebar is, by its name: the one
+    /// last made from it or the picker.
+    static let newTileKindKey = "newTileKind"
+    var newTileKind: BlockKinds.Kind? {
+        get { UserDefaults.standard.string(forKey: Self.newTileKindKey).flatMap { name in BlockKinds.matching(name).first { $0.name == name } } }
+        set { UserDefaults.standard.set(newValue?.name, forKey: Self.newTileKindKey) }
+    }
+
+    /// The sidebar's New row: "New Terminal" (the kind last made), else
+    /// "New Tile…" (⌘N's picker); the pointer on it, a button for the picker.
+    private func newTileRow(in space: BlockID) -> OrgNode {
+        let kind = newTileKind
+        let n = OrgNode(id: "arr/\(space)/new", title: kind.map { "New " + $0.title } ?? "New Tile…", symbol: "plus", detail: "")
+        n.dimmed = true
+        n.age = nil
+        n.action = { [weak self] in
+            guard let self else { return }
+            if let kind = self.newTileKind { self.makeFromPicker(kind, nil) } else { self.newBlockPicker(nil) }
+        }
+        n.tooltip = kind.map { "A new \($0.title.lowercased()), below the focused tile" } ?? "Make a tile (⌘N)"
+        if kind != nil {
+            n.accessories = [.init(symbol: "chevron.down", tip: "Another Kind… (⌘N)", run: { [weak self] in self?.newBlockPicker(nil) })]
+        }
+        return n
+    }
+
     private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
         guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
         let aid = "arr/\(id)"
@@ -5284,6 +5316,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.column = c
             n.placement = p.id
             n.emphasis = p.id == a.focused
+            // The pointer on it: close it (⌘W's), or delete its block.
+            let pid = p.id, block = p.block
+            n.accessories = [
+                .init(symbol: "trash", tip: "Delete", run: { [weak self] in self?.deleteBlock(block) }),
+                .init(symbol: "xmark", tip: "Close Tile", run: { [weak self] in self?.closeTile(pid, in: id) }),
+            ]
             return n
         }
         func label(_ title: String, _ key: String, count: Int? = nil) -> OrgNode {
@@ -5323,6 +5361,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             grid += rows
         }
         if !grid.isEmpty { out += [label("On Screen", "screen")] + grid }
+        // A new tile, as Dia's New Tab: the kind last made (⌘N's picker
+        // the first time, and from its button for another kind).
+        out.append(newTileRow(in: id))
         // Docked, the latest first.
         let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) }.compactMap { tile($0.placement, docked: true, column: nil) }
         if !docked.isEmpty {

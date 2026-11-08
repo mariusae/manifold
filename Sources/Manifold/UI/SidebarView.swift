@@ -87,6 +87,8 @@ final class SidebarView: NSView {
     let needsYou = NeedsYouView()
     /// The hosts to make a space on, over the strip's +.
     let hostPicker = HostPickerView()
+    /// Threads and the tiles' menu, always at the very bottom.
+    let footer = SidebarFooter()
     /// Copies on their way (§8), above those rows.
     let transfers = TransfersView()
     /// Toasts (§4), while it's out: above the copies, as many as are up.
@@ -146,7 +148,7 @@ final class SidebarView: NSView {
             }
             card.addSubview(t)
         }
-        for v in [counts, spaces, needsYou, closedRow, transfers, toasts] { card.addSubview(v) }
+        for v in [counts, spaces, needsYou, closedRow, transfers, toasts, footer] { card.addSubview(v) }
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
@@ -226,13 +228,15 @@ final class SidebarView: NSView {
         }
         // The spaces along the very bottom; over them the counts of what's
         // doing something, at the right — none, no row for them.
+        footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SidebarFooter.height)
+        let fh = SidebarFooter.height
         let sh = spaces.wantedHeight(width: bounds.width)
-        spaces.frame = NSRect(x: 0, y: 0, width: bounds.width, height: sh)
+        spaces.frame = NSRect(x: 0, y: fh, width: bounds.width, height: sh)
         let cw = counts.wantedWidth
         let barH: CGFloat = cw > 0 ? 26 : 0
-        counts.frame = NSRect(x: bounds.width - 12 - cw, y: sh, width: cw, height: barH)
+        counts.frame = NSRect(x: bounds.width - 12 - cw, y: fh + sh, width: cw, height: barH)
         counts.isHidden = cw == 0
-        var bottom = sh + barH
+        var bottom = fh + sh + barH
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
         needsYou.isHidden = nh == 0

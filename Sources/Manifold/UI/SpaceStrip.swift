@@ -375,6 +375,13 @@ extension MainWindowController {
                 self.hosts.select(id)
             }
             wirePlus()
+            sidebar.footer.threads.onClick = { [weak self] in self?.showFooterMenu(.threads) }
+            sidebar.footer.tiles.onClick = { [weak self] in self?.showFooterMenu(.tiles) }
+        }
+        // Threads with something not seen, in the space shown.
+        if let space = selected {
+            let n = hosts.threads(inSpace: space).filter { !hosts.unseen($0).isEmpty }.count
+            if sidebar.footer.threads.count != n { sidebar.footer.threads.count = n; sidebar.footer.needsLayout = true }
         }
         strip.show(spaceChips())
         refreshNeedsYou()

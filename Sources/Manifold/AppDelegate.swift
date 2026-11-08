@@ -473,6 +473,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(organizeItem)
         // The focused block's properties, in the sidebar (Star's SHOW PROPERTIES).
         item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .option])
+        // The space's tiles, the last seen first, and what was closed (Dia's ⇧⌘A).
+        item(view, "Tiles and Recently Closed…", #selector(MainWindowController.showTilesMenu(_:)), "a", [.command, .shift])
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         // ⌘= too, the key + is on, unshifted.

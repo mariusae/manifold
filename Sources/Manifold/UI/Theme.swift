@@ -308,6 +308,14 @@ final class IconButton: NSButton {
     private var hovering = false { didSet { needsDisplay = true } }
     /// The pointer come over it (true) or gone (false).
     var onHover: ((Bool) -> Void)?
+    /// Clicked, in place of a target and action.
+    var onClick: (() -> Void)? {
+        didSet {
+            target = onClick == nil ? nil : self
+            action = onClick == nil ? nil : #selector(runClick)
+        }
+    }
+    @objc private func runClick() { onClick?() }
 
     init(symbol: String, size: CGFloat = 11, weight: NSFont.Weight = .semibold, target: AnyObject?, action: Selector?) {
         super.init(frame: NSRect(x: 0, y: 0, width: 20, height: 20))

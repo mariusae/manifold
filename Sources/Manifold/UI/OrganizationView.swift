@@ -92,6 +92,14 @@ final class OrgNode {
     /// What the row puts on the clipboard, a copy button beside it (the
     /// inspector's references, ids, paths).
     var copies: String?
+    /// Buttons at its right while the pointer's on it (close, delete; a
+    /// new tile's other kinds), each a symbol, a tip and what it does.
+    struct Accessory {
+        var symbol: String
+        var tip: String
+        var run: () -> Void
+    }
+    var accessories: [Accessory] = []
     /// In the inspector: a row edited in place (a host's variable), or a
     /// row that, clicked, adds one so (its template).
     var editable: InspectorEditable?
@@ -143,6 +151,7 @@ final class OrgNode {
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
         dirty = o.dirty; stale = o.stale; image = o.image; docked = o.docked
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
+        accessories = o.accessories
     }
 }
 
@@ -1328,6 +1337,15 @@ final class OrgRowView: NSTableCellView {
     var flat = false
     private let tipOwner = LiveTip()
     private var liveTipTag: NSView.ToolTipTag?
+    /// Its node's accessories, shown with the pointer on it.
+    private var accessoryButtons: [IconButton] = []
+    private var hovering = false {
+        didSet {
+            guard hovering != oldValue else { return }
+            for b in accessoryButtons { b.isHidden = !hovering }
+            needsLayout = true
+        }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -1356,6 +1374,20 @@ final class OrgRowView: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func updateTrackingAreas() {
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        hovering = false
+    }
+
     func show(_ node: OrgNode) {
         self.node = node
         // A divider: the hairline alone.
@@ -1370,6 +1402,15 @@ final class OrgRowView: NSTableCellView {
         }
         icon.isHidden = false
         name.isHidden = false
+        accessoryButtons.forEach { $0.removeFromSuperview() }
+        accessoryButtons = node.accessories.map { a in
+            let b = IconButton(symbol: a.symbol, size: 11, weight: .medium, target: nil, action: nil)
+            b.toolTip = a.tip
+            b.onClick = a.run
+            b.isHidden = !hovering
+            addSubview(b)
+            return b
+        }
         // The status by the name (`StatusMark`): a pill only when it needs
         // you, the name shimmering while it works.
         let mark = StatusMark(node.look, kind: node.blocked)
@@ -1529,7 +1570,15 @@ final class OrgRowView: NSTableCellView {
         let ix: CGFloat = 0
         icon.frame = NSRect(x: 2 + ix, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
         var right = bounds.width - 4
-        if !count.isHidden {
+        // The pointer on it: its buttons at the right, over what's there.
+        if hovering, !accessoryButtons.isEmpty {
+            for b in accessoryButtons.reversed() {
+                b.frame = NSRect(x: right - 20, y: ((h - 20) / 2).rounded(), width: 20, height: 20)
+                right -= 22
+            }
+            for v in [count, trailing, glyph, pill] as [NSView] { v.frame = .zero }
+            right -= 2
+        } else if !count.isHidden {
             let w = count.wantedWidth
             count.frame = NSRect(x: right - w, y: ((h - CountPill.height) / 2).rounded(), width: w, height: CountPill.height)
             right -= w + 6

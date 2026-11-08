@@ -778,6 +778,20 @@ then how many more, which shows them all (and "Fewer" again); none,
 not there at all. Squares too many for a row wrap onto another, the
 strip as tall as it takes. A square's menu shows its colours and
 symbols as they'll look.
+After the space's tiles on screen, a **New** row, as Dia's New Tab:
+"New Terminal" — the kind last made from it or ⌘N's picker — or, before
+any, "New Tile…", the picker; the pointer on it, a chevron for the
+picker, another kind. The pointer on a tile's row shows a × (close it)
+and a bin (delete its block, as Delete does). At the very bottom, the
+**footer** (`SidebarFooter`), as Dia's: **Threads** at its left, with
+how many have something not seen — a menu over it (`PopMenu`) of the
+space's threads by when they were last written in, under day headers
+(Today, Yesterday, the week, then months), searched, and filtered by
+chips under a filter button (Open, Unread, Resolved, Every Space); a
+row read in the overlay. At its right a chevron (⇧⌘A from anywhere):
+the space's tiles, the last seen first (eight, then Show All), what was
+recently closed, then All Recently Closed and Files — searched, a
+header over each part, ↑↓ ↩ ⎋.
 Recently Closed (§4), a row at the foot, pushes its list over the tree,
 with a back button and the list's name in the header. The space stays
 the working surface; organizations are how you reach blocks, never
