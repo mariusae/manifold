@@ -864,28 +864,10 @@ final class GridView: NSView, NSDraggingSource {
     private var placed: Set<PlacementID> = []
 
     private func comeIn(_ parts: [NSView]) {
-        guard let card = parts.map(\.frame).reduce(nil, { (r: NSRect?, f: NSRect) in r.map { $0.union(f) } ?? f }) else { return }
-        let c = CGPoint(x: card.midX, y: card.midY), k = Motion.reduced ? 1 : 0.86
-        for v in parts {
-            guard let l = v.layer else { continue }
-            let o = v.frame.origin
-            // Seen at once, there before it's grown: the growing is what
-            // shows it coming, not a fade.
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 0
-            fade.toValue = 1
-            fade.duration = Self.glide * 0.4
-            fade.timingFunction = Motion.appear
-            let grow = CABasicAnimation(keyPath: "transform")
-            grow.fromValue = CATransform3DScale(CATransform3DMakeTranslation(c.x - o.x - (c.x - o.x) * k, c.y - o.y - (c.y - o.y) * k, 0), k, k, 1)
-            grow.toValue = CATransform3DIdentity
-            grow.duration = Self.glide
-            grow.timingFunction = Motion.travel
-            let g = CAAnimationGroup()
-            g.animations = [fade, grow]
-            g.duration = Self.glide
-            l.add(g, forKey: "comeIn")
-        }
+        // Seen at once, there before it's grown: the growing is what shows
+        // it coming, not a fade.
+        Ghost.burst(parts.compactMap(\.layer), scale: Motion.reduced ? 1 : 0.86, over: Self.glide, fade: Self.glide * 0.4,
+                    fading: Motion.appear, moving: Motion.travel, coming: true, key: "comeIn")
     }
 
     /// A tile's content resized as its neighbours come, go or grow: sized
@@ -1035,30 +1017,9 @@ final class GridView: NSView, NSDraggingSource {
     /// the tile is now, so a divider dragged meanwhile takes nothing with it.
     private func crossFade(from v: NSView, to body: NSRect) {
         guard window != nil, !isHiddenOrHasHiddenAncestor, zooming == nil, v.bounds.width > 20, v.bounds.height > 1,
-              let host = layer, let picture = Self.ghostPicture(of: v) else { return }
-        let g = CALayer()
-        g.contents = picture
-        g.contentsGravity = .top
-        g.contentsScale = window?.backingScaleFactor ?? 2
-        if let own = v.layer?.backgroundColor, own.alpha > 0 { g.backgroundColor = own.copy(alpha: 1) } else {
-            v.effectiveAppearance.performAsCurrentDrawingAppearance { g.backgroundColor = Theme.windowBackground.withAlphaComponent(1).cgColor }
-        }
-        g.frame = body
-        g.cornerRadius = v.layer?.cornerRadius ?? 0
-        g.maskedCorners = v.layer?.maskedCorners ?? []
-        g.masksToBounds = true
-        g.zPosition = 15
-        g.opacity = 0
+              let host = layer, let g = Ghost.picture(of: v, at: body, z: 15, gravity: .top) else { return }
         host.addSublayer(g)
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1
-        fade.toValue = 0
-        fade.duration = Motion.spatial
-        fade.timingFunction = Motion.disappear
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { g.removeFromSuperlayer() }
-        g.add(fade, forKey: "crossFade")
-        CATransaction.commit()
+        Ghost.fadeOut(g, over: Motion.spatial, timing: Motion.disappear, key: "crossFade")
     }
 
     /// How a tile leaves the grid: closed (gone from the desk), flown
@@ -1072,30 +1033,9 @@ final class GridView: NSView, NSDraggingSource {
     /// fades, a small cloud bursting where it was and drifting apart, as
     /// the Dock's poof. With less motion, only faded.
     func poof(_ v: PaneContent) {
-        guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer else { return fadeAway(v) }
-        let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
-        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = 1.05
-        let d = Motion.spatial
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { ghosts.forEach { $0.removeFromSuperlayer() } }
-        for g in ghosts {
-            host.addSublayer(g)
-            g.opacity = 0
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
-            fade.toValue = 0
-            fade.timingFunction = Motion.appear
-            let o = g.position
-            let swell = CABasicAnimation(keyPath: "transform")
-            swell.fromValue = CATransform3DIdentity
-            swell.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
-            swell.timingFunction = Motion.appear
-            let grp = CAAnimationGroup()
-            grp.animations = [fade, swell]
-            grp.duration = d * 0.5
-            g.add(grp, forKey: "poof")
-        }
-        CATransaction.commit()
+        guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer, let card = Ghost.union(ghosts.map(\.frame)) else { return fadeAway(v) }
+        ghosts.forEach(host.addSublayer)
+        Ghost.burst(ghosts, scale: 1.05, over: Motion.spatial * 0.5, fading: Motion.appear, moving: Motion.appear, key: "poof")
         Self.puff(in: host, over: card, appearance: effectiveAppearance)
     }
 
@@ -1156,23 +1096,10 @@ final class GridView: NSView, NSDraggingSource {
         // Its body, or (too short for it) the summary in its place; its bar.
         let body: NSView? = v.isHidden ? tileSummaries[v.placement] : v
         var ghosts: [CALayer] = []
+        // Each on its ground, which a drawing of it leaves out: whole, as
+        // the tile was over what's behind it now.
         for part in [body, bar].compactMap({ $0 }) where !part.isHidden && part.superview === self && part.bounds.width > 20 {
-            guard let image = Self.ghostPicture(of: part) else { continue }
-            let g = CALayer()
-            g.contents = image
-            g.contentsGravity = .resize
-            // Its ground is its layer's, which a drawing of it leaves out
-            // (a body's, else the window's it's set on) —
-            // Whole, as the tile was over what's behind it now.
-            if let own = part.layer?.backgroundColor, own.alpha > 0 { g.backgroundColor = own.copy(alpha: 1) } else {
-                part.effectiveAppearance.performAsCurrentDrawingAppearance { g.backgroundColor = Theme.windowBackground.withAlphaComponent(1).cgColor }
-            }
-            g.frame = part.frame
-            g.cornerRadius = part.layer?.cornerRadius ?? 0
-            g.maskedCorners = part.layer?.maskedCorners ?? []
-            g.masksToBounds = true
-            g.zPosition = 30
-            ghosts.append(g)
+            if let g = Ghost.picture(of: part, z: 30) { ghosts.append(g) }
         }
         return ghosts.isEmpty ? nil : ghosts
     }
@@ -1182,33 +1109,11 @@ final class GridView: NSView, NSDraggingSource {
     /// what went, seen going. Its view goes at once, as before.
     func fadeAway(_ v: PaneContent) {
         guard let ghosts = ghosts(of: v), let host = layer else { return }
-        let card = ghosts.map(\.frame).reduce(ghosts[0].frame) { $0.union($1) }
-        let c = CGPoint(x: card.midX, y: card.midY), k: CGFloat = Motion.reduced ? 1 : 0.86
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { ghosts.forEach { $0.removeFromSuperlayer() } }
-        for g in ghosts {
-            host.addSublayer(g)
-            g.opacity = 0
-            // Shrinking at once, seen going as it shrinks; faded out by
-            // the time its neighbours have taken most of its room.
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
-            fade.toValue = 0
-            fade.duration = Self.glide * 0.6
-            fade.timingFunction = Motion.appear
-            // Shrunk about the tile's middle, its parts with it.
-            let o = g.position
-            let shrink = CABasicAnimation(keyPath: "transform")
-            shrink.fromValue = CATransform3DIdentity
-            shrink.toValue = CATransform3DScale(CATransform3DMakeTranslation((c.x - o.x) * (1 - k), (c.y - o.y) * (1 - k), 0), k, k, 1)
-            shrink.duration = Self.glide * 0.6
-            shrink.timingFunction = Motion.travel
-            let grp = CAAnimationGroup()
-            grp.animations = [fade, shrink]
-            grp.duration = Self.glide * 0.6
-            g.add(grp, forKey: "fadeAway")
-        }
-        CATransaction.commit()
+        ghosts.forEach(host.addSublayer)
+        // Shrinking at once about the tile's middle, its parts with it,
+        // seen going as it shrinks; faded out by the time its neighbours
+        // have taken most of its room.
+        Ghost.burst(ghosts, scale: Motion.reduced ? 1 : 0.86, over: Self.glide * 0.6, fading: Motion.appear, moving: Motion.travel, key: "fadeAway")
     }
 
     /// A tile's picture, for its ghost: a terminal's surface as it is,
@@ -1225,7 +1130,12 @@ final class GridView: NSView, NSDraggingSource {
     struct Pictured {
         var parts: [(NSRect, Any?)]
         var ground: CGColor?
-        var whole: NSRect { parts.dropFirst().reduce(parts.first?.0 ?? .zero) { $0.union($1.0) } }
+        var whole: NSRect { Ghost.union(parts.map(\.0)) ?? .zero }
+
+        /// As it shows in `to`'s terms, from `from`'s.
+        func converted(from: NSView, to: NSView) -> Pictured {
+            Pictured(parts: parts.map { (to.convert($0.0, from: from), $0.1) }, ground: ground)
+        }
     }
 
     /// What's behind a view's drawing, opaque.
@@ -1504,11 +1414,7 @@ final class GridView: NSView, NSDraggingSource {
         }
         if Motion.reduced {
             for l in ([tile.view, pills[id], badges[id]] as [NSView?]).compactMap({ $0?.layer }) {
-                let a = CABasicAnimation(keyPath: "opacity")
-                a.fromValue = 0
-                a.toValue = 1
-                a.duration = Motion.base
-                l.add(a, forKey: "zoom")
+                Ghost.fadeIn(l, over: Motion.base, key: "zoom")
             }
         } else {
             // Over the rest on the way, the bar and what goes with the
@@ -2077,9 +1983,9 @@ final class GridView: NSView, NSDraggingSource {
             let held = self.flying.filter { $0.name == "waiting" || $0.name == "plate" }
             // As a bar comes out of its row: the card grown to the tile's
             // size where it is, then across into its place, becoming it.
-            let scale = self.window?.backingScaleFactor ?? 2
+            let scale = self.backingScale
             self.flying.append(Genie.flight(to, Genie.image(of: shown, scale: scale), ground: shown.ground, to: r, card?.parts.first?.1, ground: card?.ground,
-                                            out: true, in: host, over: Motion.spatial * 1.5, scale: scale) { [weak self] in
+                                            out: true, in: host, over: Motion.morph, scale: scale) { [weak self] in
                 guard let self, self.landingAt == landing else { return }
                 self.unseen.forEach { $0.alphaValue = 1 }
                 self.unseen = []
@@ -2102,15 +2008,10 @@ final class GridView: NSView, NSDraggingSource {
     /// A card held where it is till its tile is laid out.
     private func hold(_ picture: CGImage?, ground: CGColor, at r: NSRect, in view: NSView) {
         guard let host = view.layer else { return }
-        let w = CALayer()
+        let w = Ghost.layer(picture, at: r, ground: ground, z: 40)
         w.name = "waiting"
-        w.contents = picture
-        w.backgroundColor = ground
-        w.frame = r
         w.cornerRadius = Radius.surface
         w.cornerCurve = .continuous
-        w.masksToBounds = true
-        w.zPosition = 40
         host.addSublayer(w)
         flying.append(w)
     }
@@ -3183,7 +3084,7 @@ final class IconHandle: NSView {
             // Drawn now, at the screen's scale and in this appearance, and
             // put in place without Core Animation's fade: given an image to
             // resolve later, it showed a frame or two large and too light.
-            let scale = window?.backingScaleFactor ?? 2
+            let scale = backingScale
             let drawn = image.flatMap { render($0, tint: tint, scale: scale) }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -3271,7 +3172,7 @@ final class IconHandle: NSView {
                 l.strokeColor = color
             }
             if part.drawsOn { l.strokeEnd = 0 }
-            l.contentsScale = window?.backingScaleFactor ?? 2
+            l.contentsScale = backingScale
             face.addSublayer(l)
             strokes.append((l, part))
         }

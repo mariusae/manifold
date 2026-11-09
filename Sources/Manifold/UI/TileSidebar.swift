@@ -156,7 +156,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         var panel = Theme.panel.cgColor, edge = panel
         effectiveAppearance.performAsCurrentDrawingAppearance {
             panel = Theme.panel.cgColor
-            edge = superview?.layer?.backgroundColor.flatMap { $0.alpha > 0 ? $0.copy(alpha: 1) : nil } ?? Theme.windowBackground.withAlphaComponent(1).cgColor
+            edge = superview.map(GridView.ground(of:)) ?? Theme.windowBackground.withAlphaComponent(1).cgColor
         }
         ground.colors = [panel, panel, edge]
     }

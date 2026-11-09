@@ -91,6 +91,9 @@ enum Motion {
     static var fast: TimeInterval { 0.12 * slowdown }
     static var base: TimeInterval { 0.16 * slowdown }
     static var spatial: TimeInterval { 0.24 * slowdown }
+    /// One thing becoming another where it goes (a tile its card, a card
+    /// its tile): a little longer than a move, for the change to be seen.
+    static var morph: TimeInterval { spatial * 1.5 }
     /// Reduce motion asked for (or, debugging, as if it were).
     static var reduced: Bool { forceReduced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     static var forceReduced = false
@@ -103,6 +106,9 @@ enum Motion {
     static var disappear: CAMediaTimingFunction { CAMediaTimingFunction(name: .easeIn) }
     static var travel: CAMediaTimingFunction { CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1) }
     static var settle: CAMediaTimingFunction { CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.15) }
+    /// Flown from one place into another (a bar into its row, a tile into
+    /// its card): eased away and eased in.
+    static var flight: CAMediaTimingFunction { CAMediaTimingFunction(name: .easeInEaseOut) }
 }
 
 /// The edges things are drawn with: a panel's hairline, a card's (subtler),

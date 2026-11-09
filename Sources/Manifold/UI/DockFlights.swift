@@ -36,11 +36,8 @@ extension MainWindowController {
         let down = now.subtracting(seen.docked)
         if !down.isEmpty {
             let parts = content.placedParts(), bars = content.placedBars()
-            func here(_ p: GridView.Pictured) -> GridView.Pictured {
-                GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-            }
             for id in down where !stacked.contains(id) {
-                if let p = parts[id] { f.down[id] = here(p) } else if let b = bars[id] { f.bars[id] = here(b) }
+                if let p = parts[id] { f.down[id] = p.converted(from: content, to: root) } else if let b = bars[id] { f.bars[id] = b.converted(from: content, to: root) }
                 if let body = f.down[id]?.parts.first?.1 { dockedPictures[id] = body }
             }
         }
@@ -61,23 +58,9 @@ extension MainWindowController {
     /// till that has drawn, then faded.
     private func holdPicture(of v: PaneContent) {
         guard let view = v as? NSView, let host = root.layer, view.window != nil, let picture = GridView.ghostPicture(of: view) else { return }
-        let l = CALayer()
-        l.contents = picture
-        l.contentsGravity = .resize
-        l.frame = root.convert(view.bounds, from: view)
-        l.zPosition = 44
+        let l = Ghost.layer(picture, at: root.convert(view.bounds, from: view), ground: nil, z: 44)
         host.addSublayer(l)
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1
-        fade.toValue = 0
-        fade.beginTime = CACurrentMediaTime() + 0.15
-        fade.duration = Motion.fast
-        fade.fillMode = .backwards
-        l.opacity = 0
-        l.add(fade, forKey: "held")
-        CATransaction.commit()
+        Ghost.fadeOut(l, over: Motion.fast, delay: 0.15, key: "held")
     }
 
     /// Where a tile docks to with the sidebar put away: a sliver at the
@@ -102,9 +85,8 @@ extension MainWindowController {
         }
         guard let from, !copy else { return true }
         if from.arrangement == selected, !Motion.reduced, let host = root.layer, let p = content.placedParts()[from.placement.id] {
-            let tile = GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
             flownAway.insert(from.placement.id)
-            Genie.run(tile, target: square, restoring: false, in: host, scale: window?.backingScaleFactor ?? 2)
+            Genie.run(p.converted(from: content, to: root), target: square, restoring: false, in: host, scale: root.backingScale)
         }
         takeOut(from.placement.id, of: from.arrangement)
         return true
@@ -138,7 +120,7 @@ extension MainWindowController {
         guard let f, let host = root.layer, let a = arrangement, let space = selected else { return }
         content.layoutSubtreeIfNeeded()
         var landing: [NSView] = []
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = root.backingScale
         let d = Genie.duration
         let rows = sidebar.organizationView
         let tint = Theme.accent.cgColor
@@ -176,14 +158,11 @@ extension MainWindowController {
         var closing = false
         if !f.up.isEmpty {
             let parts = content.placedParts(), bars = content.placedBars()
-            func here(_ p: GridView.Pictured) -> GridView.Pictured {
-                GridView.Pictured(parts: p.parts.map { (root.convert($0.0, from: content), $0.1) }, ground: p.ground)
-            }
             for (id, from) in f.up {
                 guard let b = a.placement(id)?.block else { continue }
                 let inSidebar = from != .zero
                 if let p = parts[id] {
-                    var tile = here(p)
+                    var tile = p.converted(from: content, to: root)
                     // As it went, not as it is (nothing drawn yet, maybe).
                     if let kept = dockedPictures.removeValue(forKey: id), !tile.parts.isEmpty { tile.parts[0].1 = kept }
                     let arrival = Genie.run(tile, target: inSidebar ? Self.slotEnd(from) : edgeSpot(tile.whole), restoring: true, in: host,
@@ -196,7 +175,7 @@ extension MainWindowController {
                         closing = true
                     }
                 } else if let bar = bars[id] {
-                    let bar = here(bar)
+                    let bar = bar.converted(from: content, to: root)
                     let picture = inSidebar ? rows.picture(of: id, in: root)?.image : nil
                     Genie.fly(bar, to: inSidebar ? from : edgeSpot(bar.whole), out: true, rowPicture: picture, tint: tint, in: host, over: d, scale: scale)
                     if let v = content.bar(of: id) { landing.append(v) }

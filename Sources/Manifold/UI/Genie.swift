@@ -52,20 +52,30 @@ enum Genie {
         return run(image, tile: p.whole, target: target, restoring: restoring, in: host, over: duration, scale: scale, tint: tint, boundary: boundary)
     }
 
-    /// Frames a sublayer through, filling its layer as that goes through `frames`.
-    private static func filling(_ frames: [CGRect], times: [NSNumber]?, d: Double, begin: CFTimeInterval) -> [CAAnimation] {
+    /// A layer's frame taken through `frames` (its host's terms) at
+    /// `times`: its position and its size. `filling`: a sublayer's, filling
+    /// its layer as that goes through them.
+    private static func keyframes(_ frames: [CGRect], times: [NSNumber]?, easing: CAMediaTimingFunction? = nil,
+                                  filling: Bool = false) -> (position: CAKeyframeAnimation, size: CAKeyframeAnimation) {
         let pos = CAKeyframeAnimation(keyPath: "position")
-        pos.values = frames.map { NSValue(point: NSPoint(x: $0.width / 2, y: $0.height / 2)) }
+        pos.values = frames.map { NSValue(point: filling ? NSPoint(x: $0.width / 2, y: $0.height / 2) : NSPoint(x: $0.midX, y: $0.midY)) }
         let size = CAKeyframeAnimation(keyPath: "bounds.size")
         size.values = frames.map { NSValue(size: $0.size) }
         for x in [pos, size] {
             x.keyTimes = times
-            x.duration = d
-            x.beginTime = begin
-            x.fillMode = .both
-            x.isRemovedOnCompletion = false
+            if let easing { x.timingFunctions = Array(repeating: easing, count: max(0, frames.count - 1)) }
         }
-        return [pos, size]
+        return (pos, size)
+    }
+
+    /// An animation run over `d` from `begin`, held as it starts before
+    /// then and as it ends after — its layer taken away by the caller.
+    private static func held<A: CAAnimation>(_ a: A, over d: Double, from begin: CFTimeInterval) -> A {
+        a.duration = d
+        a.beginTime = begin
+        a.fillMode = .both
+        a.isRemovedOnCompletion = false
+        return a
     }
 
     /// A bar (a tile down to it) flown to `row` — or, `out`, from it: across
@@ -101,7 +111,6 @@ enum Genie {
         let frames = back([a, landed, b])
         let keyTimes = backTimes([0, 0.55, 1])
         let begin = CACurrentMediaTime() + delay * Motion.slowdown
-        let ease = CAMediaTimingFunction(name: .easeInEaseOut)
         let l = CALayer()
         l.cornerRadius = corner
         l.cornerCurve = .continuous
@@ -109,24 +118,16 @@ enum Genie {
         l.zPosition = 45
         l.frame = frames.last!
         l.opacity = fade ? 0 : 1
-        let pos = CAKeyframeAnimation(keyPath: "position")
-        pos.values = frames.map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
-        let size = CAKeyframeAnimation(keyPath: "bounds.size")
-        size.values = frames.map { NSValue(size: $0.size) }
-        for x in [pos, size] { x.keyTimes = keyTimes; x.timingFunctions = [ease, ease] }
-        var parts: [CAAnimation] = [pos, size]
+        let moving = keyframes(frames, times: keyTimes, easing: Motion.flight)
+        var parts: [CAAnimation] = [moving.position, moving.size]
         if fade {
             let o = CAKeyframeAnimation(keyPath: "opacity")
             o.values = back([1, 1, 0])
             o.keyTimes = backTimes([0, 0.88, 1])
             parts.append(o)
         }
-        let group = CAAnimationGroup()
+        let group = held(CAAnimationGroup(), over: d, from: begin)
         group.animations = parts
-        group.duration = d
-        group.beginTime = begin
-        group.fillMode = .both
-        group.isRemovedOnCompletion = false
         // Each picture filling it, the one giving way to the other on the
         // way; the tint over both, deepening as it goes. A picture of
         // another shape filled, not squashed (cut at its edges).
@@ -143,16 +144,8 @@ enum Genie {
             let o = CAKeyframeAnimation(keyPath: "opacity")
             o.values = back(opacity)
             o.keyTimes = backTimes(t)
-            let fill = CAKeyframeAnimation(keyPath: "bounds.size")
-            fill.values = frames.map { NSValue(size: $0.size) }
-            fill.keyTimes = keyTimes
-            fill.timingFunctions = [ease, ease]
-            let g = CAAnimationGroup()
-            g.animations = [o, fill]
-            g.duration = d
-            g.beginTime = begin
-            g.fillMode = .both
-            g.isRemovedOnCompletion = false
+            let g = held(CAAnimationGroup(), over: d, from: begin)
+            g.animations = [o, keyframes(frames, times: keyTimes, easing: Motion.flight).size]
             l.addSublayer(s)
             s.add(g, forKey: "fly")
         }
@@ -168,7 +161,8 @@ enum Genie {
         host.addSublayer(l)
         l.add(group, forKey: "fly")
         CATransaction.commit()
-        if fade { DispatchQueue.main.asyncAfter(deadline: .now() + (d + delay) * Motion.slowdown + 0.05) { l.removeFromSuperlayer() } }
+        // (`d` is slowed already; the delay, given unslowed, isn't.)
+        if fade { DispatchQueue.main.asyncAfter(deadline: .now() + d + delay * Motion.slowdown + 0.05) { l.removeFromSuperlayer() } }
         return l
     }
 
@@ -259,23 +253,15 @@ enum Genie {
             strip.frame = frames.last!
             strip.opacity = restoring ? 1 : 0
             container.addSublayer(strip)
-            let pos = CAKeyframeAnimation(keyPath: "position")
-            pos.values = frames.map { NSValue(point: NSPoint(x: $0.midX, y: $0.midY)) }
-            let size = CAKeyframeAnimation(keyPath: "bounds.size")
-            size.values = frames.map { NSValue(size: $0.size) }
+            let moving = keyframes(frames, times: times)
             // Faded only at the very end of going in (or the very start of
             // coming out), where it's as small as the target.
             let fade = CAKeyframeAnimation(keyPath: "opacity")
             fade.values = restoring ? [0, 1, 1] : [1, 1, 0]
             fade.keyTimes = restoring ? [0, 0.12, 1] : [0, 0.88, 1]
-            for x in [pos, size] { x.keyTimes = times }
-            for x in [pos, size, fade] as [CAKeyframeAnimation] {
-                x.duration = d
-                x.beginTime = now
-                x.fillMode = .both
-                x.isRemovedOnCompletion = false
+            for x in [moving.position, moving.size, fade] {
                 x.calculationMode = .linear
-                strip.add(x, forKey: "genie." + (x.keyPath ?? ""))
+                strip.add(held(x, over: d, from: now), forKey: "genie." + (x.keyPath ?? ""))
             }
             // The tint over it, deepening as it goes in (lifting as it
             // comes out): the tile marked, as its row is, going there.
@@ -286,15 +272,12 @@ enum Genie {
                 t.frame = CGRect(origin: .zero, size: frames.last!.size)
                 t.opacity = restoring ? 0 : 0.22
                 strip.addSublayer(t)
-                for x in filling(frames, times: times, d: d, begin: now) { t.add(x, forKey: "fill." + ((x as? CAPropertyAnimation)?.keyPath ?? "")) }
+                let filling = keyframes(frames, times: times, filling: true)
+                for x in [filling.position, filling.size] { t.add(held(x, over: d, from: now), forKey: "fill." + (x.keyPath ?? "")) }
                 let o = CAKeyframeAnimation(keyPath: "opacity")
                 o.values = restoring ? [0.22, 0.22, 0] : [0, 0.16, 0.22]
-                o.keyTimes = restoring ? [0, 0.4, 1] : [0, 0.4, 1]
-                o.duration = d
-                o.beginTime = now
-                o.fillMode = .both
-                o.isRemovedOnCompletion = false
-                t.add(o, forKey: "tint")
+                o.keyTimes = [0, 0.4, 1]
+                t.add(held(o, over: d, from: now), forKey: "tint")
             }
         }
         CATransaction.commit()
