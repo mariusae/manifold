@@ -7,19 +7,29 @@ import ManifoldCore
 final class Git {
     private let queue: DispatchQueue
     private let work = DispatchQueue(label: "manifold.git", qos: .userInitiated)
-    private var repos: [String: (root: String, vcs: VCS)?] = [:]
+    private var repos: [String: (root: String, vcs: VCS)] = [:]
+    /// Folders found in no repository, and when: looked at again after a
+    /// while, so one made since (`git init`) is found.
+    private var notRepos: [String: Date] = [:]
+    private static let notRepoFor: TimeInterval = 10
 
     init(queue: DispatchQueue) {
         self.queue = queue
     }
 
-    /// The repository a path is in, if any (cached by directory).
+    /// The repository a path is in, if any (cached by directory; none
+    /// found, only for a while).
     func repository(of path: String) -> (root: String, vcs: VCS)? {
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
         let dir = isDir.boolValue ? path : path.deletingLastPathComponent
         if let known = repos[dir] { return known }
-        let found = VCS.repository(of: dir)
+        if let at = notRepos[dir], Date().timeIntervalSince(at) < Self.notRepoFor { return nil }
+        guard let found = VCS.repository(of: dir) else {
+            notRepos[dir] = Date()
+            return nil
+        }
+        notRepos[dir] = nil
         repos[dir] = found
         return found
     }
