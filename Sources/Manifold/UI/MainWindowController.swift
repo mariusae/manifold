@@ -361,31 +361,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Views for placements no longer on the desk go (a state view's stay
         // while it's up: its blocks are settled before any view is made,
         // since making one can render again).
+        func item(_ b: Block) -> (Block, StatusRecord?, Stamp) { (b, b.statusRecord, b.statusRecord?.at ?? b.created) }
         var stateBlocks = stateGroup.map { statusGroups()[$0] ?? [] } ?? []
         var stateLenses: [BlockID: Lens] = [:]
-        if stateGroup == nil, let w = stateWorkspace, let a = hosts.arrangement(w) {
+        if let w = stateWorkspace, let a = hosts.arrangement(w) {
             // ⌘': the workspace's blocks, each as its tile shows it.
             for p in a.placements where stateLenses[p.block] == nil {
                 guard let b = hosts.block(p.block) else { continue }
                 stateLenses[p.block] = p.lens
-                stateBlocks.append((b, b.statusRecord, b.statusRecord?.at ?? b.created))
+                stateBlocks.append(item(b))
             }
         }
         if stateAgents {
             // Every agent on every host: those that need you first, then
             // those at work, those done, those idle or ended.
-            stateBlocks = agentBlocks().map { ($0, $0.statusRecord, $0.statusRecord?.at ?? $0.created) }
+            stateBlocks = agentBlocks().map(item)
             stateMembers = stateBlocks.map(\.0.id)
-        } else if stateGroup != nil || stateWorkspace != nil {
+        } else if stateShown != nil {
             // Membership sticks while the view is up: a block that leaves
             // the state for a moment (a diff reloading, a repository
             // refreshing) keeps its place rather than its view being torn
             // down and made again; new arrivals come first.
             let current = Set(stateBlocks.map(\.0.id))
-            let staying = stateMembers.filter { !current.contains($0) }.compactMap { id -> (Block, StatusRecord?, Stamp)? in
-                guard let b = hosts.block(id) else { return nil }
-                return (b, b.statusRecord, b.statusRecord?.at ?? b.created)
-            }
+            let staying = stateMembers.filter { !current.contains($0) }.compactMap { hosts.block($0).map(item) }
             let arrivals = stateBlocks.filter { !stateMembers.contains($0.0.id) }
             let kept = stateMembers.compactMap { id in stateBlocks.first { $0.0.id == id } ?? staying.first { $0.0.id == id } }
             stateBlocks = arrivals + kept
@@ -509,7 +507,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             content.clear()
             window.title = "Manifold"
         }
-        if let stateView, stateGroup != nil || stateWorkspace != nil || stateAgents {
+        if let stateView, stateShown != nil {
             // As chosen; else, past ten blocks, their summaries (live views
             // of so many would be small, and dear).
             let mode = stateModeChosen ?? (stateBlocks.count > 10 ? .summaries : stateMode)
@@ -1867,12 +1865,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Kept for State views (§3.6) — its code in MainWindowController+Overview.swift
 
     var stateView: StateView?
-    var stateGroup: StatusGroup?
-    var stateMode: StateView.Mode = .list
+    /// What it shows while it's up: a status group's blocks, a space's
+    /// (Overview, ⌘'), or every agent's (⌃⌘A).
+    enum StateShown: Equatable { case group(StatusGroup), space(BlockID), agents }
+    var stateShown: StateShown?
+    var stateGroup: StatusGroup? { if case let .group(g) = stateShown { g } else { nil } }
     /// The workspace shown as an overview (⌘'), if one is.
-    var stateWorkspace: BlockID?
+    var stateWorkspace: BlockID? { if case let .space(w) = stateShown { w } else { nil } }
     /// The agents' view, up: Overview, filtered to the agents.
-    var stateAgents = false
+    var stateAgents: Bool { stateShown == .agents }
+    var stateMode: StateView.Mode = .list
     /// The view's mode as chosen while it's up (else it goes by how many).
     var stateModeChosen: StateView.Mode?
 

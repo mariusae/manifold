@@ -15,9 +15,7 @@ extension MainWindowController {
     @objc func showWorkspaceOverview(_ sender: Any?) {
         guard let id = selected, hosts.arrangement(id) != nil else { return NSSound.beep() }
         if stateWorkspace == id { return hideStateView() }
-        stateAgents = false
-        stateGroup = nil
-        stateWorkspace = id
+        stateShown = .space(id)
         stateMode = .overview
         stateModeChosen = Self.overviewMode
         presentStateView()
@@ -25,9 +23,7 @@ extension MainWindowController {
 
 
     func showStateView(_ group: StatusGroup) {
-        stateGroup = group
-        stateWorkspace = nil
-        stateAgents = false
+        stateShown = .group(group)
         presentStateView()
     }
 
@@ -44,9 +40,7 @@ extension MainWindowController {
     /// back.
     @objc func showAgents(_ sender: Any?) {
         if stateAgents { return hideStateView() }
-        stateGroup = nil
-        stateWorkspace = nil
-        stateAgents = true
+        stateShown = .agents
         stateMode = .overview
         stateModeChosen = Self.overviewMode
         presentStateView()
@@ -95,7 +89,7 @@ extension MainWindowController {
             }
             v.onLeave = { [weak self] in self?.hideStateView() }
             v.onModeChanged = { [weak self] m in
-                if self?.stateWorkspace != nil || self?.stateAgents == true { Self.overviewMode = m }
+                if self?.stateGroup == nil { Self.overviewMode = m }
                 self?.stateModeChosen = m
                 if m != .summaries { self?.stateMode = m }
                 self?.render()
@@ -103,8 +97,7 @@ extension MainWindowController {
             // Overview's filter: this space's blocks, or every agent's.
             v.onFilterChanged = { [weak self] i in
                 guard let self else { return }
-                self.stateAgents = i == 1
-                self.stateWorkspace = i == 1 ? nil : self.selected
+                self.stateShown = i == 1 ? .agents : self.selected.map { .space($0) }
                 self.stateMembers = []
                 self.render()
             }
@@ -126,9 +119,7 @@ extension MainWindowController {
         v.clear()
         v.removeFromSuperview()
         stateView = nil
-        stateGroup = nil
-        stateWorkspace = nil
-        stateAgents = false
+        stateShown = nil
         stateModeChosen = nil
         content.isHidden = false
         render()
