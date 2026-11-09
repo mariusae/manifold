@@ -574,12 +574,12 @@ extension MediaView: Searchable {
 
     // MARK: Debugging
 
-    /// "page N", "next", "previous", "zoom in|out|fit", "display N",
-    /// "sidebar", "pages", "contents", "pick N", "find <query>",
-    /// "findnext": done, then how it stands.
     /// Debugging: what dragging the sidebar's chosen pages writes.
     var debugPagesDrag: [NSPasteboardWriting] { pages?.debugChoose([]) ?? [] }
 
+    /// "page N", "next", "previous", "zoom in|out|fit", "display N",
+    /// "sidebar", "pages", "contents", "pick N", "find <query>",
+    /// "findnext": done, then how it stands.
     func debugPDF(_ arg: String) -> String {
         guard let p = pdfView else { return "not a PDF" }
         let words = arg.split(separator: " ", maxSplits: 1).map(String.init)

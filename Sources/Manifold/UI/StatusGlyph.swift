@@ -42,9 +42,6 @@ final class StatusGlyph: NSView {
         }
     }
 
-    /// Just finished — running, then done or failed (not a glyph made
-    /// afresh as done): it lands, a little larger, then its size, as a
-    /// thing put down settles (it only fades in, with Reduce motion).
     /// The block it shows, where it's one's: a glyph is made afresh as
     /// often as it's kept (a row reloaded), so what just finished is
     /// known by the block, not by the glyph's last look.
@@ -67,6 +64,9 @@ final class StatusGlyph: NSView {
 
     /// Debugging: how many have settled.
     static var settled = 0
+    /// Just finished — running, then done or failed (not a glyph made
+    /// afresh as done): it lands, a little larger, then its size, as a
+    /// thing put down settles (it only fades in, with Reduce motion).
     private func settle() {
         Self.settled += 1
         wantsLayer = true

@@ -55,7 +55,6 @@ protocol GridDelegate: AnyObject {
     /// A tile's × clicked: closed, the pointer onto the × of the tile that
     /// takes its place, to close the next with another click.
     func gridCloseClicked(_ placement: PlacementID)
-    /// The bar's dirty dot clicked (the dot given, to put a menu by).
     /// The links' badge asks for the map around the tile's block.
     func gridShowMap(for placement: PlacementID)
     /// A linked block from a tile's badge: gone to; with ⌥, over the tile.
@@ -490,7 +489,6 @@ final class GridView: NSView, NSDraggingSource {
     private func pushedOut(_ id: PlacementID) -> Bool { heights[id] == 0 }
     private func shownTiles(_ c: Int) -> [Tile] { columns[c].filter { !pushedOut($0.shown.id) } }
 
-    /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
     /// Debugging: the tile's view put back on top, as a view made afresh
     /// for it (a terminal's, a placeholder's real one) is, and laid out.
     func debugReadd(_ placement: PlacementID) -> String {
@@ -560,6 +558,7 @@ final class GridView: NSView, NSDraggingSource {
         }.joined(separator: "\n")
     }
 
+    /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
     var debugPills: String {
         tiles.map { t in
             let p = pills[t.shown.id]
@@ -571,8 +570,6 @@ final class GridView: NSView, NSDraggingSource {
         }.joined(separator: "\n")
     }
 
-    /// A view above another in the order, put there only when it isn't:
-    /// re-adding a layer-backed view at every layout flashes it.
     /// A tile's summary card, as its delegate makes it (a terminal's
     /// screen, a page's picture) or, failing that, from its block alone.
     /// Under its bar, so without its title — unless the bar names it
@@ -587,6 +584,8 @@ final class GridView: NSView, NSDraggingSource {
         return c
     }
 
+    /// A view above another in the order, put there only when it isn't:
+    /// re-adding a layer-backed view at every layout flashes it.
     private func keep(_ v: NSView, above other: NSView) {
         // The subviews read once (each read is the whole list bridged), by
         // identity (not isEqual:, a message a view): per tile, a layout.
@@ -857,18 +856,21 @@ final class GridView: NSView, NSDraggingSource {
 
     // MARK: Coming and going
 
-    /// A tile placed comes in where it lands — growing from smaller,
-    /// seen at once — as its neighbours' edges slide aside for it (only
-    /// fading, with Reduce motion).
     /// Every tile at the last layout.
     private var placed: Set<PlacementID> = []
 
+    /// A tile placed comes in where it lands — growing from smaller,
+    /// seen at once — as its neighbours' edges slide aside for it (only
+    /// fading, with Reduce motion).
     private func comeIn(_ parts: [NSView]) {
         // Seen at once, there before it's grown: the growing is what shows
         // it coming, not a fade.
         Ghost.burst(parts.compactMap(\.layer), scale: Motion.reduced ? 1 : 0.86, over: Self.glide, fade: Self.glide * 0.4,
                     fading: Motion.appear, moving: Motion.travel, coming: true, key: "comeIn")
     }
+
+    /// Layers sliding, their own gravity and ground, given back as they stop.
+    private var sliding: [ObjectIdentifier: (gravity: CALayerContentsGravity, ground: CGColor?)] = [:]
 
     /// A tile's content resized as its neighbours come, go or grow: sized
     /// at once — at every step, a terminal would resize its shell at each
@@ -877,9 +879,6 @@ final class GridView: NSView, NSDraggingSource {
     /// where they go, what it shows held at its top left, cut off or
     /// uncovered as they pass: a neighbour's edge seen sliding, not the
     /// tile jumping to its size.
-    /// Layers sliding, their own gravity and ground, given back as they stop.
-    private var sliding: [ObjectIdentifier: (gravity: CALayerContentsGravity, ground: CGColor?)] = [:]
-
     /// `start`: from there (in the grid), not from where it shows.
     private func slide(_ view: NSView, to frame: NSRect, from start: NSRect? = nil) {
         guard let l = view.layer else { view.frame = frame; return }
@@ -1233,11 +1232,11 @@ final class GridView: NSView, NSDraggingSource {
         return nil
     }
 
-    /// A tile in view's body and bar, by its block (a block's first), and
-    /// its focus ring if it has it.
     /// A tile's bar, where it shows.
     func bar(of placement: PlacementID) -> NSView? { pills[placement] }
 
+    /// A tile in view's body and bar, by its block (a block's first), and
+    /// its focus ring if it has it.
     func tileViews(of block: BlockID) -> [NSView] {
         guard let t = tiles.first(where: { $0.shown.block?.id == block && shownBody($0) != nil }), let body = shownBody(t) else { return [] }
         return [body] + (pills[t.shown.id].map { [$0] } ?? []) + (t.shown.id == focused && !focusRing.isHidden ? [focusRing] : [])
@@ -1266,9 +1265,9 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Morphs over `host` (its terms, y up), the pictures taken away once
     /// they're there. Only cross-fading where they end, with Reduce motion.
-    @discardableResult
     /// `keeping`: left where they end, for the caller to take away (what
     /// waits on something else to land over it).
+    @discardableResult
     static func morph(_ items: [Morph], in host: CALayer, over d: Double, keeping: Bool = false, done: @escaping () -> Void = {}) -> [CALayer] {
         var made: [CALayer] = []
         CATransaction.begin()
@@ -2220,7 +2219,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onClose: (() -> Void)?
     /// Right-clicked: the tile's menu.
     var onRightClick: ((NSEvent) -> Void)?
-    /// What the links' pill takes of the bar, left of the buttons.
     /// What the links' pill wants of the bar, its faces included; what
     /// it's given is `linkGiven`, after the shrinkage below.
     var linkWanted: CGFloat = 0 { didSet { if linkWanted != oldValue { needsLayout = true } } }

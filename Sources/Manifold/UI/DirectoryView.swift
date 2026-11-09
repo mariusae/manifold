@@ -35,8 +35,8 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void)
     /// The tree under a folder on the block's host, less what's ignored.
     func directoryView(_ view: DirectoryView, tree path: String, done: @escaping ([DirectoryEntry]?, Bool) -> Void)
-    /// A local URL for a file of the block's host, fetched if need be.
-    /// A local URL for a path, to `done`; what it returns gives up on it.
+    /// A local URL for a file of the block's host, fetched if need be, to
+    /// `done`; what it returns gives up on it.
     func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) -> () -> Void
     /// Whether the block's host is this machine.
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool

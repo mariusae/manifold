@@ -69,9 +69,6 @@ extension MainWindowController {
         NSRect(x: root.bounds.minX + 2, y: tile.midY - 10, width: 6, height: 20)
     }
 
-    /// How a tile leaving the grid is seen to go: flown, docked with
-    /// somewhere to fly to; in a puff, closed (gone from the desk, or on
-    /// its way); else moved.
     /// A tile (or a block) dropped on a space's square in the strip: sent
     /// there, docked — moved, or with ⌥ copied — the window staying here; a
     /// tile of the grid's flying into the square as it goes.
@@ -92,6 +89,9 @@ extension MainWindowController {
         return true
     }
 
+    /// How a tile leaving the grid is seen to go: flown, docked with
+    /// somewhere to fly to; in a puff, closed (gone from the desk, or on
+    /// its way); else moved.
     func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
         // Going under an $EDITOR: gone as it takes its place, nothing seen.
         if stacked.contains(v.placement) { return .flown }

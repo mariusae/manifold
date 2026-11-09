@@ -46,9 +46,8 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private let table = NSTableView()
     private let rowMenu = NSMenu()
     private var all: [ProcessEntry] = []
-    /// A block's heading, or a process at a depth under it; or, the
-    /// machine's, a process.
-    /// A block's heading, its processes, and a foot closing its panel.
+    /// A block's heading, a process at a depth under it, and a foot
+    /// closing its panel; or, the machine's, a process.
     enum Row { case group(BlockID), process(ProcessEntry, depth: Int), foot(BlockID), machine(MachineProcess) }
     private var shown: [Row] = []
     private var listedAt: Stamp?
