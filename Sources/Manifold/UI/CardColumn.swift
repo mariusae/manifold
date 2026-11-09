@@ -347,15 +347,7 @@ final class CardColumnView: NSView {
             let f = c.convert(c.bounds, to: view)
             // Out of view: no picture (it isn't flown), none drawn.
             guard shown.contains(f) else { return (c.content.id, .zero, nil, GridView.ground(of: c)) }
-            var picture: CGImage?
-            let scale = window?.backingScaleFactor ?? 2
-            if let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(c.bounds.width * scale), pixelsHigh: Int(c.bounds.height * scale),
-                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                          bytesPerRow: 0, bitsPerPixel: 0) {
-                rep.size = c.bounds.size
-                c.cacheDisplay(in: c.bounds, to: rep)
-                picture = rep.cgImage
-            }
+            let picture = c.bitmap(scale: backingScale)?.cgImage
             return (c.content.id, f, picture, GridView.ground(of: c))
         }
     }

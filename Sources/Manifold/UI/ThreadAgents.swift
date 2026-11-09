@@ -153,7 +153,7 @@ extension MainWindowController {
     /// (else one started), told to work through them in the threads.
     func addressThreads(_ ids: [BlockID], agent: BlockID? = nil) {
         let threads = ids.compactMap { hosts.block($0) }.filter { $0.thread?.resolved != true }
-        guard !threads.isEmpty else { return toast.show("No open threads to hand over", action: "OK", for: 3) {} }
+        guard !threads.isEmpty else { return toast.say("No open threads to hand over", .brief) }
         let list = threads.map { t in Self.address(t.id) + " (" + (t.thread?.about.map { describe($0).title } ?? "the space") + ")" }
         let prompt = "[Manifold] Please address these \(threads.count) open thread\(threads.count == 1 ? "" : "s"): " + list.joined(separator: "; ")
             + ". For each: `mani thread read <ref>`, do what it asks, and reply in it with `mani thread reply <ref> \"…\"` — with --resolve only if you did it; "

@@ -326,6 +326,15 @@ final class Toasts {
         t.show(text, action: name, for: seconds, countdown: countdown, then: then, action)
     }
 
+    /// How long words that only tell stay up: a quick confirmation, the
+    /// usual, and what went wrong (to be read).
+    enum Length: Double { case brief = 4, normal = 6, long = 8 }
+
+    /// Words that only tell: no button (they go by themselves, or ×).
+    func say(_ text: String, _ length: Length = .normal) {
+        show(text, action: "", for: length.rawValue) {}
+    }
+
     var isHidden: Bool { latest == nil }
     func hide() { latest?.hide() }
     func nudge() { latest?.nudge() }

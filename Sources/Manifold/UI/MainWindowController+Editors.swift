@@ -292,7 +292,7 @@ extension MainWindowController: EditorViewDelegate {
         } then: { [weak self] error in
             let path = saved
             guard let self else { return }
-            if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
+            if let error { return self.toast.say("Couldn't keep the image: \(error)", .long) }
             let target = folder != nil
                 ? (path?.lastPathComponent ?? name).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
                 : "manifold:\(id.description)"
@@ -321,7 +321,7 @@ extension MainWindowController: EditorViewDelegate {
             do {
                 done(try await maniDesk.contents(of: b, at: at, view: shown))
             } catch let e as ManiDesk.Failure {
-                toast.show("Couldn't give “\(b.displayTitle)”: \(e.message)", action: "OK", for: 5) {}
+                toast.say("Couldn't give “\(b.displayTitle)”: \(e.message)")
                 done(nil)
             } catch { done(nil) }
         }

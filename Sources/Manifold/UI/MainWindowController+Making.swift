@@ -143,7 +143,7 @@ extension MainWindowController {
             if made.later { showWhenMade(made.block, lens: made.lens, place: place, what: "the " + kind.title.lowercased()) }
             else { show(made.block, lens: made.lens, place, context: "new " + kind.name) }
         } catch let f as MakeFailure {
-            toast.show(f.message, action: "OK", for: 5) {}
+            toast.say(f.message)
         } catch {}
     }
 
@@ -328,7 +328,7 @@ extension MainWindowController {
         var finished = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, !finished else { return }
-            self.toast.show("Forwarding \(port) from \(self.hosts.label(of: h))…", action: "", for: 30) {}
+            self.toast.say("Forwarding \(port) from \(self.hosts.label(of: h))…", .long)
         }
         c.forwards.forward(port) { [weak self] local in
             finished = true
@@ -337,7 +337,7 @@ extension MainWindowController {
                 let same = local == port ? "" : " (\(port) is taken here)"
                 self.toast.show("\(self.hosts.label(of: h)):\(port) forwarded to localhost:\(local)\(same)", action: "Stop", for: 6) { c.forwards.stop(port) }
             } else {
-                self.toast.show("Couldn't forward \(port) from \(self.hosts.label(of: h))", action: "OK", for: 8) {}
+                self.toast.say("Couldn't forward \(port) from \(self.hosts.label(of: h))", .long)
             }
             done(local)
         }
@@ -398,7 +398,7 @@ extension MainWindowController {
         if c.isRemote {
             hosts.detach(c.host)
             refreshOrganization(now: true)
-            toast.show("The session on \(label) was deleted" + (by.map { $0 == HostClient.machine ? "" : " (on \($0))" } ?? " (on the host)"), action: "OK", for: 8) {}
+            toast.say("The session on \(label) was deleted" + (by.map { $0 == HostClient.machine ? "" : " (on \($0))" } ?? " (on the host)"), .long)
             return
         }
         // This Mac's: what the app kept of it goes too — its window's
@@ -452,7 +452,7 @@ extension MainWindowController {
         WebStores.clear(through: through) { [weak self] in
             guard let self else { return }
             for case let w as WebView in self.views.values where w.through == through { w.reloadPage(nil) }
-            self.toast.show("Website data cleared for \(label)", action: "", for: 4) {}
+            self.toast.say("Website data cleared for \(label)", .brief)
         }
     }
 

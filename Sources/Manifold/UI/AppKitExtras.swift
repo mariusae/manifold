@@ -40,3 +40,26 @@ extension NSView {
     /// Its window's backing scale (the main screen's, out of one).
     var backingScale: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
 }
+
+extension NSView {
+    /// The view as it draws, a bitmap at `scale` pixels a point (its
+    /// window's, by default); nil when it has no size.
+    func bitmap(scale: CGFloat? = nil) -> NSBitmapImageRep? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        let scale = scale ?? backingScale
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * scale), pixelsHigh: Int(bounds.height * scale),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = bounds.size
+        cacheDisplay(in: bounds, to: rep)
+        return rep
+    }
+
+    /// The view as it draws, as an image (a drag's, a card's).
+    func picture(scale: CGFloat? = nil) -> NSImage? {
+        guard let rep = bitmap(scale: scale) else { return nil }
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+}

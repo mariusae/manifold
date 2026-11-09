@@ -112,7 +112,7 @@ extension MainWindowController: TerminalViewDelegate {
             guard r == .alertFirstButtonReturn else { return }
             self?.hosts.propose(.undoTurn(agent: agent, turn: turn.id)) { error in
                 DispatchQueue.main.async {
-                    self?.toast.show(error.map { "Couldn't undo the turn: \($0)" } ?? "Turn undone", action: "OK", for: error == nil ? 4 : 10) {}
+                    self?.toast.say(error.map { "Couldn't undo the turn: \($0)" } ?? "Turn undone", error == nil ? .brief : .long)
                 }
             }
         }
@@ -181,12 +181,12 @@ extension MainWindowController: TerminalViewDelegate {
             let waited = Date().timeIntervalSince(w.started)
             let host = hosts.label(of: w.id.host)
             if waited > 30 {
-                toast.show("\(host) didn't make \(w.what) in time", action: "OK", for: 8) {}
+                toast.say("\(host) didn't make \(w.what) in time", .long)
                 continue
             }
             if !w.said, waited > 0.5 {
                 w.said = true
-                toast.show("Getting \(w.what) from \(host)…", action: "", for: 31) {}
+                toast.say("Getting \(w.what) from \(host)…", .long)
             }
             still.append(w)
         }

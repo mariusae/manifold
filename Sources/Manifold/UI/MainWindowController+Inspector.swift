@@ -188,7 +188,7 @@ extension MainWindowController {
             // Each edited in place: its name, its value, its scope at the right.
             let refused: (String?) -> Void = { [weak self] error in
                 guard let self, let error else { return }
-                self.toast.show(error, action: "OK", for: 6) {}
+                self.toast.say(error)
             }
             let scopes = EnvironmentScope.allCases.map(\.rawValue)
             let help = "Given to all the host starts; its shells (terminals, notebooks, panels' commands); or its tools (the code indexer and its fetches, language servers, git)"

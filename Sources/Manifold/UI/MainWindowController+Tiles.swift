@@ -156,7 +156,7 @@ extension MainWindowController: GitViewDelegate {
         guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
         client.propose(.showRevision(block: id, repo: repo, path: path, revision: revision, title: title)) { [weak self] error in
             guard let self else { return }
-            if let error { return self.toast.show(error, action: "OK", for: 6) {} }
+            if let error { return self.toast.say(error) }
             self.showWhenMade(id, lens: .output, place: .besideOpener(view.placement), context: "version \(short)", what: "that version")
         }
     }

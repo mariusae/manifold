@@ -25,7 +25,7 @@ extension MainWindowController: DirectoryViewDelegate {
             ? .project(Project(root: path, made: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000))))
             : .unproject(root: directoryViewProject(view)?.root ?? path)
         client.propose(proposal) { [weak self] error in
-            if let error { self?.toast.show(error, action: "OK", for: 6) {} }
+            if let error { self?.toast.say(error) }
         }
     }
 
@@ -134,7 +134,7 @@ extension MainWindowController: DirectoryViewDelegate {
             show(id, lens: .diff, .besideOpener(view.placement), context: "a change in \(project.name)")
         case .reindex:
             hosts.scip(.index(path: project.root.appendingPathComponent(".")), on: view.block.host) { [weak self] result in
-                if case .error(let m) = result { self?.toast.show(m, action: "OK", for: 6) {} }
+                if case .error(let m) = result { self?.toast.say(m) }
             }
         }
     }
@@ -445,12 +445,12 @@ extension MainWindowController: DirectoryViewDelegate {
         }
         guard let c = hosts.client(h) else { return NSSound.beep() }
         LocalCopies.shared.open(path, on: c, label: hosts.label(of: h)) { [weak self] url, error in
-            guard let url else { self?.toast.show("Couldn't fetch \(path.lastPathComponent): \(error ?? "")", action: "OK", for: 10) {}; return }
-            self?.toast.show("\(path.lastPathComponent) opened here; saved, it goes back to \(self?.hosts.label(of: h) ?? "its host")", action: "OK", for: 6) {}
+            guard let url else { self?.toast.say("Couldn't fetch \(path.lastPathComponent): \(error ?? "")", .long); return }
+            self?.toast.say("\(path.lastPathComponent) opened here; saved, it goes back to \(self?.hosts.label(of: h) ?? "its host")")
             NSWorkspace.shared.open([url], withApplicationAt: app, configuration: config)
         }
         LocalCopies.shared.onSentBack = { [weak self] name, label, error in
-            self?.toast.show(error.map { "Couldn't send \(name) back to \(label): \($0)" } ?? "Sent \(name) back to \(label)", action: "OK", for: 4) {}
+            self?.toast.say(error.map { "Couldn't send \(name) back to \(label): \($0)" } ?? "Sent \(name) back to \(label)", .brief)
         }
     }
 

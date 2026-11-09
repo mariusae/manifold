@@ -69,7 +69,7 @@ extension MainWindowController {
                 let (symbol, name) = try await maniDesk.symbolAt(b, offset: at)
                 showRelation("callers", symbol: symbol, name: name, path: path, on: b.id.host, from: placement)
             } catch {
-                toast.show("\(error is ManiDesk.Failure ? (error as! ManiDesk.Failure).message : "\(error)")", action: "OK", for: 6) {}
+                toast.say("\(error is ManiDesk.Failure ? (error as! ManiDesk.Failure).message : "\(error)")")
             }
         }
     }
@@ -362,7 +362,7 @@ extension MainWindowController {
             }
             if b.statusRecord?.state == .error {
                 savingToClose.removeValue(forKey: p)
-                toast.show("Couldn't save “\(b.displayTitle)”: its tile stays", action: "OK", for: 6) {}
+                toast.say("Couldn't save “\(b.displayTitle)”: its tile stays")
             } else if b.path != nil, b.text?.isDirty == false {
                 savingToClose.removeValue(forKey: p)
                 closeTile(p, in: w.space)

@@ -647,7 +647,7 @@ extension MainWindowController {
             p.reindexOnCheckout = again.state == .on ? nil : false
             guard p != project else { return }
             client.propose(.project(p)) { error in
-                if let error { self?.toast.show(error, action: "OK", for: 6) {} }
+                if let error { self?.toast.say(error) }
             }
         }
     }

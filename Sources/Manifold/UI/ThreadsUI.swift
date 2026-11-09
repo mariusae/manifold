@@ -316,7 +316,7 @@ extension MainWindowController: ThreadChatDelegate {
         guard let place = view.newPlace else { return }
         let space = view.newSpace ?? selected
         let id = hosts.newThread(about: place, space: space, text: text) { [weak self] error in
-            if let error { self?.toast.show("The thread wasn't made: \(error)", action: "OK", for: 4) {} }
+            if let error { self?.toast.say("The thread wasn't made: \(error)", .brief) }
         }
         view.threadID = id
         view.newPlace = nil
@@ -430,7 +430,7 @@ extension MainWindowController: ThreadChatDelegate {
             let rect = d.chosenRect ?? NSRect(x: 0, y: d.bounds.midY, width: 40, height: 16)
             return threadPlace(here) { [weak self] place in
                 guard let self else { return }
-                guard let place else { return self.toast.show("Those rows can't be commented on", action: "OK", for: 3) {} }
+                guard let place else { return self.toast.say("Those rows can't be commented on", .brief) }
                 self.showThreadCard(threads: [], newPlace: place, at: rect, in: d)
             }
         }

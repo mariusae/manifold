@@ -376,12 +376,7 @@ final class LinkBadge: NSView {
         hidePreview()
         guard let item = Drags.block?(block, event.modifierFlags) else { return }
         let drag = NSDraggingItem(pasteboardWriter: Drags.writer(item) ?? item)
-        let picture = NSImage(size: view.bounds.size)
-        if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-            view.cacheDisplay(in: view.bounds, to: rep)
-            picture.addRepresentation(rep)
-        }
-        drag.setDraggingFrame(view.bounds, contents: picture)
+        drag.setDraggingFrame(view.bounds, contents: view.picture() ?? NSImage(size: view.bounds.size))
         dragIsPath = event.modifierFlags.contains(.shift)
         let session = view.beginDraggingSession(with: [drag], event: event, source: self)
         DragPill.dress(session, from: view, at: NSEvent.mouseLocation)

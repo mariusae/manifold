@@ -1207,13 +1207,7 @@ final class GridView: NSView, NSDraggingSource {
     static func ghostPicture(of v: NSView) -> Any? {
         if let surface = v.layer?.contents, CFGetTypeID(surface as CFTypeRef) == IOSurfaceGetTypeID() { return surface }
         if v is TerminalView, let image = HoverCard.surfacePicture(of: v) { return image.cgImage(forProposedRect: nil, context: nil, hints: nil) }
-        let scale = v.window?.backingScaleFactor ?? 2
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(v.bounds.width * scale), pixelsHigh: Int(v.bounds.height * scale),
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        rep.size = v.bounds.size
-        v.cacheDisplay(in: v.bounds, to: rep)
-        return rep.cgImage
+        return v.bitmap()?.cgImage
     }
 
     /// Pictures of a thing as it shows — a tile's body and bar, a card —

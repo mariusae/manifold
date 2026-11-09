@@ -79,7 +79,7 @@ extension MainWindowController: GridDelegate {
     /// page's, a listing, a search's hits — on the pasteboard, whatever
     /// the block is, and said so (or why not).
     @objc func copyContents(_ sender: Any?) {
-        guard let f = focusedShown, let b = f.block else { return toast.show("Nothing focused to copy", action: "OK", for: 4) {} }
+        guard let f = focusedShown, let b = f.block else { return toast.say("Nothing focused to copy", .brief) }
         let view = views[f.placement.id]
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -89,11 +89,11 @@ extension MainWindowController: GridDelegate {
                 pb.clearContents()
                 pb.setString(text, forType: .string)
                 let n = text.split(separator: "\n", omittingEmptySubsequences: false).count
-                self.toast.show("Copied “\(b.displayTitle)”: \(n) line\(n == 1 ? "" : "s")", action: "OK", for: 3) {}
+                self.toast.say("Copied “\(b.displayTitle)”: \(n) line\(n == 1 ? "" : "s")", .brief)
             } catch let e as ManiDesk.Failure {
-                self.toast.show("Couldn't copy: \(e.message)", action: "OK", for: 5) {}
+                self.toast.say("Couldn't copy: \(e.message)")
             } catch {
-                self.toast.show("Couldn't copy “\(b.displayTitle)”", action: "OK", for: 5) {}
+                self.toast.say("Couldn't copy “\(b.displayTitle)”")
             }
         }
     }
@@ -436,7 +436,7 @@ extension MainWindowController: GridDelegate {
             return nil
         } then: { [weak self] error in
             guard let self else { return }
-            if let error { return self.toast.show("Couldn't keep the image: \(error)", action: "OK", for: 8) {} }
+            if let error { return self.toast.say("Couldn't keep the image: \(error)", .long) }
             self.showWhenMade(id, lens: .image, place: place, what: "the image")
         }
     }
@@ -839,7 +839,7 @@ extension MainWindowController: GridDelegate {
                 guard let self else { return }
                 guard case .locations(let found) = result, let there = found.first, there.path != path else { return self.sayMissing(why: gone) }
                 self.open(path: there.path, line: there.line + 1, column: nil, on: id.host, from: self.arrangement?.focused, context: "moved")
-                self.toast.show("“\(Anchoring.name(of: a))” moved to \(there.path.lastPathComponent)", action: "OK", for: 4) {}
+                self.toast.say("“\(Anchoring.name(of: a))” moved to \(there.path.lastPathComponent)", .brief)
             }
             return
         }
@@ -857,7 +857,7 @@ extension MainWindowController: GridDelegate {
         if let e = NSApp.currentEvent, e.window === window, mouse.contains(e.type) {
             ReferenceTip.say(why, in: window)
         } else {
-            toast.show(why, action: "OK", for: 6) {}
+            toast.say(why)
         }
     }
 

@@ -217,7 +217,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onErased = { [weak self] client, by in self?.sessionErased(client, by: by) }
         hosts.onReplaced = { [weak self] client, _ in
             guard let self, client.isRemote else { return }
-            self.toast.show("The session on \(self.hosts.label(of: client.host)) was gone — deleted there; a new one started", action: "OK", for: 10) {}
+            self.toast.say("The session on \(self.hosts.label(of: client.host)) was gone — deleted there; a new one started", .long)
         }
         hosts.onFenced = { [weak self] client in
             self?.sayWatching(client)
