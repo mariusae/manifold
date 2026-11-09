@@ -155,13 +155,17 @@ Machine: M15.
   the guard: a failed transfer and a notice).
 Machines: M3, M18, M29.
 
-### I-6 Connection lifecycles misread · **confirmed on reading** · medium
+### I-6 Connection lifecycles misread · **fixed** · medium
 - **A silent drop counted as unanswered.** The heartbeat sets
   `link = .unreachable("not answering")` and closes; `onClose` then reads
   `link != .connected` as "the host never answered": the reason shown
   becomes "the connection closed before the host answered", and
   `closedUnanswered` counts one, bringing a re-bootstrap (the server
-  copied again) a try sooner. (M14)
+  copied again) a try sooner. (M14) — **fixed**: a link given up on for
+  silence counts as answered, and how the host stands after a close comes
+  from why it closed (`HostClient.afterClose(answered:silent:unanswered:)`).
+  Test: `ManifoldAppTests/HostLinkTests` (the decision; the wiring in
+  `onClose` is by reading — it's installed by a real connect).
 - **A terminal resized while its link is down attaches afresh**
   (`resized()` → `attach()`, not `attach(resume: everAttached)`): the
   resume that keeps the screen and resends what was typed meanwhile is
@@ -359,13 +363,14 @@ host never answered.
 | From | Event | To |
 |---|---|---|
 | handshaking | welcome | connected |
-| connected | heartbeat finds silence | (close, reason: silent) → waiting to retry (0.3 s) |
+| connected | heartbeat finds silence | (close, silent: answered, "not answering") → waiting to retry (0.3 s) |
 | connected | closed by the far side | waiting to retry (back-off) |
 | handshaking | closed | waiting to retry; `closedUnanswered += 1`; at 3 → bootstrapping |
 | any | `disconnect` | closed |
 
-Findings: I-6. Suspected: the heartbeat isn't stopped across a reconnect,
-so a slow handshake after the first connection is dropped at ~8 s.
+Findings: I-6 — fixed. Suspected, open: the heartbeat isn't stopped across a
+reconnect, so a slow handshake after the first connection is dropped at
+~8 s.
 
 #### M15 Editor editability and mode · implicit
 EditorView `viewing`, `offline`, `isLoaded`, `document.unreadable`,

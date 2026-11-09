@@ -1051,6 +1051,15 @@ final class HostClient {
         link = .unreachable(why)
     }
 
+    /// A link closed: how the host stands, and how many links in a row it
+    /// hasn't answered (three bring the server copied over again). Given
+    /// up on for silence it had answered: "not answering", not counted.
+    static func afterClose(answered: Bool, silent: Bool, unanswered: Int) -> (Standing, Int) {
+        if silent { return (.unreachable("not answering"), 0) }
+        if answered { return (.unreachable(nil), 0) }
+        return (.unreachable("the connection closed before the host answered"), unanswered + 1)
+    }
+
     /// Debugging: the link down for `seconds` (as a Mac asleep), then made again.
     func debugAway(_ seconds: TimeInterval) {
         disconnected = true
@@ -1188,8 +1197,11 @@ final class HostClient {
         conn.onClose = { [weak self] in
             guard let self else { return }
             NSLog("host %@: connection closed", self.host.raw)
+            // Answered on this link: connected until now, or given up on
+            // for silence (the heartbeat said so on `link` already).
+            let answered = self.link == .connected || self.droppedSilent
             // Gone of its own accord (not given up on here): said so.
-            if self.isRemote, self.link == .connected, !self.droppedSilent { self.recordDrop("the connection closed") }
+            if self.isRemote, answered, !self.droppedSilent { self.recordDrop("the connection closed") }
             self.connectedSince = nil
             // Its last word, for how long it's been (the heartbeat goes on).
             if let heard = self.mux?.linkState().lastRead { self.lastContact = heard }
@@ -1204,10 +1216,9 @@ final class HostClient {
             for w in dropped { w.drop() }
             self.forwards.linkClosed()
             self.pingSent = nil
-            // Gone before it answered: unreachable, not still connecting.
-            let answered = self.link == .connected
-            self.link = .unreachable(answered ? nil : "the connection closed before the host answered")
-            self.closedUnanswered = answered ? 0 : self.closedUnanswered + 1
+            // How it stands now, from why it closed — not read back from
+            // `link`, which the heartbeat had set already (§ M14).
+            (self.link, self.closedUnanswered) = Self.afterClose(answered: answered, silent: self.droppedSilent, unanswered: self.closedUnanswered)
             if let child = self.child {
                 var status: Int32 = 0
                 waitpid(child.pid, &status, WNOHANG)
