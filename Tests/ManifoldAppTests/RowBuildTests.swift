@@ -36,3 +36,28 @@ private func rows(_ p: PlacementID, docked: Bool) -> [OrgNode] {
     let line = view.debugRowViews().split(separator: "\n").first { $0.contains(" Terminal ") }
     #expect(line?.contains("mask false") == true, "\(line ?? "no row")")
 }
+
+// A docked tile's row (no column) isn't its space's: right-clicked it had
+// the space's menu (Rename Space…, Remove Space), double-clicked it renamed
+// the space, dragged it carried the space.
+@MainActor
+@Test func aDockedTilesRowIsntItsSpaces() {
+    let space = BlockID()
+    let heading = OrgNode(id: "arr/\(space)/docked", title: "Docked", symbol: "")
+    heading.arrangement = space
+    #expect(heading.space == space)
+    let docked = OrgNode(id: "arr/\(space)/tile/p", block: BlockID(), title: "Terminal", symbol: "terminal")
+    docked.arrangement = space
+    docked.placement = PlacementID()
+    docked.docked = true
+    #expect(docked.space == nil)
+    let onScreen = OrgNode(id: "arr/\(space)/tile/q", block: BlockID(), title: "Notes", symbol: "doc")
+    onScreen.arrangement = space
+    onScreen.placement = PlacementID()
+    onScreen.column = 0
+    #expect(onScreen.space == nil)
+    // A pinned block closed: a row to recall it, a block's, not the space's.
+    let pinned = OrgNode(id: "arr/\(space)/pin/b", block: BlockID(), title: "Plan", symbol: "doc")
+    pinned.arrangement = space
+    #expect(pinned.space == nil)
+}

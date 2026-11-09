@@ -82,6 +82,12 @@ final class OrgNode {
     /// On the desk: which column of its arrangement, and the placement shown.
     var column: Int?
     var placement: PlacementID?
+    /// A space's own row (a heading that stands for it), not a tile's in
+    /// it nor a block's: a docked tile, with no column, isn't one.
+    var space: BlockID? {
+        guard let arr = arrangement, column == nil, placement == nil, block == nil || block == arr else { return nil }
+        return arr
+    }
     /// A row that does something rather than opening a block (New…).
     var action: (() -> Void)?
     /// What the row puts on the clipboard, a copy button beside it (the
@@ -912,7 +918,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         } else if let action = node.action {
             action()
-        } else if node.style == .section, node.block != nil, node.arrangement != nil, node.column == nil {
+        } else if node.style == .section, node.block != nil, node.space != nil {
             // A workspace's label: gone to. (Its chevron opens and closes it.)
             delegate?.organizationOpen(node, modifiers: NSApp.currentEvent?.modifierFlags ?? [])
         } else if node.style != .row, node.hasChildren {
@@ -960,7 +966,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         pathDrag = false
         let pb = NSPasteboardItem()
         pb.setString(block.description, forType: .manifoldBlock)
-        if let a = node.arrangement, node.column == nil { pb.setString(a.description, forType: .manifoldArrangement) }
+        if let a = node.space { pb.setString(a.description, forType: .manifoldArrangement) }
         if let p = node.placement { pb.setString(p, forType: .manifoldPlacement) }
         return pb
     }
@@ -999,7 +1005,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         springUnder(info)
         // Files onto a workspace's row: opened there.
         if !Self.files(info.draggingPasteboard).isEmpty {
-            guard let node = item as? OrgNode, node.arrangement != nil, node.column == nil, index == NSOutlineViewDropOnItemIndex else { return [] }
+            guard let node = item as? OrgNode, node.space != nil, index == NSOutlineViewDropOnItemIndex else { return [] }
             return .copy
         }
         guard let drag = OrgDragItem(info.draggingPasteboard) else { return [] }
@@ -1064,7 +1070,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
 
     private func springLoad(_ node: OrgNode, row: Int) {
         // A space's row (the one shown wears emphasis), not a column's.
-        guard node.arrangement != nil, node.column == nil, !node.emphasis, let delay = Self.springDelay else { return stopSpring() }
+        guard node.space != nil, !node.emphasis, let delay = Self.springDelay else { return stopSpring() }
         guard springNode != node.id else { return }
         stopSpring()
         springNode = node.id

@@ -82,7 +82,7 @@ extension MainWindowController: OrganizationViewDelegate {
             } else {
                 if arr != selected { hosts.select(arr) }
                 // A space's heading: the space in the inspector.
-                if node.column == nil { inspect(.space(arr)) }
+                if node.space != nil { inspect(.space(arr)) }
             }
             return
         }
@@ -95,7 +95,7 @@ extension MainWindowController: OrganizationViewDelegate {
 
     /// Double-clicking an arrangement names it.
     func organizationActivate(_ node: OrgNode) -> Bool {
-        guard let arr = node.arrangement, node.column == nil else { return false }
+        guard let arr = node.space else { return false }
         renameSpace(arr)
         return true
     }
@@ -258,7 +258,7 @@ extension MainWindowController: OrganizationViewDelegate {
             })
             return menu
         }
-        if let arr = node.arrangement, node.column == nil {
+        if let arr = node.space {
             menu.addItem(ClosureMenuItem("Rename Space…", symbol: "pencil") { [weak self] in self?.renameSpace(arr) })
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.space(arr), open: true) })
             menu.addItem(.separator())
@@ -282,6 +282,10 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(.separator())
         }
         if let arr = node.arrangement, let p = node.placement {
+            // Docked: put back where it was, as a click on its row does.
+            if node.docked {
+                menu.addItem(ClosureMenuItem("Put Back", symbol: "arrow.up.left.square") { [weak self] in self?.organizationOpen(node, modifiers: []) })
+            }
             menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark") { [weak self] in self?.closeTile(p, in: arr) })
             menu.addItem(.separator())
         } else {
