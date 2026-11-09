@@ -14,7 +14,7 @@ public let serverFeatures = ["zstd", "machine", "environment"]
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
 /// the payload. The first frame on a connection, or on one of its streams
 /// (`Mux`), says what it is: a `hello` (the app), an `attach` (a terminal),
-/// a `tunnel`, a file.
+/// a `connect`, a file.
 public enum FrameKind: UInt8, Sendable {
     /// A `ClientMessage` or `ServerMessage`, as `Codec` encodes it.
     case message = 1
@@ -505,15 +505,12 @@ public enum ClientMessage: Codable, Sendable {
     /// An agent's hook (`mani agent`): what happened in the agent
     /// running in `block`. A connection's one message, with no hello.
     case agent(block: BlockID, AgentEvent)
-    /// A stream's first frame: a forwarded port's connection (§8). The host
-    /// connects to `port` on its own loopback, and `data` frames carry the
-    /// bytes both ways; an empty one says that side is done sending.
-    case tunnel(port: Int)
-    /// A stream's first frame: a connection the host makes for a page
-    /// loaded through it (§7.6), to `host` — a name, looked up there, or
-    /// an address — at `port`. Answered on the stream with a
-    /// `ConnectReply`; once connected, `data` frames carry the bytes both
-    /// ways, as a tunnel's do.
+    /// A stream's first frame: a connection the host makes — a forwarded
+    /// port's (§8), to `localhost`, or a page's loaded through it (§7.6) —
+    /// to `host` (a name, looked up there, or an address) at `port`.
+    /// Answered on the stream with a `ConnectReply`; once connected, `data`
+    /// frames carry the bytes both ways, an empty one saying that side is
+    /// done sending. What's sent before the answer is lost.
     case connect(host: String, port: Int)
     /// A stream's first frame: a file's bytes from `offset`, `length` of
     /// them at most (all, if nil), come down it as `data` frames, then

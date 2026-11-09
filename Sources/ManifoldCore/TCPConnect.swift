@@ -47,6 +47,18 @@ public enum TCPConnect {
         var name = host
         if name.hasPrefix("["), name.hasSuffix("]") { name = String(name.dropFirst().dropLast()) }
         guard !name.isEmpty else { return .failure(.notFound) }
+        // The host's own loopback, both ways — IPv4, else IPv6, as servers
+        // bind one or the other — whatever its resolver says of the name.
+        if name == "localhost" {
+            var why = ConnectFailure.refused
+            for address in ["127.0.0.1", "::1"] {
+                switch open(host: address, port: port, timeout: timeout, cancelled: cancelled) {
+                case let .success(fd): return .success(fd)
+                case let .failure(f): why = f
+                }
+            }
+            return .failure(why)
+        }
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
         hints.ai_socktype = Int32(SOCK_STREAM)

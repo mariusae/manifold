@@ -377,9 +377,6 @@ final class Server {
             guard let stream = self.stream(conn) else { return }
             guard let session = sessions[req.block] else { return conn.close() }
             session.backfill(req, to: stream)
-        case let .tunnel(port)?:
-            guard let stream = self.stream(conn) else { return }
-            tunnel(stream, to: port)
         case let .connect(host, port)?:
             guard let stream = self.stream(conn) else { return }
             connect(stream, to: host, port: port)
@@ -1984,20 +1981,11 @@ final class Server {
 
     // MARK: Forwarded ports (§8)
 
-    /// A forwarded port's connection, on its own stream: the host's
-    /// loopback port's bytes up it, and its bytes written there. The
-    /// relay stops reading while the stream has enough on its way, and
-    /// what's written is credited only once it is, so neither side's
-    /// slowness piles up anywhere but in itself.
-    private func tunnel(_ stream: MuxStream, to port: Int) {
-        guard let relay = PortRelay(port: port, queue: queue) else { return stream.close() }
-        join(stream, relay)
-    }
-
-    /// A page's connection, for a web block loaded through this host
-    /// (§7.6): `host` looked up and connected to off the queue — a name
-    /// can take seconds to find, an address longer to answer — the stream
-    /// told how it went, then its bytes relayed as a tunnel's are. Nothing
+    /// A connection made for the client — a forwarded port's, to this
+    /// host's loopback, or a page's, for a web block loaded through this
+    /// host (§7.6): `host` looked up and connected to off the queue — a
+    /// name can take seconds to find, an address longer to answer — the
+    /// stream told how it went, then its bytes relayed (`join`). Nothing
     /// comes up the stream before the answer; one closed meanwhile (the
     /// page gone) gives up the wait. Each waits on a thread of its own,
     /// not one of the pool's, whose other work it would hold up.
@@ -2019,7 +2007,10 @@ final class Server {
         }
     }
 
-    /// A stream and a socket joined, each way paced by the other.
+    /// A stream and a socket joined, each way paced by the other: the
+    /// relay stops reading while the stream has enough on its way, and
+    /// what's written is credited only once it is, so neither side's
+    /// slowness piles up anywhere but in itself.
     private func join(_ stream: MuxStream, _ relay: PortRelay) {
         stream.manualCredit = true
         relay.onData = { [weak relay, weak stream] data in

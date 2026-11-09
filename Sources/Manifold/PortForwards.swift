@@ -116,14 +116,21 @@ final class PortForwards {
         // this bookkeeping are (the link's own queue would race them).
         let stream = mux.open(bulk: true, callbackQueue: .main, purpose: StreamPurpose(.forward, "localhost:\(remote)"))
         stream.manualCredit = true
-        stream.send(.message(ClientMessage.tunnel(port: remote)))
+        stream.send(.message(ClientMessage.connect(host: "localhost", port: remote)))
         c.start(queue: .main)
         let key = nextKey
         nextKey += 1
         let pipe = StreamPipe(c, stream)
         pipe.onEnd = { [weak self] in self?.pipes.removeValue(forKey: key) }
         pipes[key] = pipe
-        pipe.start()
+        // The host's answer first, and only then the bytes both ways (what
+        // went up before it would be lost); refused, or closed unanswered,
+        // the connection here closes.
+        stream.onFrame = { [weak stream, weak pipe] frame in
+            stream?.consumed(frame.payload.count + 5)
+            if frame.kind == .message, frame.decode(ConnectReply.self) == .connected { pipe?.start() } else { pipe?.cancel() }
+        }
+        stream.onClose = { [weak pipe] in pipe?.cancel() }
     }
 
     /// The link to the host went: its connections with it (the ports stay

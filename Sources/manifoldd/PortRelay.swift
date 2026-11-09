@@ -9,11 +9,9 @@ import Musl
 #endif
 
 private func relayClose(_ fd: Int32) { _ = close(fd) }
-private func relayConnect(_ fd: Int32, _ addr: UnsafePointer<sockaddr>, _ len: socklen_t) -> Int32 { connect(fd, addr, len) }
 
-/// One forwarded connection, on the host (§8): a socket to a port on the
-/// host's own loopback — IPv4, else IPv6, as servers bind one or the
-/// other — or one made for a page loaded through the host (§7.6), its
+/// One connection made for the client, on the host (`TCPConnect`): a
+/// forwarded port's (§8) or a page's loaded through the host (§7.6), its
 /// bytes handed up as they come, and written as they're sent.
 /// Its stream says when to stop reading (`pause`) and go on (`resume`):
 /// a fast server and a slow link fill nothing but the socket.
@@ -29,11 +27,6 @@ final class PortRelay {
     /// Bytes from the client written on to the socket (on the queue).
     var onWritten: ((Int) -> Void)?
 
-    convenience init?(port: Int, queue: DispatchQueue) {
-        guard let fd = Self.open(port) else { return nil }
-        self.init(fd: fd, queue: queue)
-    }
-
     /// Over a socket connected already (blocking), which it closes.
     init(fd: Int32, queue: DispatchQueue) {
         self.fd = fd
@@ -42,42 +35,6 @@ final class PortRelay {
         source.setEventHandler { [weak self] in self?.readAvailable() }
         source.setCancelHandler { relayClose(fd) }
         source.resume()
-    }
-
-    private static func open(_ port: Int) -> Int32? {
-        var v4 = sockaddr_in()
-        #if canImport(Darwin)
-        v4.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        #endif
-        v4.sin_family = sa_family_t(AF_INET)
-        v4.sin_port = in_port_t(UInt16(port).bigEndian)
-        v4.sin_addr.s_addr = inet_addr("127.0.0.1")
-        var v6 = sockaddr_in6()
-        #if canImport(Darwin)
-        v6.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
-        #endif
-        v6.sin6_family = sa_family_t(AF_INET6)
-        v6.sin6_port = in_port_t(UInt16(port).bigEndian)
-        v6.sin6_addr = in6addr_loopback
-        for family in [AF_INET, AF_INET6] {
-            let fd = socket(family, Int32(SOCK_STREAM), 0)
-            guard fd >= 0 else { continue }
-            // Not handed down to what the server starts (a shell, an agent).
-            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
-            #if canImport(Darwin)
-            var one: Int32 = 1
-            setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
-            #endif
-            let ok: Int32
-            if family == AF_INET {
-                ok = withUnsafePointer(to: &v4) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { relayConnect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
-            } else {
-                ok = withUnsafePointer(to: &v6) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { relayConnect(fd, $0, socklen_t(MemoryLayout<sockaddr_in6>.size)) } }
-            }
-            if ok == 0 { return fd }
-            relayClose(fd)
-        }
-        return nil
     }
 
     private func readAvailable() {
@@ -104,7 +61,7 @@ final class PortRelay {
     }
 
     /// Written in order, off the server's queue (a slow reader there
-    /// holds up only its own tunnel), and said to be when it is.
+    /// holds up only its own connection), and said to be when it is.
     func write(_ data: Data) {
         writes.async { [weak self, fd, queue] in
             FD.writeAll(fd, data)
