@@ -344,10 +344,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private let headingsWork = Debouncer()
     /// Whether the text has an outline: Markdown, or a note (its headings);
     /// a source file whose language server says what it declares.
-    /// An outline: a text's Markdown headings, or a source file's symbols
-    /// from its language server — only the first of which makes the text
-    /// Markdown (rich, without line numbers).
     fileprivate var hasOutline: Bool { isMarkdownOutline || hasSymbols }
+    /// The outline is the text's Markdown headings — which, unlike a
+    /// source file's symbols, make the text Markdown (rich, without line
+    /// numbers).
     private var isMarkdownOutline: Bool { path.isEmpty || Lens.isMarkdown(path) }
     /// The language server has answered with the file's symbols.
     private var hasSymbols = false
@@ -1018,9 +1018,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     }
 
     /// Goes to a line (from 1): selects it, or, given a column (from 1),
-    /// puts the caret there.
-    /// A line gone to, selected and scrolled into view; before the editor
-    /// is laid out, kept until it is.
+    /// puts the caret there, scrolled into view; before the editor is laid
+    /// out, kept until it is.
     func select(line: Int, column: Int? = nil) {
         NavJumps.willJump?(self)
         let r = textView.offset(line: line, column: column)

@@ -11,9 +11,9 @@ protocol TerminalViewDelegate: AnyObject {
     /// ⌘-clicked on a word ghostty doesn't take for a link (a folder's
     /// name, as `ls` prints it): opened if it names a folder.
     func terminal(_ view: TerminalView, openFolder name: String, over: Bool)
-    /// A command on the scrubber was opened: it and its output, as a block.
-    /// A command and its output, to show as a block of their own, beside
-    /// a placement (an outline's) if given.
+    /// A command opened (on the scrubber, from the outline): it and its
+    /// output, to show as a block of their own, beside a placement (an
+    /// outline's) if given.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?)
     /// Copy on Select was switched from the pill's menu: a setting.
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool)
@@ -503,8 +503,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         perform("scroll_to_row:\(Int((fraction * Double(span)).rounded()))")
     }
 
-    /// A command's row scrolled to, by its id (an outline's click).
-    /// Scrolls to a command's row; false if it isn't found on the screen (yet).
     /// The command last gone to, while it's the place the terminal is at.
     private var commandGoneTo: Int?
     var navLocation: NavLocation? { commandGoneTo.map { .command($0) } }
@@ -518,6 +516,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if case let .command(id) = location { _ = go(toCommand: id) }
     }
 
+    /// A command's row scrolled to, by its id (an outline's click); false
+    /// if it isn't found on the screen (yet).
     @discardableResult
     func go(toCommand id: Int) -> Bool {
         NavJumps.willJump?(self)
@@ -732,7 +732,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     // MARK: Debugging
 
-    /// Debugging: what the outline's item `i` carries dragged.
     /// A command dragged out: its place and words, as its outline's row.
     private func commandDrag(_ id: Int) -> NSPasteboardWriting? {
         fillOutline()
@@ -743,6 +742,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// Debugging: what dragging the dot of the command `id` carries.
     func debugDotDrag(_ id: Int) -> NSPasteboardItem? { commandDrag(id) as? NSPasteboardItem }
 
+    /// Debugging: what the outline's item `i` carries dragged.
     func debugOutlineDrag(_ i: Int) -> NSPasteboardItem? {
         fillOutline()
         return commandsOutline.dragItem(i) as? NSPasteboardItem
@@ -1917,7 +1917,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     func searchSelected(_ selected: Int?) {}
 
-    /// The selected text, if any.
     /// The word under the pointer, as a double-click would select it.
     private var wordUnderPointer: String? {
         guard let surface else { return nil }
@@ -1929,6 +1928,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The selected text, if any.
     var selectedText: String? {
         guard let surface, ghostty_surface_has_selection(surface) else { return nil }
         var t = ghostty_text_s()

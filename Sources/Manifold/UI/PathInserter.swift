@@ -2,16 +2,6 @@ import AppKit
 import ManifoldCore
 import UniformTypeIdentifiers
 
-/// Insert Path (⌃⌘I, §3.8): over a terminal's cursor, a menu of the paths
-/// where its shell is — the folder's own entries, and the last three put
-/// in on that host, nearest the field — and a field at its foot that
-/// finds any file or folder under it as you type. Nothing waits: the
-/// folder's entries show as they come, and what's under them is looked
-/// for only once something's typed, nearest first (`PathCrawl`), the
-/// rows ranked again off the main thread as more is found. Chosen, the path is
-/// typed at the cursor as the shell would have it: relative to the
-/// folder when it's under it, else from `~`, quoted where it needs to be;
-/// a folder with its slash, a file with a space after.
 /// What a list by the caret does, Insert Path's and a completion's alike:
 /// where it goes beside the caret, and its choice moved by ↑ ↓.
 enum CaretPopup {
@@ -41,6 +31,16 @@ enum CaretPopup {
     }
 }
 
+/// Insert Path (⌃⌘I, §3.8): over a terminal's cursor, a menu of the paths
+/// where its shell is — the folder's own entries, and the last three put
+/// in on that host, nearest the field — and a field at its foot that
+/// finds any file or folder under it as you type. Nothing waits: the
+/// folder's entries show as they come, and what's under them is looked
+/// for only once something's typed, nearest first (`PathCrawl`), the
+/// rows ranked again off the main thread as more is found. Chosen, the path is
+/// typed at the cursor as the shell would have it: relative to the
+/// folder when it's under it, else from `~`, quoted where it needs to be;
+/// a folder with its slash, a file with a space after.
 final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     static let shared = PathInserter()
 

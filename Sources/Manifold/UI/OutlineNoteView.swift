@@ -1964,7 +1964,8 @@ final class NoteOutlineTextView: NSTextView {
         switch prefix {
         case _ where prefix.allSatisfy({ $0 == "#" }): row.kind = .heading(prefix.count)
         case ">": row.kind = .quote
-        case "---", "***", "___" where rest.trimmingCharacters(in: .whitespaces).isEmpty:
+        case "---" where rest.trimmingCharacters(in: .whitespaces).isEmpty, "***" where rest.trimmingCharacters(in: .whitespaces).isEmpty,
+             "___" where rest.trimmingCharacters(in: .whitespaces).isEmpty:
             // A line across, a row after it to write in.
             makeRule(at: index)
             return true

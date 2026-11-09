@@ -115,8 +115,8 @@ final class TextView: NSView, NSTextInputClient {
     private var cardLines: [Int: (block: BlockID, place: String?, target: String, content: SummaryCardContent, rows: Int)] = [:]
     /// A line that's a block's card: `![name](manifold:…)` alone on it.
     private static let embedLine = try! NSRegularExpression(pattern: #"^\s*!\[[^\]\n]*\]\((manifold:[^)\s]+)\)\s*$"#)
-    /// The lines that are code fences, found once per text.
-    /// The lines that are fences, in order (counted below a line by halving).
+    /// The lines that are code fences, in order, found once per text
+    /// (counted below a line by halving).
     private var fenceLines: [Int]?
     /// The text's language, where there's a grammar for it (§7.1): its
     /// syntax tree, kept as the text changes.
@@ -822,8 +822,6 @@ final class TextView: NSView, NSTextInputClient {
         return out
     }
 
-    /// The y of a logical line's first row.
-    /// The top of a logical line, in the view (the scrubber's marks too).
     /// The line at `y` (from 0), and how far down it `y` is, as a fraction.
     func fractionalLine(atY y: CGFloat) -> Double {
         guard !text.isEmpty else { return 0 }
@@ -845,6 +843,8 @@ final class TextView: NSView, NSTextInputClient {
     /// The bottom of a logical line's last row.
     func bottom(ofLine n: Int) -> CGFloat { top(ofLine: n) + CGFloat(layout(line: n).rows.count) * lineHeight }
 
+    /// The top of a logical line (its first row's), in the view (the
+    /// scrubber's marks too).
     func top(ofLine n: Int) -> CGFloat {
         ensureRowStarts(through: n)
         let row = rowStarts[min(max(n, 0), rowStarts.count - 1)]
@@ -1597,7 +1597,7 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     func insert(_ strings: [String], typing: Bool) {
-        guard isEditable, let document, strings.count == selections.count else { return }
+        guard isEditable, document != nil, strings.count == selections.count else { return }
         let before = selections
         var edits: [TextEdit] = []
         for (s, str) in zip(selections, strings) { edits.append(TextEdit(s.range, str)) }
@@ -3230,7 +3230,7 @@ extension TextView: DropTaking {
             return Dropping.noteText(d, as: form, keep: onImage, insert: put, linked: mentioned)
         }
         d.text(form, separator: "\n") { [weak self] text, blocks in
-            guard let self, let text, !text.isEmpty else { return NSSound.beep() }
+            guard self != nil, let text, !text.isEmpty else { return NSSound.beep() }
             put(text)
             if form == .link || form == .reference { blocks.forEach(mentioned) }
         }

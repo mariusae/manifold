@@ -97,8 +97,7 @@ extension EditorView {
     }
 
     /// Find References: a block of every place that uses the word at the
-    /// caret, as a search's hits, beside this one.
-    /// Find References: the language server's, else (none running, or it
+    /// caret, as a search's hits, beside this one — the language server's, else (none running, or it
     /// found none) the project's SCIP index's (§2.5), across its files.
     @objc func findReferences(_ sender: Any?) {
         let at = caret
@@ -405,8 +404,6 @@ extension EditorView {
         index { if !serverAnswered { show($0) } }
     }
 
-    /// A gutter's line dragged: a reference to its place (§2.5) — what an
-    /// outline's item carries, its line made an anchor by the window.
     /// The symbol at a place's uses in this text, as its language server
     /// highlights them; nil if there's no server or it doesn't say.
     func textView(_ view: TextView, usesAt offset: Int, _ done: @escaping ([TextRange]?) -> Void) {
@@ -417,6 +414,8 @@ extension EditorView {
         }
     }
 
+    /// A gutter's line dragged: a reference to its place (§2.5) — what an
+    /// outline's item carries, its line made an anchor by the window.
     func textView(_ view: TextView, dragLine line: Int) -> NSPasteboardWriting? {
         Drags.place?(Place(block: block, at: .line(line + 1), name: view.text.lineText(line).trimmingCharacters(in: .whitespaces)), nil)
     }
