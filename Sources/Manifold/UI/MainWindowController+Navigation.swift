@@ -151,7 +151,10 @@ extension MainWindowController {
     }
 
 
-    func watchHistoryButtons() {
+    /// What views that know nothing of the window ask of it, given: a
+    /// jump noted, a drag's block, link, file or image, a host's bytes, a
+    /// place's name, why a reference finds nothing.
+    func installGlobalHooks() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
         // A line of a text, referred to: its anchor (§2.5) — the declaration
         // or heading there, kept as the text moves — not the line's number.
@@ -204,6 +207,11 @@ extension MainWindowController {
             item.setString(id.description, forType: .manifoldBlock)
             return item
         }
+    }
+
+    /// The window's own keys and the mouse's back and forward buttons,
+    /// watched before any view sees them.
+    func watchNavKeys() {
         // ⌃- and ⌃⇧- go back and forward, ⌃⇥ and ⌃⇧⇥ walk the space's
         // tiles, ⌘` and ⇧⌘` the workspaces, here, before anything
         // else sees them — whatever has the keyboard, or nothing (a

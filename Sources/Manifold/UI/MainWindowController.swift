@@ -193,7 +193,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         setTrafficLights(visible: pinned, animated: false)
         watchClicks()
-        watchHistoryButtons()
+        installGlobalHooks()
+        watchNavKeys()
         HostMenu.submenu = { [weak self] host in self?.hostSubmenu(host) }
         // A site's icon arrived: its pages' rows and bars show it.
         NotificationCenter.default.addObserver(forName: .manifoldFaviconsChanged, object: nil, queue: .main) { [weak self] _ in
