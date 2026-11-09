@@ -188,7 +188,32 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
 
     // MARK: The scrubber (§3.1)
 
-    private let scrubber = ScrubberView(frame: .zero)
+    /// Its outline as its scroll bar: the headings where they are on the
+    /// page, previewed by the words under each.
+    private lazy var scrubber: OutlineStripView = {
+        let s = OutlineStripView(outline: headingsOutline, policy: .document)
+        s.preview = { [weak self] i in self?.sectionLines(i) ?? [] }
+        return s
+    }()
+
+    /// The first lines of an entry's section, as the text has them: what
+    /// the strip's card says under its heading.
+    private func sectionLines(_ i: Int) -> [String] {
+        guard let s = source(), let items = outlineItems?.items, items.indices.contains(i) else { return [] }
+        let lines = s.text.components(separatedBy: "\n")
+        let from = items[i].line + 1, to = i + 1 < items.count ? items[i + 1].line : lines.count
+        guard from < min(to, lines.count) else { return [] }
+        var out: [String] = []
+        for raw in lines[from..<min(to, lines.count)] {
+            var t = raw.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty, !t.hasPrefix("```"), !t.hasPrefix("<!--") else { continue }
+            while let f = t.first, "#>-*+".contains(f) { t.removeFirst(); t = t.trimmingCharacters(in: .whitespaces) }
+            t = t.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
+            if !t.isEmpty { out.append(t) }
+            if out.count == 4 { break }
+        }
+        return out
+    }
     private let outlineWork = Debouncer()
     /// The page's headings' tops and its size as last read, for following a
     /// scroll live.
@@ -229,8 +254,15 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             for t in (d["t"] as? [Double]) ?? [] { tops.append(t >= 0 ? t : (tops.last ?? 0)) }
             self.itemLines = items.map(\.line)
             self.lastOutline = (tops, h, v)
-            self.scrubber.update(total: h, offset: y, shown: v)
             self.headingsOutline.set(items.map(Outline.Item.init))
+            // Each entry its section: from its top to the next's at its
+            // level or above (the last, to the page's end).
+            self.scrubber.set(tops.indices.map { k in
+                let next = ((k + 1)..<tops.count).first { items[$0].level <= items[k].level }
+                let end = next.map { tops[$0] } ?? h
+                return StripItem(level: items[k].level, start: tops[k], size: max(end - tops[k], 1))
+            })
+            self.scrubber.update(total: h, offset: y, shown: v)
             self.markCurrentHeading(at: y)
         }
     }
@@ -241,6 +273,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     /// tile's upper right, and in the sidebar at its left.
     private let headingsOutline = Outline()
     var outline: Outline? { headingsOutline }
+    var outlineInStrip: Bool { true }
     private var sidebar: TileSidebar?
     private var sidebarRestored = false
     /// The page shows a note or a Markdown file, which things dropped go into.
@@ -276,6 +309,8 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
         guard let o = lastOutline else { return }
         headingsOutline.current = o.tops.lastIndex { $0 <= y + 24 } ?? (o.tops.isEmpty ? nil : 0)
     }
+
+    func debugStrip(_ arg: String) -> String { scrubber.debug(arg) }
 
     var debugSidebar: String { sidebar.map { $0.isHidden ? "hidden" : $0.debugEntries } ?? "none" }
     func debugSidebarPick(_ i: Int) -> String { sidebar?.debugPick(i) ?? "none" }
@@ -315,11 +350,11 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             left = TileSidebar.width(in: bounds.width)
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
-        let r = NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
+        let r = NSRect(x: left, y: 0, width: max(bounds.width - OutlineStripView.width - left, 0), height: bounds.height)
         // The page made once it shows at a size: not for a tile hidden, or
         // down to its bar.
         if made != nil || (window != nil && !isHiddenOrHasHiddenAncestor && r.width > 1 && r.height > 1) { web.frame = r }
-        scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: 0, width: ScrubberView.width, height: bounds.height)
+        scrubber.frame = NSRect(x: bounds.width - OutlineStripView.width, y: 0, width: OutlineStripView.width, height: bounds.height)
         note.frame = r
         note.set(isUnread() ? .busy("Reading…") : .idle)
         finder.layout(in: r)
@@ -340,7 +375,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     /// Where the page goes: right of the outline, left of the scrubber.
     private var pageFrame: NSRect {
         let left = sidebar.flatMap { $0.isHidden ? nil : TileSidebar.width(in: bounds.width) } ?? 0
-        return NSRect(x: left, y: 0, width: max(bounds.width - ScrubberView.width - left, 0), height: bounds.height)
+        return NSRect(x: left, y: 0, width: max(bounds.width - OutlineStripView.width - left, 0), height: bounds.height)
     }
 
     // Shown (itself, or a workspace it's in): laid out, its page made if it

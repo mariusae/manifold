@@ -1048,6 +1048,17 @@ enum DebugControl {
             // attended to only while it is).
             return (wc?.debugFocusedBlock?.description ?? "nothing focused") + (wc?.window?.isKeyWindow == true ? " key" : " not key")
                 + " responder " + (wc?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "none")
+        case "strip":
+            // "strip": the focused terminal's or preview's outline strip, its
+            // marks; "strip hover <f>" (the pointer that far down it), "strip
+            // off", "strip pick <i>".
+            guard let v = wc?.debugFocusedView else { return "nothing focused" }
+            func find(_ v: NSView) -> NSView? { (v is TerminalView || v is MarkdownView) ? v : v.subviews.lazy.compactMap(find).first }
+            switch find(v) {
+            case let t as TerminalView: return t.debugStrip(arg)
+            case let m as MarkdownView: return m.debugStrip(arg)
+            default: return "no terminal or preview focused"
+            }
         case "scrub":
             // "scrub": the focused terminal's scrubber; "scrub hover <f>",
             // "scrub go|open <id>", "scrub locate", "scrub row <n>".

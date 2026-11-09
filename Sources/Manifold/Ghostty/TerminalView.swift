@@ -292,15 +292,71 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     // MARK: The scrubber (§3.1)
 
-    static let scrollerWidth: CGFloat = ScrubberView.width
+    static let scrollerWidth: CGFloat = OutlineStripView.width
     /// In the superview, over the tile's right edge, as the find pill is:
     /// Ghostty's layer is this view's, under which a subview wouldn't show.
-    private lazy var scrubber: ScrubberView = {
-        let s = ScrubberView(frame: NSRect(x: 0, y: 0, width: Self.scrollerWidth, height: 100))
+    /// Its commands are its marks (an agent's turns), the latest the most
+    /// of them; each previewed by the last lines of what it printed.
+    private lazy var scrubber: OutlineStripView = {
+        let s = OutlineStripView(outline: commandsOutline, policy: .recent)
         s.layer?.zPosition = 5
         s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
+        s.preview = { [weak self] i in self?.previewLines(i) ?? [] }
+        s.previewIsCode = true
         return s
     }()
+
+    /// The outline's commands as the strip weighs them: each from the row
+    /// it was found on to the next's, how it ended; an agent's turns, which
+    /// have no rows, one after another, each as long as it took.
+    private func fillStrip() {
+        let commands = outlined
+        guard isAgent, !turns.isEmpty else {
+            var at = 0.0
+            let starts = commands.map { c -> Double in
+                if let r = located[c.id] { at = Double(r) }
+                return at
+            }
+            let total = Double(max(scrollbar.total, 1))
+            scrubber.scrolls = true
+            scrubber.set(commands.indices.map { k in
+                let next = k + 1 < starts.count ? starts[k + 1] : total
+                return StripItem(start: starts[k], size: max(next - starts[k], 1),
+                                 failed: (commands[k].status ?? 0) != 0, running: commands[k].isRunning && k == commands.count - 1)
+            }, policy: .recent)
+            return
+        }
+        var at = 0.0
+        let items = commands.indices.map { k -> StripItem in
+            let c = commands[k]
+            let end = c.ended?.wall ?? Int64(Date().timeIntervalSince1970 * 1000)
+            let took = max(Double(end - c.at.wall) / 1000, 5)
+            defer { at += took }
+            return StripItem(start: at, size: took, failed: (c.status ?? 0) != 0, running: c.isRunning && k == commands.count - 1)
+        }
+        scrubber.scrolls = false
+        scrubber.set(items, policy: .recent)
+        scrubber.update(total: max(at, 1), offset: 0, shown: max(at, 1))
+    }
+
+    /// What the card says under a command: the last lines it printed (a
+    /// shell's), or the whole of what was asked (an agent's).
+    private var previewKept: (key: String, lines: [String])?
+    private func previewLines(_ i: Int) -> [String] {
+        let commands = outlined
+        guard commands.indices.contains(i) else { return [] }
+        let c = commands[i]
+        if isAgent, turns.contains(c.id) { return c.text.count > 40 ? [c.text] : [] }
+        guard let row = located[c.id] else { return [] }
+        let next = commands.compactMap { located[$0.id] }.filter { $0 > row }.min() ?? scrollbar.total
+        let key = "\(c.id) \(row) \(next) \(scrollbar.total)"
+        if let kept = previewKept, kept.key == key { return kept.lines }
+        let lines = text(rows: (row + 1)..<max(next, row + 1)).split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let out = Array(lines.suffix(4))
+        previewKept = (key, out)
+        return out
+    }
     /// A dot beside each command's prompt, a shell's (§3.8), in the same
     /// way over the terminal's left padding.
     private let dots = CommandDots(frame: .zero)
@@ -332,7 +388,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         layoutScroller()
         if links.shown { markLinks() }
         markCurrentCommand()
-        if grew { scheduleLocate() }
+        if grew { scheduleLocate(); fillStrip() }
     }
 
     // MARK: The outline (§7.5)
@@ -388,6 +444,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         isAgent && !turns.isEmpty ? commands.filter { turns.contains($0.id) } : commands
     }
     var outline: Outline? { commandsOutline }
+    var outlineInStrip: Bool { true }
     private var sidebar: TileSidebar?
     /// The frame the grid gave, the sidebar's room taken from it.
     private var given: NSRect?
@@ -440,6 +497,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         commandsOutline.set(commands.map { c in
             Outline.Item(title: c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.isRunning && c.id == commands.last?.id, code: !isAgent)
         })
+        fillStrip()
         markCurrentCommand()
     }
 
@@ -471,8 +529,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: frame.height)
-        scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len
-        scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
+        // Shown while there's more than fits, or a command to mark.
+        scrubber.isHidden = isHidden || (scrollbar.total <= scrollbar.len && commandsOutline.items.isEmpty)
+        if !(isAgent && !turns.isEmpty) {
+            scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
+        }
         updateDots()
     }
 
@@ -705,6 +766,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             if byID != self.located {
                 self.located = byID
                 self.updateDots()
+                self.fillStrip()
                 self.markCurrentCommand()
             }
         }
@@ -749,6 +811,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         fillOutline()
         return commandsOutline.dragItem(i) as? NSPasteboardItem
     }
+
+    func debugStrip(_ arg: String) -> String { scrubber.debug(arg) }
 
     var debugScrubber: String {
         "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor)\n" + dots.debugDots

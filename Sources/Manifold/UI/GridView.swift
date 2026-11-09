@@ -337,8 +337,9 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill, thing: thing)
                 }
-                // Its outline, as ticks over its content's upper right.
-                if let outline = tile.view.outline {
+                // Its outline, as ticks over its content's upper right
+                // (unless its scroll bar is its outline).
+                if let outline = tile.view.outline, !tile.view.outlineInStrip {
                     if ticks[id]?.outline !== outline {
                         ticks[id]?.removeFromSuperview()
                         let t = OutlineTicks(outline: outline)
