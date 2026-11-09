@@ -188,7 +188,7 @@ final class SpaceStripView: NSView {
             let r = rect(plus)
             let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
             if hovered == plus {
-                Theme.text.withAlphaComponent(0.08).setFill()
+                Flat.ground(.hover).setFill()
                 path.fill()
             }
             Theme.text.withAlphaComponent(hovered == plus ? 0.3 : 0.16).setStroke()
@@ -672,7 +672,7 @@ final class NeedsYouView: NSView {
         for (i, item) in items.prefix(shown).enumerated() {
             let r = rowRect(i)
             if hovered == i {
-                Theme.text.withAlphaComponent(0.07).setFill()
+                Flat.ground(.hover).setFill()
                 NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
             }
             // Its space's square, small.

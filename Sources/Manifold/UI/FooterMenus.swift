@@ -60,7 +60,7 @@ final class FooterButton: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if hovering || open {
-            Theme.text.withAlphaComponent(open ? 0.1 : 0.07).setFill()
+            Flat.ground(open ? .pressed : .hover).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
         }
         var x: CGFloat = title == nil ? (bounds.width - 16) / 2 : 8

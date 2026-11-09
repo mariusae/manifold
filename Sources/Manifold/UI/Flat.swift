@@ -21,6 +21,20 @@ enum Flat {
     /// what's chosen (a grey button pressed doesn't flash blue).
     static let pressed = NSColor.themed { $0.chrome.pressed }
 
+    /// How a capsule control stands — a button, a chip, a segment, a token.
+    enum Stand { case rest, hover, pressed, on }
+
+    /// Its ground, every one alike: at rest a faint grey, the theme's
+    /// hover and pressed shades under the pointer, a firmer grey when on.
+    static func ground(_ s: Stand) -> NSColor {
+        switch s {
+        case .rest: Theme.text.withAlphaComponent(0.06)
+        case .hover: hovered
+        case .pressed: pressed
+        case .on: Theme.text.withAlphaComponent(0.15)
+        }
+    }
+
     /// How far a control that can't be used now is faded: every one alike.
     static let disabledAlpha: CGFloat = 0.4
 
@@ -365,7 +379,7 @@ final class FlatButton: NSButton {
             Tints.accentFill.blended(withFraction: pressed ? 0.2 : over ? 0.1 : 0, of: .black)?.setFill()
             path.fill()
         case .normal:
-            Theme.text.withAlphaComponent(on ? (pressed ? 0.2 : 0.15) : pressed ? 0.14 : over ? 0.1 : 0.06).setFill()
+            Flat.ground(on ? .on : pressed ? .pressed : over ? .hover : .rest).setFill()
             path.fill()
         }
         // The symbol and the words, centered together (a turning symbol,
@@ -503,13 +517,13 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
 
     override func draw(_ dirtyRect: NSRect) {
         if let h = hovered, h != selectedSegment, items.indices.contains(h) {
-            Theme.text.withAlphaComponent(0.06).setFill()
+            Flat.ground(.hover).setFill()
             let hr = rect(h)
             NSBezierPath(roundedRect: hr, xRadius: hr.height / 2, yRadius: hr.height / 2).fill()
         }
         if items.indices.contains(selectedSegment) {
             // As a chip on: a grey capsule (Dia's), not the tint's band.
-            Theme.text.withAlphaComponent(0.12).setFill()
+            Flat.ground(.on).setFill()
             let br = band(to: selectedSegment)
             NSBezierPath(roundedRect: br, xRadius: br.height / 2, yRadius: br.height / 2).fill()
         }

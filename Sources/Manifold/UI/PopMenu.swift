@@ -120,7 +120,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
     /// Filters on: its button in the accent, the chips kept showing.
     private func updateFilterLook() {
         filterButton.contentTintColor = on.isEmpty ? Theme.secondaryText : Theme.accent
-        filterButton.layer?.backgroundColor = chipsShown ? Theme.text.withAlphaComponent(0.08).cgColor : nil
+        filterButton.layer?.backgroundColor = chipsShown ? Flat.ground(.hover).cgColor : nil
     }
 
     /// Made again from the provider, the first row chosen.
@@ -226,7 +226,7 @@ final class ChipButton: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.5, dy: (bounds.height - Self.height) / 2 + 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Theme.text.withAlphaComponent(isOn ? 0.15 : hovering ? 0.09 : 0.055).setFill()
+        Flat.ground(isOn ? .on : hovering ? .hover : .rest).setFill()
         path.fill()
         let s = NSAttributedString(string: title, attributes: [.font: Self.font, .foregroundColor: isOn ? Theme.text : Theme.secondaryText])
         let z = s.size()

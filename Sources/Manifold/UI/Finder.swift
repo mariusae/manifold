@@ -1397,11 +1397,11 @@ final class KindToken: NSView {
         switch style {
         case .chip:
             // A chip, as the rest are: a quiet grey capsule.
-            Theme.text.withAlphaComponent(hovered ? 0.15 : 0.1).setFill()
+            Flat.ground(hovered ? .on : .hover).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: h / 2, yRadius: h / 2).fill()
         case let .count(_, on):
             if on || hovered {
-                Theme.text.withAlphaComponent(on ? 0.12 : 0.06).setFill()
+                Flat.ground(on ? .on : .rest).setFill()
                 NSBezierPath(roundedRect: bounds, xRadius: h / 2, yRadius: h / 2).fill()
             }
         }
@@ -1467,7 +1467,7 @@ final class ReachMarker: NSView {
             let on = r == current
             // As a chip: on, a grey capsule and the text's colour; else quiet.
             if on {
-                Theme.text.withAlphaComponent(0.12).setFill()
+                Flat.ground(.on).setFill()
                 NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2).fill()
             }
             let s = NSAttributedString(string: r.title, attributes: [
