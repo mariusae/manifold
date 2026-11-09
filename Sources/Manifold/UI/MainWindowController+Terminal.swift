@@ -38,7 +38,7 @@ extension MainWindowController: TerminalViewDelegate {
     /// output block, linked from the terminal; shown read-only, with Copy
     /// and the way back. One per command: asked again, the one there is.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
-        let place: Where = beside != nil ? .here : (Self.clickModifiers?.contains(.option) == true ? .over(view.placement) : .besideOpener(view.placement))
+        let place: Where = beside != nil ? .here : opener(view.placement)
         // An agent's turn: the turn, as a block of its own, not the TUI's bytes.
         if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
             return showTurn(command.id, of: view.block, place: place)
@@ -94,7 +94,7 @@ extension MainWindowController: TerminalViewDelegate {
         let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
         let diff = client.diffBlock(.trees(repo: repo, from: before, to: turn.after, title: "Turn: " + String(first.prefix(60))))
         hosts.link(from: agent, to: diff, kind: .opened, context: "changes in turn \(turn.id)")
-        show(diff, lens: .diff, placement.map { .besideOpener($0) } ?? .here, context: "changes in turn \(turn.id)")
+        show(diff, lens: .diff, .besideOrHere(placement), context: "changes in turn \(turn.id)")
     }
 
     /// Undo This Turn: asked first; then the turn's changes taken back.
@@ -121,7 +121,7 @@ extension MainWindowController: TerminalViewDelegate {
     /// The menu of an agent's turn: shown, its changes, undone.
     func turnItems(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) -> [NSMenuItem] {
         var items: [NSMenuItem] = [ClosureMenuItem("Show Turn", symbol: "text.bubble") { [weak self] in
-            self?.showTurn(turn.id, of: agent, place: placement.map { .besideOpener($0) } ?? .here)
+            self?.showTurn(turn.id, of: agent, place: .besideOrHere(placement))
         }]
         if turn.before != nil {
             items.append(ClosureMenuItem("Changes in This Turn", symbol: "plusminus") { [weak self] in self?.showTurnChanges(turn, of: agent, beside: placement) })

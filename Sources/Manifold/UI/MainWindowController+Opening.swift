@@ -68,6 +68,20 @@ extension MainWindowController {
         /// Over the tile that opened it (⌥ with the click): the tile goes
         /// behind it, as ⌥-drag stacks; the two are linked.
         case over(PlacementID)
+
+        /// Beside the tile that opened it, if one did; else here.
+        static func besideOrHere(_ opener: PlacementID?) -> Where { opener.map { .besideOpener($0) } ?? .here }
+
+        /// Where the one rule puts what `opener` opened: beside it (⌘),
+        /// over it (⌥), else here.
+        static func by(_ d: Disposition, from opener: PlacementID?) -> Where {
+            guard let opener else { return .here }
+            switch d {
+            case .beside: return .besideOpener(opener)
+            case .over: return .over(opener)
+            case .goTo, .system: return .here
+            }
+        }
     }
 
     /// `besideOpener` when there is an opener, else `here`.
@@ -135,7 +149,7 @@ extension MainWindowController {
             if let placement { linkFollowed(from: placement, to: block, kind: kind, context: context) }
             goTo(block, near: placement)
         case .goTo, .beside:
-            show(block, lens: lens, placement.map { .besideOpener($0) } ?? .here, kind: kind, context: context)
+            show(block, lens: lens, .besideOrHere(placement), kind: kind, context: context)
         }
     }
 
@@ -356,7 +370,7 @@ extension MainWindowController {
         guard let client = hosts.client(on) else { return }
         let block = client.newSearch(SearchQuery(text: text, root: root))
         // Linked from where it was asked, by what was looked for.
-        show(block, lens: .search, focusedShown.map { .besideOpener($0.id) } ?? .here, context: text.isEmpty ? "find in files" : "find “\(text)”")
+        show(block, lens: .search, .besideOrHere(focusedShown?.id), context: text.isEmpty ? "find in files" : "find “\(text)”")
     }
 
     /// Find in This Folder: a search under a folder (a folder tile's, an
@@ -364,7 +378,7 @@ extension MainWindowController {
     func findInFolder(_ path: String, on h: HostID, from placement: PlacementID?) {
         guard let client = hosts.client(h) else { return NSSound.beep() }
         let block = client.newSearch(SearchQuery(text: "", root: path))
-        show(block, lens: .search, placement.map { .besideOpener($0) } ?? .here, context: "find in \(path.lastPathComponent)")
+        show(block, lens: .search, .besideOrHere(placement), context: "find in \(path.lastPathComponent)")
     }
 
     /// New Agent: a terminal running the agent command (the settings'),
@@ -430,7 +444,7 @@ extension MainWindowController {
         guard let client = hosts.client(on) else { return NSSound.beep() }
         let path = focusedShown?.path ?? focusedCwd ?? NSHomeDirectory()
         let block = client.smartlogBlock(for: path)
-        show(block, lens: .smartlog, focusedShown.map { .besideOpener($0.id) } ?? .here, context: "smartlog")
+        show(block, lens: .smartlog, .besideOrHere(focusedShown?.id), context: "smartlog")
     }
 
     /// Compare with Last Commit: the focused file against HEAD, beside it.

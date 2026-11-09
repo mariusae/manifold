@@ -247,13 +247,7 @@ extension MainWindowController {
                                         note: (turn.files?.count).map { "\($0) file\($0 == 1 ? "" : "s")" } ?? "",
                                         run: { [weak self] in
                                             guard let self else { return }
-                                            let f = self.arrangement?.focused
-                                            let place: Where = switch Self.disposition ?? .goTo {
-                                            case .over: f.map { .over($0) } ?? .here
-                                            case .beside: f.map { .besideOpener($0) } ?? .here
-                                            default: .here
-                                            }
-                                            self.showTurn(turnID, of: agentID, place: place)
+                                            self.showTurn(turnID, of: agentID, place: .by(Self.disposition ?? .goTo, from: self.arrangement?.focused))
                                         },
                                         excerpt: Self.excerpt(lines), marked: query, kinds: ["turn"]))
                 if items.count >= 150 { return places + items }

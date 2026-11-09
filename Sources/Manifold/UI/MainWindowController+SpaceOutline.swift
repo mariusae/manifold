@@ -777,7 +777,7 @@ extension MainWindowController {
             hosts.select(aid)
         }
         let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
-        show(block, lens: lens, besidePlacement.map { .besideOpener($0.id) } ?? .here, context: "asked from the shell")
+        show(block, lens: lens, .besideOrHere(besidePlacement?.id), context: "asked from the shell")
         hosts.propose(.openDone(id: id, client: client), on: on)
         NSApp.activate()
     }

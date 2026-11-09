@@ -126,13 +126,8 @@ extension MainWindowController {
         let h = h ?? focusedHost
         // ⇧↩ alone: a new column, as ⇧ with ⌥⌘ and a kind's letter.
         let event = NSApp.currentEvent
-        let newColumn = event?.type == .keyDown && (event?.keyCode == 36 || event?.keyCode == 76)
-            && event?.modifierFlags.intersection([.command, .option, .control, .shift]) == .shift
-        var place: Where = switch Self.disposition ?? .goTo {
-        case .beside: f.map { .besideOpener($0) } ?? .here
-        case .over: f.map { .over($0) } ?? .here
-        default: .here
-        }
+        let newColumn = event?.type == .keyDown && event?.isReturn == true && event?.keyMods == .shift
+        var place = Where.by(Self.disposition ?? .goTo, from: f)
         if newColumn { place = .beside }
         do {
             let from = focusedShown?.block
