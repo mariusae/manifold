@@ -215,11 +215,11 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        guard rows.indices.contains(row) else { return 22 }
+        guard rows.indices.contains(row) else { return TileMetrics.nameRow }
         switch rows[row] {
-        case .heading: return 28
+        case .heading: return TileMetrics.sectionHeight(first: row == 0)
         case .found(.symbol): return 38
-        default: return 22
+        default: return TileMetrics.nameRow
         }
     }
 
@@ -234,7 +234,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         let query = state?.query
         switch rows[row] {
         case let .heading(words):
-            cell.set(NSAttributedString(string: words, attributes: [.font: UIType.caption, .foregroundColor: Theme.secondaryText]), nil)
+            cell.set(NSAttributedString(string: words, attributes: [.font: UIType.caption, .foregroundColor: Theme.secondaryText]), nil, heading: true)
         case let .more(words):
             cell.set(NSAttributedString(string: words + " — Open in a Tile", attributes: [.font: UIType.detail, .foregroundColor: Tints.accentText]), nil)
         case let .found(.symbol(h)):
@@ -315,7 +315,11 @@ private final class FoundCell: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func set(_ line: NSAttributedString, _ under: NSAttributedString?) {
+    /// A heading's words in the band at the foot of its row, under its air.
+    private var heading = false
+
+    func set(_ line: NSAttributedString, _ under: NSAttributedString?, heading: Bool = false) {
+        self.heading = heading
         top.attributedStringValue = line
         bottom.attributedStringValue = under ?? NSAttributedString()
         bottom.isHidden = under == nil
@@ -326,7 +330,8 @@ private final class FoundCell: NSTableCellView {
         super.layout()
         let w = bounds.width - 28
         if bottom.isHidden {
-            top.frame = NSRect(x: 14, y: (bounds.height - 17) / 2, width: w, height: 17)
+            let band = heading ? min(bounds.height, TileMetrics.sectionRow) : bounds.height
+            top.frame = NSRect(x: 14, y: (band - 17) / 2, width: w, height: 17)
         } else {
             top.frame = NSRect(x: 14, y: bounds.height - 4 - 17, width: w, height: 17)
             bottom.frame = NSRect(x: 14, y: 4, width: w, height: 15)

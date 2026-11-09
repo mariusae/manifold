@@ -40,7 +40,7 @@ final class StateView: NSView {
     private var pills: [BlockID: TilePill] = [:]
     private(set) var mode: Mode = .list
 
-    static let headerHeight: CGFloat = 44
+    static let headerHeight = TileMetrics.controlHeader
     static let listHeight: CGFloat = 440
     static let cellWidth: CGFloat = 400
     static let cellHeight: CGFloat = 300

@@ -6,7 +6,7 @@ import ManifoldCore
 /// it to the bar alone (and opens it again); dragged, the bar sets how
 /// much of the tile the page takes.
 final class FolderReadme: NSView {
-    static let barHeight: CGFloat = 30
+    static let barHeight = GridView.barHeight
     private let bar = Bar()
     private let chevron = NSImageView()
     private let icon = NSImageView()

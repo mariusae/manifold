@@ -194,7 +194,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     static let sidebarFrom: CGFloat = 600
 
     var focusView: NSView { content?.focusView ?? self }
-    static let headerHeight: CGFloat = 44
+    static let headerHeight = TileMetrics.controlHeader
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement

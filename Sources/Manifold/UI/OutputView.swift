@@ -45,7 +45,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private lazy var textSearch = TextViewSearch(text)
 
     var focusView: NSView { text }
-    static let headerHeight: CGFloat = 44
+    static let headerHeight = TileMetrics.controlHeader
     private var copied = false
     /// The buttons, under the pointer on the header (the copy's check
     /// shown till it's gone).

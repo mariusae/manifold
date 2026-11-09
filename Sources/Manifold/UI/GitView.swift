@@ -28,7 +28,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let branchLabel = NSTextField(labelWithString: "")
     private let refresh = IconButton(symbol: "arrow.clockwise", size: 11, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
-    private let table = FlatTable(column: "row", rowHeight: 22)
+    private let table = FlatTable(column: "row", rowHeight: TileMetrics.nameRow)
 
     private enum Row {
         /// A section's heading: what it says, and which (`changes`,
@@ -178,12 +178,13 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     override func layout() {
         super.layout()
         let w = bounds.width
-        reveal.track(NSRect(x: 0, y: bounds.height - 26, width: w, height: 26))
+        let strip = TileMetrics.strip, mid = bounds.height - strip / 2
+        reveal.track(NSRect(x: 0, y: bounds.height - strip, width: w, height: strip))
         // Where it is is the bar's; here the branch, and refresh under the pointer.
         branchLabel.alignment = .left
-        branchLabel.frame = NSRect(x: 12, y: bounds.height - 20, width: max(0, w - 12 - 36), height: 16)
-        refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 22, width: 20, height: 20)
-        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - 26)
+        branchLabel.frame = NSRect(x: 12, y: mid - 8, width: max(0, w - 12 - 36), height: 16)
+        refresh.frame = NSRect(x: w - 12 - 20, y: mid - 10, width: 20, height: 20)
+        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - strip)
         let tall = split.frame.height >= Self.paneFrom
         if paneBox.isHidden == tall {
             paneBox.isHidden = !tall
@@ -493,12 +494,14 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if case .section = rows[row] { return 26 }
-        return 22
+        if case .section = rows[row] { return TileMetrics.sectionHeight(first: row == 0) }
+        return TileMetrics.nameRow
     }
 
     /// A section's heading: a chevron (folded, pointing on; open, down),
-    /// then what it says. Clicked, folded or unfolded.
+    /// then what it says, in the band at the foot of its row (under the
+    /// air that parts it from the section before). Clicked, folded or
+    /// unfolded.
     private func sectionCell(_ tableView: NSTableView, title: String, folded: Bool) -> NSView {
         let cell = tableView.makeView(withIdentifier: .init("section"), owner: nil) as? NSTableCellView ?? {
             let c = NSTableCellView()
@@ -516,11 +519,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             c.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(sectionClicked(_:))))
             NSLayoutConstraint.activate([
                 chevron.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 10),
-                chevron.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+                chevron.centerYAnchor.constraint(equalTo: c.bottomAnchor, constant: -TileMetrics.sectionRow / 2),
                 chevron.widthAnchor.constraint(equalToConstant: 10),
                 f.leadingAnchor.constraint(equalTo: chevron.trailingAnchor, constant: 5),
                 f.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8),
-                f.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+                f.centerYAnchor.constraint(equalTo: c.bottomAnchor, constant: -TileMetrics.sectionRow / 2),
             ])
             return c
         }()

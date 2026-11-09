@@ -63,7 +63,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private lazy var reveal = HoverReveal(in: self) { [unowned self] in [tools] }
 
     var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
-    static let headerHeight: CGFloat = 32
+    static let headerHeight = TileMetrics.strip
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
@@ -1126,7 +1126,8 @@ final class ActionCapsule: NSView {
     var actions: [Action] = [] { didSet { needsDisplay = true; invalidateIntrinsicContentSize(); needsLayout = true } }
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private var pressed: Int? { didSet { if pressed != oldValue { needsDisplay = true } } }
-    private let segment = NSSize(width: 30, height: 24)
+    /// Its segments, the capsule fitting a strip (`TileMetrics.strip`) with a point to spare.
+    private let segment = NSSize(width: 30, height: TileMetrics.strip - 8)
     private let inset: CGFloat = 3
 
     func set(_ i: Int, enabled: Bool, tint: NSColor? = nil) {

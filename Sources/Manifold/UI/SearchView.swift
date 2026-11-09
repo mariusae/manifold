@@ -40,7 +40,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let projectButton = FlatButton("Expand to Project", symbol: "arrow.up.left.and.arrow.down.right", font: UIType.detail)
     private let status = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
-    private let table = FlatTable(column: "hit", rowHeight: 20)
+    private let table = FlatTable(column: "hit", rowHeight: TileMetrics.denseRow)
     private let preview = SearchPreviewView()
     private let split = FlatDivider()
     /// The code face, for the preview.
@@ -179,9 +179,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     override func layout() {
         super.layout()
-        let top = bounds.height - 12
         let w = bounds.width
-        let midY = top - 13
+        // The query and its toggles in the middle of the header's band;
+        // the folder and how it went under it.
+        let midY = bounds.height - TileMetrics.controlHeader / 2
         // As wide as their words want (at 32 they were cut to “…”).
         let cw = max(32, ceil(caseButton.intrinsicContentSize.width)), rw = max(32, ceil(regexButton.intrinsicContentSize.width))
         caseButton.frame = NSRect(x: w - 12 - cw, y: midY - Flat.buttonHeight / 2, width: cw, height: Flat.buttonHeight)
@@ -503,14 +504,18 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if rows.indices.contains(row), rows[row].isHeading { return 24 }
-        return 20
+        if rows.indices.contains(row), rows[row].isHeading { return TileMetrics.sectionHeight(first: row == 0) }
+        return TileMetrics.denseRow
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: .init("row"), owner: nil) as? NSTableCellView ?? {
+        // A heading's words in the band at the foot of its row, under the
+        // air that parts it from the one before; a hit's in its middle.
+        let heading = rows.indices.contains(row) && rows[row].isHeading
+        let id = NSUserInterfaceItemIdentifier(heading ? "heading" : "row")
+        let cell = tableView.makeView(withIdentifier: id, owner: nil) as? NSTableCellView ?? {
             let c = NSTableCellView()
-            c.identifier = .init("row")
+            c.identifier = id
             let f = NSTextField(labelWithString: "")
             f.lineBreakMode = .byTruncatingTail
             f.maximumNumberOfLines = 1
@@ -520,7 +525,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             NSLayoutConstraint.activate([
                 f.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 12),
                 f.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8),
-                f.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+                heading ? f.centerYAnchor.constraint(equalTo: c.bottomAnchor, constant: -TileMetrics.sectionRow / 2)
+                    : f.centerYAnchor.constraint(equalTo: c.centerYAnchor),
             ])
             return c
         }()

@@ -32,7 +32,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     /// One folder's entries, a list of its own.
     final class Column: NSView {
         let scroll = ColumnScroll()
-        let table = FlatTable(column: "name", rowHeight: 24)
+        let table = FlatTable(column: "name", rowHeight: TileMetrics.nameRow)
         var folder = ""
         /// Its entries, in the order shown.
         private(set) var nodes: [BrowserNode] = []
@@ -215,7 +215,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     /// A header's height: air above it, but for the first.
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        isHeader(tableView, row) ? (row == 0 ? 26 : 40) : 24
+        isHeader(tableView, row) ? TileMetrics.sectionHeight(first: row == 0) : TileMetrics.nameRow
     }
 
     private func isHeader(_ tableView: NSTableView, _ row: Int) -> Bool {
@@ -484,8 +484,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 }
 
 /// A group's header in a column, as the Finder's: its name, small and
-/// grey, at the foot of its row (the air above it parting it from the
-/// group before).
+/// grey, in the middle of its band at the foot of its row (the air above
+/// it parting it from the group before).
 final class ColumnHeaderCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("column-header")
     let label = NSTextField(labelWithString: "")
@@ -503,7 +503,7 @@ final class ColumnHeaderCell: NSTableCellView {
 
     override func layout() {
         super.layout()
-        label.frame = NSRect(x: 12, y: 4, width: max(0, bounds.width - 20), height: 15)
+        label.frame = NSRect(x: 12, y: ((TileMetrics.sectionRow - 15) / 2).rounded(.down), width: max(0, bounds.width - 20), height: 15)
     }
 }
 

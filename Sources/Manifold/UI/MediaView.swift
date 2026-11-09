@@ -493,7 +493,7 @@ extension MediaView: Searchable {
     var outline: Outline? { contentsOutline }
     /// Under the bar of page and zoom.
     var outlineInset: CGFloat { Self.barHeight }
-    static let barHeight: CGFloat = 32
+    static let barHeight = TileMetrics.strip
     var hasSidebar: Bool { pdfView != nil }
     var sidebarShown: Bool { sidebar?.isHidden == false }
 

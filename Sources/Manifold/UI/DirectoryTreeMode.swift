@@ -14,7 +14,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     private let split = NSSplitView()
     private let left = NSView()
     private let scroll = ClippingScrollView()
-    private let outline = TreeOutline(column: "name", rowHeight: 24)
+    private let outline = TreeOutline(column: "name", rowHeight: TileMetrics.nameRow)
     private let right = NSView()
     private let preview = FilePreviewView()
     private let nothing = NSTextField(labelWithString: "")

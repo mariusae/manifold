@@ -67,10 +67,10 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
 
     var focusView: NSView { table }
 
-    static let rowHeight: CGFloat = 17
+    static let rowHeight = TileMetrics.denseRow
     /// The blocks' rows, roomier; the air over each block's panel (less
     /// over the first), and its foot.
-    static let blockRowHeight: CGFloat = 20
+    static let blockRowHeight = TileMetrics.denseRow
     static let gap: CGFloat = 14, firstGap: CGFloat = 6, foot: CGFloat = 6
 
     init(placement: PlacementID, block: BlockID) {

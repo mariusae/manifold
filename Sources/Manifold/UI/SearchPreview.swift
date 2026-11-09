@@ -64,7 +64,7 @@ final class SearchPreviewView: NSView {
     private var shownKey: String?
     private var lineStarts: [Int] = [0]
     private var matches: [NSRange] = []
-    static let titleHeight: CGFloat = 26
+    static let titleHeight = TileMetrics.strip
     /// The chosen hit's match: stronger than the others', and than its lit line.
     static let currentMatch = NSColor.themed { $0.found.current }
     static let currentRing = NSColor.themed { $0.found.currentRing }
@@ -117,7 +117,7 @@ final class SearchPreviewView: NSView {
     override func layout() {
         super.layout()
         let h = Self.titleHeight
-        title.frame = NSRect(x: 10, y: bounds.height - h + 5, width: max(0, bounds.width - 20), height: 15)
+        title.frame = NSRect(x: 10, y: bounds.height - h + ((h - 15) / 2).rounded(), width: max(0, bounds.width - 20), height: 15)
         divider.frame = NSRect(x: 0, y: bounds.height - h, width: bounds.width, height: 1)
         let g = gutter.thickness
         gutter.frame = NSRect(x: 0, y: 0, width: g, height: max(0, bounds.height - h))
