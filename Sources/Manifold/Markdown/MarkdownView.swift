@@ -500,8 +500,6 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
 
     private static let embed = try! NSRegularExpression(pattern: #"<img src="(manifold:[^"]*)" alt="([^"]*)"[^>]*>"#)
 
-    /// A reference written bare in the text (`manifold:host/id#place`).
-    private static let bareReference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + BlockID.referencePattern)
 
     /// `<img src="manifold:…">`, a block a note shows: an image by the
     /// source the page can load; anything else as its card, a link. And a
@@ -555,7 +553,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
         guard html.contains("manifold:") else { return html }
         let ns = html as NSString
         var out = "", at = 0
-        for m in Self.bareReference.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+        for m in TextLinks.bareReference.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
             let address = ns.substring(with: m.range)
             guard let link = BlockID.link(address) else { continue }
             out += ns.substring(with: NSRange(location: at, length: m.range.location - at))
