@@ -327,6 +327,23 @@ final class IconButton: NSButton {
         self.action = action
     }
 
+    /// A symbol button that's clicked: its symbol, a tip, what a click does.
+    convenience init(_ symbol: String, size: CGFloat = 11, weight: NSFont.Weight = .semibold, tip: String? = nil, _ onClick: (() -> Void)? = nil) {
+        self.init(symbol: symbol, size: size, weight: weight, target: nil, action: nil)
+        toolTip = tip
+        if let onClick { self.onClick = onClick }
+    }
+
+    /// A ×: closes what it's on (a toast, a panel, a list).
+    static func close(tip: String = "Close", _ onClick: (() -> Void)? = nil) -> IconButton {
+        IconButton("xmark", size: 9, weight: .semibold, tip: tip, onClick)
+    }
+
+    /// A filled ⓧ: takes away what's beside it (a field's words, a card).
+    static func clear(tip: String = "Clear", _ onClick: (() -> Void)? = nil) -> IconButton {
+        IconButton("xmark.circle.fill", size: 12, weight: .regular, tip: tip, onClick)
+    }
+
     required init?(coder: NSCoder) { fatalError() }
 
     override func updateTrackingAreas() {
