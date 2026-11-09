@@ -254,7 +254,7 @@ final class ViewStateKeeper {
     var save: (([String: String]) -> Void)?
     var load: () -> [String: String] = { [:] }
     private var pending: [String: String] = [:]
-    private var work: DispatchWorkItem?
+    private let writing = Debouncer()
     /// Whether the lens has read its state back yet: nothing is saved
     /// before, so what was kept isn't written over by a fresh view's zeros.
     var restored = false
@@ -269,15 +269,11 @@ final class ViewStateKeeper {
             changed = true
         }
         guard changed else { return }
-        work?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.flush() }
-        work = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
+        writing.schedule(after: delay) { [weak self] in self?.flush() }
     }
 
     func flush() {
-        work?.cancel()
-        work = nil
+        writing.cancel()
         guard !pending.isEmpty else { return }
         let values = pending
         pending = [:]

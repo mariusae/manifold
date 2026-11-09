@@ -56,7 +56,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let paneNote = NSTextField(labelWithString: "")
     private var pane: DiffView?
     private var paneSubject: DiffSubject?
-    private var paneWork: DispatchWorkItem?
+    private let paneWork = Debouncer()
     private var splitPlaced = false
     /// The sections folded (by key), kept with the tile.
     private var foldedSections: Set<String> = []
@@ -129,10 +129,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         let row = table.selectedRow
         keeper.note(["selected": row >= 0 && row < rows.count ? (rowKey(rows[row]) ?? "") : ""])
         // Arrowing through: shown once the choice stays a moment.
-        paneWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.showPane() }
-        paneWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (pane == nil ? 0 : 0.12), execute: work)
+        paneWork.schedule(after: pane == nil ? 0 : 0.12) { [weak self] in self?.showPane() }
     }
 
     /// What a row shows, as a diff: the change against HEAD, the commit,

@@ -189,7 +189,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     // MARK: The scrubber (§3.1)
 
     private let scrubber = ScrubberView(frame: .zero)
-    private var outlineWork: DispatchWorkItem?
+    private let outlineWork = Debouncer()
     /// The page's headings' tops and its size as last read, for following a
     /// scroll live.
     private var lastOutline: (tops: [Double], total: Double, shown: Double)?
@@ -197,10 +197,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     /// The page's headings and where it is, asked of the page a moment
     /// after it rendered, scrolled or changed size.
     private func scheduleOutline() {
-        outlineWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.readOutline() }
-        outlineWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        outlineWork.schedule(after: 0.15) { [weak self] in self?.readOutline() }
     }
 
     /// The outline's entries' lines in the text, from 0.

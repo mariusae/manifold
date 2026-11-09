@@ -287,7 +287,7 @@ final class FloatingList: NSView {
     private(set) var rows: [Row] = []
     /// What opened it (ticks, a dot), which keeps it while the pointer is there.
     private weak var opener: AnyObject?
-    private var hideWork: DispatchWorkItem?
+    private let hideWork = Debouncer()
     private var place: Place = .overTopRight(.zero)
     /// The window it's over, and its own.
     private weak var host: NSWindow?
@@ -346,7 +346,7 @@ final class FloatingList: NSView {
     /// `sticky`: kept while its owner wants it (a field's completions, while
     /// it's edited), not gone as the pointer leaves.
     func show(_ rows: [Row], for owner: AnyObject, in window: NSWindow, place: Place, scrollToCurrent: Bool = false, sticky: Bool = false) {
-        hideWork?.cancel()
+        hideWork.cancel()
         let same = opener === owner && isShown && host === window
         opener = owner
         self.place = place
@@ -381,8 +381,7 @@ final class FloatingList: NSView {
     }
 
     func hideNow() {
-        hideWork?.cancel()
-        hideWork = nil
+        hideWork.cancel()
         // Its rows are used again for the next list: none left marked.
         for r in rowViews { r.hovering = false }
         panel.parent?.removeChildWindow(panel)
@@ -401,13 +400,10 @@ final class FloatingList: NSView {
     /// under the pointer, over the ticks: the pointer is on it without
     /// ever having come onto it, so its own tracking can't be relied on.)
     private func scheduleHide() {
-        hideWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        hideWork.schedule(after: 0.25) { [weak self] in
             guard let self else { return }
             if self.pointerOnIt { self.scheduleHide() } else { self.hideNow() }
         }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
     }
 
     /// Where the pointer is, on the screen.
@@ -473,7 +469,7 @@ final class FloatingList: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
-        hideWork?.cancel()
+        hideWork.cancel()
         updateHover()
     }
     override func mouseExited(with event: NSEvent) {
@@ -481,7 +477,7 @@ final class FloatingList: NSView {
         updateHover()
     }
     override func mouseMoved(with event: NSEvent) {
-        hideWork?.cancel()
+        hideWork.cancel()
         updateHover()
     }
     // The pointer on it is its own: nothing under it hears of it.

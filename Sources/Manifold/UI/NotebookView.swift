@@ -536,7 +536,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
     private var queued = false
     private var hovered = false { didSet { refreshChrome() } }
     private var pendingSource: String?
-    private var sendWork: DispatchWorkItem?
+    private let sendWork = Debouncer()
     private var renderedOutput: String?
     private var liveOutput: String?
     var font: NSFont { didSet { editor.font = font; renderedOutput = nil; render() } }
@@ -828,17 +828,13 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
 
     func textDidChange(_ notification: Notification) {
         pendingSource = editor.string
-        sendWork?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.flushSource() }
-        sendWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: w)
+        sendWork.schedule(after: 0.35) { [weak self] in self?.flushSource() }
         owner?.cellResized()
     }
 
     /// What's typed sent to the host, now.
     func flushSource() {
-        sendWork?.cancel()
-        sendWork = nil
+        sendWork.cancel()
         guard let s = pendingSource else { return }
         pendingSource = nil
         owner?.cellEdited(id, source: s)

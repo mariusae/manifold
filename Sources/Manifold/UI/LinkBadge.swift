@@ -92,7 +92,7 @@ final class LinkBadge: NSView {
     }
     private var preview: Preview?
     private var previewed: Int?
-    private var previewWork: DispatchWorkItem?
+    private let previewWork = Debouncer()
     private var downAt: NSPoint?
 
     override init(frame: NSRect) {
@@ -286,10 +286,7 @@ final class LinkBadge: NSView {
     private func hover(_ i: Int, at x: CGFloat) {
         if preview != nil { return showPreview(i, at: x) }
         guard i != previewed else { return }
-        previewWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.showPreview(i, at: x) }
-        previewWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewDelay, execute: work)
+        previewWork.schedule(after: Self.previewDelay) { [weak self] in self?.showPreview(i, at: x) }
     }
 
     // MARK: The card under the bar
@@ -335,8 +332,7 @@ final class LinkBadge: NSView {
     }
 
     private func hidePreview() {
-        previewWork?.cancel()
-        previewWork = nil
+        previewWork.cancel()
         previewed = nil
         guard let p = preview else { return }
         preview = nil

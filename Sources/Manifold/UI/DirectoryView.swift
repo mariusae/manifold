@@ -133,7 +133,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// Over the files: "Reading…" until the folder's listed, why if it
     /// can't be, or that there's nothing in it.
     private let note = BusyNote()
-    private var footerWork: DispatchWorkItem?
+    private let footerWork = Debouncer()
     private var content: DirectoryMode?
     /// The folder's README, under the files: the entry shown (as it was
     /// listed, so a change reads it again) and its text.
@@ -955,21 +955,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         // time (a moment late, so a quick listing shows nothing).
         guard model.filtering else {
             if model.readingFolders {
-                guard footer.isHidden, footerWork == nil else { return }
-                let work = DispatchWorkItem { [weak self] in
-                    guard let self else { return }
-                    self.footerWork = nil
-                    guard let m = self.model, !m.filtering, m.readingFolders else { return }
+                guard footer.isHidden, !footerWork.isPending else { return }
+                footerWork.schedule(after: BusyNote.delay) { [weak self] in
+                    guard let self, let m = self.model, !m.filtering, m.readingFolders else { return }
                     self.footer.stringValue = "Reading…"
                     self.footer.isHidden = false
                     self.needsLayout = true
                 }
-                footerWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + BusyNote.delay, execute: work)
                 return
             }
-            footerWork?.cancel()
-            footerWork = nil
+            footerWork.cancel()
             if !footer.isHidden {
                 footer.isHidden = true
                 needsLayout = true
