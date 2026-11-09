@@ -47,7 +47,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private let tools = ActionCapsule()
     private let scroll = ClippingScrollView()
     private let stack = FlippedView()
-    private let addBelow = HoverLink(title: "New Cell", symbol: "plus")
+    private let addBelow = FlatButton("New Cell", symbol: "plus", font: UIType.label)
     private var cells: [String: NotebookCellView] = [:]
     private var order: [String] = []
     fileprivate var printableCells: [(source: String, output: String)] {
@@ -94,7 +94,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         addSubview(scroll)
-        addBelow.clicked = { [weak self] in self?.addAtEnd() }
+        addBelow.onClick = { [weak self] in self?.addAtEnd() }
         stack.addSubview(addBelow)
         keeper.keepScroll(of: scroll)
     }
@@ -525,8 +525,8 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
     private let outputScroll = ClippingScrollView()
     private let count = NSTextField(labelWithString: "")
     private let queuedIcon = NSImageView()
-    private let play = HoverIcon(symbol: "play.fill", tip: "Run (⌘↩)")
-    private let menuButton = HoverIcon(symbol: "ellipsis", tip: "Cell")
+    private let play = IconButton("play.fill", size: 10, tip: "Run (⌘↩)")
+    private let menuButton = IconButton("ellipsis", size: 10, tip: "Cell")
     /// The focused cell's mark, as a selected row's in the sidebar.
     private let bar = NSView()
     private let glyph = StatusGlyph()
@@ -623,8 +623,11 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
         queuedIcon.contentTintColor = Theme.secondaryText
         queuedIcon.toolTip = "Waiting to run"
         addSubview(queuedIcon)
-        play.clicked = { [weak self] _ in self?.playClicked() }
-        menuButton.clicked = { [weak self] view in self?.menuClicked(from: view) }
+        play.onClick = { [weak self] in self?.playClicked() }
+        menuButton.onClick = { [weak self] in
+            guard let self else { return }
+            self.menuClicked(from: self.menuButton)
+        }
         addSubview(play)
         addSubview(menuButton)
         addSubview(glyph)
@@ -1197,101 +1200,6 @@ final class ActionCapsule: NSView {
         }
     }
 
-}
-
-/// A quiet link of a control: a symbol and a word in the secondary colour,
-/// the text's own under the pointer.
-final class HoverLink: NSView {
-    var clicked: () -> Void = {}
-    private let title: String
-    private let symbol: String
-    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
-
-    init(title: String, symbol: String) {
-        self.title = title
-        self.symbol = symbol
-        super.init(frame: .zero)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    private var label: NSAttributedString {
-        NSAttributedString(string: title, attributes: [.font: UIType.label,
-                                                       .foregroundColor: hovered ? Theme.text : Theme.secondaryText])
-    }
-
-    override var intrinsicContentSize: NSSize { NSSize(width: ceil(label.size().width) + 30, height: 24) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if hovered {
-            Theme.hover.setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
-        }
-        let ink = hovered ? Theme.text : Theme.secondaryText
-        if let image = Theme.symbol(symbol, size: 10, weight: .semibold) {
-            image.tinted(ink).draw(in: NSRect(x: 9, y: (bounds.height - image.size.height) / 2, width: image.size.width, height: image.size.height))
-        }
-        let l = label
-        l.draw(at: NSPoint(x: 23, y: (bounds.height - l.size().height) / 2))
-    }
-
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { clicked() }
-    }
-    override func mouseDown(with event: NSEvent) {}
-}
-
-/// A symbol that's a button: a soft circle under the pointer, darker
-/// pressed, the pointing hand over it.
-final class HoverIcon: NSView {
-    var clicked: (NSView) -> Void = { _ in }
-    private let symbol: String
-    private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
-    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
-
-    init(symbol: String, tip: String) {
-        self.symbol = symbol
-        super.init(frame: .zero)
-        toolTip = tip
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if hovered || pressed {
-            (pressed ? Theme.selection : Theme.hover).setFill()
-            NSBezierPath(ovalIn: bounds).fill()
-        }
-        guard let image = Theme.symbol(symbol, size: 10, weight: .semibold) else { return }
-        image.tinted(hovered ? Theme.text : Theme.secondaryText).draw(in: NSRect(x: bounds.midX - image.size.width / 2, y: bounds.midY - image.size.height / 2,
-                                                                               width: image.size.width, height: image.size.height))
-    }
-
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { pressed = true }
-    override func mouseUp(with event: NSEvent) {
-        pressed = false
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { clicked(self) }
-    }
 }
 
 extension NotebookView: Printable {

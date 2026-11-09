@@ -1,6 +1,7 @@
 import Foundation
 import ManifoldCore
 
+/// How long ago something was, said shortly (a card's, a row's).
 enum Age {
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()

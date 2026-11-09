@@ -113,8 +113,8 @@ final class GridView: NSView, NSDraggingSource {
     static var glide: TimeInterval { Motion.spatial }
     /// Debugging: grid layouts so far (the debug "layouts").
     static var layouts = 0
-    private var columnDividers: [DividerView] = []
-    private var rowDividers: [RowDividerView] = []
+    private var columnDividers: [GridLine] = []
+    private var rowDividers: [GridLine] = []
     private let dropOverlay = DropOverlayView()
     private var drop: DropSlot?
     /// The drop under way covers the tile it's on (⌥-drag).
@@ -405,7 +405,7 @@ final class GridView: NSView, NSDraggingSource {
         let columnCount = max(0, columns.count - 1)
         while columnDividers.count > columnCount { columnDividers.removeLast().removeFromSuperview() }
         while columnDividers.count < columnCount {
-            let d = DividerView()
+            let d = GridLine(vertical: true)
             addSubview(d)
             columnDividers.append(d)
         }
@@ -426,7 +426,7 @@ final class GridView: NSView, NSDraggingSource {
         }
         while rowDividers.count > rows.count { rowDividers.removeLast().removeFromSuperview() }
         while rowDividers.count < rows.count {
-            let d = RowDividerView()
+            let d = GridLine(vertical: false)
             addSubview(d)
             rowDividers.append(d)
         }
@@ -993,7 +993,7 @@ final class GridView: NSView, NSDraggingSource {
         if let p = pills[id] { views.append(p) }
         if let b = badges[id] { views.append(b) }
         if focused == id { views.append(focusRing) }
-        views += subviews.filter { v in isCompanion(v) && !(v is DividerView || v is RowDividerView) && shown[ObjectIdentifier(v)].map { card.contains(NSPoint(x: $0.midX, y: $0.midY)) } == true }
+        views += subviews.filter { v in isCompanion(v) && !(v is GridLine) && shown[ObjectIdentifier(v)].map { card.contains(NSPoint(x: $0.midX, y: $0.midY)) } == true }
         lower()
         for l in views.compactMap(\.layer) where raised[ObjectIdentifier(l)] == nil {
             raised[ObjectIdentifier(l)] = (l, l.zPosition)
@@ -3217,26 +3217,40 @@ final class IconHandle: NSView {
     }
 }
 
-/// The grab area over the line between two tiles in a column: dragged,
-/// it moves; double-clicked, the two share their room evenly.
-final class RowDividerView: NSView {
+/// The grab area over the line between two columns (`vertical`) or two
+/// tiles in a column: dragged, it moves; double-clicked, the two share
+/// their room evenly.
+final class GridLine: NSView {
+    let vertical: Bool
+    /// Where the pointer's dragged it to, across it (the grid's terms).
     var onDrag: ((CGFloat) -> Void)?
     var onEnd: (() -> Void)?
     var onDoubleClick: (() -> Void)?
 
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeUpDown) }
+    init(vertical: Bool) {
+        self.vertical = vertical
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var cursor: NSCursor { vertical ? .resizeLeftRight : .resizeUpDown }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: cursor) }
     // Its own, not the window's arrow (a cursor update unanswered goes up to it).
-    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeUpDown.set() }
+    override func cursorUpdate(with event: NSEvent) { cursor.set() }
+
     override func mouseDown(with event: NSEvent) {
-        NSCursor.resizeUpDown.set()
+        cursor.set()
         if event.clickCount == 2 { onDoubleClick?() }
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let superview else { return }
         // Held the whole drag, the pointer gone past the line where it stops.
-        NSCursor.resizeUpDown.set()
-        onDrag?(superview.convert(event.locationInWindow, from: nil).y)
+        cursor.set()
+        let p = superview.convert(event.locationInWindow, from: nil)
+        onDrag?(vertical ? p.x : p.y)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -3395,27 +3409,6 @@ final class DropOverlayView: NSView {
         EdgeColor.accentSoft.setStroke()
         NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
     }
-}
-
-/// The grab area between two columns: dragged, it moves; double-clicked,
-/// the two share their width evenly.
-final class DividerView: NSView {
-    var onDrag: ((CGFloat) -> Void)?
-    var onEnd: (() -> Void)?
-    var onDoubleClick: (() -> Void)?
-
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .resizeLeftRight) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
-
-    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
-
-    override func mouseDragged(with event: NSEvent) {
-        NSCursor.resizeLeftRight.set()
-        guard let superview else { return }
-        onDrag?(superview.convert(event.locationInWindow, from: nil).x)
-    }
-
-    override func mouseUp(with event: NSEvent) { onEnd?() }
 }
 
 /// What follows the cursor when a block is dragged: a small card with its
