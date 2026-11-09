@@ -463,25 +463,15 @@ extension NoteOutlineTextView {
     @objc func formatCode(_ sender: Any?) { toggleWrap("`", name: "Code") }
     @objc func formatHighlight(_ sender: Any?) { toggleWrap("==", name: "Highlight") }
 
-    /// The words selected wrapped in the marks — or, wrapped in them
-    /// already, unwrapped; nothing selected, the marks with the caret
-    /// between them.
+    /// The words selected wrapped in the marks, or unwrapped
+    /// (`InlineEditing.toggleWrap`), within their row.
     private func toggleWrap(_ marks: String, name: String) {
         guard isEditable, selectedRows == nil else { return NSSound.beep() }
         let range = selectedRange()
         let row = textRange(ofRowAt: range.location)
         guard NSMaxRange(range) <= NSMaxRange(row) else { return NSSound.beep() }
-        let text = textStorage!.string as NSString
-        let m = (marks as NSString).length
-        let inner = text.substring(with: range)
-        let before = range.location - m >= row.location ? text.substring(with: NSRange(location: range.location - m, length: m)) : ""
-        let after = NSMaxRange(range) + m <= NSMaxRange(row) ? text.substring(with: NSRange(location: NSMaxRange(range), length: m)) : ""
-        if range.length > 0, before == marks, after == marks {
-            replaceCharacters(NSRange(location: range.location - m, length: range.length + 2 * m), with: inner,
-                              selecting: NSRange(location: range.location - m, length: range.length), name: name)
-        } else {
-            replaceCharacters(range, with: marks + inner + marks, selecting: NSRange(location: range.location + m, length: range.length), name: name)
-        }
+        let edit = InlineEditing.toggleWrap(text: textStorage!.string as NSString, selection: range, marks: marks, within: row)
+        replaceCharacters(edit.range, with: edit.replacement, selecting: edit.selection, name: name)
     }
 
     /// Characters replaced as one step to undo, a selection after.

@@ -25,6 +25,30 @@ public enum InlineEditing {
         "[\(linkWords(words))](\(linkAddress(address)))"
     }
 
+    /// Format ▸ Bold and the like: the selection wrapped in the marks — or,
+    /// wrapped in them already (the marks just outside it, or its own ends),
+    /// unwrapped; a caret gets the pair to type into, and between a pair,
+    /// takes it away. Marks are looked for only within `bounds` (a row, a
+    /// line), all of the text if nil. What to replace, with what, and the
+    /// selection after, by UTF-16 offset.
+    public static func toggleWrap(text: NSString, selection: NSRange, marks: String, within bounds: NSRange? = nil)
+        -> (range: NSRange, replacement: String, selection: NSRange) {
+        let bounds = bounds ?? NSRange(location: 0, length: text.length)
+        let m = (marks as NSString).length
+        let inner = text.substring(with: selection)
+        let before = selection.location - m >= bounds.location ? text.substring(with: NSRange(location: selection.location - m, length: m)) : ""
+        let after = NSMaxRange(selection) + m <= NSMaxRange(bounds) ? text.substring(with: NSRange(location: NSMaxRange(selection), length: m)) : ""
+        if before == marks, after == marks {
+            return (NSRange(location: selection.location - m, length: selection.length + 2 * m), inner,
+                    NSRange(location: selection.location - m, length: selection.length))
+        }
+        if selection.length >= 2 * m, inner.hasPrefix(marks), inner.hasSuffix(marks) {
+            let stripped = (inner as NSString).substring(with: NSRange(location: m, length: selection.length - 2 * m))
+            return (selection, stripped, NSRange(location: selection.location, length: selection.length - 2 * m))
+        }
+        return (selection, marks + inner + marks, NSRange(location: selection.location + m, length: selection.length))
+    }
+
     /// A place strictly within hidden markup is not a place for the caret;
     /// it goes to the markup's end when moving forward, its start when back.
     public static func snap(_ location: Int, runs: [NSRange], forward: Bool) -> Int {

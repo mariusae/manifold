@@ -115,6 +115,18 @@ struct NoteOutlineTests {
         // Delete after "bold**" takes the d, not a *.
         let gone = InlineEditing.deletion(at: 10, forward: false, text: text, within: whole, spans: spans)
         #expect(gone.map { text.substring(with: $0) } == "d")
+        // Format ▸ Bold: wrapped, unwrapped from outside or from its own
+        // ends, a caret's pair given and taken back; never past the bounds.
+        let words = "a **é** b" as NSString
+        func wrap(_ r: NSRange, in t: NSString = words, within b: NSRange? = nil) -> String {
+            let e = InlineEditing.toggleWrap(text: t, selection: r, marks: "**", within: b)
+            return t.replacingCharacters(in: e.range, with: e.replacement) + " \(e.selection.location),\(e.selection.length)"
+        }
+        #expect(wrap(NSRange(location: 4, length: 1)) == "a é b 2,1")
+        #expect(wrap(NSRange(location: 2, length: 5)) == "a é b 2,1")
+        #expect(wrap(NSRange(location: 0, length: 1)) == "**a** **é** b 2,1")
+        #expect(wrap(NSRange(location: 4, length: 0), in: "a ****") == "a  2,0")
+        #expect(wrap(NSRange(location: 4, length: 0), in: "a ****", within: NSRange(location: 0, length: 4)) == "a ******** 6,0")
         // ***Both***: strong around emphasis, every mark hidden.
         let both = "***x*** ==lit== ``a`b`` https://e.com/a." as NSString
         let found = InlineMarkup.spans(in: both, range: NSRange(location: 0, length: both.length))

@@ -2306,32 +2306,28 @@ final class TextView: NSView, NSTextInputClient {
         return nil
     }
 
-    /// ⌘B, ⌘I, ⌘⇧X, ⌘⇧C: the selection wrapped in a marker — or, wrapped
-    /// already, unwrapped; a caret gets the pair to type into.
-    private func toggleWrap(_ m: String) {
+    /// Format ▸ Bold and the like: each selection wrapped in the marks,
+    /// or unwrapped (`InlineEditing.toggleWrap`), the marks looked for on
+    /// the lines it's on.
+    private func toggleWrap(_ marks: String) {
         guard isEditable else { return }
-        let ml = m.utf8.count
         var reps: [(TextRange, String)] = []
         var after: [Selection] = []
         var shift = 0
         for s in selections.sorted(by: { $0.min < $1.min }) {
-            let inner = text[TextRange(s.min, s.max)]
-            let before = s.min >= ml ? text[TextRange(s.min - ml, s.min)] : ""
-            let following = s.max + ml <= text.count ? text[TextRange(s.max, s.max + ml)] : ""
-            if before == m, following == m {
-                reps.append((TextRange(s.min - ml, s.max + ml), inner))
-                after.append(Selection(s.min - ml + shift, s.max - ml + shift))
-                shift -= 2 * ml
-            } else if inner.hasPrefix(m), inner.hasSuffix(m), inner.utf8.count >= 2 * ml {
-                let stripped = String(inner.dropFirst(m.count).dropLast(m.count))
-                reps.append((s.range, stripped))
-                after.append(Selection(s.min + shift, s.min + shift + stripped.utf8.count))
-                shift -= 2 * ml
-            } else {
-                reps.append((s.range, m + inner + m))
-                after.append(Selection(s.min + ml + shift, s.max + ml + shift))
-                shift += 2 * ml
-            }
+            let lines = TextRange(text.offset(ofLine: text.line(at: s.min)), text.lineRange(text.line(at: s.max)).end)
+            let was = text[lines] as NSString
+            let base = text.utf16Offset(ofByte: lines.start)
+            let from = text.utf16Offset(ofByte: s.min) - base, to = text.utf16Offset(ofByte: s.max) - base
+            let edit = InlineEditing.toggleWrap(text: was, selection: NSRange(location: from, length: to - from), marks: marks)
+            // Back to bytes: the range replaced in the text as it was, the
+            // selection in the text as it is after.
+            let now = was.replacingCharacters(in: edit.range, with: edit.replacement) as NSString
+            func byte(_ u: Int, in t: NSString) -> Int { lines.start + t.substring(to: u).utf8.count }
+            let range = TextRange(byte(edit.range.location, in: was), byte(NSMaxRange(edit.range), in: was))
+            reps.append((range, edit.replacement))
+            after.append(Selection(byte(edit.selection.location, in: now) + shift, byte(NSMaxRange(edit.selection), in: now) + shift))
+            shift += edit.replacement.utf8.count - range.length
         }
         replace(reps, selectAfter: after)
     }
