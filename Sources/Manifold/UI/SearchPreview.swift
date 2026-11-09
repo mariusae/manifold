@@ -16,13 +16,7 @@ extension SearchQuery {
                 if out.count >= limit { stop.pointee = true }
             }
         } else {
-            var from = 0
-            while from < ns.length, out.count < limit {
-                let r = ns.range(of: text, options: caseSensitive ? [] : [.caseInsensitive], range: NSRange(location: from, length: ns.length - from))
-                guard r.location != NSNotFound else { break }
-                out.append(r)
-                from = r.location + max(1, r.length)
-            }
+            out = Matching.ranges(of: text, in: ns, options: caseSensitive ? [] : [.caseInsensitive], limit: limit)
         }
         return out
     }
