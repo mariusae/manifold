@@ -310,6 +310,7 @@ extension MainWindowController {
         // otherwise come back a different size, its neighbours moved.
         var heights: [PlacementID: Double] = [:]
         for t in a.columns[c] { heights[t.id == placement ? p.id : t.id] = a.height(of: t.id) }
+        replacedInPlace.insert(placement)
         appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)]
                          + (a.full == placement ? [.full(p.id)] : []))
     }

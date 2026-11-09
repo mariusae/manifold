@@ -397,8 +397,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var onDesk = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.id) })
         onDesk.formUnion(stateBlocks.map { Self.statePlacement($0.0.id) })
         for (id, view) in views where !onDesk.contains(id) {
-            // Seen going, where it was, as its neighbours take its room.
-            if view.superview === content { content.poof(view) }
+            // Seen going, where it was, as its neighbours take its room —
+            // if it's gone: not an $EDITOR come off its terminal, nor a
+            // tile replaced in place.
+            if view.superview === content, departure(of: view, flown: nil) == .closed { content.poof(view) }
             view.removeFromSuperview()
             view.destroy()
             views.removeValue(forKey: id)
@@ -993,6 +995,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var stacked: Set<PlacementID> = []
     /// The tile over each (the $EDITOR's, by its placement), and the one under it.
     var stackTops: [PlacementID: PlacementID] = [:]
+    /// Tiles taken off for another in their place (`replace`): not seen going.
+    var replacedInPlace: Set<PlacementID> = []
 
     /// The terminal an $EDITOR's tile is over: the tile shows as it —
     /// its name, its symbol (badged with a document), and Editing.

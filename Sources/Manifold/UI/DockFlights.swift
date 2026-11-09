@@ -103,6 +103,9 @@ extension MainWindowController {
             return .flown
         }
         if f?.down[v.placement] != nil || f?.bars[v.placement] != nil || flownAway.remove(v.placement) != nil { return .flown }
+        // Replaced in place (another mode, a folder gone into): the tile
+        // that takes its place is what's seen, nothing going.
+        if replacedInPlace.remove(v.placement) != nil { return .flown }
         if recentlyClosed.contains(v.block) { return .closed }
         // Still on the desk — this tile, or its block in another space's
         // (moved there) — it's moved; else closed.
