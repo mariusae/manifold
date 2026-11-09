@@ -35,7 +35,7 @@ extension MainWindowController {
         guard let b = hosts.block(block) else { return }
         if let a = hosts.arrangement(workspace), let t = a.placements(of: block).first { return land(on: t.id, in: workspace, a) }
         if selected != workspace { hosts.select(workspace) }
-        show(block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "pinned")
+        show(block, lens: b.defaultLens, .here, context: "pinned")
     }
 
     /// Pin in Workspace: a tile's block (the menu's, from a block's own
@@ -139,7 +139,7 @@ extension MainWindowController {
                 kind: LinkKind = .opened, context: String? = nil) {
         guard let b = hosts.block(block) else { return sayMissing(block) }
         if b.kind == .arrangement { return d == .system ? NSSound.beep() : goTo(block) }
-        let lens = lens ?? Lens.default(for: b.kind, path: b.path)
+        let lens = lens ?? b.defaultLens
         switch d {
         case .system:
             openInSystem(block)
@@ -191,7 +191,7 @@ extension MainWindowController {
     /// the tile clicked in.
     func arrive(_ block: BlockID, from placement: PlacementID?, over: Bool? = nil) {
         if over ?? Self.clickModifiers?.contains(.option) ?? false, let placement, let b = hosts.block(block), b.kind != .arrangement {
-            show(block, lens: Lens.default(for: b.kind, path: b.path), .over(placement), context: "followed")
+            show(block, lens: b.defaultLens, .over(placement), context: "followed")
         } else {
             goTo(block)
         }
@@ -456,7 +456,7 @@ extension MainWindowController {
     /// Compare with Last Commit: the focused file against HEAD, beside it.
     @objc func compareWithHead(_ sender: Any?) {
         guard let f = focusedShown, let path = f.path, f.lens == .editor || f.lens == .preview,
-              let client = hosts.client(f.placement.block.host) else { return }
+              let client = hosts.client(of: f.placement.block) else { return }
         let block = client.diffBlock(.sides(old: DiffSide(path: path, revision: "HEAD"), new: DiffSide(path: path)))
         show(block, lens: .diff, .besideOpener(f.id), context: "Compare with Last Commit")
     }

@@ -93,7 +93,7 @@ extension MainWindowController {
     /// pointer on the host, its card.
     private func showSpaceHeading() {
         guard let id = selected, let a = hosts.arrangement(id) else { return sidebar.setSpace(title: "", host: "", standing: nil, pings: nil) }
-        let c = hosts.client(id.host)
+        let c = hosts.client(of: id)
         var standing: String?
         if let c, c.isRemote {
             switch c.link {

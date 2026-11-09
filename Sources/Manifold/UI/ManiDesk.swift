@@ -856,7 +856,7 @@ final class ManiDesk {
             out = tile(p, layout: ManiLayout(a), scope: scope)
             out["space"] = ws.description
         } else {
-            out = ["block": b.id.description, "kind": kindName(b, lens: Lens.default(for: b.kind, path: b.path)), "title": b.displayTitle]
+            out = ["block": b.id.description, "kind": kindName(b, lens: b.defaultLens), "title": b.displayTitle]
             if let path = b.path { out["path"] = path }
             if let cwd = b.terminal?.cwd ?? b.home { out["cwd"] = cwd }
             if let a = b.annotations { out["annotations"] = a }
@@ -1368,7 +1368,7 @@ final class ManiDesk {
             wc.arrive(atTile: tile)
         } else {
             guard let b = hosts.block(t.block) else { throw Failure(message: "\(r.args[0]) isn't known here") }
-            try place(b.id, lens: Lens.default(for: b.kind, path: b.path), r, scope, context: "mani show")
+            try place(b.id, lens: b.defaultLens, r, scope, context: "mani show")
         }
         shown(t.block, line: r.flags["line"], scope: scope)
         // A reference's place in it: gone to.

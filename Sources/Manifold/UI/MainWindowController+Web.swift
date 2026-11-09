@@ -164,14 +164,14 @@ extension MainWindowController: WebViewDelegate {
 
 extension MainWindowController: SmartlogViewDelegate {
     func smartlogStart(_ view: SmartlogView) {
-        guard let c = hosts.client(view.block.host), let b = hosts.block(view.block), let path = b.path else { return }
+        guard let c = hosts.client(of: view.block), let b = hosts.block(view.block), let path = b.path else { return }
         c.propose(.smartlog(block: view.block, path: path))
     }
 
     /// This Mac's as the host gives it; another host's through its port,
     /// forwarded here (not listed with the forwards asked for).
     func smartlog(_ view: SmartlogView, localURL url: String, done: @escaping (URL?) -> Void) {
-        guard var parts = URLComponents(string: url), let c = hosts.client(view.block.host) else { return done(nil) }
+        guard var parts = URLComponents(string: url), let c = hosts.client(of: view.block) else { return done(nil) }
         if c.transport.isLocal { return done(parts.url) }
         guard let port = parts.port else { return done(nil) }
         c.forwards.forward(port, hidden: true) { local in

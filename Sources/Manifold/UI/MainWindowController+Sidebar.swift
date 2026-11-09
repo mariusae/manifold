@@ -384,7 +384,7 @@ extension MainWindowController: OrganizationViewDelegate {
             return true
         }
         guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
-        let lens = from?.placement.lens ?? Lens.default(for: b.kind, path: b.path)
+        let lens = from?.placement.lens ?? b.defaultLens
         if let node, let arr = node.arrangement {
             // Onto a column: shown there; onto an arrangement: in its
             // focused column. Moved from where it was, or with ⌥ copied —

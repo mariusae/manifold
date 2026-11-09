@@ -74,3 +74,18 @@ enum PinMenu {
         return item
     }
 }
+
+extension Block {
+    /// How it's shown when nothing says otherwise.
+    var defaultLens: Lens { Lens.default(for: kind, path: path) }
+}
+
+extension FindKinds {
+    /// What kinds a block is found as (⌘O's chips).
+    static func of(_ b: Block) -> [String] { of(b.kind, path: b.path, agent: b.agent != nil) }
+}
+
+extension AgentTurn {
+    /// The first line of what it was asked, to name it by.
+    var headline: String? { prompt.split(whereSeparator: \.isNewline).first.map(String.init) }
+}

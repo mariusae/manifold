@@ -45,7 +45,7 @@ extension MainWindowController {
             say(prompt, to: agent)
             toast.show("Asked \(hosts.block(agent)?.displayTitle ?? "the agent") about \(name)", action: "Show", for: 4) { [weak self] in self?.arrive(agent, from: nil) }
         } else {
-            guard let client = hosts.client(b.id.host) else { return NSSound.beep() }
+            guard let client = hosts.client(of: b.id) else { return NSSound.beep() }
             let command = desk.settings.agentCommand + " " + prompt.shellQuoted
             let agent = client.newAgent(cwd: b.path?.deletingLastPathComponent ?? b.place, command: command)
             show(agent, lens: .agent, .here, context: "asked about \(name)")

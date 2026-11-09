@@ -7,24 +7,24 @@ import PDFKit
 
 extension MainWindowController: NotebookViewDelegate {
     func notebook(_ view: NotebookView, edit: NotebookEdit) {
-        hosts.client(view.block.host)?.propose(.editNotebook(block: view.block, edit: edit))
+        hosts.client(of: view.block)?.propose(.editNotebook(block: view.block, edit: edit))
     }
 
     func notebook(_ view: NotebookView, run cells: [String]) {
-        hosts.client(view.block.host)?.propose(.runCells(block: view.block, cells: cells))
+        hosts.client(of: view.block)?.propose(.runCells(block: view.block, cells: cells))
     }
 
     func notebookInterrupt(_ view: NotebookView) {
-        hosts.client(view.block.host)?.propose(.interruptNotebook(block: view.block))
+        hosts.client(of: view.block)?.propose(.interruptNotebook(block: view.block))
     }
 
     func notebookRestart(_ view: NotebookView) {
-        hosts.client(view.block.host)?.propose(.restartNotebook(block: view.block))
+        hosts.client(of: view.block)?.propose(.restartNotebook(block: view.block))
     }
 
     func notebookStart(_ view: NotebookView) {
         guard hosts.block(view.block)?.notebook?.pid == nil else { return }
-        hosts.client(view.block.host)?.propose(.startNotebook(block: view.block))
+        hosts.client(of: view.block)?.propose(.startNotebook(block: view.block))
     }
 
     /// As a terminal's ⌘-click: a path from where the shell is, an address
@@ -38,7 +38,7 @@ extension MainWindowController: NotebookViewDelegate {
     /// A cell's output as an output block, as a terminal's command's is:
     /// the one made for this run of it again, if there is one.
     func notebook(_ view: NotebookView, openOutput cell: NotebookCell) {
-        guard let client = hosts.client(view.block.host) else { return }
+        guard let client = hosts.client(of: view.block) else { return }
         let line = cell.source.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? ""
         let state = OutputState(source: view.block, line: line, status: cell.status, ran: cell.ran, ended: cell.ended, output: cell.output ?? "")
         let context = "cell \(cell.count.map(String.init) ?? "output")"
@@ -54,7 +54,7 @@ extension MainWindowController: NotebookViewDelegate {
 
 extension MainWindowController: MediaViewDelegate {
     func mediaView(_ view: MediaView, needsBytes progress: @escaping (Int64, Int64?) -> Void, done: @escaping (Data?) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.readBytes(view.block, progress: progress, done: done)
     }
 
@@ -71,7 +71,7 @@ extension MainWindowController: ProcessViewDelegate {
     func processView(_ view: ProcessView, goTo block: BlockID) { arrive(block, from: view.placement) }
 
     func processView(_ view: ProcessView, signal pid: Int32, _ signal: Int32) {
-        hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
+        hosts.client(of: view.block)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
             if let error { self?.window?.title = error }
         }
     }
@@ -82,7 +82,7 @@ extension MainWindowController: GitViewDelegate {
     /// against the tree as it started, every file it touched, new ones
     /// too — a diff block of its own, linked from the agent.
     func showAgentChanges(_ agent: BlockID, _ snap: TreeSnapshot, beside placement: PlacementID) {
-        guard let client = hosts.client(agent.host) else { return NSSound.beep() }
+        guard let client = hosts.client(of: agent) else { return NSSound.beep() }
         let name = hosts.block(agent)?.displayTitle ?? "the agent"
         let subject = DiffSubject.since(repo: snap.repo, tree: snap.tree, title: "Changes by \(name) in \(snap.repo.lastPathComponent)")
         let diff = client.diffBlock(subject)
@@ -128,7 +128,7 @@ extension MainWindowController: GitViewDelegate {
             }
             if let old = s.old, !(subject.isSides) {
                 menu.addItem(ClosureMenuItem("This File's Changes Alone", symbol: "plusminus") { [weak self] in
-                    guard let self, let client = self.hosts.client(view.block.host) else { return }
+                    guard let self, let client = self.hosts.client(of: view.block) else { return }
                     let d = client.diffBlock(.sides(old: DiffSide(path: path, revision: old), new: DiffSide(path: path, revision: s.new)))
                     self.show(d, lens: .diff, .besideOpener(view.placement), context: name)
                 })
@@ -153,7 +153,7 @@ extension MainWindowController: GitViewDelegate {
         let short = revision.hasSuffix("^") ? String(revision.dropLast().prefix(7)) + "^" : String(revision.prefix(7))
         let title = "\(path.lastPathComponent) @ \(short)"
         let id = BlockID(host: view.block.host)
-        guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
+        guard let client = hosts.client(of: view.block) else { return NSSound.beep() }
         client.propose(.showRevision(block: id, repo: repo, path: path, revision: revision, title: title)) { [weak self] error in
             guard let self else { return }
             if let error { return self.toast.say(error) }
@@ -162,12 +162,12 @@ extension MainWindowController: GitViewDelegate {
     }
 
     func gitView(_ view: GitView, openDiff subject: DiffSubject) {
-        guard let client = hosts.client(view.block.host) else { return }
+        guard let client = hosts.client(of: view.block) else { return }
         let block = client.diffBlock(subject)
         var context = ""
         switch subject {
         case let .sides(_, new):
-            if let file = hosts.client(view.block.host)?.textBlock(path: new.path) {
+            if let file = hosts.client(of: view.block)?.textBlock(path: new.path) {
                 hosts.link(from: block, to: file.id, kind: .opened, context: "HEAD → working tree")
             }
             context = new.path.lastPathComponent
@@ -199,7 +199,7 @@ extension MainWindowController: GitViewDelegate {
     }
 
     func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
-        guard let client = hosts.client(view.block.host) else { return nil }
+        guard let client = hosts.client(of: view.block) else { return nil }
         let id = client.diffBlock(subject)
         let d = DiffView(placement: view.placement, block: id, theme: hosts.state.appearance.theme)
         d.delegate = self
@@ -224,7 +224,7 @@ extension MainWindowController: DiffViewDelegate {
     /// A patch's file's new side: as its commit left it, else as it is in
     /// the working tree — read from the diff's host.
     func diffView(_ view: DiffView, textOf file: String, done: @escaping (String?) -> Void) {
-        guard let c = hosts.client(view.block.host), let subject = hosts.block(view.block)?.diff?.subject else { return done(nil) }
+        guard let c = hosts.client(of: view.block), let subject = hosts.block(view.block)?.diff?.subject else { return done(nil) }
         switch subject {
         case let .commit(repo, sha):
             c.fileHistory(.text(file: repo.appendingPathComponent(file), path: file, revision: sha)) { result in
@@ -244,7 +244,7 @@ extension MainWindowController: DiffViewDelegate {
 extension MainWindowController: SearchViewDelegate {
     func searchView(_ view: SearchView, run query: SearchQuery) {
         if query.relation != nil { return runRelation(query, in: view.block) }
-        if query.symbol != nil, let client = hosts.client(view.block.host) {
+        if query.symbol != nil, let client = hosts.client(of: view.block) {
             client.append([.title("“\(query.text)”")], to: .block(view.block))
         }
         hosts.propose(.search(block: view.block, query: query))
@@ -254,7 +254,7 @@ extension MainWindowController: SearchViewDelegate {
     /// its callers — of the project's index, here; the hits written into
     /// the search block, as the host writes a text search's.
     func runRelation(_ q: SearchQuery, in block: BlockID) {
-        guard let client = hosts.client(block.host), let relation = q.relation, let symbol = q.symbol, let path = q.symbolPath else { return }
+        guard let client = hosts.client(of: block), let relation = q.relation, let symbol = q.symbol, let path = q.symbolPath else { return }
         let title = (relation == "callers" ? "Callers of" : "References to") + " “\(q.text)”"
         client.append([.title(title), .search(q, at: client.clock.now())], to: .block(block))
         Task { @MainActor [weak self] in
@@ -297,7 +297,7 @@ extension MainWindowController: SearchViewDelegate {
 
     /// A file's text for the preview: 4 MB at most, and not a binary one.
     func searchView(_ view: SearchView, read path: String, done: @escaping (String?) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.readBytes(path: path, limit: 4 << 20) { data in
             guard let data, !data.prefix(8192).contains(0) else { return done(nil) }
             done(String(decoding: data, as: UTF8.self))

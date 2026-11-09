@@ -90,8 +90,8 @@ extension MainWindowController: TerminalViewDelegate {
     /// Changes in This Turn: the working tree between the turn's two
     /// checkpoints (as it is now, while it runs), as a diff block.
     func showTurnChanges(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) {
-        guard let repo = turn.repo, let before = turn.before, let client = hosts.client(agent.host) else { return NSSound.beep() }
-        let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+        guard let repo = turn.repo, let before = turn.before, let client = hosts.client(of: agent) else { return NSSound.beep() }
+        let first = turn.headline ?? "Turn"
         let diff = client.diffBlock(.trees(repo: repo, from: before, to: turn.after, title: "Turn: " + String(first.prefix(60))))
         hosts.link(from: agent, to: diff, kind: .opened, context: "changes in turn \(turn.id)")
         show(diff, lens: .diff, .besideOrHere(placement), context: "changes in turn \(turn.id)")
@@ -100,7 +100,7 @@ extension MainWindowController: TerminalViewDelegate {
     /// Undo This Turn: asked first; then the turn's changes taken back.
     func undoTurn(_ turn: AgentTurn, of agent: BlockID) {
         guard turn.before != nil, turn.after != nil else { return NSSound.beep() }
-        let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "the turn"
+        let first = turn.headline ?? "the turn"
         let n = turn.files?.count ?? 0
         confirm("Undo “\(first.prefix(80))”?",
                 "What the turn changed in \(turn.repo?.lastPathComponent ?? "the repository") (\(n) file\(n == 1 ? "" : "s")) is taken back, as the working tree was before it — later changes kept. If later work changed the same lines, nothing is touched and Manifold says so.",

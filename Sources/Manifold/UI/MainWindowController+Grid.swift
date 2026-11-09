@@ -244,7 +244,7 @@ extension MainWindowController: GridDelegate {
     /// A block from the sidebar dropped in the grid: brought there.
     func gridBring(_ block: BlockID, column: Int, at: Int, newColumn: Bool) {
         guard let b = hosts.block(block) else { return }
-        place(block, lens: Lens.default(for: b.kind, path: b.path), column: column, at: at, newColumn: newColumn)
+        place(block, lens: b.defaultLens, column: column, at: at, newColumn: newColumn)
     }
 
     /// A block placed where a drop showed it going: at `at` in `column`,
@@ -409,7 +409,7 @@ extension MainWindowController: GridDelegate {
                 // A commit: its diff, made if it isn't yet.
                 if let b = Drags.commitBlock?(c) { next(b, .diff) }
             } else if let b = t.block, let block = hosts.block(b) {
-                next(b, Lens.default(for: block.kind, path: block.path))
+                next(b, block.defaultLens)
                 if let at = t.at { goTo(at, in: b) }
             } else if let f = t.file {
                 guard let (b, lens) = pathBlock(f.path, isDirectory: f.isDirectory, on: f.host) else {
@@ -727,7 +727,7 @@ extension MainWindowController: GridDelegate {
             return NSSound.beep()
         }
         w.index = i
-        let lens = Lens.default(for: b.kind, path: b.path)
+        let lens = b.defaultLens
         // In the walk's tile if it's still there, else a new one beside the note.
         if let tile = w.tile, let a = arrangement, let p = a.placement(tile) {
             if p.block != id {

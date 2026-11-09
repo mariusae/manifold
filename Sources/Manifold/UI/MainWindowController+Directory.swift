@@ -9,18 +9,18 @@ extension MainWindowController: DirectoryViewDelegate {
     // MARK: Projects (§2.6)
 
     func directoryViewProject(_ view: DirectoryView) -> Project? {
-        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(view.block.host)?.desk else { return nil }
+        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(of: view.block)?.desk else { return nil }
         return desk.projects.first { $0.root == path || $0.alias == path }
     }
 
     func directoryViewParentProject(_ view: DirectoryView) -> Project? {
-        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(view.block.host)?.desk,
+        guard let path = hosts.block(view.block)?.path, let desk = hosts.client(of: view.block)?.desk,
               let p = desk.project(holding: path), p.root != path, p.alias != path else { return nil }
         return p
     }
 
     func directoryView(_ view: DirectoryView, makeProject: Bool) {
-        guard let client = hosts.client(view.block.host), let path = hosts.block(view.block)?.path else { return NSSound.beep() }
+        guard let client = hosts.client(of: view.block), let path = hosts.block(view.block)?.path else { return NSSound.beep() }
         let proposal: Proposal = makeProject
             ? .project(Project(root: path, made: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000))))
             : .unproject(root: directoryViewProject(view)?.root ?? path)
@@ -30,7 +30,7 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, gitFor project: Project) -> BlockID? {
-        hosts.client(view.block.host)?.projectGitBlock(for: project)
+        hosts.client(of: view.block)?.projectGitBlock(for: project)
     }
 
     func directoryView(_ view: DirectoryView, block id: BlockID) -> Block? { hosts.block(id) }
@@ -51,7 +51,7 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, search query: SearchQuery, in block: BlockID?) -> BlockID? {
-        guard let client = hosts.client(view.block.host) else { return nil }
+        guard let client = hosts.client(of: view.block) else { return nil }
         if let block, hosts.block(block) != nil {
             hosts.propose(.search(block: block, query: query))
             return block
@@ -72,12 +72,12 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, languagesOf project: Project, done: @escaping ([Linguist.Count]?) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.languages(project.root, done: done)
     }
 
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence] {
-        guard let client = hosts.client(view.block.host) else { return [] }
+        guard let client = hosts.client(of: view.block) else { return [] }
         var out: [Presence] = []
         let shownHere = Set(arrangement?.placements.map(\.block) ?? [])
         // Terminals and agents with a shell there, what each is doing.
@@ -115,7 +115,7 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, project: Project, do action: ProjectAction) {
-        guard let client = hosts.client(view.block.host) else { return NSSound.beep() }
+        guard let client = hosts.client(of: view.block) else { return NSSound.beep() }
         switch action {
         case .settings:
             editProject(project, on: client)
@@ -142,7 +142,7 @@ extension MainWindowController: DirectoryViewDelegate {
     /// "?text" in a folder's filter: the files under it searched, the
     /// search's tile beside the folder's.
     func directoryView(_ view: DirectoryView, searchContents text: String) {
-        guard let client = hosts.client(view.block.host), let root = hosts.block(view.block)?.path else { return }
+        guard let client = hosts.client(of: view.block), let root = hosts.block(view.block)?.path else { return }
         let id = client.newSearch(SearchQuery(text: text, root: root))
         show(id, lens: .search, .besideOpener(view.placement), context: "search in \(root.lastPathComponent)")
     }
@@ -176,17 +176,17 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil) }
+        guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.listFolder(path, done: done)
     }
 
     func directoryView(_ view: DirectoryView, tree path: String, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
-        guard let client = hosts.client(view.block.host) else { return done(nil, false) }
+        guard let client = hosts.client(of: view.block) else { return done(nil, false) }
         client.listTree(path, done: done)
     }
 
     func directoryViewIsLocal(_ view: DirectoryView) -> Bool {
-        hosts.client(view.block.host)?.transport.isLocal ?? true
+        hosts.client(of: view.block)?.transport.isLocal ?? true
     }
 
     func directoryView(_ view: DirectoryView, receive items: [DroppedItem], into folder: String, moving: Bool) {
@@ -194,7 +194,7 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void) {
-        guard let c = hosts.client(view.block.host) else { return done("the host isn't attached") }
+        guard let c = hosts.client(of: view.block) else { return done("the host isn't attached") }
         let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(hosts.label(of: view.block.host)) to \(url.deletingLastPathComponent().lastPathComponent)", symbol: "arrow.down") { progress, finished in
             Transfer.download(path, on: c, to: url, progress: progress, done: finished)
         } then: { error in done(error) }
@@ -338,7 +338,7 @@ extension MainWindowController: DirectoryViewDelegate {
     /// shell's folder (each a name of its own there, nothing written over),
     /// their paths there given back to be typed.
     func upload(_ urls: [URL], toShellOf block: BlockID, done: @escaping ([String]) -> Void) {
-        guard let c = hosts.client(block.host), let folder = hosts.block(block)?.terminal?.cwd else { return NSSound.beep() }
+        guard let c = hosts.client(of: block), let folder = hosts.block(block)?.terminal?.cwd else { return NSSound.beep() }
         let label = hosts.label(of: block.host) + ":" + Self.shortPlace(folder)
         c.listFolder(folder) { entries in
             var taken = Set((entries ?? []).map(\.name))
@@ -454,7 +454,7 @@ extension MainWindowController: DirectoryViewDelegate {
     /// most: a preview, gone past as the selection moves on, and stopped
     /// then) into a folder by host and path, written off the main thread.
     func directoryView(_ view: DirectoryView, localURLFor path: String, done: @escaping (URL?) -> Void) -> () -> Void {
-        guard let client = hosts.client(view.block.host) else { done(nil); return {} }
+        guard let client = hosts.client(of: view.block) else { done(nil); return {} }
         if client.transport.isLocal { done(URL(fileURLWithPath: path)); return {} }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-previews/\(view.block.host.raw)" + path.deletingLastPathComponent)
         let url = dir.appendingPathComponent(path.lastPathComponent)

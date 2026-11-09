@@ -149,7 +149,7 @@ extension MainWindowController: EditorViewDelegate {
         guard let b = hosts.block(id), b.kind == .image, let path = b.path else { return nil }
         if id.host == host.host { return URL(fileURLWithPath: path).absoluteString }
         if let data = remoteImages[id] { return data }
-        guard !fetchingImages.contains(id), let c = hosts.client(id.host) else { return nil }
+        guard !fetchingImages.contains(id), let c = hosts.client(of: id) else { return nil }
         fetchingImages.insert(id)
         c.readBytes(path: path, limit: 20 << 20) { [weak self] data in
             guard let self else { return }
@@ -278,7 +278,7 @@ extension MainWindowController: EditorViewDelegate {
     }
 
     func keepImage(_ data: Data, kind: String, for text: BlockID, insert: @escaping (String) -> Void) {
-        guard let b = hosts.block(text), let c = hosts.client(text.host) else { return NSSound.beep() }
+        guard let b = hosts.block(text), let c = hosts.client(of: text) else { return NSSound.beep() }
         let name = newImageName(kind: kind)
         let folder = b.path.map { $0.deletingLastPathComponent }
         let id = BlockID(host: text.host)
@@ -330,14 +330,14 @@ extension MainWindowController: EditorViewDelegate {
     /// The host's last process listing, those under this terminal's shell;
     /// and a fresh listing asked for, so the next menu is current.
     func terminalProcesses(_ view: TerminalView, refresh: Bool) -> [ProcessEntry] {
-        guard let client = hosts.client(view.block.host) else { return [] }
+        guard let client = hosts.client(of: view.block) else { return [] }
         let pb = client.node.blocks.first { $0.kind == .process }
         if refresh { hosts.propose(.processes(block: pb?.id ?? BlockID(host: client.host))) }
         return pb?.processes?.entries.filter { $0.block == view.block } ?? []
     }
 
     func terminal(_ view: TerminalView, signal pid: Int32, _ signal: Int32) {
-        hosts.client(view.block.host)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
+        hosts.client(of: view.block)?.propose(.signal(pid: pid, signal: signal)) { [weak self] error in
             if let error { self?.window?.title = error }
         }
     }
@@ -358,7 +358,7 @@ extension MainWindowController: EditorViewDelegate {
     /// References as a search block: each place's line read from its file
     /// (this editor's own from its text, edits and all), the word marked.
     func editor(_ view: EditorView, references places: [LSPLocation], of word: String) {
-        guard let client = hosts.client(view.block.host) else { return }
+        guard let client = hosts.client(of: view.block) else { return }
         let sorted = places.sorted { ($0.path == view.path ? 0 : 1, $0.path, $0.line) < ($1.path == view.path ? 0 : 1, $1.path, $1.line) }
         var paths: [String] = []
         for p in sorted where p.path != view.path && !paths.contains(p.path) { paths.append(p.path) }

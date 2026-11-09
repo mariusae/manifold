@@ -152,7 +152,7 @@ extension MainWindowController {
         let here = arrangement?.placements.map(\.block) ?? []
         for id in here + (everywhere ? hosts.blocks.map(\.id) : []) where seen.insert(id).inserted {
             guard let b = hosts.block(id), let places = outlinePlaces(of: b) else { continue }
-            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
+            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b)
             for p in places where p.lower.contains(q) {
                 let link = "manifold:\(id.description)#\(p.place.fragment)", at = p.place, title = p.title
                 items.append(FinderItem(symbol: symbol, title: p.title, detail: p.detail, note: p.note,
@@ -170,7 +170,7 @@ extension MainWindowController {
         for pid in shown where tiles.insert(pid).inserted {
             guard let view = views[pid], !(view is TerminalView), let o = view.outline, !o.items.isEmpty,
                   let b = hosts.block(view.block), outlinePlaces(of: b) == nil, outlined.insert(b.id).inserted else { continue }
-            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)
+            let symbol = Theme.symbolName(for: b), kinds = FindKinds.of(b)
             let inThisSpace = arrangement?.placement(pid) != nil
             for (i, item) in o.items.enumerated() where item.title.lowercased().contains(q) {
                 let at = o.placeFor?(i)
@@ -231,7 +231,7 @@ extension MainWindowController {
                                     },
                                     excerpt: Self.excerpt(matches), marked: query,
                                     drag: { Drags.block?(block, Drags.modifiers) }, block: block,
-                                    kinds: FindKinds.of(b.kind, path: b.path, agent: b.agent != nil)))
+                                    kinds: FindKinds.of(b)))
             if items.count >= 100 { break }
         }
         // Agents' turns: what was asked and what each said (this space's agents', unless everywhere).
@@ -241,7 +241,7 @@ extension MainWindowController {
                 let said = [turn.prompt, turn.message ?? ""].joined(separator: "\n")
                 guard said.lowercased().contains(q) else { continue }
                 let lines = said.split(separator: "\n").map(String.init).filter { $0.lowercased().contains(q) }
-                let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+                let first = turn.headline ?? "Turn"
                 let agentID = block.id, turnID = turn.id
                 items.append(FinderItem(symbol: "text.bubble", title: String(first.prefix(120)), detail: "Turn of \(block.displayTitle) · \(Age.short(turn.began))",
                                         note: (turn.files?.count).map { "\($0) file\($0 == 1 ? "" : "s")" } ?? "",
@@ -287,7 +287,7 @@ extension MainWindowController {
         var out: [(HostID, Project, Bool)] = []
         var seen = Set<String>()
         func add(_ block: BlockID, inSpace: Bool) {
-            guard let b = hosts.block(block), let place = b.place, let p = hosts.client(block.host)?.project(holding: place) else { return }
+            guard let b = hosts.block(block), let place = b.place, let p = hosts.client(of: block)?.project(holding: place) else { return }
             if seen.insert(block.host.raw + ":" + p.root).inserted { out.append((block.host, p, inSpace)) }
         }
         if let f = focusedShown?.placement.block { add(f, inSpace: true) }
@@ -502,7 +502,7 @@ extension MainWindowController {
         // opens as its own block.
         for block in hosts.blocks {
             for turn in block.terminal?.turns ?? [] {
-                let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+                let first = turn.headline ?? ""
                 guard !first.isEmpty else { continue }
                 let agentID = block.id, turnID = turn.id
                 let files = (turn.files ?? []).prefix(3).joined(separator: ", ")
@@ -616,7 +616,7 @@ extension MainWindowController {
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first { return land(on: t.id, in: arr, a) }
         }
-        show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
+        show(id, lens: block.defaultLens, .here)
     }
 
     /// Of a block's tiles, the one nearest `near`: in its column, then the

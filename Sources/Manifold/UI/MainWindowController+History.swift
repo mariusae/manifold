@@ -21,7 +21,7 @@ extension MainWindowController {
     }
 
     func editor(_ view: EditorView, fileHistory request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void) {
-        guard let c = hosts.client(view.block.host) else { return done(.error("the host isn't attached")) }
+        guard let c = hosts.client(of: view.block) else { return done(.error("the host isn't attached")) }
         c.fileHistory(request, done: done)
     }
 
@@ -36,13 +36,13 @@ extension MainWindowController {
         h.font = hosts.state.appearance.theme.font(hosts.state.appearance.editorFont, size: hosts.state.appearance.theme.editorSize(hosts.state.appearance.editorFont))
         h.onRestoreText = { [weak self] text in self?.restore(block, toText: text) }
         h.onCompare = { [weak self] moment in
-            guard let self, let client = self.hosts.client(block.host) else { return }
+            guard let self, let client = self.hosts.client(of: block) else { return }
             self.hideHistory()
             let diff = client.diffBlock(.versions(block: block, from: moment, to: nil))
             self.show(diff, lens: .diff, .besideOpener(placement), context: "Compare with Now")
         }
         h.onOpen = { [weak self] text, moment in
-            guard let self, let client = self.hosts.client(block.host) else { return }
+            guard let self, let client = self.hosts.client(of: block) else { return }
             self.hideHistory()
             let f = DateFormatter()
             f.dateStyle = .medium

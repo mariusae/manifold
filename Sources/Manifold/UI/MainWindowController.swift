@@ -296,7 +296,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if let p = a.placement(id) { return shown(p) }
         }
         if id.hasPrefix("state:"), let b = BlockID(string: String(id.dropFirst(6))), let block = hosts.block(b) {
-            return Shown(placement: Placement(id: id, block: b, lens: Lens.default(for: block.kind, path: block.path)), block: block)
+            return Shown(placement: Placement(id: id, block: b, lens: block.defaultLens), block: block)
         }
         return nil
     }
@@ -505,7 +505,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // of so many would be small, and dear).
             let mode = stateModeChosen ?? (stateBlocks.count > 10 ? .summaries : stateMode)
             let items = stateBlocks.map { block, _, _ -> StateView.Item in
-                let lens = stateLenses[block.id] ?? Lens.default(for: block.kind, path: block.path)
+                let lens = stateLenses[block.id] ?? block.defaultLens
                 let p = Placement(id: Self.statePlacement(block.id), block: block.id, lens: lens)
                 var shown = Shown(placement: p, block: block)
                 if stateAgents { shown.caption = agentCaption(block) }
@@ -585,7 +585,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A placement's block as seen from here: offline when its host is
     /// attached but can't be reached now.
     private func shown(_ p: Placement) -> Shown {
-        var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(p.block.host) != nil && !hosts.isReachable(p.block.host))
+        var s = Shown(placement: p, block: hosts.block(p.block), offline: hosts.client(of: p.block) != nil && !hosts.isReachable(p.block.host))
         if let w = selected, p.block.host != w.host { s.foreignHost = hosts.label(of: p.block.host) }
         if let t = stackedTerminal(p.id) {
             s.stackedOver = t.displayTitle
@@ -634,7 +634,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // is its outline now): the block through its own lens.
         if shown.placement.lens == .outline, let b = shown.block {
             var own = shown
-            own.placement.lens = Lens.default(for: b.kind, path: b.path)
+            own.placement.lens = b.defaultLens
             return view(for: own)
         }
         let p = shown.placement
@@ -651,7 +651,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Its host there, the block on its way (one just made, a round
             // trip off): the tile as it will be, quiet for a moment, rather
             // than words that go as they're read.
-            if hosts.client(p.block.host)?.link == .connected {
+            if hosts.client(of: p.block)?.link == .connected {
                 v.waitQuietly(paper: p.lens == .terminal || p.lens == .agent ? TerminalPalette.current(for: v).background : Theme.windowBackground)
             }
             v.set(note: note, canAttach: canAttach)
@@ -701,7 +701,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let v: PaneContent
         switch p.lens {
         case .terminal, .agent:
-            let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(p.block.host))
+            let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(of: p.block))
             t.delegate = self
             configure(t, for: p)
             t.readingPassword = SecureInput.shared.reading.contains(p.block)
@@ -709,7 +709,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             t.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
             t.directory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
             t.pathSource = { [weak self] in
-                guard let self, let cwd = self.hosts.block(p.block)?.terminal?.cwd, let client = self.hosts.client(p.block.host) else { return nil }
+                guard let self, let cwd = self.hosts.block(p.block)?.terminal?.cwd, let client = self.hosts.client(of: p.block) else { return nil }
                 let here = p.block.host == self.host.host
                 return PathInserter.Source(host: p.block.host, directory: cwd, home: here ? NSHomeDirectory() : client.home,
                                            listFolder: { path, done in client.listFolder(path, done: done) }, type: { _ in })
@@ -717,7 +717,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
                 t.lookUp = { [weak self] paths, done in
-                    guard let client = self?.hosts.client(p.block.host) else { return done(nil) }
+                    guard let client = self?.hosts.client(of: p.block) else { return done(nil) }
                     client.lookUp(paths, done: done)
                 }
             }
@@ -734,7 +734,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             pv.source = { [weak self] in self?.hosts.block(p.block) }
             pv.blockTitle = { [weak self] in self?.hosts.block($0)?.displayTitle }
             pv.blockCard = { [weak self] in self?.cardContent(for: $0) }
-            pv.client = { [weak self] in self?.hosts.client(p.block.host) }
+            pv.client = { [weak self] in self?.hosts.client(of: p.block) }
             v = pv
         case .outline:
             // (Shown as the block's own view, above.)
@@ -1183,7 +1183,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     hosts.select(workspace)
                     hosts.append(events, to: .block(workspace))
                 } else {
-                    show(placement.block, lens: Lens.default(for: b.kind, path: b.path), .here)
+                    show(placement.block, lens: b.defaultLens, .here)
                 }
                 warpPointerToFocus()
                 return
@@ -1690,7 +1690,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let text else { return NSSound.beep() }
         let body = fence.isEmpty ? text : "```" + (fence == "text" ? "" : fence) + "\n" + text + (text.hasSuffix("\n") ? "" : "\n") + "```\n"
-        let client = hosts.client(b.id.host) ?? host
+        let client = hosts.client(of: b.id) ?? host
         let note = client.newNote(home: b.place, text: body)
         hosts.link(from: b.id, to: note, kind: .linked, context: context)
         show(note, lens: .editor, .besideOpener(f.id), context: context)
@@ -1701,7 +1701,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     @objc func saveScrollbackAsNote(_ sender: Any?) {
         guard let f = focusedShown, let t = views[f.id] as? TerminalView, let text = t.transcriptLines, let b = f.block else { return NSSound.beep() }
         let trimmed = text.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
-        let note = (hosts.client(b.id.host) ?? host).newNote(home: b.place, text: "# Scrollback · \(b.displayTitle)\n\n```\n" + trimmed + "\n```\n")
+        let note = (hosts.client(of: b.id) ?? host).newNote(home: b.place, text: "# Scrollback · \(b.displayTitle)\n\n```\n" + trimmed + "\n```\n")
         hosts.link(from: b.id, to: note, kind: .linked, context: "scrollback")
         show(note, lens: .editor, .besideOpener(f.id), context: "scrollback")
     }
