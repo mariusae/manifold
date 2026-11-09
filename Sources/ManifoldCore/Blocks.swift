@@ -208,6 +208,9 @@ public struct AgentTurn: Codable, Equatable, Sendable {
     public var began: Stamp
     public var ended: Stamp?
 
+    /// Working: not ended (by the agent, or by its shell going).
+    public var isRunning: Bool { ended == nil }
+
     public init(id: Int, agent: String, prompt: String, began: Stamp) {
         self.id = id
         self.agent = agent
@@ -287,8 +290,17 @@ public struct ShellCommand: Codable, Equatable, Sendable, Identifiable {
         return c.cwd ?? current
     }
 
+    /// Running: not ended — the one reading of it (§ M8 in
+    /// STATE-MACHINES.md), not "no status" (one whose shell went first has
+    /// none).
     public var isRunning: Bool { ended == nil }
+    /// Ended with no word from it: its shell ended, went dormant or was
+    /// replaced first.
+    public var abandoned: Bool { ended != nil && status == nil }
     public var failed: Bool { (status ?? 0) != 0 }
+    /// How it ended, in words — "ok", "exit 2", "its shell ended" — or nil
+    /// while it runs.
+    public var outcome: String? { ended == nil ? nil : RunOutcome.words(status: status) }
 
     /// The prompt a command was typed at, as its line on the screen shows
     /// it: what comes before the command. Nil if the line doesn't show it.
@@ -649,6 +661,30 @@ public struct OutputState: Codable, Equatable, Sendable {
     /// An agent's turn, as Markdown (§3.8): what was asked, what it did,
     /// what it said, what it changed — shown rendered, not as a terminal's.
     public var markdown: String?
+
+    /// Its run (§ M9): none (a file's old version), running, or ended —
+    /// with its status, or none if its shell died first.
+    public enum Run: Equatable, Sendable {
+        case none
+        case running(since: Stamp)
+        case ended(at: Stamp, status: Int32?)
+    }
+
+    public var run: Run {
+        guard let ran else { return .none }
+        guard let ended else { return .running(since: ran) }
+        return .ended(at: ended, status: status)
+    }
+
+    /// How its run stands, in words: "running", "ok", "exit 2", "its shell
+    /// ended"; nil for no run.
+    public var outcome: String? {
+        switch run {
+        case .none: nil
+        case .running: "running"
+        case let .ended(_, status): RunOutcome.words(status: status)
+        }
+    }
 
     public init(source: BlockID? = nil, command: Int? = nil, line: String = "", status: Int32? = nil, ran: Stamp? = nil, ended: Stamp? = nil, output: String = "", plain: Bool = false) {
         self.source = source
@@ -1178,7 +1214,7 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         guard let t = terminal else { return nil }
         if let c = t.command, let a = AgentCatalog.agent(inCommand: c) { return a }
         if let app = statusRecord?.app, let a = AgentCatalog.agent(namedByApp: app) { return a }
-        for c in (t.commands ?? []).reversed().prefix(5) where c.status == nil {
+        for c in (t.commands ?? []).reversed().prefix(5) where c.isRunning {
             if let a = AgentCatalog.agent(inCommand: c.text) { return a }
         }
         return nil
@@ -1279,5 +1315,13 @@ public enum Annotation {
     public static func matches(_ block: Block, key: String, value: String) -> Bool {
         guard let v = block.annotations?[key] else { return false }
         return value == "*" || v == value
+    }
+}
+
+/// How an ended run is said: its status, or that its shell went first.
+public enum RunOutcome {
+    public static func words(status: Int32?) -> String {
+        guard let status else { return "its shell ended" }
+        return status == 0 ? "ok" : "exit \(status)"
     }
 }

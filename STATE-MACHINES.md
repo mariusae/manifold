@@ -47,7 +47,7 @@ has exited (`keptUntilExit`), and kills a shell that ignores the hang-up
 after `Session.killAfter` (5 s); a notebook's shell is reaped on exit.
 Both tests pass. Machines: M1, M2.
 
-### I-2 Runs left open, and "running" read four ways · **confirmed on reading** · high
+### I-2 Runs left open, and "running" read four ways · **fixed** · high
 A command or an agent's turn is closed only by the shell's own report of
 its end (`.exited`, the host's `finishTurns`). A shell that ends or goes
 dormant mid-command (killed, the server restarted or updated, idled out)
@@ -63,7 +63,20 @@ The output block's summary (`Summary`) reads `status == nil` as "running",
 so every **file's old version** (`ran` nil, `ended` set) and every notebook
 cell whose shell died shows "· running" in `mani ls` and cards; the output
 tile itself says "ok" for the dead cell.
-Machines: M8, M9, M10.
+
+Fix: `TerminalState` closes every open command and turn when its shell
+ends, goes dormant or is replaced (`closeRuns`, on `.shell(.ended /
+.dormant / .started)`): ended then, with no status (`abandoned`). It's in
+`apply`, so app and server agree and a log replays to the same; a
+snapshot taken before keeps its open commands until the terminal's next
+shell starts. One reading: `isRunning` (`ended == nil`) everywhere, and
+one wording of how a run ended (`ShellCommand.outcome`, `OutputState.run`
+/ `.outcome`, `RunOutcome`): "ok", "exit 2", "its shell ended". A file's
+old version has no outcome and no prompt. The notifier doesn't announce an
+abandoned command as finished; `mani run --wait` on one exits 1, saying
+its shell ended; `mani info` marks it `shellEnded`.
+Tests: `ManifoldCoreTests/RunPhaseTests` (the command and turn tests fail
+with the closing taken out). Machines: M8, M9.
 
 ### I-3 A space change leaves the old space's transient state behind · **confirmed on reading** · high
 The window notices a space change in one place (`renderNow`'s
@@ -245,15 +258,16 @@ reading of "running" everywhere (`ended == nil`).
 |---|---|---|
 | — | `.ran` | running |
 | running | `.exited(status)` | ended(status) |
-| running | `.shell(.ended/.dormant/.started)` | abandoned |
+| running | `.shell(.ended/.dormant/.started)` | abandoned (`closeRuns`) |
 
-Findings: I-2.
+Findings: I-2 — fixed.
 
 #### M9 An output block's run · implicit
 `OutputState.source`/`command`/`ran`/`ended`/`status`.
 States: not a command (a file's old version: `ran` nil) · running (`ran`,
 no `ended`) · ended(status) · abandoned (`ended`, no status: its shell
-died). Invariant: words for it come from one place. Findings: I-2.
+died). Invariant: words for it come from one place (`OutputState.run`,
+`.outcome`). Findings: I-2 — fixed.
 
 #### M10 A terminal's shell (model) · implicit
 `TerminalState.pid`, `busy`, `dormantSince`, `dormantAfter`.

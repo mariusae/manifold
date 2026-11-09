@@ -52,7 +52,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             if let commands = b.terminal?.commands, let last = commands.last(where: { $0.ended != nil && !turns.contains($0.id) }) {
                 let before = seenCommand[b.id]
                 seenCommand[b.id] = last.id
-                if seeded, let before, last.id != before, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand, !inSight(b.id), speaksHere(b.id) {
+                // One whose shell went first didn't finish: not said as if it had.
+                if seeded, let before, last.id != before, !last.abandoned, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand,
+                   !inSight(b.id), speaksHere(b.id) {
                     post(command: last, of: b, took: ended.wall - last.at.wall)
                 }
             }

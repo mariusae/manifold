@@ -923,6 +923,7 @@ final class ManiDesk {
         var o: [String: Any] = ["id": c.id, "command": c.text]
         if let s = c.status { o["status"] = Int(s) }
         if c.isRunning { o["running"] = true }
+        if c.abandoned { o["shellEnded"] = true }
         return o
     }
 
@@ -1157,7 +1158,7 @@ final class ManiDesk {
         for t in terminals {
             guard let cs = t.terminal?.commands?.suffix(3), !cs.isEmpty else { continue }
             lines.append("\(t.displayTitle) (\(t.id)):")
-            for c in cs { lines.append("  $ \(c.text)" + (c.isRunning ? "  (running)" : c.status.map { "  (status \($0))" } ?? "")) }
+            for c in cs { lines.append("  $ \(c.text)" + (c.isRunning ? "  (running)" : c.abandoned ? "  (its shell ended)" : c.status.map { "  (status \($0))" } ?? "")) }
         }
         if !dirty.isEmpty { lines.append("unsaved: " + dirty.map(\.displayTitle).joined(separator: ", ")) }
         return lines.joined(separator: "\n")
@@ -1447,7 +1448,9 @@ final class ManiDesk {
                 let out = (try? await self.output(of: c, in: run.block, view: view)) ?? ""
                 // Its output, less the command line it starts with.
                 let body = out.hasPrefix("$ ") ? out.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).dropFirst().joined() : out
-                self.reply(asker, out: body.isEmpty || body.hasSuffix("\n") ? body : body + "\n", status: c.status ?? 0)
+                // Its shell gone before it ended: not a success.
+                self.reply(asker, out: body.isEmpty || body.hasSuffix("\n") ? body : body + "\n",
+                           err: c.abandoned ? "mani: the shell ended before the command did\n" : "", status: c.status ?? (c.abandoned ? 1 : 0))
             }
         }
     }

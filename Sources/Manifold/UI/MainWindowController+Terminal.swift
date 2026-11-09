@@ -206,7 +206,7 @@ extension MainWindowController: TerminalViewDelegate {
         } else {
             // The command sent to the shell again: run, or typed at the prompt
             // to be changed first — not while one runs (it'd go to that program).
-            let busy = view.commands.last.map { $0.status == nil } ?? false
+            let busy = view.commands.last?.isRunning ?? false
             for (title, symbol, run) in [("Run Again", "arrow.clockwise", true), ("Type at Prompt", "text.cursor", false)] {
                 let item = ClosureMenuItem(title, symbol: symbol) { [weak self, weak view] in
                     guard let self, let view else { return }

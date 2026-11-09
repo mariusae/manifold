@@ -107,10 +107,9 @@ extension Block {
                     s.tone = .running
                     s.lines.append("running for \(BlockSummary.ago(c.at, now: now) ?? "a moment")")
                 } else {
-                    let status = c.status ?? 0
                     s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                    s.lines.append((status == 0 ? "ok" : "exit \(status)") + (BlockSummary.took(from: c.at, to: c.ended, least: 1).map { " · took " + $0 } ?? ""))
-                    if status != 0, s.tone == .plain { s.tone = .failed }
+                    s.lines.append((c.outcome ?? "") + (BlockSummary.took(from: c.at, to: c.ended, least: 1).map { " · took " + $0 } ?? ""))
+                    if c.failed, s.tone == .plain { s.tone = .failed }
                 }
                 if let earlier = term.commands?.dropLast().last { s.lines.append("$ " + Self.oneLine(earlier.text)) }
             } else {
@@ -155,8 +154,10 @@ extension Block {
         case .output:
             guard let o = output else { break }
             s.code = true
-            s.lines = ["$ " + Self.oneLine(o.line), (o.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "running")
-                + (BlockSummary.took(from: o.ran, to: o.ended).map { " · took " + $0 } ?? "")]
+            // A file's old version is no command: no prompt, no outcome.
+            s.lines = [(o.ran == nil ? "" : "$ ") + Self.oneLine(o.line)]
+            let words = [o.outcome, BlockSummary.took(from: o.ran, to: o.ended).map { "took " + $0 }].compactMap { $0 }.joined(separator: " · ")
+            if !words.isEmpty { s.lines.append(words) }
             if let first = o.output.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
                 s.lines.append(Self.oneLine(String(first)))
             }
@@ -241,10 +242,9 @@ extension Block {
                 s.note = "running"
                 s.tone = .running
             } else {
-                let status = c.status ?? 0
                 s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                s.lines = [(status == 0 ? "ok" : "exit \(status)") + (BlockSummary.took(from: c.at, to: c.ended).map { " · took " + $0 } ?? "")]
-                if status != 0 { s.tone = .failed }
+                s.lines = [(c.outcome ?? "") + (BlockSummary.took(from: c.at, to: c.ended).map { " · took " + $0 } ?? "")]
+                if c.failed { s.tone = .failed }
             }
             return s
         case .line, .lines, .range:

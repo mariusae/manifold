@@ -669,6 +669,16 @@ extension TextState {
 }
 
 extension TerminalState {
+    /// Every command and turn still open, ended now, with no status.
+    mutating func closeRuns(at: Stamp) {
+        if let list = commands, list.contains(where: \.isRunning) {
+            commands = list.map { var c = $0; if c.isRunning { c.ended = at }; return c }
+        }
+        if let list = turns, list.contains(where: \.isRunning) {
+            turns = list.map { var t = $0; if t.isRunning { t.ended = at }; return t }
+        }
+    }
+
     mutating func apply(_ event: Event, at: Stamp) {
         switch event {
         case let .cwd(c): cwd = c
@@ -691,6 +701,13 @@ extension TerminalState {
             }
         case let .title(t): title = t
         case let .shell(s):
+            // The shell gone (or a new one in its place): what it was
+            // running ended with it (§ M8) — no command or turn runs
+            // without a live shell.
+            switch s {
+            case .started, .ended, .dormant: closeRuns(at: at)
+            case .busy: break
+            }
             switch s {
             case let .started(pid):
                 self.pid = pid

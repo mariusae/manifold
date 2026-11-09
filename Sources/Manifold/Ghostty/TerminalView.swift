@@ -427,16 +427,16 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// A command's word in a list: how it ended, how long it took (a
     /// second or more), when — "exit 1 · 2m 13s · 4h"; or "running".
     private func detail(of c: ShellCommand, last: Int?) -> String {
-        guard c.status != nil || c.id != last else { return "running" }
+        guard !(c.isRunning && c.id == last) else { return "running" }
         let when = Age.short(c.at) == "now" ? "just now" : Age.short(c.at)
-        return [c.status.flatMap { $0 == 0 ? nil : "exit \($0)" }, BlockSummary.took(from: c.at, to: c.ended, least: 1), when]
+        return [c.status == 0 ? nil : c.outcome, BlockSummary.took(from: c.at, to: c.ended, least: 1), when]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
     private func fillOutline() {
         let commands = outlined
         commandsOutline.set(commands.map { c in
-            Outline.Item(title: c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.status == nil && c.id == commands.last?.id, code: !isAgent)
+            Outline.Item(title: c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.isRunning && c.id == commands.last?.id, code: !isAgent)
         })
         markCurrentCommand()
     }
