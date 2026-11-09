@@ -341,7 +341,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Views for placements no longer on the desk go (a state view's stay
         // while it's up: its blocks are settled before any view is made,
         // since making one can render again).
-        var stateBlocks = stateGroup.map { statusGroups("")[$0] ?? [] } ?? []
+        var stateBlocks = stateGroup.map { statusGroups()[$0] ?? [] } ?? []
         var stateLenses: [BlockID: Lens] = [:]
         if stateGroup == nil, let w = stateWorkspace, let a = hosts.arrangement(w) {
             // ⌘': the workspace's blocks, each as its tile shows it.
@@ -1299,13 +1299,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
 
-    /// The Inbox's blocks in its order: by host, by the workspace that
-    /// holds each, newest first.
+    /// What waits on you (§3.7), in ⌘J's order: the blocks whose status
+    /// came to need attention and haven't been taken out by hand, and
+    /// threads with something not seen (§3.12) — by host, then grouped by
+    /// the space that first holds each (the group with the newest first),
+    /// newest first within it.
     func inboxOrder() -> [BlockID] {
-        func leaves(_ nodes: [OrgNode]) -> [BlockID] {
-            nodes.flatMap { n -> [BlockID] in n.isGroup ? leaves(n.children) : (n.block.map { [$0] } ?? []) }
+        var order: [BlockID] = []
+        for c in hosts.all {
+            let blocks = c.node.blocks.filter { b in b.needsAttention || (b.kind == .thread && !hosts.unseen(b).isEmpty) }
+            var bySpace: [(BlockID?, [BlockID])] = []
+            for b in blocks.sorted(by: { ($0.statusRecord?.at ?? $0.created) > ($1.statusRecord?.at ?? $1.created) }) {
+                let w = allWorkspaces.first { hosts.arrangement($0)?.placements(of: b.id).isEmpty == false }
+                if let i = bySpace.firstIndex(where: { $0.0 == w }) { bySpace[i].1.append(b.id) } else { bySpace.append((w, [b.id])) }
+            }
+            order += bySpace.flatMap(\.1)
         }
-        return leaves(inboxTree("").0)
+        return order
     }
 
     /// The Inbox as last gone through with ⌘J, to find what comes after a
@@ -3959,8 +3969,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.refreshOrganization(now: true) }
                 return
             }
-            let filter = ""
-            let (nodes, open) = self.organizationTree(org, filter: filter)
+            let (nodes, open) = self.organizationTree(org)
             let selected = org == .desk ? self.deskSelectedRow : nil
             let reachable = self.hosts.reachable()
             self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
@@ -4044,13 +4053,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// to say of it.
     /// Every block with something to say, by status group, the unread
     /// first and the newest next.
-    private func statusGroups(_ filter: String) -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
+    private func statusGroups() -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
         var groups: [StatusGroup: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
             for b in c.node.blocks {
                 guard let look = StatusGlyph.look(of: b) else { continue }
                 let r = b.statusRecord
-                guard matches(filter, [b.displayTitle, b.path, r?.msg, r?.app]) else { continue }
                 let at = r?.at ?? b.terminal?.dormantSince ?? b.created
                 groups[StatusGroup(look), default: []].append((b, r, at))
             }
@@ -4061,56 +4069,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return ua != ub ? ua : a.2 > b.2
             }
         }
-    }
-
-    /// Inbox (§3.7): the blocks whose status came to need attention and
-    /// haven't been taken out by hand — by host, then by the workspace
-    /// they're in, each with what it said and how long ago.
-    private func inboxTree(_ filter: String) -> ([OrgNode], Set<String>) {
-        var nodes: [OrgNode] = []
-        var open: Set<String> = []
-        for c in hosts.all {
-            // A thread with something not seen (§3.12) is in it too.
-            let blocks = c.node.blocks.filter { b in
-                (b.needsAttention || (b.kind == .thread && !hosts.unseen(b).isEmpty))
-                    && matches(filter, [b.displayTitle, b.path, b.statusRecord?.msg, b.statusRecord?.app, b.thread?.lastComment?.comment])
-            }
-            guard !blocks.isEmpty else { continue }
-            // Which workspace holds each, the first that does; the rest elsewhere.
-            var byWorkspace: [(BlockID?, [Block])] = []
-            for b in blocks.sorted(by: { ($0.statusRecord?.at ?? $0.created) > ($1.statusRecord?.at ?? $1.created) }) {
-                let w = allWorkspaces.first { hosts.arrangement($0)?.placements(of: b.id).isEmpty == false }
-                if let i = byWorkspace.firstIndex(where: { $0.0 == w }) { byWorkspace[i].1.append(b) } else { byWorkspace.append((w, [b])) }
-            }
-            let hid = "inbox:host:\(c.host.raw)"
-            let sections = byWorkspace.map { w, items -> OrgNode in
-                let title = w.flatMap { hosts.arrangement($0) }.map { self.title(of: $0) } ?? "Elsewhere"
-                let sid = hid + "/" + (w?.description ?? "elsewhere")
-                let rows = items.map { b -> OrgNode in
-                    let r = b.statusRecord
-                    var words: [String] = []
-                    if let app = r?.app { words.append(app) }
-                    if let msg = r?.msg, !msg.isEmpty { words.append(msg) } else if let t = r?.title, !t.isEmpty { words.append(t) }
-                    if words.isEmpty, let s = StatusGlyph.remark(b) { words.append(s) }
-                    let n = node(for: b, id: sid + "/" + b.id.description, detail: words.joined(separator: " · "))
-                    n.trailing = Age.short(r?.at ?? b.created)
-                    n.emphasis = r?.wantsAttention ?? false
-                    n.age = nil
-                    return n
-                }
-                let s = OrgNode(id: sid, block: w, title: title, symbol: Theme.spaceSymbol, count: rows.count, isGroup: true, children: rows)
-                s.style = .section
-                s.arrangement = w
-                open.insert(sid)
-                return s
-            }
-            let h = OrgNode(id: hid, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", count: blocks.count, isGroup: true, children: sections)
-            h.style = .host
-            open.insert(hid)
-            nodes.append(h)
-        }
-        if nodes.isEmpty { return ([OrgNode(id: "none", title: "Nothing to attend to", symbol: "tray")], []) }
-        return (nodes, open)
     }
 
     // MARK: State views (§3.6)
@@ -4347,15 +4305,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The state view's placement ids: a block's, not an arrangement's.
     private static func statePlacement(_ block: BlockID) -> PlacementID { "state:\(block)" }
 
-    private func matches(_ filter: String, _ texts: [String?]) -> Bool {
-        filter.isEmpty || texts.contains { $0?.lowercased().contains(filter) ?? false }
-    }
 
-    func organizationTree(_ org: Organization, filter: String) -> ([OrgNode], Set<String>) {
+    func organizationTree(_ org: Organization) -> ([OrgNode], Set<String>) {
         switch org {
-        case .desk: return deskTree(filter)
-        case .files: return filesTree(filter)
-        case .closed: return closedTree(filter)
+        case .desk: return deskTree()
+        case .files: return filesTree()
+        case .closed: return closedTree()
         case .inspector: return inspectorTree()
         case .threads: return threadsTree()
         }
@@ -5199,10 +5154,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return (sections, Set(sections.map(\.id)))
     }
 
-    private func closedTree(_ filter: String) -> ([OrgNode], Set<String>) {
+    private func closedTree() -> ([OrgNode], Set<String>) {
         let reachable = hosts.reachable()
         return hostedRows({ c in
-            closedItems(on: c, reachable: reachable).filter { matches(filter, [$0.kind == .arrangement ? title(of: $0.arrangement!) : $0.displayTitle, $0.path]) }.prefix(100).map { b -> OrgNode in
+            closedItems(on: c, reachable: reachable).prefix(100).map { b -> OrgNode in
                 let n = b.kind == .arrangement
                     ? OrgNode(id: "closed/\(b.id)", block: b.id, title: title(of: b.arrangement!), symbol: Theme.spaceSymbol, count: b.arrangement!.placements.count)
                     : node(for: b, id: "closed/\(b.id)", detail: b.place?.abbreviatingHome ?? "")
@@ -5242,7 +5197,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return n
     }
 
-    private func deskTree(_ filter: String) -> ([OrgNode], Set<String>) {
+    private func deskTree() -> ([OrgNode], Set<String>) {
         guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
         let aid = "arr/\(id)"
         let pinned = pins(of: id).map(\.to)
@@ -5250,7 +5205,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let b = hosts.block(p.block)
             // An untitled note by its first words, as its links name it.
             let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
-            guard matches(filter, [title, b?.path]) else { return nil }
             // What its status says beyond its glyph (not "Done"); else
             // its state — docked, maximized — as a small symbol. Edits
             // unsaved: the bar's dot after its name.
@@ -5309,7 +5263,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             top += shown
             guard shown.isEmpty, let b = hosts.block(block) else { continue }
             let title = Self.linkTitle(b)
-            guard matches(filter, [title, b.path]) else { continue }
             let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
             n.arrangement = id
             n.dimmed = true
@@ -5342,7 +5295,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Files: each host's sparse tree, roots open.
-    private func filesTree(_ filter: String) -> ([OrgNode], Set<String>) {
+    private func filesTree() -> ([OrgNode], Set<String>) {
         var open: Set<String> = []
         // What is on a workspace now comes first in every folder; what is
         // kept otherwise (§4) after, dimmed — a folder with something active
@@ -5357,11 +5310,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             var children = made.filter { active[ObjectIdentifier($0)] == true }
             children += made.filter { active[ObjectIdentifier($0)] != true }
             let block = f.block.flatMap { hosts.block($0) }
-            if !filter.isEmpty, children.isEmpty, !matches(filter, [f.name, f.path]) { return nil }
             let id = "file:\(f.host.raw):\(f.path)"
             let isActive = f.block.map { placed.contains($0) } ?? false || children.contains { active[ObjectIdentifier($0)] == true }
             if f.isFolder {
-                if !filter.isEmpty { open.insert(id) }
                 let node = OrgNode(id: id, block: f.block, title: f.name, symbol: f.kind == .git ? "arrow.triangle.branch" : "folder",
                                detail: "", count: children.isEmpty ? nil : f.count, age: Self.age(f.latest), isGroup: true, children: children)
                 if f.block == nil {
@@ -5379,7 +5330,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 // terminal whose title is only its folder says "Terminal").
                 let shown = block.displayTitle
                 let title = block.terminal != nil && (shown.hasPrefix("~") || shown.hasPrefix("/")) ? block.kind.defaultTitle : shown
-                if !filter.isEmpty, !matches(filter, [title, f.path]) { return nil }
                 let node = OrgNode(id: "place:\(block.id)", block: f.block, title: title, symbol: Theme.symbolName(for: block),
                                    detail: "", age: Self.age(f.latest))
                 node.dirty = block.text?.isDirty == true
@@ -5404,7 +5354,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         for c in clients {
             let home = c.transport.isLocal ? NSHomeDirectory() : nil
             var tree = c.node.graph.fileTree(host: c.host, home: home ?? c.home).compactMap(convert)
-            if tree.isEmpty, let home = home ?? c.home, filter.isEmpty {
+            if tree.isEmpty, let home = home ?? c.home {
                 // Nothing of the host yet: its home folder, to start from.
                 let n = OrgNode(id: "file:\(c.host.raw):\(home)", title: "~", symbol: "house", isGroup: false)
                 n.action = { [weak self] in self?.openDirectory(home, on: c.host) }
@@ -8146,7 +8096,6 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
     func sidebarThreadsMode(timeline: Bool) { setThreadsMode(timeline: timeline) }
-    func sidebarFilterChanged(_ text: String) { refreshOrganization(now: true) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     /// The sidebar's +: a new workspace with a terminal in it (⌘T).
@@ -11040,7 +10989,7 @@ extension MainWindowController: OrganizationViewDelegate {
             return menu
         }
         if node.id.hasPrefix("status:"), let group = StatusGroup.allCases.first(where: { "status:\($0)" == node.id }), group != .inactive {
-            let blocks = (statusGroups("")[group] ?? []).map(\.0).filter { $0.statusRecord != nil }
+            let blocks = (statusGroups()[group] ?? []).map(\.0).filter { $0.statusRecord != nil }
             guard !blocks.isEmpty else { return nil }
             menu.addItem(ClosureMenuItem("Clear All \(group.title)", symbol: "eraser") { [weak self] in
                 for b in blocks { self?.hosts.propose(.clearStatus(b.id)) }

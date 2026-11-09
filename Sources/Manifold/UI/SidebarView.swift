@@ -13,7 +13,6 @@ protocol SidebarDelegate: AnyObject {
     func sidebarResizeEnded()
     /// Another organization was chosen, or the filter typed in.
     func sidebarOrganizationChanged(_ organization: Organization)
-    func sidebarFilterChanged(_ text: String)
     /// Threads (§3.12) as a list by title, or as the timeline.
     func sidebarThreadsMode(timeline: Bool)
     /// Threads' filter: which (all, open, unread) and where (the space,
@@ -99,8 +98,6 @@ final class SidebarView: NSView {
     /// Where everything down the sidebar starts: the space's name, the
     /// rows' icons and their sections' names, what needs you, the strip.
     static let margin: CGFloat = 20
-    static let filterHeight: CGFloat = 34
-    static let barHeight: CGFloat = 34
     /// A list pushed over the tree (Recently Closed, Search): the header
     /// grows to a back button, the list's name and what it holds.
     static let pushedHeight: CGFloat = 36
