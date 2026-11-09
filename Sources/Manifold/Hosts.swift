@@ -283,13 +283,7 @@ final class Hosts {
     func gutter(_ block: BlockID) -> [GutterMark] { client(of: block)?.gutters[block] ?? [] }
 
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
-        let block: BlockID
-        switch request {
-        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _), let .highlights(b, _),
-             let .navigable(b), let .symbols(b):
-            block = b
-        }
-        guard let c = client(of: block) else { return done(.error("the block's host isn't attached")) }
+        guard let c = client(of: request.block) else { return done(.error("the block's host isn't attached")) }
         c.lsp(request, done: done)
     }
 
@@ -505,61 +499,22 @@ final class Hosts {
 
     /// Sends a proposal to the host it concerns.
     func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
-        switch proposal {
-        case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
-             let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
-             let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block), let .captureOutput(block, _, _, _),
-             let .newAgent(block, _, _), let .processes(block),
-             let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
-             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
-             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .threadSpace(block, _):
-            (client(of: block) ?? local).propose(proposal, done: done)
-        case let .threadSeen(marks):
-            for (host, group) in Dictionary(grouping: marks, by: { $0.key.host }) {
-                client(host)?.propose(.threadSeen(Dictionary(uniqueKeysWithValues: group.map { ($0.key, $0.value) })))
-            }
-            done?(nil)
-        // A project's said to its own host's client (`HostClient.propose`); here, this Mac's.
-        case .workspaces, .settings, .preferences, .environment, .indexAgents, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .movePath, .showRevision,
-             .project, .unproject:
+        // Questions with answers of their own, their answers dropped.
+        if case let .lsp(request) = proposal { return lsp(request) { _ in done?(nil) } }
+        if case let .scip(request) = proposal { return local.scip(request) { _ in done?(nil) } }
+        switch proposal.route {
+        case let .host(host):
+            (client(host) ?? local).propose(proposal, done: done)
+        case let .ifAttached(host):
+            client(host)?.propose(proposal, done: done)
+        case .local:
             local.propose(proposal, done: done)
-        case let .seen(ids):
-            for (host, group) in Dictionary(grouping: ids, by: \.host) {
-                client(host)?.propose(.seen(group))
-            }
+        case let .shares(shares):
+            for (host, share) in shares { client(host)?.propose(share) }
             done?(nil)
-        case let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
-            (client(of: block) ?? local).propose(proposal, done: done)
-        case let .hold(h):
-            client(h.block.host)?.propose(proposal, done: done)
-        case .release:
-            // Said to the holding host (reconcileHolds); here, to every host,
-            // which is harmless: a host without the hold does nothing.
-            for c in all { c.propose(proposal) }
+        case let .everyHost(share):
+            for c in all { c.propose(share(c.host)) }
             done?(nil)
-        case let .link(link):
-            (client(of: link.from) ?? local).propose(proposal, done: done)
-        case .unlink:
-            for c in all { c.propose(proposal) }
-            done?(nil)
-        case .resetGraph:
-            // Said to a host's own client (resetGraph(on:)); here, every host's.
-            for c in all { c.propose(proposal) }
-            done?(nil)
-        case let .history(shard):
-            (client(shard.host) ?? local).propose(proposal, done: done)
-        case .openDone, .commandReply, .editFile, .signal, .machine:
-            local.propose(proposal, done: done)
-        case let .editing(ids):
-            for c in all { c.propose(.editing(ids.filter { $0.host == c.host })) }
-            done?(nil)
-        case .languageServers:
-            for c in all { c.propose(proposal) }
-            done?(nil)
-        case let .lsp(request):
-            lsp(request) { _ in done?(nil) }
-        case let .scip(request):
-            local.scip(request) { _ in done?(nil) }
         }
     }
 

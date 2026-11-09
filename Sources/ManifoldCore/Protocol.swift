@@ -282,6 +282,88 @@ public enum Proposal: Codable, Sendable {
     case threadSpace(block: BlockID, space: BlockID)
 }
 
+public extension Proposal {
+    /// Which host's client a proposal is sent through, in the app.
+    enum Route {
+        /// That host's, else this Mac's (the host not attached).
+        case host(HostID)
+        /// That host's, if it's attached; else nowhere.
+        case ifAttached(HostID)
+        /// This Mac's host.
+        case local
+        /// Each host named its own part.
+        case shares([HostID: Proposal])
+        /// Every host, each what it's given for it (a host the proposal
+        /// doesn't concern does nothing).
+        case everyHost((HostID) -> Proposal)
+    }
+
+    /// The block whose host the proposal is for: the one it makes, runs,
+    /// reads or changes — an agent's, for its turns.
+    var block: BlockID? {
+        switch self {
+        case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
+             let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
+             let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
+             let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .processes(block),
+             let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
+             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
+             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .threadSpace(block, _),
+             let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
+            return block
+        case let .lsp(request):
+            return request.block
+        case .workspaces, .settings, .preferences, .environment, .indexAgents, .seen, .hold, .release, .link, .unlink, .resetGraph,
+             .history, .openDone, .commandReply, .languageServers, .scip, .editFile, .editing, .project, .unproject, .signal, .machine,
+             .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath, .threadSeen:
+            return nil
+        }
+    }
+
+    /// Where the app sends it.
+    var route: Route {
+        switch self {
+        case let .hold(h):
+            return .ifAttached(h.block.host)
+        case let .link(link):
+            return .host(link.from.host)
+        case let .history(shard):
+            return .host(shard.host)
+        case let .seen(ids):
+            return .shares(Dictionary(grouping: ids, by: \.host).mapValues { .seen($0) })
+        case let .threadSeen(marks):
+            return .shares(Dictionary(grouping: marks, by: { $0.key.host }).mapValues { .threadSeen(Dictionary(uniqueKeysWithValues: $0.map { ($0.key, $0.value) })) })
+        case let .editing(ids):
+            return .everyHost { host in .editing(ids.filter { $0.host == host }) }
+        // A hold's let go by the host holding it (the app's reconcileHolds),
+        // and a graph reset said to a host's own client (resetGraph(on:));
+        // here, to every host, which is harmless: one they don't concern
+        // does nothing.
+        case .release, .unlink, .resetGraph, .languageServers:
+            return .everyHost { _ in self }
+        // A project's said to its own host's client (`HostClient.propose`);
+        // here, this Mac's.
+        case .workspaces, .settings, .preferences, .environment, .indexAgents, .openDone, .commandReply, .scip, .editFile, .project, .unproject,
+             .signal, .machine, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath:
+            return .local
+        // The rest, each for its block's host.
+        default:
+            return block.map { .host($0.host) } ?? .local
+        }
+    }
+}
+
+public extension LSPRequest {
+    /// The text block asked about.
+    var block: BlockID {
+        switch self {
+        case let .definition(b, _), let .references(b, _), let .hover(b, _), let .rename(b, _, _), let .format(b, _), let .completion(b, _),
+             let .highlights(b, _), let .navigable(b), let .symbols(b):
+            return b
+        }
+    }
+}
+
 /// One item of a tree on a file stream (§8): where it is under the tree's
 /// root ("" for the root itself), what it is, how big, its permissions,
 /// when it was modified, and, for a link, where it points.
