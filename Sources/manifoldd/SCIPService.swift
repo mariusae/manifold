@@ -272,24 +272,16 @@ final class SCIPService {
         let command = "cd " + root.shellQuoted + " && " + indexer.command(root: root, out: partial.path)
         let shell = Session.chosenShell(preferred: preferredShell())
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: shell)
-            p.arguments = ["-l", "-c", command]
-            // The host's variables for its tools: a proxy for npx's fetch.
-            p.environment = SpawnEnvironment.environment(.tools)
-            let pipe = Pipe()
-            p.standardOutput = pipe
-            p.standardError = pipe
-            p.standardInput = FileHandle.nullDevice
-            var output = Data()
+            var output = Data(), status: Int32? = nil
             do {
-                try p.run()
-                output = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
+                // The host's variables for its tools: a proxy for npx's
+                // fetch. Six hours at most.
+                (output, status) = try Child.run([shell, "-l", "-c", command], timeout: 6 * 3600, errorsToOutput: true,
+                                                 environment: SpawnEnvironment.environment(.tools))
             } catch {
                 output = Data("can't run \(shell): \(error)".utf8)
             }
-            let ok = p.terminationStatus == 0 && FileManager.default.fileExists(atPath: partial.path)
+            let ok = status == 0 && FileManager.default.fileExists(atPath: partial.path)
             if ok {
                 try? FileManager.default.removeItem(at: out)
                 try? FileManager.default.moveItem(at: partial, to: out)
@@ -300,8 +292,11 @@ final class SCIPService {
             let words = text.split(separator: "\n").suffix(6).joined(separator: "\n")
             // Why, in a line, then its last words.
             let tool = command.split(separator: "&&").last?.split(separator: " ").first.map(String.init)
-            let reason = IndexFailure.reason(output: text, exit: p.isRunning ? nil : p.terminationStatus, tool: tool ?? indexer.id,
-                                             signalled: p.terminationReason == .uncaughtSignal)
+            // Ended by a signal (its own, or the indexer's under the shell):
+            // a shell's 128 and the signal.
+            let signalled = (status ?? 0) > 128
+            let reason = IndexFailure.reason(output: text, exit: status.map { signalled ? $0 - 128 : $0 }, tool: tool ?? indexer.id,
+                                             signalled: signalled)
             self?.queue.async {
                 self?.running.remove(root)
                 if !ok { self?.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }

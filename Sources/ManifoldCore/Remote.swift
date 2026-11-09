@@ -188,7 +188,10 @@ public struct Child {
     /// the end of git's output open, so its reader waited out its timeout,
     /// and every git command after it — a minute at the server's start,
     /// the gutter's marks with it), and on macOS whatever else is open.
-    public static func spawn(_ argv: [String], stderrToNull: Bool = false, environment: [String: String]? = nil) throws -> Child {
+    /// `errorsToOutput`: its stderr into the output pipe too, in with what
+    /// it prints (for a log of both).
+    public static func spawn(_ argv: [String], stderrToNull: Bool = false, errorsToOutput: Bool = false,
+                             environment: [String: String]? = nil) throws -> Child {
         var toChild: [Int32] = [0, 0], fromChild: [Int32] = [0, 0]
         guard pipe(&toChild) == 0, pipe(&fromChild) == 0 else { throw POSIXError(.EPIPE) }
         for fd in toChild + fromChild { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
@@ -200,10 +203,15 @@ public struct Child {
         posix_spawn_file_actions_init(&actions)
         posix_spawn_file_actions_adddup2(&actions, toChild[0], 0)
         posix_spawn_file_actions_adddup2(&actions, fromChild[1], 1)
-        if stderrToNull { posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0) }
+        if errorsToOutput {
+            posix_spawn_file_actions_adddup2(&actions, fromChild[1], 2)
+        } else if stderrToNull {
+            posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+        }
         #if canImport(Darwin)
-        // Only 0, 1 and 2 go to the child (2 ours, unless it's /dev/null).
-        if !stderrToNull { posix_spawn_file_actions_addinherit_np(&actions, 2) }
+        // Only 0, 1 and 2 go to the child (2 ours, unless it's /dev/null
+        // or the output pipe).
+        if !stderrToNull, !errorsToOutput { posix_spawn_file_actions_addinherit_np(&actions, 2) }
         var attr: posix_spawnattr_t? = nil
         posix_spawnattr_init(&attr)
         posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
@@ -239,11 +247,13 @@ public struct Child {
     /// status. With `stall`, it's ended once nothing has moved (no input
     /// taken, no output given) for that long, `timeout` being the most it
     /// gets in all; `progress` is told how much of the input has been
-    /// taken as it goes, from another thread.
+    /// taken as it goes, from another thread. The status is a shell's:
+    /// its exit code, or 128 and the signal that ended it. `quiet`: its
+    /// stderr to /dev/null; `errorsToOutput`: in its output.
     public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, stall: TimeInterval? = nil,
-                           progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false,
+                           progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false, errorsToOutput: Bool = false,
                            environment: [String: String]? = nil) throws -> (output: Data, status: Int32) {
-        let child = try spawn(argv, stderrToNull: quiet, environment: environment)
+        let child = try spawn(argv, stderrToNull: quiet, errorsToOutput: errorsToOutput, environment: environment)
         let moved = Moved()
         let writer = Thread {
             input.withUnsafeBytes { raw in

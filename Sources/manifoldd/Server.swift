@@ -469,9 +469,6 @@ final class Server {
     /// `mani ui set @here …` sets its values) and what happened as
     /// MANI_EVENT and MANI_VALUE; what it prints goes to the log.
     private func runPanel(_ block: BlockID, command: String, event: String) {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", command]
         var env = ProcessInfo.processInfo.environment
         let tools = Session.toolDirectories
         env["PATH"] = (tools + [env["PATH"] ?? "/usr/bin:/bin"]).joined(separator: ":")
@@ -481,18 +478,21 @@ final class Server {
         if let data = event.data(using: .utf8), let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let v = o["value"] {
             env["MANI_VALUE"] = (v as? String) ?? (try? JSONSerialization.data(withJSONObject: v, options: .fragmentsAllowed)).map { String(decoding: $0, as: UTF8.self) } ?? ""
         }
-        p.environment = env
         let home = node.block(block)?.home ?? NSHomeDirectory()
-        p.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.fileExists(atPath: home) ? home : NSHomeDirectory())
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        p.standardInput = FileHandle.nullDevice
-        p.terminationHandler = { proc in
-            let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile().prefix(4000), as: UTF8.self)
-            log("panel \(block): `\(command)` ended \(proc.terminationStatus)\(out.isEmpty ? "" : ": " + out)")
+        let dir = FileManager.default.fileExists(atPath: home) ? home : NSHomeDirectory()
+        // Read as it prints (a pipe read only at the end held up a command
+        // that printed more than it holds), on a thread of its own; a day
+        // at most.
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let (output, status) = try Child.run(["/bin/sh", "-c", "cd " + dir.shellQuoted + " && " + command],
+                                                     timeout: 24 * 3600, errorsToOutput: true, environment: env)
+                let out = String(decoding: output.prefix(4000), as: UTF8.self)
+                log("panel \(block): `\(command)` ended \(status)\(out.isEmpty ? "" : ": " + out)")
+            } catch {
+                log("panel \(block): `\(command)` didn't start: \(error)")
+            }
         }
-        do { try p.run() } catch { log("panel \(block): `\(command)` didn't start: \(error)") }
     }
 
     /// A connection gone: whatever it was doing let go, the pens it held
