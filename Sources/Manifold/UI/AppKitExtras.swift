@@ -63,3 +63,35 @@ extension NSView {
         return image
     }
 }
+
+/// A modifier held (⌘ for ⌘`, ⌃ for ⌃⇥): `released` when it's let go —
+/// or the app's left, so its letting go won't be heard — and `escaped`
+/// for ⎋ (taken, not passed on). Watched until `stop`.
+final class ModifierHold {
+    private var monitors: [Any] = []
+    private var leaving: NSObjectProtocol?
+
+    init(_ key: NSEvent.ModifierFlags, released: @escaping () -> Void, escaped: @escaping () -> Void) {
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { e in
+            if !e.modifierFlags.contains(key) { released() }
+            return e
+        } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { e in
+            guard e.keyCode == 53 else { return e }
+            escaped()
+            return nil
+        } as Any)
+        leaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.unchecked { released() }
+        }
+    }
+
+    func stop() {
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors = []
+        if let leaving { NotificationCenter.default.removeObserver(leaving) }
+        leaving = nil
+    }
+
+    deinit { stop() }
+}

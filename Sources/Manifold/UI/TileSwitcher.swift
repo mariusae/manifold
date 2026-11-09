@@ -50,7 +50,7 @@ extension MainWindowController {
         let step = back ? -1 : 1
         if var w = tileWalk {
             // Its key let go unheard (the app left meanwhile): over.
-            if tileMonitors.isEmpty || (!NSEvent.modifierFlags.contains(tileWalkKey) && !debugHeld) { endTileWalk(settling: true) } else {
+            if tileHold == nil || (!NSEvent.modifierFlags.contains(tileWalkKey) && !debugHeld) { endTileWalk(settling: true) } else {
                 let n = w.places.count
                 w.index = ((w.index + step) % n + n) % n
                 tileWalk = w
@@ -85,29 +85,16 @@ extension MainWindowController {
 
 
     private func watchTileWalk() {
-        tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            guard let self else { return event }
-            if !event.modifierFlags.contains(self.tileWalkKey) { self.endTileWalk(settling: true) }
-            return event
-        } as Any)
-        tileMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else { return event }
-            self?.endTileWalk(settling: false)
-            return nil
-        } as Any)
-        tileLeaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.unchecked { self?.endTileWalk(settling: true) }
-        }
+        tileHold = ModifierHold(tileWalkKey, released: { [weak self] in self?.endTileWalk(settling: true) },
+                                escaped: { [weak self] in self?.endTileWalk(settling: false) })
     }
 
     /// Option let go (`settling`), or Escape: let go before the cards
     /// showed, gone to the tile stepped to with nothing shown; after, the
     /// card chosen becomes its tile, and the rest go back to theirs.
     private func endTileWalk(settling: Bool, to chosen: Int? = nil) {
-        tileMonitors.forEach(NSEvent.removeMonitor)
-        tileMonitors = []
-        if let o = tileLeaving { NotificationCenter.default.removeObserver(o) }
-        tileLeaving = nil
+        tileHold?.stop()
+        tileHold = nil
         debugHeld = false
         guard let w = tileWalk else { return }
         tileWalk = nil
@@ -149,7 +136,6 @@ extension MainWindowController {
         content.layoutSubtreeIfNeeded()
         let tiles = partsInRoot(content.placedParts(), from: content)
         let arriving = target?.tile ?? home
-        var items: [GridView.Morph] = []
         for c in cards where c.frame != .zero {
             let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
             if c.id == arriving {
@@ -169,7 +155,6 @@ extension MainWindowController {
                 let scale = window?.backingScaleFactor ?? 2
                 tileFlights.append(Genie.flight(c.frame, c.picture, ground: c.ground, to: row, sidebar.organizationView.picture(of: t, in: root)?.image, ground: nil,
                                                 fade: true, corner: Radius.control, in: host, over: Motion.spatial * 1.5, scale: scale))
-                _ = card
             } else {
                 // Its tile's in another space: gone, sinking a little.
                 let l = CALayer()
@@ -199,7 +184,6 @@ extension MainWindowController {
                 tileFlights.append(l)
             }
         }
-        tileFlights += GridView.morph(items, in: host, over: Motion.spatial * 1.5)
     }
 
     private func landTiles() {
@@ -298,7 +282,6 @@ extension MainWindowController {
                 // Docked: out of its row in the sidebar, as a docked bar comes out.
                 flights.append((GridView.Pictured(parts: [(row, sidebar.organizationView.picture(of: t, in: root)?.image)], ground: nil),
                                 c.frame, c.picture, c.ground, delay))
-                _ = card
             } else {
                 // Elsewhere: out from under the first.
                 items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: delay))

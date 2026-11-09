@@ -275,15 +275,8 @@ extension MainWindowController {
         spaceSwitch = (order, index)
         // Shown in a moment, if ⌘'s still held.
         spaceSwitchShow.schedule(after: 0.2) { [weak self] in self?.showSpaceSwitcher() }
-        spaceSwitchMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] e in
-            if !e.modifierFlags.contains(.command) { self?.endSpaceSwitch(going: true) }
-            return e
-        } as Any)
-        spaceSwitchMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard e.keyCode == 53 else { return e }
-            self?.endSpaceSwitch(going: false)
-            return nil
-        } as Any)
+        spaceSwitchHold = ModifierHold(.command, released: { [weak self] in self?.endSpaceSwitch(going: true) },
+                                       escaped: { [weak self] in self?.endSpaceSwitch(going: false) })
     }
 
     private func showSpaceSwitcher() {
@@ -309,8 +302,8 @@ extension MainWindowController {
 
     func endSpaceSwitch(going: Bool) {
         spaceSwitchShow.cancel()
-        spaceSwitchMonitors.forEach { NSEvent.removeMonitor($0) }
-        spaceSwitchMonitors = []
+        spaceSwitchHold?.stop()
+        spaceSwitchHold = nil
         if let v = spaceSwitcher {
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = Motion.fast

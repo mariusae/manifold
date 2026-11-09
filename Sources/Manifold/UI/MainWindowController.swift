@@ -70,8 +70,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// ⌃⇥'s walk, while control is held: the places in the order it began
     /// with, how far along it is, and what shows its cards if it's held.
     var tileWalk: (places: [Settled], index: Int, show: DispatchWorkItem)?
-    var tileMonitors: [Any] = []
-    var tileLeaving: NSObjectProtocol?
+    /// Control held for ⌃⇥'s walk, watched.
+    var tileHold: ModifierHold?
     /// ⌃⇥'s cards, once they show, and their pictures on their way.
     var tileSwitcher: (frame: NSView, column: CardColumnView)?
     var tileFlights: [CALayer] = []
@@ -964,7 +964,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var spaceSwitch: (order: [BlockID], index: Int)?
     var spaceSwitcher: SpaceSwitcherView?
     let spaceSwitchShow = Debouncer()
-    var spaceSwitchMonitors: [Any] = []
+    /// ⌘ held for ⌘`'s switcher, watched.
+    var spaceSwitchHold: ModifierHold?
     /// A space's card under the pointer on its square in the strip.
     var spacePeek: SpaceSwitcherView?
     let spacePeekWork = Debouncer()
