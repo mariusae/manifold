@@ -103,6 +103,8 @@ final class PopMenu: NSView, NSTextFieldDelegate {
             self.needsLayout = true
         }
         filterButton.isHidden = true
+        // Its ground a layer's: set again when light and dark switch.
+        filterButton.themed { [weak self] _ in self?.updateFilterLook() }
         scroll.documentView = list
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true

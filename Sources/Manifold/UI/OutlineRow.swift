@@ -20,6 +20,8 @@ struct OutlineEntry: Equatable {
 /// An outline row: a mark, the words, and the outcome in grey at the right.
 final class OutlineRow: NSTableCellView {
     private let mark = NSView()
+    /// The mark's color (a layer's, so set again when light and dark switch).
+    private var markColor: NSColor = Theme.secondaryText.withAlphaComponent(0.6)
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private var level = 0
@@ -28,6 +30,7 @@ final class OutlineRow: NSTableCellView {
         super.init(frame: frame)
         mark.wantsLayer = true
         mark.layer?.cornerRadius = Radius.hair
+        themed { $0.mark.layer?.backgroundColor = $0.markColor.cgColor }
         title.font = UIType.body
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail
@@ -46,7 +49,8 @@ final class OutlineRow: NSTableCellView {
         title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : FontTheme.code(11.5)
         detail.stringValue = e.detail
         detail.isHidden = e.detail.isEmpty
-        mark.layer?.backgroundColor = (e.failed ? Theme.statusError : e.running ? Theme.accent : Theme.secondaryText.withAlphaComponent(0.6)).cgColor
+        markColor = e.failed ? Theme.statusError : e.running ? Theme.accent : Theme.secondaryText.withAlphaComponent(0.6)
+        effectiveAppearance.performAsCurrentDrawingAppearance { mark.layer?.backgroundColor = markColor.cgColor }
         toolTip = e.title
         needsLayout = true
     }

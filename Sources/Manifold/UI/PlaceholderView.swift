@@ -21,7 +21,7 @@ final class PlaceholderView: NSView, PaneContent {
         self.block = block
         super.init(frame: .zero)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.sheet(level: 0).cgColor }
+        themed { $0.layer?.backgroundColor = ($0.paper ?? Theme.sheet(level: 0)).cgColor }
         title.stringValue = "On \(label)"
         title.font = UIType.heading
         title.textColor = Theme.text
@@ -41,10 +41,14 @@ final class PlaceholderView: NSView, PaneContent {
 
     @objc private func attachClicked() { onAttach?() }
 
+    /// Its ground while waiting quietly: the tile's own paper (else the sheet's).
+    private var paper: NSColor?
+
     /// The block on its way (just made, its host a round trip off): the
     /// tile's own paper, and nothing said unless it takes a while.
     func waitQuietly(paper: NSColor) {
-        themed { $0.layer?.backgroundColor = paper.cgColor }
+        self.paper = paper
+        effectiveAppearance.performAsCurrentDrawingAppearance { layer?.backgroundColor = paper.cgColor }
         for v in [title, note, button] as [NSView] { v.alphaValue = 0 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self, self.window != nil else { return }
