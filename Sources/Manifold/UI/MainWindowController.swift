@@ -6932,7 +6932,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A tile's block replaced in place — a listing gone into a folder, a
     /// preview gone to another page: the same tile, as a browser's window
-    /// is; Go Back comes back along the trail.
+    /// is; Go Back comes back along the trail. Maximized, it stays so.
     private func replace(_ placement: PlacementID, with block: BlockID, lens: Lens, as id: PlacementID? = nil) {
         guard let a = arrangement, let (c, i) = a.locate(placement) else { return }
         let p = id.map { Placement(id: $0, block: block, lens: lens) } ?? Placement(block: block, lens: lens)
@@ -6942,7 +6942,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // otherwise come back a different size, its neighbours moved.
         var heights: [PlacementID: Double] = [:]
         for t in a.columns[c] { heights[t.id == placement ? p.id : t.id] = a.height(of: t.id) }
-        appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)])
+        appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)]
+                         + (a.full == placement ? [.full(p.id)] : []))
     }
 
     /// A tile gone on to another block in its place — a listing into a
@@ -7465,7 +7466,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if !events.isEmpty { self.hosts.append(events, to: .block(p.block)) }
             if let top { self.pendingTopLines[fresh] = top }
             self.replace(id, with: p.block, lens: other, as: fresh)
-            if a.full == id { self.appendToSelected([.full(fresh)]) }
         }
         if let e = views[id] as? EditorView { carry(e.topLine) }
         else if let m = views[id] as? MarkdownView { m.topLine(carry) }
@@ -7484,7 +7484,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard let p = arrangement?.placement(id), canOutline(hosts.block(p.block), lens: p.lens) else { return NSSound.beep() }
         let fresh = ULID.make()
         replace(id, with: p.block, lens: p.lens == .outliner ? .editor : .outliner, as: fresh)
-        if arrangement?.full == id { appendToSelected([.full(fresh)]) }
     }
 
     /// Whether a tile's text can be an outline: a note, or a Markdown file.
@@ -8817,12 +8816,13 @@ extension MainWindowController: GridDelegate {
         let menu = NSMenu()
         let maximized = a.full == placement
         menu.addItem(ClosureMenuItem(maximized ? "Restore" : "Maximize", symbol: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") { [weak self] in self?.gridToggleFull(placement) })
-        menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.appendToSelected(a.growing(placement)) })
+        // As the pill's clicks are (a column just filled, put back first).
+        menu.addItem(ClosureMenuItem("Grow", symbol: "arrow.up.and.down") { [weak self] in self?.gridGrow(placement) })
         if maximized, let c = a.columnIndex(of: placement), a.columns[c].count > 1 {
             // Maximized, the column behind it: closed with it.
             menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseColumn(placement) })
         }
-        menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.appendToSelected(a.growing(placement, whole: true)) })
+        menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.gridFill(placement) })
         if !maximized, contentHeight(of: placement, in: a) != nil {
             let summarized = isSummarized(placement)
             menu.addItem(ClosureMenuItem(summarized ? "Show Content" : "Shrink to Summary", symbol: summarized ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
