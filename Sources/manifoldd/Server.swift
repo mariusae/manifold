@@ -34,39 +34,62 @@ final class Server {
     let node = Node()
     private let store: LogStore
     let clock: Clock
-    private var clients: [any Channel] = []
-    /// Each client's attachment number, and the app among them (named so).
-    private var clientIDs: [ObjectIdentifier: Int] = [:]
-    private var appClients: Set<ObjectIdentifier> = []
+    /// A connection that said hello — the app, `mani`, a script — and
+    /// what the host keeps for it while it's here.
+    private final class Peer {
+        let conn: any Channel
+        /// Its attachment number.
+        let id: Int
+        /// The app (it names itself so), not `mani` or another client.
+        let isApp: Bool
+        /// What it calls its machine, and which launch of the app it is.
+        let machine: String?
+        let instance: String?
+        /// The process at the other end, as the socket says (§3.12): what
+        /// a `mani` command's author is found from.
+        let pid: pid_t?
+        /// Its link, by its control stream: when anything at all was last
+        /// read from it (a stream's acknowledgements, not only the
+        /// control's frames), and what's still to be written.
+        let link: Mux?
+        /// The epoch it last knew: at its hello, the one it says (a link
+        /// made again), or the host's (a launch's first).
+        var knownEpoch: UInt64 = 0
+        /// When it last said anything, and whether it pings (an app over a
+        /// link: every two seconds): one of those silent for long is gone —
+        /// its Mac asleep, its link dead without saying — and is closed,
+        /// not left to be handed commands it will never answer.
+        var lastHeard: Date?
+        var pinging = false
+        /// The `mani` commands it's doing, (asker, id): if it goes with
+        /// them unanswered, each asker is told so — never left waiting on a
+        /// Mac asleep or gone.
+        var commandsAt: Set<CommandAsked> = []
+
+        init(conn: any Channel, id: Int, isApp: Bool, machine: String?, instance: String?, pid: pid_t?, link: Mux?) {
+            self.conn = conn
+            self.id = id
+            self.isApp = isApp
+            self.machine = machine
+            self.instance = instance
+            self.pid = pid
+            self.link = link
+        }
+    }
+    /// Every connection that said hello, by its channel.
+    private var peers: [ObjectIdentifier: Peer] = [:]
     /// `mani` commands passed on to the app and not yet answered in full,
     /// by the client that asked: the app is told when it goes.
     private var commandsOut: [Int: Set<Int>] = [:]
-    /// The same commands by the app connection doing them, (asker, id):
-    /// one that goes with them unanswered, each asker told so — never left
-    /// waiting on a Mac asleep or gone.
-    private var commandsAt: [ObjectIdentifier: Set<CommandAsked>] = [:]
     private struct CommandAsked: Hashable { var client: Int; var id: Int }
-    /// When each connection last said anything, and those that ping (an
-    /// app over a link: every two seconds): one of those silent for long is
-    /// gone — its Mac asleep, its link dead without saying — and is closed,
-    /// not left to be handed commands it will never answer.
-    private var lastHeard: [ObjectIdentifier: Date] = [:]
-    private var pinging: Set<ObjectIdentifier> = []
-    /// Each connection's link, by its control stream: when anything at all
-    /// was last read from it (a stream's acknowledgements, not only the
-    /// control's frames), and what's still to be written.
-    private var links: [ObjectIdentifier: Mux] = [:]
+    /// Each connection's link, by its control stream, from its accepting
+    /// (which keeps it), and the process at the other end as the socket
+    /// says (§3.12).
+    private var links: [ObjectIdentifier: (mux: Mux, pid: pid_t?)] = [:]
     static let silentFor: TimeInterval = 15
     /// Which attachment holds the pen for each shard a client may lead
     /// (§8.2): the last to focus its block, or the first to append.
     private var owners: [ShardID: ObjectIdentifier] = [:]
-    /// What each app's attachment calls its machine, and which launch of
-    /// the app it is (`hello`).
-    private var machines: [ObjectIdentifier: String] = [:]
-    /// The process at the other end of each connection, as the socket says
-    /// (§3.12): what a `mani` command's author is found from.
-    private var peers: [ObjectIdentifier: pid_t] = [:]
-    private var instances: [ObjectIdentifier: String] = [:]
     /// Who the host is attached to (§8.2): the launch of the app that last
     /// took it — by focusing there, or Take Over — and how many times it
     /// has been taken. Kept on disk, so the epoch only ever grows: a launch
@@ -83,9 +106,6 @@ final class Server {
         return a
     }()
     private static var attachedFile: URL { Paths.directory.appendingPathComponent("attached.json") }
-    /// The epoch each app connection last knew: at its hello, the one it
-    /// says (a link made again), or the host's (a launch's first).
-    private var knownEpoch: [ObjectIdentifier: UInt64] = [:]
     /// Connections that haven't said what they are yet.
     private var pending: [any Channel] = []
     private var attachments = 0
@@ -233,12 +253,12 @@ final class Server {
         }
         languageServers.onDiagnostics = { [weak self] block, items in
             let frame = Frame.message(ServerMessage.diagnostics(block, items))
-            for c in self?.clients ?? [] { c.send(frame) }
+            self?.broadcast(frame)
         }
         languageServers.onState = { [weak self] language, root, state in
             log("language server \(language) at \(root): \(state)")
             let frame = Frame.message(ServerMessage.languageServer(language: language, root: root, state: state))
-            for c in self?.clients ?? [] { c.send(frame) }
+            self?.broadcast(frame)
         }
     }
 
@@ -248,7 +268,7 @@ final class Server {
         agentLink.onChange = { [weak self] status in
             self?.queue.async {
                 let frame = Frame.message(ServerMessage.agentLink(status))
-                for c in self?.clients ?? [] { c.send(frame) }
+                self?.broadcast(frame)
             }
         }
         agentLink.start()
@@ -316,14 +336,12 @@ final class Server {
             // first frame says — the connection's own, a client's hello.
             let mux = Mux(Connection(fd: fd, queue: queue))
             let conn = mux.control
-            links[ObjectIdentifier(conn)] = mux
-            let peer = mf_socket_peer_pid(fd)
-            if peer > 0 { peers[ObjectIdentifier(conn)] = peer }
+            let pid = mf_socket_peer_pid(fd)
+            links[ObjectIdentifier(conn)] = (mux, pid > 0 ? pid : nil)
             conn.onFrame = { [weak self, unowned conn] frame in self?.firstFrame(frame, on: conn) }
             conn.onClose = { [weak self, unowned conn] in
                 self?.pending.removeAll { $0 === conn }
                 self?.links.removeValue(forKey: ObjectIdentifier(conn))
-                self?.peers.removeValue(forKey: ObjectIdentifier(conn))
             }
             mux.onStream = { [weak self] stream in
                 stream.onFrame = { [weak self, unowned stream] frame in self?.firstFrame(frame, on: stream) }
@@ -338,42 +356,22 @@ final class Server {
         conn.onClose = nil
         switch frame.decode(ClientMessage.self) {
         case let .hello(_, name, machine, instance, epoch)?:
-            clients.append(conn)
             attachments += 1
-            clientIDs[ObjectIdentifier(conn)] = attachments
             let me = ObjectIdentifier(conn)
-            machines[me] = machine
+            let link = links[me]
+            let peer = Peer(conn: conn, id: attachments, isApp: name == "Manifold", machine: machine, instance: instance, pid: link?.pid, link: link?.mux)
             if let instance {
                 // The same app back (a link made again, the old one maybe
                 // not yet seen to close): the pens it held are its still.
-                for (other, i) in instances where i == instance && other != me {
+                for (other, p) in peers where p.instance == instance {
                     for (shard, holder) in owners where holder == other { owners[shard] = me }
                 }
-                instances[me] = instance
             }
-            knownEpoch[me] = isAttached(me) ? attached.epoch : (epoch ?? attached.epoch)
-            if name == "Manifold" {
-                appClients.insert(ObjectIdentifier(conn))
-                indexAgents()
-            }
+            peers[me] = peer
+            peer.knownEpoch = isAttached(peer) ? attached.epoch : (epoch ?? attached.epoch)
+            if peer.isApp { indexAgents() }
             conn.onFrame = { [weak self, unowned conn] frame in self?.clientFrame(frame, from: conn) }
-            conn.onClose = { [weak self, unowned conn] in
-                // (Before its machine's name is forgotten: the askers are told it.)
-                self?.commandsUnanswered(by: conn)
-                self?.commandsEnded(by: conn)
-                self?.clients.removeAll { $0 === conn }
-                self?.clientIDs.removeValue(forKey: ObjectIdentifier(conn))
-                self?.appClients.remove(ObjectIdentifier(conn))
-                self?.owners = self?.owners.filter { $0.value != ObjectIdentifier(conn) } ?? [:]
-                self?.machines.removeValue(forKey: ObjectIdentifier(conn))
-                self?.instances.removeValue(forKey: ObjectIdentifier(conn))
-                self?.knownEpoch.removeValue(forKey: ObjectIdentifier(conn))
-                self?.lastHeard.removeValue(forKey: ObjectIdentifier(conn))
-                self?.pinging.remove(ObjectIdentifier(conn))
-                self?.links.removeValue(forKey: ObjectIdentifier(conn))
-                // Whether whoever it's attached to is still here.
-                self?.tellAttachment()
-            }
+            conn.onClose = { [weak self, unowned conn] in self?.remove(conn) }
             // `mani` needs none of it: only that the versions agree.
             let snapshots = name == Mani.name ? [] : node.shards.keys.sorted { $0.description < $1.description }.compactMap { node.snapshot($0) }
             conn.send(.message(ServerMessage.welcome(version: protocolVersion, pid: getpid(), host: host, label: label,
@@ -382,34 +380,35 @@ final class Server {
             if name != Mani.name { conn.send(.message(ServerMessage.agentLink(agentLink.status))) }
             // Who it's attached to — this launch watching, if another took
             // it since it last knew — told to every app (its holder maybe back).
-            if appClients.contains(me) { tellAttachment() }
+            if peer.isApp { tellAttachment() }
         case .attach(let req)?:
             attach(conn, req)
         case .backfill(let req)?:
             // A terminal's history after its screen, on a stream of its own.
-            guard let stream = conn as? MuxStream, let session = sessions[req.block] else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
+            guard let session = sessions[req.block] else { return conn.close() }
             session.backfill(req, to: stream)
         case let .tunnel(port)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             tunnel(stream, to: port)
         case let .connect(host, port)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             connect(stream, to: host, port: port)
         // Files, each on a stream of its own (§8): read and written off the
         // queue, paced to the link.
         case let .readFile(path, offset, length, limit)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             FileSender.start(stream, path: path, offset: offset, length: length, limit: limit, queue: queue)
         // Trees (§8): what a copy is — a file or a folder and all in it.
         case let .readTree(path)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             let source = TreeSource(stream, root: path)
             source.onFinished = { [weak stream] _ in stream?.close() }
             stream.onClose = { source.cancel() }
             stream.onFrame = { _ in }
             source.start()
         case let .writeTree(path, replace)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             let sink = TreeSink(stream, destination: path, replace: replace)
             if sink.refusedAtOnce() {
                 stream.send(.message(TreeMessage.end(error: "exists", path: nil)))
@@ -422,7 +421,7 @@ final class Server {
             stream.onFrame = { frame in sink.received(frame) }
             stream.onClose = { sink.cut() }
         case let .copyTree(from, to, replace)?:
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             let copier = TreeCopier(from: from, to: to, replace: replace)
             copier.onProgress = { [weak stream] done, total in stream?.send(.message(TreeMessage.progress(done: done, total: total))) }
             copier.onFinished = { [weak stream] error, path in
@@ -434,7 +433,7 @@ final class Server {
             copier.start()
         case let .saveImage(block, name, folder)?:
             // Beside a Markdown file; for a note, in Manifold's own folder.
-            guard let stream = conn as? MuxStream else { return conn.close() }
+            guard let stream = self.stream(conn) else { return }
             FileReceiver.start(stream, path: (folder ?? Self.imagesFolder) + "/" + name, mode: .unique, queue: queue) { [weak self] path in
                 guard let self, self.node.block(block) == nil else { return }
                 self.append(.create(kind: .image, title: nil, path: path), to: .block(block))
@@ -456,10 +455,10 @@ final class Server {
     /// and whatever else it runs ended, then every file it keeps removed,
     /// and the server gone — nothing saved on the way out.
     private func erase(by conn: any Channel) {
-        let who = machines[ObjectIdentifier(conn)]
+        let who = peers[ObjectIdentifier(conn)]?.machine
         log("session deleted for good\(who.map { " from \($0)" } ?? "")")
         // Each once: the asker is among the clients, unless it's `manifoldd erase`.
-        for c in clients where c !== conn { c.send(.message(ServerMessage.erased(by: who))) }
+        broadcast(.message(ServerMessage.erased(by: who)), except: conn)
         conn.send(.message(ServerMessage.erased(by: who)))
         languageServers.stopAll()
         searches.stopAll()
@@ -509,35 +508,80 @@ final class Server {
         do { try p.run() } catch { log("panel \(block): `\(command)` didn't start: \(error)") }
     }
 
+    /// A connection gone: whatever it was doing let go, the pens it held
+    /// with it.
+    private func remove(_ conn: any Channel) {
+        let me = ObjectIdentifier(conn)
+        // (Before its machine's name is forgotten: the askers are told it.)
+        commandsUnanswered(by: conn)
+        commandsEnded(by: conn)
+        peers.removeValue(forKey: me)
+        owners = owners.filter { $0.value != me }
+        links.removeValue(forKey: me)
+        // Whether whoever it's attached to is still here.
+        tellAttachment()
+    }
+
+    /// The connections that said hello, in the order they did.
+    private var allPeers: [Peer] { peers.values.sorted { $0.id < $1.id } }
+
+    /// The app's connections, in the order they said hello.
+    private var apps: [Peer] { allPeers.filter(\.isApp) }
+
+    /// The connection with this attachment number.
+    private func peer(numbered id: Int) -> Peer? {
+        peers.values.first { $0.id == id }
+    }
+
+    /// A frame for every client (but one).
+    private func broadcast(_ frame: Frame, except: (any Channel)? = nil) {
+        for p in allPeers where p.conn !== except { p.conn.send(frame) }
+    }
+
+    /// What only a stream of its own carries: asked for on a connection's
+    /// control, the connection is closed.
+    private func stream(_ c: any Channel) -> MuxStream? {
+        if let s = c as? MuxStream { return s }
+        c.close()
+        return nil
+    }
+
+    /// An append to a shard refused: the client is sent the log as it is.
+    private func refuse(_ shard: ShardID, to conn: any Channel) {
+        conn.send(.message(ServerMessage.rejected(shard: shard)))
+        if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
+    }
+
     /// A client gone with `mani` commands unanswered: the app stops on them.
     private func commandsEnded(by conn: any Channel) {
-        guard let client = clientIDs[ObjectIdentifier(conn)], let ids = commandsOut.removeValue(forKey: client), !ids.isEmpty else { return }
+        guard let client = peers[ObjectIdentifier(conn)]?.id, let ids = commandsOut.removeValue(forKey: client), !ids.isEmpty else { return }
         // Told to the app doing each (another may not know of it).
         for id in ids {
             let asked = CommandAsked(client: client, id: id)
-            guard let at = commandsAt.first(where: { $0.value.contains(asked) })?.key else { continue }
-            commandsAt[at]?.remove(asked)
-            clients.first { ObjectIdentifier($0) == at }?.send(.message(ServerMessage.commandEnded(id: id, client: client)))
+            guard let at = peers.values.first(where: { $0.commandsAt.contains(asked) }) else { continue }
+            at.commandsAt.remove(asked)
+            at.conn.send(.message(ServerMessage.commandEnded(id: id, client: client)))
         }
     }
 
     /// An app connection gone with `mani` commands it hadn't answered:
     /// each asker told, rather than left waiting for good.
     private func commandsUnanswered(by conn: any Channel) {
-        guard let asked = commandsAt.removeValue(forKey: ObjectIdentifier(conn)), !asked.isEmpty else { return }
-        let who = machines[ObjectIdentifier(conn)].map { " (on \($0))" } ?? ""
+        guard let me = peers[ObjectIdentifier(conn)], !me.commandsAt.isEmpty else { return }
+        let asked = me.commandsAt
+        me.commandsAt = []
+        let who = me.machine.map { " (on \($0))" } ?? ""
         for a in asked {
             commandsOut[a.client]?.remove(a.id)
             log("command \(a.id) of client \(a.client) unanswered: its app\(who) went")
-            clients.first { clientIDs[ObjectIdentifier($0)] == a.client }?
+            peer(numbered: a.client)?.conn
                 .send(.message(ServerMessage.commandReply(id: a.id, ManiReply(err: "mani: Manifold\(who) went away before it answered; try again\n", status: 1))))
         }
     }
 
     /// When anything was last read from a connection.
-    private func heard(_ c: any Channel) -> Date {
-        let id = ObjectIdentifier(c)
-        return max(lastHeard[id] ?? .distantPast, links[id]?.linkState().lastRead ?? .distantPast)
+    private func heard(_ p: Peer) -> Date {
+        max(p.lastHeard ?? .distantPast, p.link?.linkState().lastRead ?? .distantPast)
     }
 
     /// Connections that ping and have gone quiet — nothing read from them
@@ -548,13 +592,13 @@ final class Server {
     private func closeSilent() {
         let now = Date()
         // (Links whose first frame wasn't a hello, closed: forgotten.)
-        links = links.filter { !$0.value.control.isClosed }
-        for c in clients where pinging.contains(ObjectIdentifier(c)) {
-            let quiet = now.timeIntervalSince(heard(c))
+        links = links.filter { !$0.value.mux.control.isClosed }
+        for p in allPeers where p.pinging {
+            let quiet = now.timeIntervalSince(heard(p))
             guard quiet > Self.silentFor else { continue }
-            if let link = links[ObjectIdentifier(c)]?.linkState(), link.pending > 0, now.timeIntervalSince(link.lastWrite) < Self.silentFor { continue }
-            log("closing \(machines[ObjectIdentifier(c)] ?? "a client"): nothing heard for \(Int(quiet)) s")
-            c.close()
+            if let link = p.link?.linkState(), link.pending > 0, now.timeIntervalSince(link.lastWrite) < Self.silentFor { continue }
+            log("closing \(p.machine ?? "a client"): nothing heard for \(Int(quiet)) s")
+            p.conn.close()
         }
     }
 
@@ -565,31 +609,31 @@ final class Server {
     /// (a launch since, say); else none — every app here is watching, and
     /// only Take Over makes one act. A link gone dead stops acting when the
     /// host closes it (`closeSilent`), not by a guess at how quiet it is.
-    private func actingApp() -> (any Channel)? {
-        let apps = clients.filter { appClients.contains(ObjectIdentifier($0)) }
-        if let c = apps.first(where: { isAttached(ObjectIdentifier($0)) }) { return c }
-        return apps.filter { !superseded(ObjectIdentifier($0)) }.max { (clientIDs[ObjectIdentifier($0)] ?? 0) < (clientIDs[ObjectIdentifier($1)] ?? 0) }
+    private func actingApp() -> Peer? {
+        let apps = self.apps
+        if let p = apps.first(where: { isAttached($0) }) { return p }
+        return apps.filter { !superseded($0) }.max { $0.id < $1.id }
     }
 
     /// Why no app takes a `mani` command.
     private var noneActs: String {
-        let apps = clients.contains { appClients.contains(ObjectIdentifier($0)) }
-        guard apps else { return "Manifold isn't attached to this host" }
+        guard peers.values.contains(where: \.isApp) else { return "Manifold isn't attached to this host" }
         return "Manifold on \(attached.machine ?? "another Mac") has this host and isn't connected; Take Over in the Manifold you're at to use mani here"
     }
 
     private func clientFrame(_ frame: Frame, from conn: any Channel) {
-        lastHeard[ObjectIdentifier(conn)] = Date()
+        guard let me = peers[ObjectIdentifier(conn)] else { return }
+        me.lastHeard = Date()
         switch frame.decode(ClientMessage.self) {
         case .ping?:
-            pinging.insert(ObjectIdentifier(conn))
+            me.pinging = true
             conn.send(.message(ServerMessage.pong))
         case let .append(shard, entries)?:
-            clientAppended(shard, entries, from: conn)
+            clientAppended(shard, entries, from: me)
         case let .own(shard)?:
-            own(shard, by: conn)
+            own(shard, by: me)
         case .takeOver?:
-            if appClients.contains(ObjectIdentifier(conn)) { attach(to: conn) }
+            if me.isApp { attach(to: me) }
         case .erase?:
             erase(by: conn)
         case let .resync(shard)?:
@@ -607,14 +651,13 @@ final class Server {
                 conn.send(.message(ServerMessage.done(id: id, error: noneActs)))
                 return
             }
-            let client = clientIDs[ObjectIdentifier(conn)] ?? 0
             // Who asked, as this host finds it — not as the request says.
             var request = request
-            request.author = author(ofCaller: peers[ObjectIdentifier(conn)])
-            commandsOut[client, default: []].insert(id)
-            commandsAt[ObjectIdentifier(app), default: []].insert(CommandAsked(client: client, id: id))
-            log("mani \(request.verb) to \(machines[ObjectIdentifier(app)] ?? "the app")")
-            app.send(.message(ServerMessage.command(id: id, client: client, request)))
+            request.author = author(ofCaller: me.pid)
+            commandsOut[me.id, default: []].insert(id)
+            app.commandsAt.insert(CommandAsked(client: me.id, id: id))
+            log("mani \(request.verb) to \(app.machine ?? "the app")")
+            app.conn.send(.message(ServerMessage.command(id: id, client: me.id, request)))
         case let .openPatch(id, patch, root, title, beside)?:
             // `mani diff`: the patch becomes a diff block here, and the
             // app, if attached, places it and answers the command.
@@ -630,7 +673,7 @@ final class Server {
             append(.create(kind: .diff, title: nil, path: root), to: .block(block))
             append(.diffSubject(.patch(root: root, title: title)), to: .block(block))
             append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: clock.now()), to: .block(block))
-            app.send(.message(ServerMessage.show(id: id, client: clientIDs[ObjectIdentifier(conn)] ?? 0, block: block, beside: beside)))
+            app.conn.send(.message(ServerMessage.show(id: id, client: me.id, block: block, beside: beside)))
         case .shutdown?:
             exit(endSessions: true)
         default:
@@ -643,41 +686,39 @@ final class Server {
     // MARK: Attachment (§8.2)
 
     /// Whether the host is attached to this connection's launch of the app.
-    private func isAttached(_ me: ObjectIdentifier) -> Bool {
-        attached.instance != nil && instances[me] == attached.instance
+    private func isAttached(_ p: Peer) -> Bool {
+        attached.instance != nil && p.instance == attached.instance
     }
 
     /// Another launch took the host since this app connection last knew
     /// it: it takes nothing by a focus or an edit, only by Take Over. (Not
     /// `mani`, nor anything else that isn't the app.)
-    private func superseded(_ me: ObjectIdentifier) -> Bool {
-        guard instances[me] != nil, !isAttached(me) else { return false }
-        return (knownEpoch[me] ?? attached.epoch) < attached.epoch
+    private func superseded(_ p: Peer) -> Bool {
+        guard p.instance != nil, !isAttached(p) else { return false }
+        return p.knownEpoch < attached.epoch
     }
 
-    /// The host attached to `conn`'s launch: the epoch moved on, kept, and
-    /// every app told — the others watching from here on.
-    private func attach(to conn: any Channel) {
-        let me = ObjectIdentifier(conn)
-        guard let instance = instances[me] else { return }
-        attached = Attached(epoch: attached.epoch + 1, instance: instance, machine: machines[me])
-        knownEpoch[me] = attached.epoch
-        log("attached to \(machines[me] ?? "an app") at epoch \(attached.epoch)")
+    /// The host attached to this connection's launch: the epoch moved on,
+    /// kept, and every app told — the others watching from here on.
+    private func attach(to p: Peer) {
+        guard let instance = p.instance else { return }
+        attached = Attached(epoch: attached.epoch + 1, instance: instance, machine: p.machine)
+        p.knownEpoch = attached.epoch
+        log("attached to \(p.machine ?? "an app") at epoch \(attached.epoch)")
         if let data = try? JSONEncoder().encode(attached) { try? data.write(to: Self.attachedFile, options: .atomic) }
         tellAttachment()
     }
 
     /// Who the host is attached to, told to each app connection (or one).
-    private func tellAttachment(to only: (any Channel)? = nil) {
-        let apps = clients.filter { appClients.contains(ObjectIdentifier($0)) }
-        let present = apps.contains { isAttached(ObjectIdentifier($0)) }
+    private func tellAttachment(to only: Peer? = nil) {
+        let apps = self.apps
+        let present = apps.contains { isAttached($0) }
         let acting = actingApp()
-        let actor = acting.map { machines[ObjectIdentifier($0)] ?? "an app" }
-        for c in only.map({ [$0] }) ?? apps {
-            let me = ObjectIdentifier(c)
-            c.send(.message(ServerMessage.attachment(epoch: attached.epoch, by: attached.machine, yours: isAttached(me),
-                                                     present: present, superseded: superseded(me),
-                                                     acts: acting === c, actor: actor)))
+        let actor = acting.map { $0.machine ?? "an app" }
+        for p in only.map({ [$0] }) ?? apps {
+            p.conn.send(.message(ServerMessage.attachment(epoch: attached.epoch, by: attached.machine, yours: isAttached(p),
+                                                          present: present, superseded: superseded(p),
+                                                          acts: acting === p, actor: actor)))
         }
     }
 
@@ -687,71 +728,63 @@ final class Server {
         shard.block.flatMap { node.block($0) }?.needsRead == true
     }
 
-    /// The pen for a shard goes to `conn` (§8.2): whoever held it is told
-    /// it's fenced, and mirrors from here on. A launch the host isn't
-    /// attached to takes it, too — unless another attached since it last
-    /// knew: then it's told it's watching, and nothing changes hands.
-    private func own(_ shard: ShardID, by conn: any Channel) {
-        let me = ObjectIdentifier(conn)
-        if instances[me] != nil, !isAttached(me), !unread(shard) {
+    /// The pen for a shard goes to this connection (§8.2): whoever held it
+    /// is told it's fenced, and mirrors from here on. A launch the host
+    /// isn't attached to takes it, too — unless another attached since it
+    /// last knew: then it's told it's watching, and nothing changes hands.
+    private func own(_ shard: ShardID, by me: Peer) {
+        if me.instance != nil, !isAttached(me), !unread(shard) {
             if superseded(me) {
-                log("\(shard) not taken: \(machines[me] ?? "an app") is behind epoch \(attached.epoch)")
-                conn.send(.message(ServerMessage.fenced(shard: shard, by: attached.machine)))
-                tellAttachment(to: conn)
+                log("\(shard) not taken: \(me.machine ?? "an app") is behind epoch \(attached.epoch)")
+                me.conn.send(.message(ServerMessage.fenced(shard: shard, by: attached.machine)))
+                tellAttachment(to: me)
                 return
             }
-            attach(to: conn)
+            attach(to: me)
         }
-        if let holder = owners[shard], holder != me, !sameApp(holder, me), let other = clients.first(where: { ObjectIdentifier($0) == holder }) {
-            other.send(.message(ServerMessage.fenced(shard: shard, by: machines[me])))
+        if let holder = owners[shard].flatMap({ peers[$0] }), holder !== me, !sameApp(holder, me) {
+            holder.conn.send(.message(ServerMessage.fenced(shard: shard, by: me.machine)))
         }
-        owners[shard] = me
+        owners[shard] = ObjectIdentifier(me.conn)
     }
 
     /// Two connections from one launch of the app (one made again).
-    private func sameApp(_ a: ObjectIdentifier, _ b: ObjectIdentifier) -> Bool {
-        guard let i = instances[a] else { return false }
-        return instances[b] == i
+    private func sameApp(_ a: Peer, _ b: Peer) -> Bool {
+        guard let i = a.instance else { return false }
+        return b.instance == i
     }
 
     /// The client, owning a shard, appended to it: kept and passed on, if
     /// it continues the log; else the client is sent the log as it is. A
     /// shard no one owns is taken by the first to append; one another
     /// attachment owns is refused.
-    private func clientAppended(_ shard: ShardID, _ entries: [Entry], from conn: any Channel) {
+    private func clientAppended(_ shard: ShardID, _ entries: [Entry], from me: Peer) {
         guard let first = entries.first else { return }
-        let me = ObjectIdentifier(conn)
+        let conn = me.conn
         // Behind: another launch attached since this one last knew — what
         // it wrote meanwhile isn't kept, whoever holds the shard (or no one:
         // its holder asleep, its link down).
         let behind = superseded(me) && !unread(shard)
         if behind {
-            log("append to \(shard) refused: \(machines[me] ?? "an app") is behind epoch \(attached.epoch)")
+            log("append to \(shard) refused: \(me.machine ?? "an app") is behind epoch \(attached.epoch)")
             conn.send(.message(ServerMessage.fenced(shard: shard, by: attached.machine)))
-            tellAttachment(to: conn)
-            conn.send(.message(ServerMessage.rejected(shard: shard)))
-            if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
-            return
+            tellAttachment(to: me)
+            return refuse(shard, to: conn)
         }
-        if let holder = owners[shard], holder != me, !sameApp(holder, me), clients.contains(where: { ObjectIdentifier($0) == holder }) {
+        if let holder = owners[shard].flatMap({ peers[$0] }), holder !== me, !sameApp(holder, me) {
             log("append to \(shard) refused: another attachment owns it")
-            conn.send(.message(ServerMessage.fenced(shard: shard, by: machines[holder])))
-            conn.send(.message(ServerMessage.rejected(shard: shard)))
-            if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
-            return
+            conn.send(.message(ServerMessage.fenced(shard: shard, by: holder.machine)))
+            return refuse(shard, to: conn)
         }
-        owners[shard] = me
+        owners[shard] = ObjectIdentifier(conn)
         guard first.seq == node.seq(shard) + 1, node.apply(entries, to: shard) else {
             log("append to \(shard) at \(first.seq) doesn't follow \(node.seq(shard)); resending")
-            conn.send(.message(ServerMessage.rejected(shard: shard)))
-            if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
-            return
+            return refuse(shard, to: conn)
         }
         for e in entries { clock.observe(e.at) }
         store.append(entries, to: shard)
         dirtyShards.insert(shard)
-        let frame = Frame.message(ServerMessage.entries(shard: shard, entries: entries))
-        for c in clients where c !== conn { c.send(frame) }
+        broadcast(.message(ServerMessage.entries(shard: shard, entries: entries)), except: conn)
         shardChanged(shard, entries: entries)
         trail(shard, entries)
     }
@@ -762,8 +795,7 @@ final class Server {
         guard let entry = node.append(event, to: shard, at: clock.now()) else { return nil }
         store.append([entry], to: shard)
         dirtyShards.insert(shard)
-        let frame = Frame.message(ServerMessage.entries(shard: shard, entries: [entry]))
-        for c in clients { c.send(frame) }
+        broadcast(.message(ServerMessage.entries(shard: shard, entries: [entry])))
         shardChanged(shard)
         return entry
     }
@@ -1255,18 +1287,14 @@ final class Server {
             conn.send(.message(ServerMessage.history(shard: shard, base: h.base, entries: h.entries)))
             done()
         case let .openDone(openID, client):
-            if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
-                c.send(.message(ServerMessage.done(id: openID, error: nil)))
-            }
+            peer(numbered: client)?.conn.send(.message(ServerMessage.done(id: openID, error: nil)))
             done()
         case let .commandReply(commandID, client, reply):
             if reply.status != nil {
                 commandsOut[client]?.remove(commandID)
-                for k in commandsAt.keys { commandsAt[k]?.remove(CommandAsked(client: client, id: commandID)) }
+                for p in peers.values { p.commandsAt.remove(CommandAsked(client: client, id: commandID)) }
             }
-            if let c = clients.first(where: { clientIDs[ObjectIdentifier($0)] == client }) {
-                c.send(.message(ServerMessage.commandReply(id: commandID, reply)))
-            }
+            peer(numbered: client)?.conn.send(.message(ServerMessage.commandReply(id: commandID, reply)))
             done()
         case let .runPanel(block, command, event):
             runPanel(block, command: command, event: event)
@@ -1538,7 +1566,7 @@ final class Server {
             let marks = GutterMark.marks(LineDiff.hunks(old: head, new: now.string))
             self.gutters[block] = marks
             let frame = Frame.message(ServerMessage.gutter(block, marks))
-            for c in self.clients { c.send(frame) }
+            self.broadcast(frame)
         }
     }
 
@@ -1881,11 +1909,10 @@ final class Server {
     /// app attachment holding its pen, else any app attachment — never a
     /// command-line client, which would let it drop.
     private func leader(of shard: ShardID) -> (any Channel)? {
-        let apps = clients.filter { appClients.contains(ObjectIdentifier($0)) }
-        if let owner = owners[shard], let c = apps.first(where: { ObjectIdentifier($0) == owner }) { return c }
+        if let owner = owners[shard].flatMap({ peers[$0] }), owner.isApp { return owner.conn }
         // Else the one acting for the host (§8.2).
-        if let c = actingApp() { return c }
-        return apps.first ?? clients.first
+        if let p = actingApp() { return p.conn }
+        return (apps.first ?? allPeers.first)?.conn
     }
 
     /// A text block's file read in, for the attachment that asked. What
@@ -1986,7 +2013,7 @@ final class Server {
         s.onStatus = { [weak self] signals in self?.status(id, signals) }
         s.onPasswordInput = { [weak self] on in
             let frame = Frame.message(ServerMessage.passwordInput(block: id, on))
-            for c in self?.clients ?? [] { c.send(frame) }
+            self?.broadcast(frame)
         }
         sessions[id] = s
         append(.shell(.started(pid: s.pid)), to: .block(id))
@@ -2114,7 +2141,7 @@ final class Server {
             guard let live = self.notebookLive[block] else { return }
             let tail = live.output.count > 256 << 10 ? live.output.suffix(256 << 10) : live.output
             let frame = Frame.message(ServerMessage.notebookLive(block: block, cell: live.cell, output: String(decoding: tail, as: UTF8.self)))
-            for c in self.clients { c.send(frame) }
+            self.broadcast(frame)
         }
     }
 
