@@ -28,6 +28,27 @@ they open files and make threads).
 
 Grouped by cause, ordered by harm. Each names its machines (§ below).
 
+| Issue | What | Status | Regression test |
+|---|---|---|---|
+| I-1 | Shells let go of before they exit: zombies, leaked ptys; notebook shells never reaped | fixed | `ManifolddTests/SessionLifecycleTests` |
+| I-2 | Commands and turns left "running" after their shell; "running" read four ways | fixed | `ManifoldCoreTests/RunPhaseTests` |
+| I-3 | A space change leaves a drag catcher and a ⌃⇥ walk behind | fixed | `ManifoldAppTests/TileWalkTests`, `scenarios/space-change.sh` |
+| I-4 | A past revision becomes editable when its host comes back | fixed | `ManifoldAppTests/EditorAccessTests`, `scenarios/past-revision-read-only.sh` |
+| I-5 | Stuck after one failure: web store, language server; a remote copy retried blindly | fixed | `WebRouteTests`, `LanguageServerLifecycleTests`, `LocalCopiesTests` |
+| I-6 | A silent drop counted as unanswered; a resize attaching afresh | fixed | `HostLinkTests`, `TerminalLinkTests` |
+| I-7 | A toast shown as the last one fades is lost | fixed | `ManifoldAppTests/ToastTests` |
+| I-8 | Smaller: watcher gives up, re-index dropped, closed card acted on, stale search | confirmed ones fixed; suspected open | `FileWatcherTests`, `SCIPReindexTests`, `scenarios/thread-card-closed.sh`, `DebouncerTests` |
+
+**Open (suspected: plausible on reading, not shown).** The space slide's
+completion race (M22); `$EDITOR` stacks not pruned off screen (M23);
+Overview left up over another space (M25); the ⌘\` order and ⌃-
+navigation timers (M26, M28); the heartbeat across a reconnect's handshake
+(M14); a session's pty touched between its EOF and its exit, and
+`endedForIdleness` never reset (M1); stale `pid`/`busy`/search/notebook
+"running" after the host's server restarts, until reattached (M10, M11);
+FileReceiver unlinking in `.create`/`.append` (M6, latent: unused modes).
+Each becomes an issue once shown.
+
 ### I-1 Shells let go of before they've exited · **fixed** · high
 Deleting a terminal or notebook block (`Server.discard`), or restarting a
 notebook (`restartNotebook`), takes its `Session`/`NotebookShell` out of
@@ -190,7 +211,7 @@ the fade: hidden on the old code.
 Fix: each `show` is counted (`shows`); a fade's end hides the toast only if
 no show came after it began. Machine: M30.
 
-### I-8 Smaller ones · mixed
+### I-8 Smaller ones · confirmed ones fixed, suspected open
 - Thread card: `popover`/`card` never cleared on close; a closed card is
   refreshed and resized, and acted on: `threads reply` posted to a closed
   card's thread. **fixed**: both let go of as the popover closes. Test:
