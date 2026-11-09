@@ -1052,9 +1052,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// Where find's pill would be: the upper right, a band down.
     private func layoutLinePill() {
         guard let linePill else { return }
-        let w = min(LinePill.width, bounds.width - 20), h = FindPill.rowHeight
-        let y = bounds.maxY - (bounds.width >= 860 ? 4 : 6) - h
-        linePill.frame = NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
+        linePill.frame = FindHost.frame(width: LinePill.width, height: FindPill.rowHeight, in: bounds)
     }
 
     /// Debugging: Go to Line, typed into and ↩ (or ⎋); where the caret is.

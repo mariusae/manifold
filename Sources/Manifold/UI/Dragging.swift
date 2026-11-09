@@ -337,11 +337,7 @@ extension DropTaking {
         }
     }
 
-    static func grid(of view: NSView) -> GridView? {
-        var v = view.superview
-        while let s = v, !(s is GridView) { v = s.superview }
-        return v as? GridView
-    }
+    static func grid(of view: NSView) -> GridView? { view.enclosing(GridView.self) }
 
     static func updated(_ view: DropTaking, _ sender: NSDraggingInfo) -> NSDragOperation {
         guard let d = Dragged(sender.draggingPasteboard) else { return grid(of: view)?.draggingUpdated(sender) ?? [] }

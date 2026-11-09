@@ -20,26 +20,89 @@ protocol Replaceable: Searchable {
     func replaceAll(with text: String)
 }
 
+/// A capsule over a tile's upper right holding a field — find's, Go to
+/// Line's: drawn on the window's ground with a sheet's edge, a field
+/// without chrome of its own, a count in figures beside it, and ×.
+class CapsulePill: NSView, NSTextFieldDelegate {
+    static let rowHeight: CGFloat = 28
+    let field = NSTextField()
+    let count = NSTextField(labelWithString: "")
+    let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
+
+    init(width: CGFloat) {
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.rowHeight))
+        wantsLayer = true
+        layer?.cornerRadius = Self.rowHeight / 2
+        layer?.masksToBounds = true
+        // Above a terminal's Metal layer, which sits over its subviews.
+        layer?.zPosition = 10
+        style(field)
+        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        count.textColor = Theme.secondaryText
+        count.alignment = .right
+        close.target = self
+        close.action = #selector(closeClicked)
+        for v in [field, count, close] { addSubview(v) }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// A field in the capsule: the row's font, nothing drawn round it, one
+    /// line, told of as it's typed in.
+    func style(_ f: NSTextField) {
+        f.delegate = self
+        f.font = UIType.row
+        f.isBordered = false
+        f.drawsBackground = false
+        f.focusRingType = .none
+        f.cell?.sendsActionOnEndEditing = false
+        f.lineBreakMode = .byTruncatingTail
+        f.cell?.usesSingleLineMode = true
+    }
+
+    func focus() {
+        window?.makeFirstResponder(field)
+        field.selectText(nil)
+    }
+
+    /// × at the right of the row whose bottom is `y`, and the field from
+    /// the left up to `right`, both in its middle.
+    func place(row y: CGFloat, fieldTo right: CGFloat) {
+        let h = Self.rowHeight
+        close.frame = NSRect(x: bounds.width - 26, y: y + (h - 20) / 2, width: 20, height: 20)
+        field.frame = NSRect(x: 14, y: y + (h - 17) / 2, width: right - 18, height: 17)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: Self.rowHeight / 2, yRadius: Self.rowHeight / 2)
+        Theme.windowBackground.setFill()
+        path.fill()
+        Theme.sheetEdge(hovered: false).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    /// × clicked (⎋ in the field too, for the pills).
+    @objc func closeClicked() {}
+}
+
 /// The find pill, an accessory (§3.1): a compact capsule at the upper
 /// right of a tile — the query, how many matches, ↑ ↓ for the previous
 /// and next (↩ and ⇧↩ too), Aa for case, and ×. With Find and Replace, a
 /// second row for what to put.
-final class FindPill: NSView, NSTextFieldDelegate {
+final class FindPill: CapsulePill {
     weak var target: Searchable?
     var onClose: (() -> Void)?
     var showsReplace = false {
         didSet { if showsReplace != oldValue { needsLayout = true; superview?.needsLayout = true } }
     }
     static let width: CGFloat = 300
-    static let rowHeight: CGFloat = 28
     var height: CGFloat { showsReplace ? 2 * Self.rowHeight + 2 : Self.rowHeight }
 
-    private let field = NSTextField()
     private let replaceField = NSTextField()
-    private let count = NSTextField(labelWithString: "")
     private let previous = IconButton(symbol: "chevron.up", size: 10, target: nil, action: nil)
     private let next = IconButton(symbol: "chevron.down", size: 10, target: nil, action: nil)
-    private let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
     private let caseButton = FlatButton("Aa", toggles: true, font: .systemFont(ofSize: 10.5, weight: .medium))
     private let replaceButton = FlatButton("Replace", font: .systemFont(ofSize: 10.5, weight: .medium))
     private let replaceAllButton = FlatButton("All", font: .systemFont(ofSize: 10.5, weight: .medium))
@@ -56,27 +119,10 @@ final class FindPill: NSView, NSTextFieldDelegate {
     }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.rowHeight))
-        wantsLayer = true
-        layer?.cornerRadius = Self.rowHeight / 2
-        layer?.masksToBounds = true
-        // Above a terminal's Metal layer, which sits over its subviews.
-        layer?.zPosition = 10
-        for f in [field, replaceField] {
-            f.delegate = self
-            f.font = UIType.row
-            f.isBordered = false
-            f.drawsBackground = false
-            f.focusRingType = .none
-            f.cell?.sendsActionOnEndEditing = false
-            f.lineBreakMode = .byTruncatingTail
-            f.cell?.usesSingleLineMode = true
-        }
+        super.init(width: Self.width)
+        style(replaceField)
         field.placeholderString = "Find"
         replaceField.placeholderString = "Replace with"
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = Theme.secondaryText
-        count.alignment = .right
         caseButton.toolTip = "Match Case"
         caseButton.target = self
         caseButton.action = #selector(optionChanged)
@@ -89,18 +135,11 @@ final class FindPill: NSView, NSTextFieldDelegate {
         next.target = self
         next.action = #selector(nextClicked)
         next.toolTip = "Next (↩, ⌘G)"
-        close.target = self
-        close.action = #selector(closeClicked)
         close.toolTip = "Done (⎋)"
-        for v in [field, count, caseButton, previous, next, close, replaceField, replaceButton, replaceAllButton] { addSubview(v) }
+        for v in [caseButton, previous, next, replaceField, replaceButton, replaceAllButton] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    func focus() {
-        window?.makeFirstResponder(field)
-        field.selectText(nil)
-    }
 
     override func layout() {
         super.layout()
@@ -122,7 +161,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
             count.frame = NSRect(x: left - 48, y: top + (h - 14) / 2, width: 44, height: 14)
             left = count.frame.minX
         }
-        field.frame = NSRect(x: 14, y: top + (h - 17) / 2, width: left - 18, height: 17)
+        place(row: top, fieldTo: left)
         let shown = showsReplace
         replaceField.isHidden = !shown
         replaceButton.isHidden = !shown
@@ -135,13 +174,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: Self.rowHeight / 2, yRadius: Self.rowHeight / 2)
-        Theme.windowBackground.setFill()
-        path.fill()
-        Theme.sheetEdge(hovered: false).setStroke()
-        path.lineWidth = 1
-        path.stroke()
+        super.draw(dirtyRect)
         if showsReplace {
             Theme.divider.setFill()
             NSRect(x: 12, y: Self.rowHeight + 0.5, width: bounds.width - 24, height: 1).fill()
@@ -190,7 +223,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
         return true
     }
     @objc private func optionChanged() { refresh() }
-    @objc private func closeClicked() { onClose?() }
+    override func closeClicked() { onClose?() }
 
     @objc private func replaceClicked() {
         (target as? Replaceable)?.replaceCurrent(with: replaceField.stringValue)
@@ -207,63 +240,27 @@ final class FindPill: NSView, NSTextFieldDelegate {
 /// tile's upper right — a line, or line:column, and how many there are.
 /// The text goes there as it's typed; ↩ keeps it, ⎋ goes back to where
 /// it was.
-final class LinePill: NSView, NSTextFieldDelegate {
+final class LinePill: CapsulePill {
     var onPreview: ((String) -> Void)?
     var onGo: ((String) -> Void)?
     var onCancel: (() -> Void)?
 
     static let width: CGFloat = 230
-    private let field = NSTextField()
-    private let count = NSTextField(labelWithString: "")
-    private let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
 
     init(lines: Int) {
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: FindPill.rowHeight))
-        wantsLayer = true
-        layer?.cornerRadius = FindPill.rowHeight / 2
-        layer?.masksToBounds = true
-        layer?.zPosition = 10
-        field.delegate = self
-        field.font = UIType.row
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.cell?.usesSingleLineMode = true
+        super.init(width: Self.width)
         field.placeholderString = "Line, or line:column"
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = Theme.secondaryText
-        count.alignment = .right
         count.stringValue = "of \(lines.formatted())"
-        close.target = self
-        close.action = #selector(closeClicked)
         close.toolTip = "Back (⎋)"
-        for v in [field, count, close] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func focus() {
-        window?.makeFirstResponder(field)
-        field.selectText(nil)
-    }
-
     override func layout() {
         super.layout()
-        let h = bounds.height
-        close.frame = NSRect(x: bounds.width - 26, y: (h - 20) / 2, width: 20, height: 20)
         let w = ceil(count.intrinsicContentSize.width)
-        count.frame = NSRect(x: close.frame.minX - 4 - w, y: (h - 14) / 2, width: w, height: 14)
-        field.frame = NSRect(x: 14, y: (h - 17) / 2, width: count.frame.minX - 20, height: 17)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        Theme.windowBackground.setFill()
-        path.fill()
-        Theme.sheetEdge(hovered: false).setStroke()
-        path.lineWidth = 1
-        path.stroke()
+        place(row: 0, fieldTo: bounds.width - 26 - 4 - w - 2)
+        count.frame = NSRect(x: close.frame.minX - 4 - w, y: (bounds.height - 14) / 2, width: w, height: 14)
     }
 
     func controlTextDidChange(_ obj: Notification) { onPreview?(field.stringValue) }
@@ -277,7 +274,7 @@ final class LinePill: NSView, NSTextFieldDelegate {
         return true
     }
 
-    @objc private func closeClicked() { onCancel?() }
+    override func closeClicked() { onCancel?() }
 
     /// Debugging: typed, then ↩ (or ⎋).
     func debugType(_ text: String, then key: String) {
@@ -354,9 +351,7 @@ final class FindHost {
     /// outline's ticks stand aside while it's there.
     static func standAside(for view: NSView, _ on: Bool) {
         if on { finding.add(view) } else { finding.remove(view) }
-        var v = view.superview
-        while let s = v, !(s is GridView) { v = s.superview }
-        v?.needsLayout = true
+        view.enclosing(GridView.self)?.needsLayout = true
     }
 
     /// The Find menu's action, by its NSTextFinder tag: ⌘F shows the pill
@@ -429,14 +424,19 @@ final class FindHost {
     /// Found again after the content changed.
     func refresh() { pill?.refresh() }
 
-    /// Where the pill sits: the upper right of `bounds`, in the tile's band
-    /// when there's room beside the tile's own pill, else one band down.
+    /// Where a pill (find's, Go to Line's) `width` wide at most sits over
+    /// a view's `bounds`: their upper right, in the tile's band when
+    /// there's room beside the tile's own pill, else one band down.
+    static func frame(width: CGFloat, height h: CGFloat, in bounds: NSRect) -> NSRect {
+        let w = min(width, bounds.width - 20)
+        let y = bounds.maxY - (bounds.width >= 860 ? 4 : 6) - h
+        return NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
+    }
+
+    /// Where the pill sits (`frame(width:height:in:)`), over the view.
     func layout(in bounds: NSRect) {
         guard let pill else { return }
-        let w = min(FindPill.width, bounds.width - 20), h = pill.height
-        let inBand = bounds.width >= 860
-        let y = bounds.maxY - (inBand ? 4 : 6) - h
-        var frame = NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
+        var frame = Self.frame(width: FindPill.width, height: pill.height, in: bounds)
         if inSuperview, let view {
             // Over the view, in its superview; along when the view moves.
             if let parent = view.superview, pill.superview !== parent { parent.addSubview(pill) }
@@ -470,15 +470,7 @@ final class TextViewSearch {
             current = nil
             return done(nil)
         }
-        let s = tv.string as NSString
-        var found: [NSRange] = []
-        var from = 0
-        while from < s.length, found.count < 10_000 {
-            let r = s.range(of: query, options: caseSensitive ? [] : [.caseInsensitive], range: NSRange(location: from, length: s.length - from))
-            guard r.location != NSNotFound else { break }
-            found.append(r)
-            from = NSMaxRange(r)
-        }
+        let found = Matching.ranges(of: query, in: tv.string as NSString, options: caseSensitive ? [] : [.caseInsensitive], limit: 10_000)
         matches = found
         for r in found { tv.layoutManager?.addTemporaryAttribute(.backgroundColor, value: TextView.matchColor, forCharacterRange: r) }
         // The first from where the selection is.
@@ -496,8 +488,7 @@ final class TextViewSearch {
 
     func findNext(forward: Bool) {
         guard !matches.isEmpty else { return }
-        let n = matches.count
-        current = ((current ?? (forward ? -1 : 0)) + (forward ? 1 : n - 1)) % n
+        current = Matching.step(current, of: matches.count, forward: forward)
         go()
     }
 
@@ -527,5 +518,41 @@ final class TextViewSearch {
     var selectedText: String? {
         guard let tv = textView, tv.selectedRange().length > 0 else { return nil }
         return (tv.string as NSString).substring(with: tv.selectedRange())
+    }
+}
+
+/// Matches, as the find pill goes through them.
+enum Matching {
+    /// Where `query` is found in `s`, as `options` compare, the first
+    /// `limit` at most.
+    static func ranges(of query: String, in s: NSString, options: String.CompareOptions, limit: Int = .max) -> [NSRange] {
+        var found: [NSRange] = []
+        var from = 0
+        while from < s.length, found.count < limit {
+            let r = s.range(of: query, options: options, range: NSRange(location: from, length: s.length - from))
+            guard r.location != NSNotFound, r.length > 0 else { break }
+            found.append(r)
+            from = NSMaxRange(r)
+        }
+        return found
+    }
+
+    /// The one after `i` of `n` (before it, going back), round from the
+    /// last to the first; from none, the first (or the last).
+    static func step(_ i: Int?, of n: Int, forward: Bool) -> Int {
+        guard let i else { return forward ? 0 : n - 1 }
+        return ((i + (forward ? 1 : -1)) % n + n) % n
+    }
+}
+
+extension NSView {
+    /// The nearest view it's in that's a `T`.
+    func enclosing<T: NSView>(_ type: T.Type) -> T? {
+        var v = superview
+        while let s = v {
+            if let t = s as? T { return t }
+            v = s.superview
+        }
+        return nil
     }
 }

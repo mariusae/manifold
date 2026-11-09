@@ -550,9 +550,5 @@ final class OutputFindTextView: NSTextView {
         return super.validateUserInterfaceItem(item)
     }
 
-    private var enclosingOutput: OutputView? {
-        var v = superview
-        while let s = v, !(s is OutputView) { v = s.superview }
-        return v as? OutputView
-    }
+    private var enclosingOutput: OutputView? { enclosing(OutputView.self) }
 }

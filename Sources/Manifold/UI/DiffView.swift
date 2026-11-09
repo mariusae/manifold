@@ -929,11 +929,8 @@ final class DiffRowsView: NSView, NSDraggingSource {
     private func markMatches(in text: String, at origin: NSPoint, attrs: [NSAttributedString.Key: Any], current: Bool) {
         guard let q = query, !q.text.isEmpty else { return }
         let s = text as NSString
-        var from = 0
         let h = font.pointSize * 1.25
-        while from < s.length {
-            let r = s.range(of: q.text, options: q.options, range: NSRange(location: from, length: s.length - from))
-            guard r.location != NSNotFound, r.length > 0 else { break }
+        for r in Matching.ranges(of: q.text, in: s, options: q.options) {
             let x0 = NSAttributedString(string: s.substring(to: r.location), attributes: attrs).size().width
             let w = NSAttributedString(string: s.substring(with: r), attributes: attrs).size().width
             let box = NSRect(x: origin.x + x0 - 1.5, y: origin.y + (font.pointSize * 1.2 - h) / 2, width: w + 3, height: h)
@@ -943,7 +940,6 @@ final class DiffRowsView: NSView, NSDraggingSource {
             path.lineWidth = current ? 2 : 1
             Theme.text.withAlphaComponent(current ? 0.95 : 0.6).setStroke()
             path.stroke()
-            from = r.location + r.length
         }
     }
 
@@ -1271,8 +1267,7 @@ extension DiffView: Searchable {
 
     func findNext(forward: Bool) {
         guard !foundRows.isEmpty else { return }
-        let n = foundRows.count
-        foundAt = ((foundAt ?? (forward ? -1 : 0)) + (forward ? 1 : n - 1)) % n
+        foundAt = Matching.step(foundAt, of: foundRows.count, forward: forward)
         goToFound()
     }
 

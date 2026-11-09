@@ -550,7 +550,7 @@ extension MediaView: Searchable {
 
     func findNext(forward: Bool) {
         guard !found.isEmpty else { return }
-        foundAt = (foundAt + (forward ? 1 : -1) + found.count) % found.count
+        foundAt = Matching.step(foundAt, of: found.count, forward: forward)
         showFound()
     }
 
