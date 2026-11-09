@@ -118,7 +118,7 @@ extension MainWindowController: GridDelegate {
     /// not shrunk here, grown a little, as going to it does).
     private func toggleSummary(_ placement: PlacementID) {
         guard let a = arrangement, a.full == nil, let body = contentHeight(of: placement, in: a) else { return NSSound.beep() }
-        if body >= GridView.collapseBelow, body < GridView.summarizeBelow {
+        if ColumnMetrics.isSummary(body) {
             if let back = unshrunk.removeValue(forKey: placement), let events = settingHeight(of: placement, share: back, in: a) {
                 appendToSelected(events)
             } else {
@@ -134,18 +134,39 @@ extension MainWindowController: GridDelegate {
     /// Whether a tile is in summary: its content too short for itself.
     func isSummarized(_ placement: PlacementID) -> Bool {
         guard let a = arrangement, a.full == nil, let body = contentHeight(of: placement, in: a) else { return false }
-        return body >= GridView.collapseBelow && body < GridView.summarizeBelow
+        return ColumnMetrics.isSummary(body)
+    }
+
+    /// A tile's column as the grid lays it out: its tiles, their shares'
+    /// sum, and the room they share less the gaps — what a share comes to
+    /// in points, and back.
+    struct ColumnMetrics {
+        let shown: [Placement]
+        let sum: Double
+        let usable: CGFloat
+
+        /// A share's content height (less its bar), in points.
+        func body(_ share: Double) -> CGFloat { usable * CGFloat(share / sum) - GridView.barHeight }
+        /// The share that gives `body` points of content.
+        func share(forBody body: CGFloat) -> Double { Double((body + GridView.barHeight) / usable) * sum }
+        /// Whether a content height is a summary's: too short for its
+        /// content, not down to its bar alone.
+        static func isSummary(_ body: CGFloat) -> Bool { body >= GridView.collapseBelow && body < GridView.summarizeBelow }
+    }
+
+    /// The column `placement` is in, measured; nil for one docked.
+    func metrics(of placement: PlacementID, in a: ArrangementState) -> ColumnMetrics? {
+        guard let (c, _) = a.locate(placement) else { return nil }
+        let shown = a.columns[c]
+        return ColumnMetrics(shown: shown, sum: shown.reduce(0.0) { $0 + a.height(of: $1.id) },
+                             usable: content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap)
     }
 
     /// A shown tile's content height, as the grid lays it out; nil for one
     /// docked, or alone in its column.
     func contentHeight(of placement: PlacementID, in a: ArrangementState) -> CGFloat? {
-        guard let (c, _) = a.locate(placement) else { return nil }
-        let shown = a.columns[c]
-        let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
-        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
-        guard shown.count > 1, sum > 0, usable > 0 else { return nil }
-        return usable * CGFloat(a.height(of: placement) / sum) - GridView.barHeight
+        guard let m = metrics(of: placement, in: a), m.shown.count > 1, m.sum > 0, m.usable > 0 else { return nil }
+        return m.body(a.height(of: placement))
     }
 
     /// A shown tile given `points` of content (or a `share`, as heights
@@ -153,15 +174,12 @@ extension MainWindowController: GridDelegate {
     /// content (below, then above), what it takes from the biggest other
     /// in its column.
     func settingHeight(of placement: PlacementID, points: CGFloat? = nil, share: Double? = nil, in a: ArrangementState) -> [Event]? {
-        guard let (c, _) = a.locate(placement) else { return nil }
-        let shown = a.columns[c]
-        let sum = shown.reduce(0.0) { $0 + a.height(of: $1.id) }
-        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
-        let want = share ?? points.map { Double(($0 + GridView.barHeight) / usable) * sum } ?? a.height(of: placement)
+        guard let m = metrics(of: placement, in: a), m.usable > 0, let i = m.shown.firstIndex(where: { $0.id == placement }) else { return nil }
+        let shown = m.shown
+        let want = share ?? points.map(m.share(forBody:)) ?? a.height(of: placement)
         let delta = want - a.height(of: placement)
-        guard usable > 0, let i = shown.firstIndex(where: { $0.id == placement }) else { return nil }
         let others = shown.filter { $0.id != placement }
-        let showing = { (p: Placement) in usable * CGFloat(a.height(of: p.id) / sum) - GridView.barHeight >= GridView.summarizeBelow }
+        let showing = { (p: Placement) in m.body(a.height(of: p.id)) >= GridView.summarizeBelow }
         let nearest = (1..<max(shown.count, 2)).lazy.flatMap { d in [i + d, i - d] }.filter { shown.indices.contains($0) }.map { shown[$0] }.first(where: showing)
         guard let other = (delta < 0 ? nearest : nil) ?? others.max(by: { a.height(of: $0.id) < a.height(of: $1.id) }) else { return nil }
         guard a.height(of: other.id) - delta > 0 else { return nil }

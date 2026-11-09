@@ -1823,18 +1823,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil) -> [Event] {
         var after = a
         for e in events { after.apply(e) }
-        guard let f = placement ?? after.focused, after.full == nil, let (c, _) = after.locate(f) else { return events }
-        let shown = after.columns[c]
-        guard shown.count > 1 else { return events }
-        let sum = shown.reduce(0.0) { $0 + after.height(of: $1.id) }
-        let usable = content.bounds.height - 2 * GridView.inset - CGFloat(shown.count - 1) * GridView.gap
-        guard sum > 0, usable > 0 else { return events }
-        let share = after.height(of: f) / sum
-        let body = usable * CGFloat(share) - GridView.barHeight
-        let target = min(Self.glimpse.points, usable * Self.glimpse.share)
-        guard body < GridView.summarizeBelow else { return events }
-        let want = Double((target + GridView.barHeight) / usable)
-        return events + after.growing(f, step: (want - share) * sum)
+        guard let f = placement ?? after.focused, after.full == nil, let m = metrics(of: f, in: after),
+              m.shown.count > 1, m.sum > 0, m.usable > 0 else { return events }
+        let target = min(Self.glimpse.points, m.usable * Self.glimpse.share)
+        guard m.body(after.height(of: f)) < GridView.summarizeBelow else { return events }
+        return events + after.growing(f, step: m.share(forBody: target) - after.height(of: f))
     }
 
     /// Grow (acme's colgrow): the focused tile takes a step from its
