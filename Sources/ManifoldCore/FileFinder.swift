@@ -6,15 +6,13 @@ public enum FileFinder {
     /// Folders never worth listing the insides of.
     static let skipped: Set<String> = [".git", "node_modules", ".build", "DerivedData", "Pods", "target", "__pycache__"]
 
-    /// The files under `root`, as paths relative to it: from git, when it's
-    /// in a repository (tracked files and untracked ones not ignored); else
-    /// found by looking, nearest first, skipping hidden and dependency
-    /// folders, until there are `limit` of them.
+    /// The files under `root`, as paths relative to it, nearest first: from
+    /// its repository's version control, git's or Sapling's (tracked files
+    /// and untracked ones not ignored), as a folder lists them; else found
+    /// by looking, skipping hidden and dependency folders, until there are
+    /// `limit` of them.
     public static func list(root: String, limit: Int = 20_000) -> [String] {
-        if let files = gitFiles(root: root, limit: limit) {
-            return sorted(files)
-        }
-        return sorted(walk(root: root, limit: limit))
+        sorted(FolderListing.files(under: root, limit: limit).paths)
     }
 
     /// Nearest first, then by name.
@@ -27,17 +25,12 @@ public enum FileFinder {
         return ordered.map(\.path)
     }
 
+    /// git's files (the git on the tools' PATH, not /usr/bin's, which on a
+    /// Mac without the developer tools only offers to install them).
     static func gitFiles(root: String, limit: Int = .max) -> [String]? {
-        let git = Process()
-        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        git.arguments = ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
-        let out = Pipe()
-        git.standardOutput = out
-        git.standardError = FileHandle.nullDevice
-        guard (try? git.run()) != nil else { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        git.waitUntilExit()
-        guard git.terminationStatus == 0 else { return nil }
+        guard let r = try? Child.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], timeout: 20, quiet: true),
+              r.status == 0 else { return nil }
+        let data = r.output
         // Deleted-but-tracked files are listed too; only what's there — and
         // only as many as are kept are looked for (a big checkout has more).
         let fm = FileManager.default

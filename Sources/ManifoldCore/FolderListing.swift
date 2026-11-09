@@ -84,27 +84,23 @@ public enum FolderListing {
     /// entries named by their paths relative to it; `complete` is false
     /// when there were more than `limit` files.
     public static func tree(of root: String, limit: Int = 20_000) -> (entries: [DirectoryEntry], complete: Bool) {
+        let f = files(under: root, limit: limit)
+        return (entries(root: root, files: f.paths), f.complete)
+    }
+
+    /// The files under `root` not ignored, relative to it — its version
+    /// control's (git's or Sapling's), else found by walking — at most
+    /// `limit`; `complete` is false when there were more.
+    public static func files(under root: String, limit: Int = 20_000) -> (paths: [String], complete: Bool) {
         var files: [String]
-        var complete: Bool
         switch VCS.repository(of: root)?.vcs {
-        case .git?:
-            if let f = FileFinder.gitFiles(root: root, limit: limit + 1) {
-                files = f
-            } else {
-                files = FileFinder.walk(root: root, limit: limit + 1)
-            }
-        case .sapling?:
-            if let s = saplingFiles(in: root, limit: limit + 1) {
-                files = s.paths
-            } else {
-                files = FileFinder.walk(root: root, limit: limit + 1)
-            }
-        case nil:
-            files = FileFinder.walk(root: root, limit: limit + 1)
+        case .git?: files = FileFinder.gitFiles(root: root, limit: limit + 1) ?? FileFinder.walk(root: root, limit: limit + 1)
+        case .sapling?: files = saplingFiles(in: root, limit: limit + 1)?.paths ?? FileFinder.walk(root: root, limit: limit + 1)
+        case nil: files = FileFinder.walk(root: root, limit: limit + 1)
         }
-        complete = files.count <= limit
+        let complete = files.count <= limit
         if !complete { files.removeLast(files.count - limit) }
-        return (entries(root: root, files: files), complete)
+        return (files, complete)
     }
 
     /// Files and the folders they imply, each looked at once.
