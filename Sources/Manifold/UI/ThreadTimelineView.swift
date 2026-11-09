@@ -443,11 +443,7 @@ final class ThreadTimelineView: NSView {
 }
 
 /// A run's box: tinted when chosen, quieter when resolved; clicked, chosen.
-final class RunBox: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    var onClick: (() -> Void)?
+final class RunBox: ClickView {
     private let chosen: Bool
     private let resolved: Bool
 
@@ -455,6 +451,8 @@ final class RunBox: NSView {
         self.chosen = chosen
         self.resolved = resolved
         super.init(frame: .zero)
+        firesOnDown = true
+        tracking = .activeInActiveApp
         wantsLayer = true
         layer?.cornerRadius = Radius.surface
         layer?.cornerCurve = .continuous
@@ -478,30 +476,20 @@ final class RunBox: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override func mouseDown(with event: NSEvent) { onClick?() }
-
     /// Shown only with the pointer on it.
     var hoverViews: [NSView] = [] { didSet { for v in hoverViews { v.alphaValue = 0 } } }
 
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) { fade(1) }
-    override func mouseExited(with event: NSEvent) { fade(0) }
-
-    private func fade(_ a: CGFloat) {
+    override func hoverChanged() {
+        super.hoverChanged()
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.fast
-            for v in hoverViews { v.animator().alphaValue = a }
+            for v in hoverViews { v.animator().alphaValue = hovering ? 1 : 0 }
         }
     }
 }
 
 /// Words that go somewhere, clicked: a symbol before them.
-final class LinkLabel: NSView {
+final class LinkLabel: ClickView {
     /// A heading's: semibold, in full ink.
     var strong = false {
         didSet {
@@ -509,13 +497,13 @@ final class LinkLabel: NSView {
             label.textColor = strong ? Theme.text : Theme.secondaryText
         }
     }
-    private let label = NSTextField.label(font: UIType.caption, color: .labelColor, cut: .byTruncatingMiddle)
+    private let label = NSTextField.label(font: UIType.caption, color: Theme.secondaryText, cut: .byTruncatingMiddle)
     private let image = NSImageView()
-    private let action: () -> Void
 
     init(_ words: String, symbol: String, action: @escaping () -> Void) {
-        self.action = action
         super.init(frame: .zero)
+        onClick = action
+        firesOnDown = true
         label.stringValue = words
         image.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
         let s = NSStackView(views: [image, label])
@@ -535,6 +523,4 @@ final class LinkLabel: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override func mouseDown(with event: NSEvent) { action() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }

@@ -64,12 +64,15 @@ class HoverView: NSView {
 
 /// A `HoverView` that's clicked: the pointing hand over it (set here, not
 /// passed on, or the window's arrow would win), pressed while the button's
-/// down, and `onClick` when it's let go inside.
+/// down, and `onClick` when it's let go inside (or as it goes down).
 class ClickView: HoverView {
     var onClick: (() -> Void)?
     var isEnabled = true { didSet { needsDisplay = true; window?.invalidateCursorRects(for: self) } }
     /// The pointing hand over it (off: whatever's under it says).
     var handCursor = true
+    /// Clicked the moment the button goes down, not when it's let go
+    /// inside (a run, a link, a chip: what's pressed is chosen at once).
+    var firesOnDown = false
     private(set) var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
 
     /// What a click does: `onClick`, unless a subclass says otherwise.
@@ -84,7 +87,8 @@ class ClickView: HoverView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if isEnabled { pressed = true }
+        guard isEnabled else { return }
+        if firesOnDown { clicked() } else { pressed = true }
     }
 
     override func mouseDragged(with event: NSEvent) {
