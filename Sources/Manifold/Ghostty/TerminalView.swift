@@ -73,7 +73,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         config.platform = ghostty_platform_u(macos: ghostty_platform_macos_s(
             nsview: Unmanaged.passUnretained(self).toOpaque()))
         config.userdata = Unmanaged.passUnretained(self).toOpaque()
-        config.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2)
+        config.scale_factor = Double(backingScale)
         config.context = GHOSTTY_SURFACE_CONTEXT_TAB
         // No command, no pty: the bytes come and go on the link (from
         // Ghostty's own threads).
@@ -482,7 +482,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         dots.isHidden = isHidden || isAgent
         guard !dots.isHidden, let surface else { return dots.set([]) }
         let size = ghostty_surface_size(surface)
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = backingScale
         let cell = CGFloat(size.cell_height_px) / scale
         guard cell > 0 else { return dots.set([]) }
         let last = commands.last?.id

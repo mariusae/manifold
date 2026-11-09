@@ -53,7 +53,7 @@ final class PinnedDefinitions: NSView {
             tv.drawFirstRow(ofLine: n, at: CGFloat(i) * h, dx: -dx, in: ctx)
         }
         // A hairline under them, as the text's between definitions.
-        let px = 1 / max(window?.backingScaleFactor ?? 2, 1)
+        let px = 1 / max(backingScale, 1)
         tv.textColor.withAlphaComponent(0.14).setFill()
         NSRect(x: 0, y: bounds.height - px, width: bounds.width, height: px).fill()
     }

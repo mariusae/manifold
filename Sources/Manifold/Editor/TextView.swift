@@ -3325,7 +3325,7 @@ extension TextView {
         guard showsStructure, !markdown else { return }
         let s = structure
         guard !s.declarations.isEmpty else { return }
-        let px = 1 / max(window?.backingScaleFactor ?? 2, 1)
+        let px = 1 / max(backingScale, 1)
         textColor.withAlphaComponent(0.14).setFill()
         for r in s.rules where r.line >= first && r.line <= last + 1 && r.line < text.lineCount && !hiddenLines.contains(r.line) {
             let l = layout(line: r.line)

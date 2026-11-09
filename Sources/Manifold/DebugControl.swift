@@ -734,7 +734,7 @@ enum DebugControl {
             let live = arg0.hasSuffix(" live"), arg = live ? String(arg0.dropLast(5)) : arg0
             guard let wc, let view = side ? wc.debugOrganization : wc.debugSurface, let model = view.layer else { return "no surface" }
             let layer = live ? model.presentation() ?? model : model
-            let scale = view.window?.backingScaleFactor ?? 2
+            let scale = view.backingScale
             let w = Int(view.bounds.width * scale), h = Int(view.bounds.height * scale)
             guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return "no context" }

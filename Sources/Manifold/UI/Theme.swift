@@ -412,7 +412,7 @@ final class IconButton: NSButton {
         effectiveAppearance.performAsCurrentDrawingAppearance { resolved = color.usingColorSpace(.sRGB) ?? color }
         let tinted = Self.tinted(image, resolved)
         let size = image.size
-        let scale = window?.backingScaleFactor ?? 2
+        let scale = backingScale
         func px(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
         let r = NSRect(x: px((bounds.width - size.width) / 2), y: px((bounds.height - size.height) / 2), width: size.width, height: size.height)
         tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : Flat.disabledAlpha, respectFlipped: true, hints: nil)
