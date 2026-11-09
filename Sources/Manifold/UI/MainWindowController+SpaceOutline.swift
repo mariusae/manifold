@@ -732,21 +732,19 @@ extension MainWindowController {
     }
 
 
-    /// The block a path opens as, and how it's shown: a folder as a
-    /// listing, an HTML file or an address as a page, a PDF or picture as
-    /// itself, text in an editor (with `wait`, $EDITOR's, Markdown too);
-    /// `made` if there was none for it before.
+    /// The block a path opens as for `mani open`, and how it's shown: an
+    /// address as a page; anything else as a click opens it (`pathBlock` —
+    /// a folder as a listing, an HTML file as a page, a PDF or picture as
+    /// itself, an SVG that's text in the editor), and with `wait` ($EDITOR)
+    /// text in the editor, Markdown too. A file of this Mac a click would
+    /// leave to another app is text here all the same: it was asked for
+    /// here. `made` if there was no block for it before.
     func blockAndLens(forPath path: String, on: HostID, wait: Bool) -> (block: BlockID, lens: Lens, made: Bool) {
         if WebAddress.looksLikeURL(path) { return (host.newWeb(url: path), .web, true) }
         let isDir = path.hasSuffix("/") || on == host.host && (try? FileManager.default.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeDirectory
-        let media = Self.mediaKind(path)
-        let html = Self.isHTML(path) && on == host.host
         let known = hosts.blocks.contains { $0.id.host == on && $0.path == path }
-        let block = isDir ? hosts.directoryBlock(for: path, on: on)
-            : html ? host.webBlock(forFile: path)
-            : media.flatMap { kind in hosts.client(on)?.mediaBlock(for: path, kind: kind) } ?? hosts.textBlock(for: path, on: on)
-        let lens: Lens = isDir ? .directory
-            : html ? .web : media == .pdf ? .pdf : media == .image ? .image : (wait ? .editor : Lens.default(for: .text, path: path))
+        var (block, lens) = pathBlock(path, isDirectory: isDir, on: on) ?? (hosts.textBlock(for: path, on: on), Lens.default(for: .text, path: path))
+        if wait, lens.isText || lens == .preview { lens = .editor }
         return (block, lens, !known)
     }
 
