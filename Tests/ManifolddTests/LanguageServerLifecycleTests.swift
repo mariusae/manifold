@@ -28,14 +28,20 @@ extension ProcessLifecycle {
             servers.configure([LanguageServerConfig(id: "fake", extensions: ["fake"], command: "false", rootMarkers: [])])
             servers.textChanged(block)
         }
-        Thread.sleep(forTimeInterval: 1)
+        // Waited for, not for a fixed time: a busy machine is slower.
+        func waitFor(_ done: ([String]) -> Bool) {
+            let end = Date().addingTimeInterval(10)
+            while Date() < end, !done(lock.withLock { states }) { Thread.sleep(forTimeInterval: 0.05) }
+        }
+        waitFor { $0.contains("exited") }
         let first = lock.withLock { states }
         #expect(first.filter { $0 == "starting" }.count == 1)
         #expect(first.contains("exited"))
 
         // Wanted again (an edit) after the while: started afresh.
+        Thread.sleep(forTimeInterval: 0.3)
         queue.sync { servers.textChanged(block) }
-        Thread.sleep(forTimeInterval: 1)
+        waitFor { $0.filter { $0 == "starting" }.count >= 2 }
         let after = lock.withLock { states }
         #expect(after.filter { $0 == "starting" }.count == 2, "states: \(after)")
     }
