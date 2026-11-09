@@ -1,6 +1,31 @@
 import AppKit
 import ManifoldCore
 
+/// A space's square — in the strip, beside what needs you, on ⌘`'s
+/// cards — at any size alike: rounded a quarter of its height, its symbol
+/// (else its letter) in its colour, a little darker, about half its height.
+enum SpaceSquare {
+    static func radius(_ r: NSRect) -> CGFloat { r.height / 4 }
+
+    /// Its ground: the colour, as strong as `alpha`.
+    static func fill(_ r: NSRect, color: NSColor, alpha: CGFloat) {
+        color.withAlphaComponent(alpha).setFill()
+        NSBezierPath(roundedRect: r, xRadius: radius(r), yRadius: radius(r)).fill()
+    }
+
+    /// Its symbol, else its letter, centred.
+    static func drawGlyph(in r: NSRect, color: NSColor, symbol: String?, letter: String) {
+        let ink = color.blended(withFraction: 0.25, of: Theme.text) ?? color
+        let size = max(8.5, (r.height * 0.48 * 2).rounded() / 2)
+        if let symbol, let image = Theme.symbol(symbol, size: size, weight: .semibold, color: ink) {
+            return image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
+        }
+        let t = NSAttributedString(string: letter, attributes: [.font: NSFont.systemFont(ofSize: size, weight: r.height >= 24 ? .semibold : .bold), .foregroundColor: ink])
+        let z = t.size()
+        t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
+    }
+}
+
 /// The spaces, along the sidebar's foot (§3.6): the sidebar shows one at
 /// a time, and here are all of them, as Arc's spaces — each a small
 /// square in its colour, its letter or symbol in it; the one shown
@@ -180,9 +205,7 @@ final class SpaceStripView: NSView {
                 Theme.divider.setFill()
                 NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
             }
-            let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-            c.color.withAlphaComponent(c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18).setFill()
-            path.fill()
+            SpaceSquare.fill(r, color: c.color, alpha: c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
             if dropTarget == i {
                 // Something held over it, to go there.
                 let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
@@ -196,14 +219,7 @@ final class SpaceStripView: NSView {
                 c.color.withAlphaComponent(0.85).setStroke()
                 ring.stroke()
             }
-            let ink = c.color.blended(withFraction: 0.25, of: Theme.text) ?? c.color
-            if let s = c.symbol, let image = Theme.symbol(s, size: 11.5, weight: .semibold, color: ink) {
-                image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
-            } else {
-                let t = NSAttributedString(string: c.letter, attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: ink])
-                let z = t.size()
-                t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
-            }
+            SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
             // ⌘ held: its number, over its bottom right, as a key's badge.
             if showsNumbers, let n = number(i) {
                 let t = NSAttributedString(string: "\(n)", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .bold), .foregroundColor: Theme.panel])
@@ -661,16 +677,8 @@ final class NeedsYouView: NSView {
             }
             // Its space's square, small.
             let sq = NSRect(x: SidebarView.margin, y: r.midY - 8, width: 16, height: 16)
-            item.spaceColor.withAlphaComponent(0.28).setFill()
-            NSBezierPath(roundedRect: sq, xRadius: 4, yRadius: 4).fill()
-            let sInk = item.spaceColor.blended(withFraction: 0.25, of: Theme.text) ?? item.spaceColor
-            if let s = item.spaceSymbol, let image = Theme.symbol(s, size: 8.5, weight: .semibold, color: sInk) {
-                image.draw(centeredAt: NSPoint(x: sq.midX, y: sq.midY))
-            } else {
-                let t = NSAttributedString(string: item.spaceLetter, attributes: [.font: NSFont.systemFont(ofSize: 9, weight: .bold), .foregroundColor: sInk])
-                let z = t.size()
-                t.draw(at: NSPoint(x: (sq.midX - z.width / 2).rounded(), y: (sq.midY - z.height / 2).rounded()))
-            }
+            SpaceSquare.fill(sq, color: item.spaceColor, alpha: 0.28)
+            SpaceSquare.drawGlyph(in: sq, color: item.spaceColor, symbol: item.spaceSymbol, letter: item.spaceLetter)
             if let image = Theme.symbol(item.symbol, size: 11, weight: .regular, color: Theme.secondaryText) {
                 let z = image.size
                 image.draw(in: NSRect(x: sq.maxX + 8, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),

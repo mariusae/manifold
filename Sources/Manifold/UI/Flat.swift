@@ -354,7 +354,7 @@ final class FlatButton: NSButton {
         let ctx = NSGraphicsContext.current?.cgContext
         ctx?.saveGState()
         defer { ctx?.restoreGState() }
-        if !isEnabled { ctx?.setAlpha(0.4) }
+        if !isEnabled { ctx?.setAlpha(Flat.disabledAlpha) }
         // A capsule, as Dia's chips: a faint grey, no line round it; on, a
         // deeper grey (not the accent); the primary alone in the accent.
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)

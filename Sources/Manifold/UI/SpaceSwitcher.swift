@@ -73,16 +73,8 @@ final class SpaceSwitcherView: PopoverView {
             }
             // Its head: its square, its name, its host; what wants you there.
             let sq = NSRect(x: r.minX + 10, y: r.minY + 10, width: 20, height: 20)
-            c.color.withAlphaComponent(0.3).setFill()
-            NSBezierPath(roundedRect: sq, xRadius: 5, yRadius: 5).fill()
-            let ink = c.color.blended(withFraction: 0.25, of: Theme.text) ?? c.color
-            if let s = c.symbol, let image = Theme.symbol(s, size: 10, weight: .semibold, color: ink) {
-                image.draw(centeredAt: NSPoint(x: sq.midX, y: sq.midY))
-            } else {
-                let t = NSAttributedString(string: c.letter, attributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .bold), .foregroundColor: ink])
-                let z = t.size()
-                t.draw(at: NSPoint(x: sq.midX - z.width / 2, y: sq.midY - z.height / 2))
-            }
+            SpaceSquare.fill(sq, color: c.color, alpha: 0.3)
+            SpaceSquare.drawGlyph(in: sq, color: c.color, symbol: c.symbol, letter: c.letter)
             var right = r.maxX - 10
             if let tone = SpaceStripView.tone(c.status) {
                 tone.setFill()
