@@ -94,6 +94,12 @@ enum Motion {
     /// One thing becoming another where it goes (a tile its card, a card
     /// its tile): a little longer than a move, for the change to be seen.
     static var morph: TimeInterval { spatial * 1.5 }
+    /// How long the pointer rests on something before what it shows comes
+    /// (a space's peek, a recent group opening).
+    static let hoverIntent: TimeInterval = 0.3
+    /// How long something the pointer has left lingers, in case it comes
+    /// back (the host picker).
+    static let lingerAfterExit: TimeInterval = 0.35
     /// Reduce motion asked for (or, debugging, as if it were).
     static var reduced: Bool { forceReduced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     static var forceReduced = false

@@ -1186,7 +1186,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
         hoverWork.cancel()
         guard let node, node.id.hasPrefix("recent:"), !outline.isItemExpanded(node) else { return }
-        hoverWork.schedule(after: 0.3) { [weak self, weak node] in
+        hoverWork.schedule(after: Motion.hoverIntent) { [weak self, weak node] in
             guard let self, let node, self.trackedRow == row else { return }
             self.outline.expandItem(node)
             self.hoverOpened = node

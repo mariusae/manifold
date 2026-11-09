@@ -39,7 +39,7 @@ final class SidebarView: NSView {
     private let header = WindowDragView()
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
-    /// The tree; the bar at the bottom: what it lists — spaces, files or
+    /// The tree; the tabs at the top: what it lists — spaces, files or
     /// threads, an icon each.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
@@ -204,8 +204,8 @@ final class SidebarView: NSView {
                 top -= Self.pushedHeight + 6
             }
         }
-        // The spaces along the very bottom; over them the counts of what's
-        // doing something, at the right — none, no row for them.
+        // The footer along the very bottom; over it what needs you, the
+        // transfers and the toasts, each only when there's something.
         footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SidebarFooter.height)
         var bottom = SidebarFooter.height
         let nh = needsYou.wantedHeight

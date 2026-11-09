@@ -26,7 +26,7 @@ enum SpaceSquare {
     }
 }
 
-/// The spaces, along the sidebar's foot (§3.6): the sidebar shows one at
+/// The spaces, at the sidebar's top (§3.6): the sidebar shows one at
 /// a time, and here are all of them, as Arc's spaces — each a small
 /// square in its colour, its letter or symbol in it; the one shown
 /// outlined; a dot at a corner for what most wants you in it (needs you,
@@ -457,7 +457,7 @@ extension MainWindowController {
             self.spacePeek = v
         }
         if spacePeek != nil { return show() }
-        spacePeekWork.schedule(after: 0.3, show)
+        spacePeekWork.schedule(after: Motion.hoverIntent, show)
     }
 
     /// The square's card put away.
@@ -902,6 +902,6 @@ extension MainWindowController {
             guard let self, now || !self.sidebar.hostPicker.inside else { return }
             self.sidebar.hideHostPicker()
         }
-        if now { pickerHide.runNow(hide) } else { pickerHide.schedule(after: 0.35, hide) }
+        if now { pickerHide.runNow(hide) } else { pickerHide.schedule(after: Motion.lingerAfterExit, hide) }
     }
 }
