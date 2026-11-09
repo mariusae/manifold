@@ -48,31 +48,13 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     var isDead: Bool { false }
     static let headerHeight: CGFloat = 44
     private var copied = false
-    private var headerHovered = false {
-        didSet {
-            guard headerHovered != oldValue else { return }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = Motion.fast
-                for b in [back, copy] { b.animator().alphaValue = headerHovered ? 1 : 0 }
-            }
-        }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.filter { $0.userInfo?["header"] != nil }.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: header.frame, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["header": true]))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseEntered(with: event) }
-        headerHovered = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseExited(with: event) }
-        headerHovered = false
-    }
+    /// The buttons, under the pointer on the header (the copy's check
+    /// shown till it's gone).
+    private lazy var reveal: HoverReveal = {
+        let r = HoverReveal(in: self) { [unowned self] in [back, copy] }
+        r.pinned = { [unowned self] in copied }
+        return r
+    }()
     /// Where Copy puts it (another, in debugging).
     var pasteboard = NSPasteboard.general
 
@@ -192,8 +174,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         // The command over how it went, at the left; at the right, the
         // buttons' glyphs, shown under the pointer (Dia's way); the copy's
         // check says it took.
-        for b in [back, copy] { b.alphaValue = headerHovered || copied ? 1 : 0 }
-        updateTrackingAreas()
+        reveal.track(header.frame)
         back.title = ""
         copy.title = ""
         copy.symbolName = copied ? "checkmark" : "doc.on.doc"

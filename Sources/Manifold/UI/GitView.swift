@@ -79,7 +79,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         refresh.target = self
         refresh.action = #selector(refreshClicked)
         refresh.toolTip = "Refresh"
-        refresh.alphaValue = 0
         for v in [branchLabel, refresh] { addSubview(v) }
 
         table.dataSource = self
@@ -177,25 +176,13 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
     }
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.filter { $0.userInfo?["strip"] != nil }.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: NSRect(x: 0, y: bounds.height - 26, width: bounds.width, height: 26),
-                                       options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["strip": true]))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        if event.trackingArea?.userInfo?["strip"] != nil { refresh.animator().alphaValue = 1 } else { super.mouseEntered(with: event) }
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        if event.trackingArea?.userInfo?["strip"] != nil { refresh.animator().alphaValue = 0 } else { super.mouseExited(with: event) }
-    }
+    /// Refresh, under the pointer on the branch's strip.
+    private lazy var reveal = HoverReveal(in: self) { [unowned self] in [refresh] }
 
     override func layout() {
         super.layout()
         let w = bounds.width
-        updateTrackingAreas()
+        reveal.track(NSRect(x: 0, y: bounds.height - 26, width: w, height: 26))
         // Where it is is the bar's; here the branch, and refresh under the pointer.
         branchLabel.alignment = .left
         branchLabel.frame = NSRect(x: 12, y: bounds.height - 20, width: max(0, w - 12 - 36), height: 16)

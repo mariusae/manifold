@@ -60,31 +60,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private var focusedCell: String?
     private var ticker: Timer?
     /// The pointer on the header: its tools (new cell, restart, more) shown.
-    private var headerHovered = false {
-        didSet {
-            guard headerHovered != oldValue else { return }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = Motion.fast
-                tools.animator().alphaValue = headerHovered ? 1 : 0
-            }
-        }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.filter { $0.userInfo?["header"] != nil }.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: header.frame, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self, userInfo: ["header": true]))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseEntered(with: event) }
-        headerHovered = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        guard event.trackingArea?.userInfo?["header"] != nil else { return super.mouseExited(with: event) }
-        headerHovered = false
-    }
+    private lazy var reveal = HoverReveal(in: self) { [unowned self] in [tools] }
 
     var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
     var isDead: Bool { false }
@@ -241,8 +217,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         tools.frame = NSRect(x: w - 10 - t.width, y: mid - t.height / 2, width: t.width, height: t.height)
         runs.frame = NSRect(x: tools.frame.minX - 8 - rn.width, y: mid - rn.height / 2, width: rn.width, height: rn.height)
         status.frame = NSRect(x: 12, y: mid - 8, width: max(0, runs.frame.minX - 22), height: 17)
-        tools.alphaValue = headerHovered ? 1 : 0
-        updateTrackingAreas()
+        reveal.track(header.frame)
         scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, h - Self.headerHeight))
         layoutCells()
     }
