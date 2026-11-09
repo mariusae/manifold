@@ -1702,29 +1702,18 @@ final class NoteOutlineTextView: NSTextView {
 
     // MARK: Keys
 
+    // (⌃⌘↑ ⌃⌘↓ move rows and ⌃⌘9 ⌃⌘0 ⌥⌘9 ⌥⌘0 fold them as the menus'
+    // keys: no view before the menu takes them.)
+
     override func keyDown(with event: NSEvent) {
-        let mods = event.keyMods
         // ⇧Return: the row goes on, on a line of its own.
-        if [36, 76].contains(event.keyCode), mods == .shift { return insertLineBreak(nil) }
-        // ⌃⌘↑ ⌃⌘↓ (an editor's line moves): the row among its siblings.
-        if mods == [.command, .control], event.keyCode == 126 { return moveRowsUp(nil) }
-        if mods == [.command, .control], event.keyCode == 125 { return moveRowsDown(nil) }
+        if event.isReturn, event.keyMods == .shift { return insertLineBreak(nil) }
         super.keyDown(with: event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // ⌘Return, as Prism has it: a checkbox — open, checked, then a bullet again.
-        guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
-        let mods = event.keyMods
-        if [36, 76].contains(event.keyCode), mods == .command { cycleChecklist(nil); return true }
-        // Folds (⌘9 and ⌘0 are spaces' here): ⌃⌘ the rows', ⌥⌘ all.
-        switch (mods, event.charactersIgnoringModifiers) {
-        case ([.command, .control], "9"): collapse(nil); return true
-        case ([.command, .control], "0"): expand(nil); return true
-        case ([.command, .option], "9"): collapseAll(nil); return true
-        case ([.command, .option], "0"): expandAll(nil); return true
-        default: break
-        }
+        if window?.firstResponder === self, event.isReturn, event.keyMods == .command { cycleChecklist(nil); return true }
         return super.performKeyEquivalent(with: event)
     }
 
