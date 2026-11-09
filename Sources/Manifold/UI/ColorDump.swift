@@ -21,7 +21,7 @@ import ManifoldCore
             ("pdfMatch", MediaView.pdfMatch), ("pdfCurrent", MediaView.pdfCurrentMatch),
             ("diffFound", DiffRowsView.foundBackground), ("diffCurrent", DiffRowsView.currentBackground),
             ("diffAdded", DiffRowsView.addedBackground), ("diffRemoved", DiffRowsView.removedBackground),
-            ("diffHunk", DiffRowsView.hunkBackground), ("linkHover", TextView.linkHover), ("link", TextView.linkColor),
+            ("diffHunk", DiffRowsView.hunkBackground), ("linkHover", LinkStyle.hover), ("link", LinkStyle.color),
             ("lineHighlight", TextView.lineHighlight), ("gutterText", TextView.gutterText), ("use", TextView.useColor),
             ("match", TextView.matchColor), ("added", TextView.addedColor), ("modified", TextView.modifiedColor),
             ("deleted", TextView.deletedColor), ("diag1", TextView.diagnosticColor(.error)), ("diag2", TextView.diagnosticColor(.warning)),

@@ -63,7 +63,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private lazy var finder = FindHost(view: self, target: self)
     private var matches: [TextRange] = []
     private var isEdited = false
-    private var stateWork: DispatchWorkItem?
+    private let stateWork = Debouncer()
     private var restored = false
     private var lastVersion = -1
     var completion: CompletionPopup?
@@ -134,7 +134,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             guard let self else { return }
             NavJumps.willJump?(self)
             let at = self.textView.text.offset(ofLine: line)
-            let body = self.textView.text.lineText(line).prefix { $0 == " " || $0 == "\t" }.utf8.count
+            let body = self.textView.text.lineText(line).indentation.utf8.count
             self.scroll(toY: self.textView.top(ofLine: line) - 8 - self.pinnedRoom(line))
             self.textView.setSelections([Selection(at: at + body)], scroll: false)
             self.window?.makeFirstResponder(self.textView)
@@ -341,7 +341,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private let note = BusyNote()
     /// Each heading's line (0-based), in the outline's order.
     private var headingLines: [Int] = []
-    private var headingsWork: DispatchWorkItem?
+    private let headingsWork = Debouncer()
     /// Whether the text has an outline: Markdown, or a note (its headings);
     /// a source file whose language server says what it declares.
     /// An outline: a text's Markdown headings, or a source file's symbols
@@ -449,14 +449,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     private func scheduleHeadings() {
         guard isMarkdownOutline || !path.isEmpty else { return }
-        headingsWork?.cancel()
         // A language server is asked less often than headings are parsed.
-        let work = DispatchWorkItem { [weak self] in
+        headingsWork.schedule(after: isMarkdownOutline ? 0.3 : 0.8) { [weak self] in
             guard let self else { return }
             if self.isMarkdownOutline { self.findHeadings() } else { self.findSymbols() }
         }
-        headingsWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (isMarkdownOutline ? 0.3 : 0.8), execute: work)
     }
 
     /// A source file's symbols, as its language server says, once per
@@ -503,7 +500,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         watchCommandKey(false)
         // Where it was left, kept as the tile goes, for when it's made again.
         if restored { saveState() }
-        stateWork?.cancel()
+        stateWork.cancel()
         completion?.close()
         hover?.close()
     }
@@ -768,18 +765,16 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// typing stops, not at each key (the whole text gone through), and
     /// the caret left where it is (it was thrown onto a match).
     private func scheduleMatchRefresh() {
-        matchRefresh?.cancel()
+        matchRefresh.cancel()
         guard !matches.isEmpty || textView.highlights.count > 0 else { return }
-        let work = DispatchWorkItem { [weak self] in
+        matchRefresh.schedule(after: 0.15) { [weak self] in
             guard let self else { return }
             self.rehighlighting = true
             self.finder.refresh()
             self.rehighlighting = false
         }
-        matchRefresh = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
-    private var matchRefresh: DispatchWorkItem?
+    private let matchRefresh = Debouncer()
     private var rehighlighting = false
 
     // MARK: Fonts
@@ -924,14 +919,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     private func scheduleStateSave() {
         guard restored else { return }
-        stateWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.saveState() }
-        stateWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+        stateWork.schedule(after: 0.6) { [weak self] in self?.saveState() }
     }
 
     private func saveState() {
-        stateWork?.cancel()
+        stateWork.cancel()
         guard let doc = document else { return }
         let ranges = textView.selections.map { $0.range }
         var events: [Event] = []

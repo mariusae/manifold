@@ -88,13 +88,8 @@ final class TextView: NSView, NSTextInputClient {
             updateCursor()
         }
     }
-    /// Behind the link under the pointer (⌘ held): a band a step lighter
-    /// in the dark, darker in the light — a lightness, not a hue, as a
-    /// chosen row's, so every eye sees it. A terminal's links have it too.
     /// A run that glows in its color (a link ⌘ shows), drawn under it.
     static let glows = NSAttributedString.Key("ManifoldGlows")
-    static let linkHover = NSColor.themed { $0.code.linkHover }
-    static let linkColor = NSColor.themed { $0.code.link }
     /// The line numbers' color (go.dev's for its listings, in view mode).
     var gutterColor = TextView.gutterText { didSet { if gutterColor != oldValue { needsDisplay = true } } }
     var showsLineNumbers = true { didSet { if showsLineNumbers != oldValue { invalidateAll() } } }
@@ -148,7 +143,7 @@ final class TextView: NSView, NSTextInputClient {
     /// The definitions as they were, moved by the edits since: used until
     /// the tree's parsed again (finding them is a pass over the whole tree).
     private var movedDeclarations: [Declaration]?
-    private var structureWork: DispatchWorkItem?
+    private let structureWork = Debouncer()
     /// The text's face in bold, for definitions' names; nil if it has none.
     private var boldFont: NSFont?
     /// For pills of blocks that are running: the dots' travel, redrawn by a timer.
@@ -421,16 +416,13 @@ final class TextView: NSView, NSTextInputClient {
     /// The definitions found again a moment after typing stops: those moved
     /// by edits can be off (a name typed at its end, one taken apart).
     private func scheduleStructure() {
-        structureWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        structureWork.schedule(after: 0.4) { [weak self] in
             guard let self, self.movedDeclarations != nil else { return }
             self.movedDeclarations = nil
             self.structureCache = nil
             self.layouts = [:]
             self.needsDisplay = true
         }
-        structureWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
     /// `edited`: what an edit of ours changed, said as it's made (the tree
@@ -705,7 +697,7 @@ final class TextView: NSView, NSTextInputClient {
             let start = text.offset(ofLine: n), end = start + string.utf8.count
             for r in linkRanges where r.end > start && r.start < end {
                 let a = column(max(r.start, start)), b = column(min(r.end, end))
-                if b > a { attributed.addAttributes([.foregroundColor: Self.linkColor, Self.glows: true], range: NSRange(location: a, length: b - a)) }
+                if b > a { attributed.addAttributes([.foregroundColor: LinkStyle.color, Self.glows: true], range: NSRange(location: a, length: b - a)) }
             }
         }
         let typesetter = CTTypesetterCreateWithAttributedString(attributed)
@@ -1198,8 +1190,8 @@ final class TextView: NSView, NSTextInputClient {
         let runs = runs(in: row).filter { $0.attributes[Self.glows] != nil }.map(\.run)
         guard !runs.isEmpty else { return }
         let dark = effectiveAppearance.isDark
-        var color = Self.linkColor.cgColor
-        effectiveAppearance.performAsCurrentDrawingAppearance { color = Self.linkColor.cgColor }
+        var color = LinkStyle.color.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { color = LinkStyle.color.cgColor }
         // The blur is in device pixels, not this view's points.
         let scale = abs(ctx.convertToDeviceSpace(CGSize(width: 1, height: 0)).width)
         ctx.saveGState()
@@ -1328,7 +1320,7 @@ final class TextView: NSView, NSTextInputClient {
         }
         drawStructure(from: first, to: last)
         // The link under the pointer (⌘ held), on its band.
-        if let h = hoveredLink, !h.isEmpty { fillBands([h], Self.linkHover, within: shown, from: first, to: last) }
+        if let h = hoveredLink, !h.isEmpty { fillBands([h], LinkStyle.hover, within: shown, from: first, to: last) }
 
         // Text.
         beginText(ctx)
@@ -1782,34 +1774,39 @@ final class TextView: NSView, NSTextInputClient {
         }
     }
 
+    /// Where the caret goes for each of the system's moves, by the command
+    /// that moves it and the one (with ⇧) that extends the selection.
+    private static let motions: [Selector: (extends: Bool, to: (TextView) -> (Int) -> Int)] = {
+        var table: [Selector: (extends: Bool, to: (TextView) -> (Int) -> Int)] = [:]
+        func add(_ moving: [Selector], _ extending: [Selector], _ to: @escaping (TextView) -> (Int) -> Int) {
+            for s in moving { table[s] = (false, to) }
+            for s in extending { table[s] = (true, to) }
+        }
+        typealias R = NSResponder
+        add([#selector(R.moveLeft(_:)), #selector(R.moveBackward(_:))], [#selector(R.moveLeftAndModifySelection(_:))]) { tv in { tv.text.previous($0) } }
+        add([#selector(R.moveRight(_:)), #selector(R.moveForward(_:))], [#selector(R.moveRightAndModifySelection(_:))]) { tv in { tv.text.next($0) } }
+        add([#selector(R.moveWordLeft(_:)), #selector(R.moveWordBackward(_:))],
+            [#selector(R.moveWordLeftAndModifySelection(_:)), #selector(R.moveWordBackwardAndModifySelection(_:))]) { $0.wordStart }
+        add([#selector(R.moveWordRight(_:)), #selector(R.moveWordForward(_:))],
+            [#selector(R.moveWordRightAndModifySelection(_:)), #selector(R.moveWordForwardAndModifySelection(_:))]) { $0.wordEnd }
+        add([#selector(R.moveToBeginningOfLine(_:)), #selector(R.moveToLeftEndOfLine(_:))],
+            [#selector(R.moveToBeginningOfLineAndModifySelection(_:)), #selector(R.moveToLeftEndOfLineAndModifySelection(_:))]) { $0.lineHome }
+        add([#selector(R.moveToEndOfLine(_:)), #selector(R.moveToRightEndOfLine(_:))],
+            [#selector(R.moveToEndOfLineAndModifySelection(_:)), #selector(R.moveToRightEndOfLineAndModifySelection(_:))]) { $0.lineEnd }
+        add([#selector(R.moveToBeginningOfParagraph(_:))], [#selector(R.moveToBeginningOfParagraphAndModifySelection(_:))]) { tv in { tv.text.offset(ofLine: tv.text.line(at: $0)) } }
+        add([#selector(R.moveToEndOfParagraph(_:))], [#selector(R.moveToEndOfParagraphAndModifySelection(_:))]) { tv in { tv.text.lineRange(tv.text.line(at: $0)).end } }
+        add([#selector(R.moveToBeginningOfDocument(_:))], [#selector(R.moveToBeginningOfDocumentAndModifySelection(_:))]) { _ in { _ in 0 } }
+        add([#selector(R.moveToEndOfDocument(_:))], [#selector(R.moveToEndOfDocumentAndModifySelection(_:))]) { tv in { _ in tv.text.count } }
+        return table
+    }()
+
     override func doCommand(by selector: Selector) {
+        if let m = Self.motions[selector] { return m.extends ? extend(m.to(self)) : move(m.to(self)) }
         switch selector {
-        case #selector(moveLeft(_:)): move { self.text.previous($0) }
-        case #selector(moveRight(_:)): move { self.text.next($0) }
-        case #selector(moveLeftAndModifySelection(_:)): extend { self.text.previous($0) }
-        case #selector(moveRightAndModifySelection(_:)): extend { self.text.next($0) }
-        case #selector(moveBackward(_:)): move { self.text.previous($0) }
-        case #selector(moveForward(_:)): move { self.text.next($0) }
-        case #selector(moveWordLeft(_:)), #selector(moveWordBackward(_:)): move(wordStart)
-        case #selector(moveWordRight(_:)), #selector(moveWordForward(_:)): move(wordEnd)
-        case #selector(moveWordLeftAndModifySelection(_:)), #selector(moveWordBackwardAndModifySelection(_:)): extend(wordStart)
-        case #selector(moveWordRightAndModifySelection(_:)), #selector(moveWordForwardAndModifySelection(_:)): extend(wordEnd)
         case #selector(moveUp(_:)): moveVertically(-1, extend: false)
         case #selector(moveDown(_:)): moveVertically(1, extend: false)
         case #selector(moveUpAndModifySelection(_:)): moveVertically(-1, extend: true)
         case #selector(moveDownAndModifySelection(_:)): moveVertically(1, extend: true)
-        case #selector(moveToBeginningOfLine(_:)), #selector(moveToLeftEndOfLine(_:)): move(lineHome)
-        case #selector(moveToEndOfLine(_:)), #selector(moveToRightEndOfLine(_:)): move(lineEnd)
-        case #selector(moveToBeginningOfLineAndModifySelection(_:)), #selector(moveToLeftEndOfLineAndModifySelection(_:)): extend(lineHome)
-        case #selector(moveToEndOfLineAndModifySelection(_:)), #selector(moveToRightEndOfLineAndModifySelection(_:)): extend(lineEnd)
-        case #selector(moveToBeginningOfParagraph(_:)): move { self.text.offset(ofLine: self.text.line(at: $0)) }
-        case #selector(moveToEndOfParagraph(_:)): move { self.text.lineRange(self.text.line(at: $0)).end }
-        case #selector(moveToBeginningOfParagraphAndModifySelection(_:)): extend { self.text.offset(ofLine: self.text.line(at: $0)) }
-        case #selector(moveToEndOfParagraphAndModifySelection(_:)): extend { self.text.lineRange(self.text.line(at: $0)).end }
-        case #selector(moveToBeginningOfDocument(_:)): move { _ in 0 }
-        case #selector(moveToEndOfDocument(_:)): move { _ in self.text.count }
-        case #selector(moveToBeginningOfDocumentAndModifySelection(_:)): extend { _ in 0 }
-        case #selector(moveToEndOfDocumentAndModifySelection(_:)): extend { _ in self.text.count }
         case #selector(pageUp(_:)), #selector(scrollPageUp(_:)): page(-1, extend: false)
         case #selector(pageDown(_:)), #selector(scrollPageDown(_:)): page(1, extend: false)
         case #selector(pageUpAndModifySelection(_:)): page(-1, extend: true)
@@ -1919,7 +1916,7 @@ final class TextView: NSView, NSTextInputClient {
         let n = text.line(at: offset)
         let start = text.offset(ofLine: n)
         let line = text.lineText(n)
-        let indent = line.prefix { $0 == " " || $0 == "\t" }.utf8.count
+        let indent = line.indentation.utf8.count
         return offset == start + indent || offset < start + indent ? start : start + indent
     }
 
@@ -1931,7 +1928,7 @@ final class TextView: NSView, NSTextInputClient {
 
     /// The name the pointer rests on, waited on before it's peeked at.
     private var peekWord: TextRange?
-    private var peekWork: DispatchWorkItem?
+    private let peekWork = Debouncer()
 
     /// The pointer moved: over a name in code, a peek at it a moment after
     /// it stops there; off it, any peek put away.
@@ -1942,19 +1939,16 @@ final class TextView: NSView, NSTextInputClient {
         guard w != peekWord else { return }
         endPeek()
         peekWord = w
-        let work = DispatchWorkItem { [weak self] in
+        peekWork.schedule(after: 0.7) { [weak self] in
             guard let self, self.peekWord == w, self.window != nil else { return }
             let r = self.rects(of: w).first ?? .zero
             self.delegate?.textView(self, peekAt: w, in: self.convert(r, to: nil))
         }
-        peekWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
     }
 
     /// The pointer's off the name (or a key went down, the text scrolled).
     func endPeek() {
-        peekWork?.cancel()
-        peekWork = nil
+        peekWork.cancel()
         peekWord = nil
         PeekTip.shared.hide()
     }
@@ -1979,7 +1973,7 @@ final class TextView: NSView, NSTextInputClient {
         let w = wordRange(at: o)
         guard w.length >= 2, let first = text.byte(at: w.start), !(first >= 0x30 && first <= 0x39),
               let r = rects(of: w).first, r.insetBy(dx: -1, dy: 0).contains(p) else { return nil }
-        if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: w).isEmpty { return nil }
+        if syntax?.isComment(at: w.start) == true { return nil }
         return w
     }
 
@@ -2023,7 +2017,7 @@ final class TextView: NSView, NSTextInputClient {
 
     /// The pinned symbols' uses asked of the language server (again after
     /// the text changes, a moment after the last change).
-    private var pinWork: DispatchWorkItem?
+    private let pinWork = Debouncer()
     private func askPinnedUses() {
         for p in pinned {
             let at = p.at, version = document?.version
@@ -2052,10 +2046,7 @@ final class TextView: NSView, NSTextInputClient {
         for i in pinned.indices where text[wordRange(at: min(pinned[i].at, text.count))] != pinned[i].word {
             if let hit = text.findAll(pinned[i].word, limit: 1).first { pinned[i].at = hit.start }
         }
-        pinWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.askPinnedUses() }
-        pinWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
+        pinWork.schedule(after: 0.6) { [weak self] in self?.askPinnedUses() }
     }
 
     /// Clear Highlights: every pinned symbol unpinned.
@@ -2075,7 +2066,7 @@ final class TextView: NSView, NSTextInputClient {
             for hit in text.findAll(word, limit: 5000) {
                 let before = hit.start > 0 ? text.byte(at: hit.start - 1) : nil, after = text.byte(at: hit.end)
                 guard before.map(isWord) != true, after.map(isWord) != true else { continue }
-                if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: hit).isEmpty { continue }
+                if syntax?.isComment(at: hit.start) == true { continue }
                 out.append((hit, color))
             }
         }
@@ -2087,23 +2078,21 @@ final class TextView: NSView, NSTextInputClient {
     /// the same word, whole, elsewhere — a moment after the caret stops.
     private(set) var symbolUses: [TextRange] = [] { didSet { if symbolUses != oldValue { needsDisplay = true } } }
     var showsSymbolUses = false
-    private var usesWork: DispatchWorkItem?
+    private let usesWork = Debouncer()
 
     private func scheduleSymbolUses() {
-        usesWork?.cancel()
+        usesWork.cancel()
         guard showsSymbolUses, !markdown, selections.count == 1, let s = selections.first, s.isCaret, text.count < 4_000_000 else {
             symbolUses = []
             return
         }
-        let work = DispatchWorkItem { [weak self] in self?.findSymbolUses(at: s.head) }
-        usesWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+        usesWork.schedule(after: 0.2) { [weak self] in self?.findSymbolUses(at: s.head) }
     }
 
     private func findSymbolUses(at offset: Int) {
         let w = wordRange(at: offset)
         guard w.length >= 2, let first = text.byte(at: w.start), !(first >= 0x30 && first <= 0x39) else { return symbolUses = [] }
-        if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: w).isEmpty { return symbolUses = [] }
+        if syntax?.isComment(at: w.start) == true { return symbolUses = [] }
         // That symbol's uses, as its language server says; else the name's.
         let version = document?.version
         delegate?.textView(self, usesAt: w.start) { [weak self] uses in
@@ -2122,7 +2111,7 @@ final class TextView: NSView, NSTextInputClient {
             let before = hit.start > 0 ? text.byte(at: hit.start - 1) : nil, after = text.byte(at: hit.end)
             guard before.map(isWord) != true, after.map(isWord) != true else { continue }
             // Not words in a comment, which the grammar knows.
-            if let syntax, let q = syntax.language.commentQuery, !syntax.captures(q, in: hit).isEmpty { continue }
+            if syntax?.isComment(at: hit.start) == true { continue }
             out.append(hit)
         }
         return out
@@ -2181,7 +2170,7 @@ final class TextView: NSView, NSTextInputClient {
             let line = text.lineText(n)
             let lineStart = text.offset(ofLine: n)
             let head = String(decoding: Array(line.utf8.prefix(s.min - lineStart)), as: UTF8.self)
-            var indent = String(head.prefix { $0 == " " || $0 == "\t" })
+            var indent = String(head.indentation)
             if let last = head.last, "{[(".contains(last) { indent += indentUnit }
             return "\n" + indent
         }
@@ -2192,7 +2181,7 @@ final class TextView: NSView, NSTextInputClient {
             if let b = text.byte(at: s.head), "}])".utf8.contains(b) {
                 let n = text.line(at: s.head)
                 let line = text.lineText(n)
-                let indent = String(line.prefix { $0 == " " || $0 == "\t" })
+                let indent = String(line.indentation)
                 let outdent = String(indent.dropLast(indentUnit.count))
                 extra.append((TextRange(at: s.head), "\n" + outdent))
             }
@@ -2276,7 +2265,8 @@ final class TextView: NSView, NSTextInputClient {
         var after: [Selection] = []
         var shift = 0
         for s in selections.sorted(by: { $0.min < $1.min }) {
-            let lines = TextRange(text.offset(ofLine: text.line(at: s.min)), text.lineRange(text.line(at: s.max)).end)
+            let on = text.lines(of: s.range)
+            let lines = TextRange(text.offset(ofLine: on.lowerBound), text.lineRange(on.upperBound).end)
             let was = text[lines] as NSString
             let base = text.utf16Offset(ofByte: lines.start)
             let from = text.utf16Offset(ofByte: s.min) - base, to = text.utf16Offset(ofByte: s.max) - base
@@ -2328,7 +2318,7 @@ final class TextView: NSView, NSTextInputClient {
         for n in selectedLines() {
             let start = text.offset(ofLine: n)
             let line = text.lineText(n)
-            let lead = line.prefix { $0 == " " || $0 == "\t" }
+            let lead = line.indentation
             var take = 0
             if lead.first == "\t" { take = 1 } else { take = min(lead.count, tabWidth) }
             if take > 0 { edits.append((TextRange(start, start + take), "")) }
@@ -2349,10 +2339,8 @@ final class TextView: NSView, NSTextInputClient {
 
     private func selectLines() {
         setSelections(selections.map { s in
-            let start = text.offset(ofLine: text.line(at: s.min))
-            let endLine = text.line(at: s.max)
-            let end = endLine + 1 < text.lineCount ? text.offset(ofLine: endLine + 1) : text.count
-            return Selection(start, end)
+            let lines = text.lines(of: s.range)
+            return Selection(text.offset(ofLine: lines.lowerBound), text.lineRangeIncludingBreak(lines.upperBound).end)
         })
     }
 
@@ -2396,8 +2384,7 @@ final class TextView: NSView, NSTextInputClient {
     private func duplicateLines() {
         let lines = selectedLines()
         guard let first = lines.first, let last = lines.last else { return }
-        let start = text.offset(ofLine: first)
-        let end = last + 1 < text.lineCount ? text.offset(ofLine: last + 1) : text.count
+        let start = text.offset(ofLine: first), end = text.lineRangeIncludingBreak(last).end
         var block = text[TextRange(start, end)]
         if !block.hasSuffix("\n") { block = "\n" + block }
         let before = selections
@@ -2427,8 +2414,7 @@ final class TextView: NSView, NSTextInputClient {
     private func deleteLines() {
         let lines = selectedLines()
         guard let first = lines.first, let last = lines.last else { return }
-        let start = text.offset(ofLine: first)
-        let end = last + 1 < text.lineCount ? text.offset(ofLine: last + 1) : text.count
+        let start = text.offset(ofLine: first), end = text.lineRangeIncludingBreak(last).end
         var s = start
         if end == text.count, start > 0, end > start { s = start - 1 }
         replace([(TextRange(s, end), "")], selectAfter: [Selection(at: min(s, max(0, text.count - (end - s))))])
@@ -2441,7 +2427,7 @@ final class TextView: NSView, NSTextInputClient {
             guard n + 1 < text.lineCount else { continue }
             let r = text.lineRange(n)
             let next = text.lineText(n + 1)
-            let lead = next.prefix { $0 == " " || $0 == "\t" }.utf8.count
+            let lead = next.indentation.utf8.count
             edits.append((TextRange(r.end, r.end + 1 + lead), " "))
         }
         guard !edits.isEmpty else { return }
@@ -2478,7 +2464,7 @@ final class TextView: NSView, NSTextInputClient {
         guard !lines.isEmpty else { return }
         let leader = commentLeader + " "
         let all = lines.allSatisfy { text.lineText($0).trimmingCharacters(in: .whitespaces).hasPrefix(commentLeader) || text.lineText($0).trimmingCharacters(in: .whitespaces).isEmpty }
-        let indent = lines.map { text.lineText($0).prefix { $0 == " " || $0 == "\t" }.count }.min() ?? 0
+        let indent = lines.map { text.lineText($0).indentation.count }.min() ?? 0
         var edits: [(TextRange, String)] = []
         for n in lines {
             let line = text.lineText(n)
@@ -2647,9 +2633,8 @@ final class TextView: NSView, NSTextInputClient {
         switch dragMode {
         case 2: sel = Selection(wordStart(offset), wordEnd(offset))
         case 3:
-            let n = text.line(at: offset)
-            let end = n + 1 < text.lineCount ? text.offset(ofLine: n + 1) : text.count
-            sel = Selection(text.offset(ofLine: n), end)
+            let line = text.lineRangeIncludingBreak(text.line(at: offset))
+            sel = Selection(line.start, line.end)
         default: sel = Selection(at: offset)
         }
         if flags.contains(.option) {
@@ -2776,7 +2761,7 @@ final class TextView: NSView, NSTextInputClient {
             if offset < anchor.min {
                 s = Selection(anchor.max, text.offset(ofLine: n))
             } else {
-                s = Selection(anchor.min, n + 1 < text.lineCount ? text.offset(ofLine: n + 1) : text.count)
+                s = Selection(anchor.min, text.lineRangeIncludingBreak(n).end)
             }
         default:
             s = Selection(anchor.anchor, offset)
@@ -2995,23 +2980,6 @@ final class TextView: NSView, NSTextInputClient {
     /// block and shown in the text.
     var onImage: ((Data, String) -> Void)?
 
-    /// The image a pasteboard holds, as bytes to keep: a file's as it is
-    /// (a photo stays a JPEG), else PNG.
-    static func images(on pb: NSPasteboard) -> [(Data, String)] {
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            let images = urls.filter { BlockKind.forFile($0.path) == .image }
-            guard images.count == urls.count else { return [] }
-            return images.compactMap { u in (try? Data(contentsOf: u)).map { ($0, u.pathExtension.lowercased()) } }
-        }
-        if let png = pb.data(forType: .png) { return [(png, "png")] }
-        if let jpeg = pb.data(forType: NSPasteboard.PasteboardType("public.jpeg")) { return [(jpeg, "jpeg")] }
-        if let heic = pb.data(forType: NSPasteboard.PasteboardType("public.heic")) { return [(heic, "heic")] }
-        if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-            return [(png, "png")]
-        }
-        return []
-    }
-
     /// The host of the block shown, for its own items in the menu.
     var menuHost: HostID?
     /// The tile it's shown in, for its menu's Pin in Workspace.
@@ -3048,8 +3016,8 @@ final class TextView: NSView, NSTextInputClient {
     func paste(from pb: NSPasteboard, plain: Bool = false) {
         // An image (a screenshot copied, a picture from Preview, a browser's
         // or a chat's Copy Image): kept, and shown.
-        if !plain, isEditable, let onImage, Self.prefersImage(pb) {
-            let images = Self.images(on: pb)
+        if !plain, isEditable, let onImage, PasteboardImages.preferred(on: pb) {
+            let images = PasteboardImages.images(on: pb)
             if !images.isEmpty { images.forEach(onImage); return }
         }
         guard isEditable, let s = pb.string(forType: .string) else { return }
@@ -3081,21 +3049,6 @@ final class TextView: NSView, NSTextInputClient {
     @objc override func selectAll(_ sender: Any?) { setSelections([Selection(0, text.count)], scroll: false) }
 
     @objc func pasteAsPlainText(_ sender: Any?) { paste(from: NSPasteboard.general, plain: true) }
-
-    /// Whether a paste is of the image a pasteboard holds rather than its
-    /// text: there's no text, or files; or the text only says where the
-    /// image is from (its address, its file's name — as a browser's Copy
-    /// Image gives) or is listed after it (the source would rather the
-    /// image were taken).
-    static func prefersImage(_ pb: NSPasteboard) -> Bool {
-        let types = pb.types ?? []
-        let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")]
-        guard let image = types.firstIndex(where: imageTypes.contains) else { return types.contains(.fileURL) }
-        guard let s = pb.string(forType: .string), let text = types.firstIndex(of: .string) else { return true }
-        if types.contains(.fileURL) || TextLinks.isAddress(s) || image < text { return true }
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !t.contains(where: \.isWhitespace) && BlockKind.forFile(t) == .image
-    }
 
     // MARK: NSTextInputClient
 
@@ -3180,7 +3133,7 @@ final class TextView: NSView, NSTextInputClient {
     override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
         if sendType == .string, hasSelectedText { return self }
         if returnType == .string, isEditable { return self }
-        if let returnType, isEditable, onImage != nil, [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")].contains(returnType) { return self }
+        if let returnType, isEditable, onImage != nil, PasteboardImages.types.contains(returnType) { return self }
         return super.validRequestor(forSendType: sendType, returnType: returnType)
     }
 
@@ -3191,7 +3144,7 @@ final class TextView: NSView, NSTextInputClient {
 
     func readSelection(from pboard: NSPasteboard) -> Bool {
         // From an iPhone or iPad (Continuity Camera): an image.
-        if let onImage, case let images = Self.images(on: pboard), !images.isEmpty {
+        if let onImage, case let images = PasteboardImages.images(on: pboard), !images.isEmpty {
             images.forEach(onImage)
             return true
         }
@@ -3349,7 +3302,7 @@ extension TextView {
             while lead - 1 > above, isLead(lead - 1, syntax) { lead -= 1 }
             guard lead > above else { continue }
             let blank = lead - 1 > above && text.lineText(lead - 1).allSatisfy { $0 == " " || $0 == "\t" }
-            let indent = text.lineText(first(i)).prefix { $0 == " " || $0 == "\t" }.utf8.count
+            let indent = text.lineText(first(i)).indentation.utf8.count
             out.rules.append((lead, indent, blank))
         }
         return out
@@ -3359,7 +3312,7 @@ extension TextView {
     /// attribute (`#[…]`) or a decorator (`@…`).
     private func isLead(_ n: Int, _ syntax: SyntaxTree) -> Bool {
         let line = text.lineText(n)
-        let body = line.drop { $0 == " " || $0 == "\t" }
+        let body = line.dropFirst(line.indentation.count)
         guard !body.isEmpty else { return false }
         if body.hasPrefix("#[") || body.hasPrefix("@") { return true }
         let at = text.offset(ofLine: n) + (line.utf8.count - body.utf8.count)

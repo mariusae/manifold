@@ -142,7 +142,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         links.watch(nil)
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
-        locateWork?.cancel()
+        locateWork.cancel()
         link.stop()
         guard let surface else { return }
         self.surface = nil
@@ -615,16 +615,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
     /// Each command's row on the screen, once found.
     private(set) var located: [Int: Int] = [:]
-    private var locateWork: DispatchWorkItem?
+    private let locateWork = Debouncer()
 
     private func scheduleLocate() {
-        locateWork?.cancel()
+        locateWork.cancel()
         // Out of sight, nothing shows where they are: looked for once it's
         // seen again (and at once by what needs one, `go(toCommand:)`).
         guard occlusionSeen != false else { return locateStale = true }
-        let work = DispatchWorkItem { [weak self] in self?.locate(now: false) }
-        locateWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        locateWork.schedule(after: 0.3) { [weak self] in self?.locate(now: false) }
     }
 
     /// The screen's text, its history and all: each logical line, and the
@@ -1336,7 +1334,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             unknown = []
             links = screenLinks(cols: Int(grid.info.cols), rows: Int(grid.info.rows))
             markedLinks = links
-            glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), grid), color: TextView.linkColor, cellHeight: grid.cellHeight)
+            glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), grid), color: LinkStyle.color, cellHeight: grid.cellHeight)
             if !unknown.isEmpty { ask(unknown) }
         }
         let under = given ?? window.flatMap { grid.cell(at: convert($0.mouseLocationOutsideOfEventStream, from: nil)) }
@@ -1357,15 +1355,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// in the link color an editor's ⌘ links have, the one under the
     /// pointer (each of its rows) on a band a step lighter (darker, in the
     /// light) than the background — a lightness, not a hue
-    /// (`TextView.linkHover`).
+    /// (`LinkStyle.hover`).
     private func showLinks(_ links: [ScreenLink], hovered: Int?) {
         guard let surface else { return }
         guard !links.isEmpty else { return clearLinks() }
         var fg: UInt32 = 0, bg: UInt32 = 0
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let paper = TerminalPalette.current(for: self).background
-            fg = Self.rgb(TextView.linkColor)
-            bg = Self.rgb(Self.over(paper, TextView.linkHover))
+            fg = Self.rgb(LinkStyle.color)
+            bg = Self.rgb(Self.over(paper, LinkStyle.hover))
         }
         let c = links.enumerated().flatMap { i, l in
             l.runs.map { ghostty_manifold_run_s(y: UInt16($0.row), x0: UInt16($0.from), x1: UInt16($0.to), link: UInt16(i)) }
@@ -1384,7 +1382,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         overCommandLink = false
         ReferenceTip.hover(nil, in: self)
         if let surface { ghostty_surface_manifold_links(surface, nil, 0, 0, -1, 0) }
-        glow.showLinks(nil, color: TextView.linkColor, cellHeight: 0)
+        glow.showLinks(nil, color: LinkStyle.color, cellHeight: 0)
     }
 
     /// The links' letters as one outline, in this view's coordinates: each

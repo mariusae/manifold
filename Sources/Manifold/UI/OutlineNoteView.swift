@@ -2559,8 +2559,8 @@ final class NoteOutlineTextView: NSTextView {
 extension NoteOutlineTextView {
     /// The picture a pasteboard holds, if a paste is of it, kept and put in.
     func pastePicture(from pb: NSPasteboard) -> Bool {
-        guard isEditable, let keepImage, TextView.prefersImage(pb) else { return false }
-        let images = TextView.images(on: pb)
+        guard isEditable, let keepImage, PasteboardImages.preferred(on: pb) else { return false }
+        let images = PasteboardImages.images(on: pb)
         guard !images.isEmpty else { return false }
         for (data, kind) in images { keepImage(data, kind) { [weak self] markdown in self?.putPicture(markdown) } }
         return true

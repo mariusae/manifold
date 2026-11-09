@@ -621,7 +621,7 @@ enum DebugControl {
             pb.clearContents()
             if w.count > 1 { pb.declareTypes([.string, .tiff], owner: nil); pb.setString(w[1], forType: .string) } else { pb.declareTypes([.tiff], owner: nil) }
             pb.setData(tiff, forType: .tiff)
-            let preferred = TextView.prefersImage(pb)
+            let preferred = PasteboardImages.preferred(on: pb)
             tv.paste(from: pb)
             pb.releaseGlobally()
             return "pasted (image preferred: \(preferred))"

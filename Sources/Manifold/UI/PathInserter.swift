@@ -86,7 +86,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     private var sent = 0
     /// More found while a query's up: ranked again a moment later, once
     /// for however much came.
-    private var again: DispatchWorkItem?
+    private let again = Debouncer()
     /// At the field's right: what's being looked through, or that nothing matched.
     private let status = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
@@ -223,8 +223,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         wanted = Self.visibleRows
         crawl?.onChange = nil
         crawl = nil
-        again?.cancel()
-        again = nil
+        again.cancel()
         _ = generation.next()
         awaiting = false
         let source = self.source
@@ -244,18 +243,12 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         guard !query.isEmpty, !query.hasSuffix("/") else { return refresh(keepingChoice: true) }
         // Done looking, or done with what it was allowed: ranked now.
         if crawl?.busy == false {
-            again?.cancel()
-            again = nil
+            again.cancel()
             return refresh(keepingChoice: true)
         }
         updateStatus()
-        guard again == nil else { return }
-        let work = DispatchWorkItem { [weak self] in
-            self?.again = nil
-            self?.refresh(keepingChoice: true)
-        }
-        again = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+        guard !again.isPending else { return }
+        again.schedule(after: 0.12) { [weak self] in self?.refresh(keepingChoice: true) }
     }
 
     /// The rows for what's typed: nothing, the folder's own entries (its
@@ -452,8 +445,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
 
     func controlTextDidChange(_ obj: Notification) {
         wanted = Self.visibleRows
-        again?.cancel()
-        again = nil
+        again.cancel()
         refresh(keepingChoice: false)
     }
 

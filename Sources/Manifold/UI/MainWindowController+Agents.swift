@@ -91,7 +91,7 @@ extension MainWindowController {
         let pb = NSPasteboard.general
         if let s = pb.string(forType: .string), !s.isEmpty {
             show(host.newNote(home: focusedHost == host.host ? focusedCwd : nil, text: s), lens: .editor, .here)
-        } else if case let images = TextView.images(on: pb), let (data, kind) = images.first {
+        } else if case let images = PasteboardImages.images(on: pb), let (data, kind) = images.first {
             keepDroppedImage(data, kind: kind, place: .inColumn(max((arrangement?.columns.count ?? 1) - 1, 0)))
         } else {
             NSSound.beep()

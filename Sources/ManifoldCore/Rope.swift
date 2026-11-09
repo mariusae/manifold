@@ -248,11 +248,18 @@ public struct Rope: Equatable, Sendable, CustomStringConvertible {
 
     /// Line `n`'s bytes, without its line break.
     public func lineRange(_ n: Int) -> TextRange {
-        let start = offset(ofLine: n)
-        var end = n + 1 < lineCount ? offset(ofLine: n + 1) : count
-        if end > start, byte(at: end - 1) == 0x0A { end -= 1 }
-        return TextRange(start, end)
+        var r = lineRangeIncludingBreak(n)
+        if r.end > r.start, byte(at: r.end - 1) == 0x0A { r.end -= 1 }
+        return r
     }
+
+    /// Line `n`'s bytes and its line break (the last line has none).
+    public func lineRangeIncludingBreak(_ n: Int) -> TextRange {
+        TextRange(offset(ofLine: n), n + 1 < lineCount ? offset(ofLine: n + 1) : count)
+    }
+
+    /// The lines a range is on, its first to its last.
+    public func lines(of range: TextRange) -> ClosedRange<Int> { line(at: range.start)...line(at: max(range.start, range.end)) }
 
     public func lineText(_ n: Int) -> String { self[lineRange(n)] }
 
@@ -490,4 +497,9 @@ extension Rope {
         }
         return out
     }
+}
+
+extension StringProtocol {
+    /// The spaces and tabs a line starts with.
+    public var indentation: SubSequence { prefix { $0 == " " || $0 == "\t" } }
 }

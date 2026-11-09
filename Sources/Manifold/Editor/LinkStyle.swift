@@ -1,5 +1,15 @@
 import AppKit
 
+/// How a link ⌘ shows looks, in an editor and a terminal alike.
+enum LinkStyle {
+    /// Its letters' color (and its glow's, `LinkGlow`).
+    static let color = NSColor.themed { $0.code.link }
+    /// Behind the link under the pointer (⌘ held): a band a step lighter
+    /// in the dark, darker in the light — a lightness, not a hue, as a
+    /// chosen row's, so every eye sees it.
+    static let hover = NSColor.themed { $0.code.linkHover }
+}
+
 /// The light ⌘ puts around the links' letters, in an editor and a
 /// terminal alike: soft, in the links' color, under the text.
 enum LinkGlow {
