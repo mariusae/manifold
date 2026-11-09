@@ -29,6 +29,9 @@ final class ToastView: NSView {
     private var remaining: Double = 0
     private var runningSince: Date?
     private var pointerOn = false
+    /// Each `show`, counted: a fade-out begun before the latest one ends
+    /// without hiding it (§ M30 in STATE-MACHINES.md).
+    private var shows = 0
     /// Gone (its time up, its action taken, put away): for a stack of them to let it go.
     var onGone: (() -> Void)?
     /// In the sidebar's foot (§4): as wide as the sidebar, its words cut
@@ -80,6 +83,7 @@ final class ToastView: NSView {
               then: (() -> Void)? = nil, _ action: @escaping () -> Void) {
         // One waiting on its time: done now, as this takes its place.
         finishPending()
+        shows += 1
         let arriving = isHidden
         label.stringValue = text
         // "OK" only put it away: no button for that (it goes by itself, or ×).
@@ -202,13 +206,16 @@ final class ToastView: NSView {
         bar.removeAnimation(forKey: "countdown")
         finishPending()
         guard !isHidden else { return }
+        let leaving = shows
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = Motion.fast
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            self?.isHidden = true
-            self?.alphaValue = 1
-            self?.onGone?()
+            // Shown again meanwhile (its action said something): it stays.
+            guard let self, self.shows == leaving else { return }
+            self.isHidden = true
+            self.alphaValue = 1
+            self.onGone?()
         })
     }
 

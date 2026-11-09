@@ -175,13 +175,17 @@ Machines: M3, M18, M29.
   wasn't a resume.
 Machines: M14, M17.
 
-### I-7 A toast shown as the last one fades is lost · **confirmed on reading** · medium-low
+### I-7 A toast shown as the last one fades is lost · **fixed** · medium-low
 The window's toast (the sidebar away) is one view, reused. `hide()` fades
 it and, on completion, sets `isHidden = true` and calls `onGone`. A `show`
 inside the fade (a toast's action that says something, as `act()` hides
 then acts; or any `toast.say` in that 0.12 s) is hidden by the old fade's
 completion.
-Machine: M30.
+
+Evidence and test: `ManifoldAppTests/ToastTests` — hide, then show inside
+the fade: hidden on the old code.
+Fix: each `show` is counted (`shows`); a fade's end hides the toast only if
+no show came after it began. Machine: M30.
 
 ### I-8 Smaller ones · mixed
 - Thread card: `popover`/`card` never cleared on close; a closed card is
@@ -470,7 +474,8 @@ Findings: I-5 — fixed.
 ToastView `isHidden`/`alphaValue` (the real phase), `hideWork`, `then`,
 `counting`, `remaining`, `runningSince`, `pointerOn`.
 States: hidden · running · held (pointer on it) · leaving (fading).
-Invariant: a fade's end hides only the toast it began to hide. Findings: I-7.
+Invariant: a fade's end hides only the toast it began to hide (`shows`).
+Findings: I-7 — fixed.
 
 #### M31–M37 Smaller
 Project search work (M31), project facts' git/index load (M32, "Not in a
