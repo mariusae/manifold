@@ -287,9 +287,12 @@ struct Palette {
         var failed: Shade
         var running: Shade
         var attention: Shade
+        /// Links underlined always, as anthropic.com sets them (Claude
+        /// Warm's, in its ink): else only under the pointer.
+        var linksUnderlined = false
 
         /// Each as a CSS variable, `--page-<role>`, in the light, and again
-        /// in the dark.
+        /// in the dark; and the links' underline, if it's always there.
         var css: String {
             let roles: [(String, Shade)] = [
                 ("background", background), ("text", text), ("strong", strong), ("link", link), ("code", code),
@@ -302,7 +305,10 @@ struct Palette {
             func vars(dark: Bool) -> String {
                 roles.map { "--page-\($0.0): \(Tints.hex($0.1.color(dark: dark), dark: dark));" }.joined(separator: " ")
             }
-            return ":root { \(vars(dark: false)) }\n@media (prefers-color-scheme: dark) { :root { \(vars(dark: true)) } }"
+            let underline = linksUnderlined
+                ? "\na:not([href^=\"manifold:\"]) { text-decoration: underline; text-decoration-skip-ink: auto; text-underline-offset: .18em; }"
+                : ""
+            return ":root { \(vars(dark: false)) }\n@media (prefers-color-scheme: dark) { :root { \(vars(dark: true)) } }" + underline
         }
     }
 }
@@ -1320,15 +1326,18 @@ extension Palette {
                 dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#2c84db", cursorText: dark.bg,
                                       selectionBackground: "#1c3f62", selectionForeground: dark.fg, ansi: dark.ansi,
                                       extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
-            // As claude.ai sets a reply: on its ivory, its inks, its links.
+            // As anthropic.com sets an article: on its ivory (#faf9f5;
+            // by night Warm's own #262624, not the site's #141413), in its
+            // ink, its links that ink underlined; code a step deeper
+            // (#f0eee6), a table's head another (#e8e6dc). Not a step off
+            // the pages edited, as code read is: set in its serif, a page
+            // can't be taken for the editor.
             page: Page(
-                // A rendered page, read: as its code read.
-                background: .hex(0xF4F3EC, 0x2C2C2A),
+                background: .hex(0xFAF9F5, 0x262624),
                 text: .hex(0x141413, 0xFAF9F5),
                 strong: .hex(0x000000, 0xFFFFFF),
-                link: link,
-                // Inline code a step deeper again.
-                code: .hex(0xECEAE2, 0x1F1E1D),
+                link: .hex(0x141413, 0xFAF9F5),
+                code: .hex(0xF0EEE6, 0x1F1E1D),
                 codeText: .hex(0x141413, 0xFAF9F5),
                 copy: .hex(0xFFFFFF, 0x30302E),
                 copyEdge: .hex(0xE4E3DF, 0x42413E),
@@ -1339,15 +1348,16 @@ extension Palette {
                 quote: .hex(0x3D3D3A, 0xC2C0B6),
                 quoteRule: .hex(0xD9D8D5, 0x42413E),
                 rule: .hex(0xE4E3DF, 0x383835),
-                tableHead: .hex(0xECEAE2, 0x363634),
-                tableStripe: .hex(0xF0EEE6, 0x313130),
+                tableHead: .hex(0xE8E6DC, 0x363634),
+                tableStripe: .hex(0xF5F4ED, 0x2B2B29),
                 struck: .hex(0x73726C, 0x9C9A92),
                 missing: failed,
                 diagramError: failed,
                 selection: selection,
                 failed: failed,
                 running: .hex(0xD97757, 0xD97757),
-                attention: attention),
+                attention: attention,
+                linksUnderlined: true),
             // Under its ivory, Claude's warm illustration colours: clay
             // into kraft into manilla into oat; by night embers of the
             // same. Clay's pool of light in it. (Brightness as the
