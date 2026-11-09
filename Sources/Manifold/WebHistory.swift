@@ -24,7 +24,7 @@ final class WebHistory {
         var entries: [Entry]
         var forgotten: [String]
     }
-    private let file = Paths.directory.appendingPathComponent("web-history.json")
+    private let file = Paths.webHistory
     private var saveWork: DispatchWorkItem?
     static let limit = 3000
 

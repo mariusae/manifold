@@ -728,7 +728,7 @@ final class Session {
     /// before the first prompt, putting $MANIFOLD_BIN first on the PATH —
     /// after .zprofile and .zshrc, so nothing there comes before it.
     static func zshLayer() -> String? {
-        let dir = Paths.directory.appendingPathComponent("zsh")
+        let dir = Paths.zsh
         let file = dir.appendingPathComponent(".zshenv")
         let script = """
         # Manifold's zsh layer. Written by manifoldd; edits are lost.
@@ -815,13 +815,13 @@ final class Session {
     /// The startup arguments Manifold gives a shell, as `ps` shows them,
     /// so a listing can leave them out: they are Manifold's, not yours.
     static var startupArguments: [String] {
-        [" -C " + fishStartup, " --rcfile " + Paths.directory.appendingPathComponent("bash/rc").path]
+        [" -C " + fishStartup, " --rcfile " + Paths.bash.appendingPathComponent("rc").path]
     }
 
     /// bash's rc file, written fresh: it sources the profile files a login
     /// shell would, and .bashrc, then puts $MANIFOLD_BIN first on the PATH.
     static func bashLayer() -> String? {
-        let dir = Paths.directory.appendingPathComponent("bash")
+        let dir = Paths.bash
         let file = dir.appendingPathComponent("rc")
         let script = """
         # Manifold's bash rc. Written by manifoldd; edits are lost.
@@ -921,7 +921,7 @@ final class Session {
     /// (`GhosttyTerminfo`); nil if it couldn't be. Manifold's own folder:
     /// the host's terminfo, and yours, are left alone.
     static func terminfoDirectory() -> String? {
-        let dir = Paths.directory.appendingPathComponent("terminfo")
+        let dir = Paths.terminfo
         return GhosttyTerminfo.install(in: dir) ? dir.path : nil
     }
 

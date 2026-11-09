@@ -26,12 +26,12 @@ public enum HostSession {
     /// its label, if it has none yet. (Its logs, under that name, the
     /// format's reset set aside long since.)
     public static func identify(directory: URL) -> (id: HostID, label: String?) {
-        let sessionFile = directory.appendingPathComponent("session")
-        let labelFile = directory.appendingPathComponent("label")
+        let sessionFile = directory.appendingPathComponent(Paths.Name.session)
+        let labelFile = directory.appendingPathComponent(Paths.Name.label)
         var label = read(labelFile)?.raw
         if let minted = read(sessionFile) { return (minted, label) }
         let id = mint()
-        if label == nil, let old = read(directory.appendingPathComponent("host")), old != .local { label = old.raw }
+        if label == nil, let old = read(directory.appendingPathComponent(Paths.Name.hostName)), old != .local { label = old.raw }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try? Data(id.raw.utf8).write(to: sessionFile)
         if let label { try? Data(label.utf8).write(to: labelFile) }

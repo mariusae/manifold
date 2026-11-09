@@ -105,7 +105,7 @@ final class Server {
         guard let d = try? Data(contentsOf: Server.attachedFile), let a = try? JSONDecoder().decode(Attached.self, from: d) else { return Attached() }
         return a
     }()
-    private static var attachedFile: URL { Paths.directory.appendingPathComponent("attached.json") }
+    private static var attachedFile: URL { Paths.attached }
     /// Connections that haven't said what they are yet.
     private var pending: [any Channel] = []
     private var attachments = 0
@@ -167,7 +167,7 @@ final class Server {
     static let dataFormat = 2
 
     private static func resetIfFormatChanged() {
-        let marker = Paths.directory.appendingPathComponent("format")
+        let marker = Paths.format
         let found = (try? String(contentsOf: marker, encoding: .utf8)).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         guard found != dataFormat else { return }
         let fm = FileManager.default
@@ -217,7 +217,7 @@ final class Server {
         Paths.ensureDirectory()
         // One server per directory: a second one exits quietly. Taken
         // before anything is read or rewritten.
-        lock = open(Paths.directory.appendingPathComponent("manifoldd.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        lock = open(Paths.lock.path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ServerError.alreadyRunning }
         Server.resetIfFormatChanged()
         let session = HostSession.identify(directory: Paths.directory)
@@ -813,7 +813,7 @@ final class Server {
     }
 
     /// Where a note's images are kept: Manifold's own, on this host.
-    static var imagesFolder: String { Paths.directory.appendingPathComponent("Images").path }
+    static var imagesFolder: String { Paths.images.path }
 
     // MARK: Collection (§4)
 
@@ -911,7 +911,7 @@ final class Server {
     /// was given it, and stays. Once, for the notes from before: since,
     /// a name given that happens to be the first line is still a name.
     private func settleFirstLineTitles() {
-        let marker = Paths.directory.appendingPathComponent("first-line-titles")
+        let marker = Paths.firstLineTitles
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }
         var settled = 0
         for b in node.blocks where b.id.host == host && b.isNote && b.titleIsFirstLine != true {
@@ -2537,7 +2537,7 @@ final class Server {
     /// Each terminal's recent output is kept on disk too, so that when the
     /// server starts over (after a restart, say) its terminal shows what it
     /// showed.
-    private var historyDirectory: URL { Paths.directory.appendingPathComponent("history") }
+    private var historyDirectory: URL { Paths.history }
 
     private func historyFile(_ block: BlockID) -> URL {
         historyDirectory.appendingPathComponent(block.ulid)

@@ -11,7 +11,7 @@ final class Hosts {
     /// What is this client's alone (§8.2): the workspace shown, the
     /// order, the window, the appearance; in a file beside the hosts file.
     private(set) var state = ClientState()
-    private static var stateURL: URL { Paths.directory.appendingPathComponent("client.json") }
+    private static var stateURL: URL { Paths.clientState }
     /// Hosts being attached to, by destination, until they say their name.
     private(set) var attaching: Set<String> = []
     private(set) var errors: [String: String] = [:]

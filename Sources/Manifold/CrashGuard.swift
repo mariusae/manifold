@@ -19,7 +19,7 @@ enum CrashGuard {
     }
 
     private static var pending: URL { logs.appendingPathComponent("last-crash.txt") }
-    private static var launches: URL { Paths.directory.appendingPathComponent("unfinished-launches") }
+    private static var launches: URL { Paths.unfinishedLaunches }
 
     /// A report the last run left, moved to a name with its date: shown once.
     private(set) static var lastReport: URL?

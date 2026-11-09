@@ -9,7 +9,7 @@ import ManifoldCore
 enum SessionFiles {
     /// What's in the data folder that isn't the session's: on a Mac, the
     /// app keeps its list of other hosts there too.
-    static let notTheSession: Set<String> = ["hosts.json"]
+    static let notTheSession: Set<String> = [Paths.hosts.lastPathComponent]
 
     /// Removes them; what couldn't be, said.
     @discardableResult

@@ -69,7 +69,7 @@ enum AgentLink {
     /// The link: in Manifold's folder if its path can name a socket (104
     /// bytes at most, on macOS) and has no spaces; else in the home.
     static var path: String {
-        let own = Paths.directory.appendingPathComponent("agent.sock").path
+        let own = Paths.agentLink.path
         if own.utf8.count <= 100, !own.contains(" ") { return own }
         let home = NSHomeDirectory() + "/.manifold-agent.sock"
         if home.utf8.count <= 100 { return home }
@@ -79,7 +79,7 @@ enum AgentLink {
     }
 
     /// Where agents are noted: a file for each, holding its socket.
-    static var folder: URL { Paths.directory.appendingPathComponent("agents") }
+    static var folder: URL { Paths.agents }
 
     struct Note: Codable {
         var socket: String

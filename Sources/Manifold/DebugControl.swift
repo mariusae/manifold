@@ -29,7 +29,7 @@ enum DebugControl {
     static func start(controller: @escaping () -> MainWindowController?) {
         guard ProcessInfo.processInfo.environment["MANIFOLD_DEBUG"] != nil else { return }
         // MANIFOLD_DEBUG_SOCKET: another, for a second app on the same server.
-        let path = ProcessInfo.processInfo.environment["MANIFOLD_DEBUG_SOCKET"] ?? Paths.directory.appendingPathComponent("app-debug.sock").path
+        let path = ProcessInfo.processInfo.environment["MANIFOLD_DEBUG_SOCKET"] ?? Paths.appDebugSocket.path
         guard let fd = try? UnixSocket.listen(path: path) else { return }
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)

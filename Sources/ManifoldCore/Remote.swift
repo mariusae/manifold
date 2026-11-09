@@ -131,7 +131,7 @@ public struct HostsFile: Codable {
 
     public func provider(named name: String) -> RemoteProvider? { providers.first { $0.name == name } }
 
-    public static var url: URL { Paths.directory.appendingPathComponent("hosts.json") }
+    public static var url: URL { Paths.hosts }
 
     /// The file as on disk: read again only when it changed (it's asked
     /// for while drawing — a tile on a host not yet heard from, a label).

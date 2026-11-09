@@ -10,7 +10,7 @@ enum Favicons {
     private static var images: [String: NSImage] = [:]
     /// Origins looked for on disk and not there: not looked for again.
     private static var missing: Set<String> = []
-    private static let folder = Paths.directory.appendingPathComponent("favicons")
+    private static let folder = Paths.favicons
 
     /// A page's site, as the key of its icon: "https://example.com:443".
     static func origin(of page: String?) -> String? {

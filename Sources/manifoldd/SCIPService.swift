@@ -32,7 +32,7 @@ final class SCIPService {
         self.queue = queue
     }
 
-    private var folder: URL { Paths.directory.appendingPathComponent("scip") }
+    private var folder: URL { Paths.scip }
 
     private func file(_ root: String) -> URL {
         var h: UInt64 = 14_695_981_039_346_656_037
