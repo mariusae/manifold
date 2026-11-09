@@ -200,8 +200,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: ⌘ links
 
-    private var commandMonitor: Any?
-    private var commandDown = false
+    private let links = CommandLinkWatcher()
     /// What the language server last said there's somewhere to go to, for
     /// a version of the text (nil ranges: it can't say).
     private var navigable: (version: Int, ranges: [TextRange]?)?
@@ -210,65 +209,27 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// a moment later, not at every ⌘.
     private var navigableFailedAt: Date?
 
-    /// Links shown a moment after ⌘ goes down (`CommandLinks.delay`).
-    private var pendingLinks: DispatchWorkItem?
-
     /// While ⌘ is held over the editor, the names there's somewhere to go
     /// to (as the language server says) show as links, as go.dev's docs
     /// set them; the one under the pointer underlined. ⌘-click goes. A
     /// moment after ⌘ goes down, and not once a key goes down with it (a
     /// shortcut: ⌘G through a search), until ⌘ is let go (`CommandLinks`).
     private func watchCommandKey(_ on: Bool) {
-        if let commandMonitor { NSEvent.removeMonitor(commandMonitor) }
-        commandMonitor = nil
-        guard on else { return }
-        commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
-            guard let self, event.window === self.window else { return event }
-            let allowed = CommandLinks.note(event)
-            if event.type == .keyDown {
-                if event.modifierFlags.contains(.command), self.commandDown { self.hideLinks() }
-                return event
-            }
-            let down = event.modifierFlags.contains(.command) && self.pointerInside && allowed
-            if down != self.commandDown {
-                if down {
-                    self.commandDown = true
-                    if event.type == .mouseMoved {
-                        // ⌘ held, the pointer brought in: at once.
-                        self.showLinks()
-                    } else {
-                        let work = DispatchWorkItem { [weak self] in
-                            guard let self, self.pendingLinks != nil else { return }
-                            self.pendingLinks = nil
-                            if self.commandDown { self.showLinks() }
-                        }
-                        self.pendingLinks = work
-                        DispatchQueue.main.asyncAfter(deadline: .now() + CommandLinks.delay, execute: work)
-                    }
-                } else {
-                    self.hideLinks()
-                }
-            } else if down, self.pendingLinks == nil {
-                self.updateHoveredLink()
-            }
-            return event
+        links.inside = { [weak self] in self.map { !$0.path.isEmpty && $0.scroll.isUnderPointer } ?? false }
+        links.show = { [weak self] in self?.showLinks() }
+        links.update = { [weak self] _ in self?.updateHoveredLink() }
+        links.hide = { [weak self] in
+            self?.textView.linkRanges = []
+            self?.textView.hoveredLink = nil
         }
-    }
-
-    private func hideLinks() {
-        commandDown = false
-        pendingLinks?.cancel()
-        pendingLinks = nil
-        textView.linkRanges = []
-        textView.hoveredLink = nil
+        links.watch(on ? window : nil)
     }
 
     /// Debugging: ⌘ held over the editor (without the pointer), and the
     /// names shown as links once the server has answered.
     func debugLinks(keep: Bool = false) -> String {
-        commandDown = true
         navigableFailedAt = nil
-        showLinks()
+        links.begin()
         let deadline = Date().addingTimeInterval(8)
         while askingNavigable, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05)) }
         let names = textView.linkRanges.map { String(textView.text[$0]) }
@@ -283,16 +244,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                 textView.hoveredLink = word.isEmpty ? nil : word
             }
         } else {
-            commandDown = false
-            textView.linkRanges = []
-            textView.hoveredLink = nil
+            links.end()
         }
         return navigable?.ranges == nil ? "no semantic tokens" : "\(names.count) links: " + names.prefix(30).joined(separator: " ")
-    }
-
-    private var pointerInside: Bool {
-        guard let window, !path.isEmpty else { return false }
-        return scroll.frame.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
     }
 
     private func showLinks() {
@@ -312,14 +266,14 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             if case let .ranges(r) = result {
                 self.navigable = (version, r.sorted { $0.start < $1.start })
                 self.navigableFailedAt = nil
-                if self.commandDown { self.showLinks() }
+                if self.links.shown { self.showLinks() }
             } else {
                 // Not cached: the server may be ready next time — asked
                 // again in a moment if ⌘ is still held (a server just
                 // started, still reading the project).
                 self.navigableFailedAt = Date()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
-                    if let self, self.commandDown { self.showLinks() }
+                    if let self, self.links.shown { self.showLinks() }
                 }
             }
         }

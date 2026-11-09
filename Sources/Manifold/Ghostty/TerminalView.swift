@@ -139,8 +139,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         dots.removeFromSuperview()
         connecting.removeFromSuperview()
         glow.removeFromSuperview()
-        if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
-        linkMonitor = nil
+        links.watch(nil)
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
         locateWork?.cancel()
@@ -308,7 +307,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private let connecting = BusyNote()
     /// The glow over keystrokes shown before the host echoes them.
     private let glow = PredictionGlow(frame: .zero)
-    private var linkMonitor: Any?
+    /// ⌘ held over it: the screen's links marked (`watchCommandKey`).
+    private let links = CommandLinkWatcher()
     /// Where the shell is now, on its host: what the names on the screen
     /// below its last command are relative to (§3.8).
     var directory: (() -> String?)?
@@ -328,7 +328,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let grew = total != scrollbar.total
         scrollbar = (total, offset, len)
         layoutScroller()
-        if markedLinks != nil { markLinks() }
+        if links.shown { markLinks() }
         markCurrentCommand()
         if grew { scheduleLocate() }
     }
@@ -1122,7 +1122,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let ready = awaiting.filter { $0.paths.isDisjoint(with: asking) }
         awaiting.removeAll { $0.paths.isDisjoint(with: asking) }
         ready.forEach { $0.done() }
-        if markedLinks != nil { markLinks() }
+        if links.shown { markLinks() }
     }
 
     /// A link ⌘-clicked: opened — a file not looked for yet once it's
@@ -1320,68 +1320,18 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// ⌘ held with the pointer over the terminal marks the links on its
-    /// screen (and the one under the pointer); let go, or the pointer
+    /// screen (and the one under the pointer), read a moment after ⌘ goes
+    /// down (another host's files looked up meanwhile); the pointer moving
+    /// moves the band, ⌘ again reads them again. Let go, or the pointer
     /// gone, they're unmarked.
     private func watchCommandKey() {
-        if let linkMonitor { NSEvent.removeMonitor(linkMonitor) }
-        linkMonitor = nil
-        guard window != nil else {
-            markedLinks = nil
-            return clearLinks()
-        }
-        linkMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .keyDown]) { [weak self] event in
-            guard let self, event.window === self.window else { return event }
-            let allowed = CommandLinks.note(event)
-            // A key with ⌘ (⌘C, ⌘G): a shortcut, not links looked for — those
-            // shown put away, until ⌘ is let go (`CommandLinks`).
-            if event.type == .keyDown {
-                self.pendingMark?.cancel()
-                self.pendingMark = nil
-                if event.modifierFlags.contains(.command), self.markedLinks != nil {
-                    self.markedLinks = nil
-                    self.clearLinks()
-                    self.cursor.set()
-                }
-                return event
-            }
-            let down = event.modifierFlags.contains(.command) && !self.isHidden && self.isUnderPointer && allowed
-            if down {
-                if event.type == .flagsChanged, self.markedLinks == nil {
-                    // The screen read a moment after ⌘ goes down, if no key
-                    // follows — or the links would flash at every shortcut;
-                    // another host's files looked up meanwhile.
-                    self.lookUpAhead()
-                    self.pendingMark?.cancel()
-                    let work = DispatchWorkItem { [weak self] in
-                        guard let self else { return }
-                        self.pendingMark = nil
-                        guard NSEvent.modifierFlags.contains(.command), !CommandLinks.shortcutting, self.isUnderPointer else { return }
-                        self.markLinks()
-                    }
-                    self.pendingMark = work
-                    DispatchQueue.main.asyncAfter(deadline: .now() + CommandLinks.delay, execute: work)
-                } else if self.markedLinks != nil {
-                    // The pointer moving moves the band; ⌘ again, read again.
-                    self.markLinks(reading: event.type == .flagsChanged)
-                } else if event.type == .mouseMoved, self.pendingMark == nil {
-                    // ⌘ held, the pointer brought in: read now.
-                    self.markLinks()
-                }
-            } else {
-                self.pendingMark?.cancel()
-                self.pendingMark = nil
-                if self.markedLinks != nil {
-                    self.markedLinks = nil
-                    self.clearLinks()
-                    self.cursor.set()
-                }
-            }
-            return event
-        }
+        links.inside = { [weak self] in self.map { !$0.isHidden && $0.isUnderPointer } ?? false }
+        links.willShow = { [weak self] in self?.lookUpAhead() }
+        links.show = { [weak self] in self?.markLinks() }
+        links.update = { [weak self] again in self?.markLinks(reading: again) }
+        links.hide = { [weak self] in self?.unmarkLinks() }
+        links.watch(window)
     }
-
-    /// The links' reading, put off a moment after ⌘ goes down.
-    private var pendingMark: DispatchWorkItem?
 
     /// The links marked while ⌘ is held, as last read from the screen.
     private var markedLinks: [ScreenLink]?
@@ -1435,6 +1385,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             l.runs.map { ghostty_manifold_run_s(y: UInt16($0.row), x0: UInt16($0.from), x1: UInt16($0.to), link: UInt16(i)) }
         }
         c.withUnsafeBufferPointer { ghostty_surface_manifold_links(surface, $0.baseAddress, UInt($0.count), fg, Int32(hovered ?? -1), bg) }
+    }
+
+    /// The links unmarked, and the pointer as it was.
+    private func unmarkLinks() {
+        markedLinks = nil
+        clearLinks()
+        cursor.set()
     }
 
     private func clearLinks() {
