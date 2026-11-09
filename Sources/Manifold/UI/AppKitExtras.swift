@@ -95,3 +95,12 @@ final class ModifierHold {
 
     deinit { stop() }
 }
+
+extension URL {
+    /// Its port, else its scheme's (443 for https, 80 otherwise).
+    var effectivePort: Int { port ?? (scheme == "https" ? 443 : 80) }
+    /// What follows the host: its path ("/" for none), query and fragment.
+    var pathQueryFragment: String {
+        (path.isEmpty ? "/" : path) + (query.map { "?" + $0 } ?? "") + (fragment.map { "#" + $0 } ?? "")
+    }
+}

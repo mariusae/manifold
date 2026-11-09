@@ -18,20 +18,18 @@ extension MainWindowController: WebViewDelegate {
 
     /// An attached host as the address bar names it: its label, without
     /// case, spaces as hyphens.
-    private static func addressName(_ label: String) -> String {
+    static func addressName(_ label: String) -> String {
         label.lowercased().replacingOccurrences(of: " ", with: "-")
     }
 
     /// The other hosts attached, by the name the address bar knows them by —
     /// connected or not yet (one being reached again: a port forwarded from
     /// it waits for it, rather than the name being looked up as a site's).
-    private var addressHosts: [(name: String, client: HostClient)] {
+    var addressHosts: [(name: String, client: HostClient)] {
         hosts.all.filter { !$0.transport.isLocal }.map { (Self.addressName(hosts.label(of: $0.host)), $0) }
     }
 
-    func webView(_ view: WebView, hostNamed name: String) -> HostID? {
-        addressHosts.first { $0.name == name.lowercased() }?.client.host
-    }
+    func webView(_ view: WebView, hostNamed name: String) -> HostID? { hostNamedInAddress(name) }
 
     func webView(_ view: WebView, forward port: Int, on host: HostID, done: @escaping (Int?) -> Void) {
         forward(port, on: host, done: done)

@@ -232,13 +232,7 @@ extension MainWindowController {
         // at its port forwarded here.
         if b.web?.viaHost == true, id.host != host.host, let address = b.web?.url,
            let url = URL(string: address), let h = url.host, WebAddress.isLoopback(h) {
-            forward(url.port ?? (url.scheme == "https" ? 443 : 80), on: id.host) { local in
-                guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-                parts.host = "localhost"
-                parts.port = local
-                if let here = parts.url { NSWorkspace.shared.open(here) }
-            }
-            return
+            return openInBrowser(url, forwardingFrom: id.host)
         }
         if let address = b.web?.url, let url = URL(string: address) { NSWorkspace.shared.open(url); return }
         if let path = b.path, id.host == host.host { NSWorkspace.shared.open(URL(fileURLWithPath: path)); return }
@@ -291,14 +285,7 @@ extension MainWindowController {
             // To the system's browser, a server on the host's own localhost
             // at its port forwarded here.
             if remote, !inWeb, let h = url.host, WebAddress.isLoopback(h) {
-                let port = url.port ?? (scheme == "https" ? 443 : 80)
-                forward(port, on: from) { local in
-                    guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
-                    parts.host = "localhost"
-                    parts.port = local
-                    if let here = parts.url { NSWorkspace.shared.open(here) }
-                }
-                return
+                return openInBrowser(url, forwardingFrom: from)
             }
             openWeb(url, place: place, here: inWeb, context: target, on: remote ? from : nil, viaHost: viaHost)
             return
@@ -391,9 +378,7 @@ extension MainWindowController {
         case let .page(address):
             guard let url = URL(string: address) else { return }
             if let name = url.host, url.scheme == "http" || url.scheme == "https", let h = hostNamedInAddress(name) {
-                var rest = url.path.isEmpty ? "/" : url.path
-                if let qs = url.query { rest += "?" + qs }
-                target = (h, url.port ?? (url.scheme == "https" ? 443 : 80), url.scheme ?? "http", rest)
+                target = (h, url.effectivePort, url.scheme ?? "http", url.pathQueryFragment)
             } else {
                 return openWeb(url, place: place, here: true, context: q)
             }
@@ -410,8 +395,18 @@ extension MainWindowController {
 
     /// The attached host an address names (its label), connected or not.
     func hostNamedInAddress(_ name: String) -> HostID? {
-        let n = name.lowercased()
-        return hosts.all.first { !$0.transport.isLocal && hosts.label(of: $0.host).lowercased().replacingOccurrences(of: " ", with: "-") == n }?.host
+        addressHosts.first { $0.name == name.lowercased() }?.client.host
+    }
+
+    /// A page of a host's own localhost to the system's browser: its port
+    /// forwarded here, and the address made this Mac's.
+    func openInBrowser(_ url: URL, forwardingFrom host: HostID) {
+        forward(url.effectivePort, on: host) { local in
+            guard let local, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+            parts.host = "localhost"
+            parts.port = local
+            if let here = parts.url { NSWorkspace.shared.open(here) }
+        }
     }
 
     /// An address: in the web lens (where `here` says), else the system's
