@@ -252,9 +252,6 @@ struct Palette {
         /// band round each tile on a warm or tinted ground, so a theme's is
         /// a deeper shade of its own.
         var tileShadow: (color: NSColor, opacity: CGFloat) = (.black, 0.10)
-        /// Over the backdrop under the sidebar (pinned), where a colourful
-        /// wash would take its words' contrast and hide its chosen row.
-        var sidebarVeil: Shade? = nil
         /// A hairline round each tile, by day and night (Merino's, as Rex
         /// draws its panes); nil, the shadow alone, by day.
         var tileEdge: Shade? = nil
@@ -1360,11 +1357,7 @@ extension Palette {
                              pool: (0.24, 1), tintPool: (0.42, 1)),
                 dark: .init(stops: [(0.03, 0.5, 0.2), (0.065, 0.45, 0.18), (0.11, 0.38, 0.16), (0.08, 0.25, 0.1)],
                             pool: (0.5, 0.28), tintPool: (0.6, 0.32)),
-                tileShadow: (Theme.hex(0x3D3D3A), 0.1),
-                // The sidebar on a veil of its ivory (its #1f1e1d by night),
-                // the wash under it a breath: its words ≥ 4.5:1 again, its
-                // chosen row seen.
-                sidebarVeil: Shade(Theme.hex(0xFAF9F5).withAlphaComponent(0.8), Theme.hex(0x1F1E1D).withAlphaComponent(0.6))))
+                tileShadow: (Theme.hex(0x3D3D3A), 0.1)))
     }()
 }
 
