@@ -50,7 +50,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     private var markedText = NSMutableAttributedString()
     private var keyTextAccumulator: [String]?
-    private var cursor = NSCursor.iBeam
+    /// The pointer over it: the arrow, not the I-beam its programs ask for —
+    /// its text is selected, never typed where it's clicked.
+    private var cursor = NSCursor.arrow
     private var contentSize = NSSize.zero
     private var trackingArea: NSTrackingArea?
 
@@ -923,7 +925,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func setCursor(_ shape: ghostty_action_mouse_shape_e) {
         switch shape {
         case GHOSTTY_MOUSE_SHAPE_POINTER: cursor = .pointingHand
-        case GHOSTTY_MOUSE_SHAPE_TEXT: cursor = .iBeam
+        case GHOSTTY_MOUSE_SHAPE_TEXT: cursor = .arrow
         case GHOSTTY_MOUSE_SHAPE_CROSSHAIR, GHOSTTY_MOUSE_SHAPE_CELL: cursor = .crosshair
         case GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED: cursor = .operationNotAllowed
         case GHOSTTY_MOUSE_SHAPE_EW_RESIZE, GHOSTTY_MOUSE_SHAPE_COL_RESIZE: cursor = .resizeLeftRight
