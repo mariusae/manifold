@@ -288,7 +288,7 @@ extension Palette {
     private(set) static var current: Palette = .paper
 
     /// Every theme there is.
-    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes, .claude]
+    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes, .claude, .claudeWarm]
 
     /// The theme by its id; Paper for one there isn't.
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? .paper }
@@ -1117,5 +1117,170 @@ extension Palette {
                 // sRGB's #1f1f1f.)
                 dark: .init(stops: [(0, 0, 0.08), (0, 0, 0.077), (0.04, 0.03, 0.074), (0, 0, 0.068)],
                             pool: (0, 0.09), tintPool: (0.1, 0.095))))
+    }()
+}
+
+// MARK: Claude Warm
+
+extension Palette {
+    /// Claude as claude.ai has long set it — the token set Claude.app ships
+    /// for its own small windows, "taken from claude.ai" (2025-10-17): its
+    /// ivory (#faf9f5) on #f5f4ed, white cards; by night #262624 on
+    /// #1f1e1d, cards #30302e; its warm inks (#141413, #3d3d3a, #73726c;
+    /// #faf9f5, #c2c0b6, #9c9a92) and borders (#1f1e1d and #dedcd1, faint);
+    /// clay for the accent, its blue (#1b67b2, #74abe2) for links and its
+    /// pale blue (#d3e5f8, #1c3f62) for what's selected; its success and
+    /// danger, and their pale grounds for diffs. The terminal is Claude
+    /// Code's sixteen with their greys made the ink's warm ones, on the
+    /// ivory. By night the danger is its lighter one (#fe8181), #dd5353
+    /// reading at 3.9:1.
+    static let claudeWarm: Palette = {
+        let light = (bg: "#faf9f5", fg: "#141413", ansi: [
+            "#141413", "#ff3a30", "#1e9e3c", "#98801f", "#0073e6", "#cd2054", "#8e6bd9", "#9c9a92",
+            "#73726c", "#ff5047", "#1e9e3c", "#98801f", "#0078f0", "#cd2054", "#8e6bd9", "#dedcd1"])
+        let dark = (bg: "#262624", fg: "#faf9f5", ansi: [
+            "#141413", "#ff3a30", "#32d74b", "#ffd014", "#0099ff", "#ff2c56", "#b796ff", "#c2c0b6",
+            "#73726c", "#ff5047", "#32d74b", "#ffd014", "#0087ee", "#ff2c56", "#b796ff", "#faf9f5"])
+        let clay = Shade.hex(0xC6613F, 0xD97757)
+        let blue = Shade.hex(0x2C84DB, 0x2C84DB), link = Shade.hex(0x1B67B2, 0x74ABE2)
+        let selection = Shade.hex(0xD3E5F8, 0x1C3F62)
+        let done = Shade.hex(0x2F7613, 0x65BB30), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xB53333, 0xFE8181)
+        let added = Shade.hex(0x1E9E3C, 0x32D74B), modified = Shade.hex(0x98801F, 0xFFD014), removed = Shade.hex(0xCD2054, 0xFF2C56)
+        let violet = Shade.hex(0x8E6BD9, 0xB796FF), aqua = Shade.hex(0x0F7E5C, 0x3BBD8C)
+        // Its borders' ink (#1f1e1d, #dedcd1) at an alpha: a warm wash.
+        func wash(_ light: CGFloat, _ dark: CGFloat) -> Shade {
+            Shade(Theme.hex(0x1F1E1D).withAlphaComponent(light), Theme.hex(0xDEDCD1).withAlphaComponent(dark))
+        }
+        func alpha(_ hex: Int, _ light: CGFloat, _ darkHex: Int, _ dark: CGFloat) -> Shade {
+            Shade(Theme.hex(hex).withAlphaComponent(light), Theme.hex(darkHex).withAlphaComponent(dark))
+        }
+        return Palette(
+            id: "claude-warm",
+            title: "Claude Warm",
+            chrome: Chrome(
+                hover: wash(0.05, 0.07),
+                selected: Shade(.white, Theme.hex(0x30302E)),
+                pressed: wash(0.1, 0.14),
+                divider: wash(0.12, 0.12),
+                panel: .hex(0xFFFFFF, 0x30302E),
+                panelBorder: wash(0.15, 0.15),
+                scrim: Shade(Theme.hex(0xF0EEE6).withAlphaComponent(0.4), NSColor(white: 0, alpha: 0.4)),
+                cardBorder: wash(0.1, 0.12),
+                handle: wash(0.22, 0.25),
+                scrubberKnob: wash(0.14, 0.18),
+                sheetEdge: wash(0.2, 0.16),
+                sheetEdgeHovered: wash(0.34, 0.34),
+                // Its bg-200 and on, deeper further down; by night its
+                // card, lighter nearer the top.
+                sheet: { level in Shade(NSColor(srgbRed: 0.96 - CGFloat(level) * 0.045, green: 0.955 - CGFloat(level) * 0.045, blue: 0.93 - CGFloat(level) * 0.045, alpha: 1),
+                                        NSColor(srgbRed: 0.24 - CGFloat(level) * 0.04, green: 0.24 - CGFloat(level) * 0.04, blue: 0.23 - CGFloat(level) * 0.04, alpha: 1)) },
+                stack: .hex(0xFFFFFF, 0x30302E),
+                dragPill: .hex(0xFFFFFF, 0x3A3A37),
+                linkBehind: { depth in Shade(NSColor(srgbRed: 0.95 - CGFloat(depth) * 0.03, green: 0.945 - CGFloat(depth) * 0.03, blue: 0.92 - CGFloat(depth) * 0.03, alpha: 1),
+                                            NSColor(srgbRed: 0.17 - CGFloat(depth) * 0.015, green: 0.17 - CGFloat(depth) * 0.015, blue: 0.16 - CGFloat(depth) * 0.015, alpha: 1)) },
+                well: wash(0.05, 0.07),
+                pill: wash(0.07, 0.1),
+                // Its pale blue into clay's.
+                historyWash: (from: .hex(0xE6EEF5, 0x1C2B3A), to: .hex(0xF7E6DD, 0x3F2C25))),
+            text: Text(
+                primary: .hex(0x141413, 0xFAF9F5),
+                body: .hex(0x141413, 0xFAF9F5),
+                strong: .hex(0x000000, 0xFFFFFF),
+                secondary: .hex(0x3D3D3A, 0xC2C0B6),
+                tertiary: .hex(0x73726C, 0x9C9A92),
+                readingBody: .hex(0x141413, 0xFAF9F5),
+                readingStrong: .hex(0x000000, 0xFFFFFF)),
+            status: StatusColors(done: done, attention: attention, failed: failed),
+            accent: TintColors(accent: clay, caret: blue, textSelection: selection),
+            tints: Palette.paper.tints,
+            code: Code(
+                page: .hex(0xFAF9F5, 0x262624),
+                text: .hex(0x141413, 0xFAF9F5),
+                lineNumber: .hex(0x9C9A92, 0x73726C),
+                lineHighlight: .hex(0xF1F0EC, 0x2F2F2D),
+                gutterText: .hex(0x9C9A92, 0x73726C),
+                use: alpha(0x2C84DB, 0.1, 0x2C84DB, 0.18),
+                match: alpha(0xFFD500, 0.25, 0xFFD500, 0.18),
+                link: link,
+                linkHover: wash(0.08, 0.13),
+                added: added,
+                modified: modified,
+                deleted: removed,
+                pins: [
+                    alpha(0x945D00, 0.24, 0xFFD014, 0.3),
+                    alpha(0xAD3D66, 0.22, 0xF3C0D3, 0.3),
+                    alpha(0x256ABF, 0.22, 0x3BBD8C, 0.3),
+                    alpha(0x8E6BD9, 0.22, 0xB796FF, 0.3),
+                ],
+                error: .hex(0xB53333, 0xDD5353),
+                warning: .hex(0xB77700, 0xFFD014),
+                hint: alpha(0x2C84DB, 0.6, 0x74ABE2, 0.6),
+                changedOnDisk: .hex(0xFBF2CC, 0x403A22),
+                highlighter: alpha(0xFFD014, 0.4, 0xFFD014, 0.3)),
+            diff: Diff(
+                // Its success and danger, faint on the ivory; its pale blue.
+                added: .hex(0xE2E9DA, 0x303E26),
+                removed: .hex(0xF3E5E2, 0x472E2C),
+                hunk: .hex(0xEAF0F3, 0x27333E),
+                found: .hex(0xFBF0B8, 0x4D461E),
+                current: .hex(0xFDE56E, 0x7D6C16)),
+            found: Found(
+                current: alpha(0xFFD500, 0.55, 0xFFD500, 0.55),
+                currentRing: .hex(0xB77700, 0xFFD014),
+                pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
+                pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
+            chart: Chart(
+                one: blue,
+                two: .hex(0xD97757, 0xD97757),
+                three: done,
+                track: wash(0.07, 0.09),
+                surface: wash(0.025, 0.035),
+                grid: wash(0.07, 0.08)),
+            kinds: Kinds(
+                git: .hex(0xC5621B, 0xFA832E), swift: .hex(0xD95926, 0xEC835A), shell: added, pdf: failed,
+                image: violet, data: modified, patch: added, archive: .hex(0x73726C, 0x9C9A92), media: removed, code: link,
+                linked: violet, embeds: aqua),
+            terminal: (
+                light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#2c84db", cursorText: light.bg,
+                                       selectionBackground: "#d3e5f8", selectionForeground: light.fg, ansi: light.ansi,
+                                       extended: TerminalPalette.generated(background: light.bg, foreground: light.fg, ansi: light.ansi)),
+                dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#2c84db", cursorText: dark.bg,
+                                      selectionBackground: "#1c3f62", selectionForeground: dark.fg, ansi: dark.ansi,
+                                      extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
+            // As claude.ai sets a reply: on its ivory, its inks, its links.
+            page: Page(
+                background: .hex(0xFAF9F5, 0x262624),
+                text: .hex(0x141413, 0xFAF9F5),
+                strong: .hex(0x000000, 0xFFFFFF),
+                link: link,
+                code: .hex(0xF0EEE6, 0x1F1E1D),
+                codeText: .hex(0x141413, 0xFAF9F5),
+                copy: .hex(0xFFFFFF, 0x30302E),
+                copyEdge: .hex(0xE4E3DF, 0x42413E),
+                copyText: .hex(0x73726C, 0x9C9A92),
+                copyHoverEdge: .hex(0xD9D8D5, 0x52514D),
+                copyHoverText: .hex(0x141413, 0xFAF9F5),
+                copyDone: done,
+                quote: .hex(0x3D3D3A, 0xC2C0B6),
+                quoteRule: .hex(0xD9D8D5, 0x42413E),
+                rule: .hex(0xE4E3DF, 0x383835),
+                tableHead: .hex(0xF0EEE6, 0x30302E),
+                tableStripe: .hex(0xF5F4ED, 0x2B2B29),
+                struck: .hex(0x73726C, 0x9C9A92),
+                missing: failed,
+                diagramError: failed,
+                selection: selection,
+                failed: failed,
+                running: .hex(0xD97757, 0xD97757),
+                attention: attention),
+            // Its bg-200 and bg-300 by day (#f5f4ed, #f0eee6), #1f1e1d by
+            // night, a little clay in its light. (Brightness as the
+            // calibrated space has it: 0.077 is about sRGB's #1f.)
+            backdrop: Backdrop(
+                light: .init(stops: [(0.16, 0.03, 0.96), (0.155, 0.032, 0.955), (0.15, 0.036, 0.945), (0.155, 0.03, 0.955)],
+                             pool: (0.02, 0.98), tintPool: (0.04, 0.98)),
+                dark: .init(stops: [(0.083, 0.07, 0.08), (0.083, 0.065, 0.077), (0.06, 0.08, 0.075), (0.083, 0.06, 0.07)],
+                            pool: (0.05, 0.09), tintPool: (0.2, 0.1)),
+                tileShadow: (Theme.hex(0x3D3D3A), 0.1)))
     }()
 }
