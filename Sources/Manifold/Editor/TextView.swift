@@ -3120,7 +3120,7 @@ final class TextView: NSView, NSTextInputClient {
             var shift = 0
             for sel in selections.sorted(by: { $0.min < $1.min }) {
                 let words = text[TextRange(sel.min, sel.max)]
-                let made = sel.isCaret ? address : "[\(words)](\(address))"
+                let made = sel.isCaret ? address : InlineEditing.markdownLink(words, address)
                 reps.append((sel.range, made))
                 after.append(Selection(at: sel.min + shift + made.utf8.count))
                 shift += made.utf8.count - sel.range.length

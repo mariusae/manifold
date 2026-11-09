@@ -9,6 +9,22 @@ import Foundation
 /// attached to, away from the markup.
 public enum InlineEditing {
 
+    /// A Markdown link's words, a `[` or `]` in them escaped.
+    public static func linkWords(_ words: String) -> String {
+        words.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+    }
+
+    /// A Markdown link's address, what would end it early (a space, a
+    /// parenthesis) encoded.
+    public static func linkAddress(_ address: String) -> String {
+        address.replacingOccurrences(of: " ", with: "%20").replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
+    }
+
+    /// `[words](address)`, either escaped as it needs.
+    public static func markdownLink(_ words: String, _ address: String) -> String {
+        "[\(linkWords(words))](\(linkAddress(address)))"
+    }
+
     /// A place strictly within hidden markup is not a place for the caret;
     /// it goes to the markup's end when moving forward, its start when back.
     public static func snap(_ location: Int, runs: [NSRange], forward: Bool) -> Int {

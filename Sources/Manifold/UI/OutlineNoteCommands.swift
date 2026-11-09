@@ -529,24 +529,16 @@ extension NoteOutlineTextView {
                 if response == .alertThirdButtonReturn || (response == .alertFirstButtonReturn && address.isEmpty) {
                     self.replaceCharacters(existing.range, with: words, selecting: NSRange(location: existing.range.location, length: (words as NSString).length), name: "Remove Link")
                 } else if response == .alertFirstButtonReturn {
-                    let made = "[\(words)](\(Self.linkAddress(address)))"
+                    let made = "[\(words)](\(InlineEditing.linkAddress(address)))"
                     self.replaceCharacters(existing.range, with: made, selecting: NSRange(location: existing.range.location + 1, length: (words as NSString).length), name: "Link")
                 }
                 return
             }
             guard response == .alertFirstButtonReturn, !address.isEmpty else { return }
             let words = text.substring(with: range)
-            let made = words.isEmpty ? "<\(address)>" : "[\(Self.linkWords(words))](\(Self.linkAddress(address)))"
+            let made = words.isEmpty ? "<\(address)>" : InlineEditing.markdownLink(words, address)
             self.replaceCharacters(range, with: made, selecting: NSRange(location: range.location + (made as NSString).length, length: 0), name: "Link")
         }
-    }
-
-    static func linkWords(_ words: String) -> String {
-        words.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
-    }
-
-    static func linkAddress(_ address: String) -> String {
-        address.replacingOccurrences(of: " ", with: "%20").replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
     }
 
     /// An address pasted over words in a row: they link to it (a link's
@@ -559,11 +551,11 @@ extension NoteOutlineTextView {
         let words = text.substring(with: range)
         guard !words.contains(NoteOutlineText.lineSeparator), !words.contains("\n"), URL(string: words)?.scheme == nil else { return false }
         if let link = spans(atRowOf: range.location).first(where: { if case .link = $0.kind { return $0.content == range } else { return false } }) {
-            let made = "[\(words)](\(Self.linkAddress(address)))"
+            let made = "[\(words)](\(InlineEditing.linkAddress(address)))"
             replaceCharacters(link.range, with: made, selecting: NSRange(location: link.range.location + (made as NSString).length, length: 0), name: "Link")
             return true
         }
-        let made = "[\(Self.linkWords(words))](\(Self.linkAddress(address)))"
+        let made = InlineEditing.markdownLink(words, address)
         replaceCharacters(range, with: made, selecting: NSRange(location: range.location + (made as NSString).length, length: 0), name: "Link")
         return true
     }
