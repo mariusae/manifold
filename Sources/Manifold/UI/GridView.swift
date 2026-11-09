@@ -1021,17 +1021,6 @@ final class GridView: NSView, NSDraggingSource {
         raised = [:]
     }
 
-    /// Crossing over to it: fading in over what it takes the place of.
-    private func fadeIn(_ v: NSView) {
-        guard let l = v.layer else { return }
-        let a = CABasicAnimation(keyPath: "opacity")
-        a.fromValue = 0
-        a.toValue = 1
-        a.duration = Motion.base
-        a.timingFunction = Motion.appear
-        l.add(a, forKey: "fadeIn")
-    }
-
     /// What a tile showed (its content, or its summary card) over what it
     /// shows now, fading: a picture of it, its top at the tile's top as
     /// the tile is now, so a divider dragged meanwhile takes nothing with it.
@@ -2005,9 +1994,6 @@ final class GridView: NSView, NSDraggingSource {
         unseen = []
         pendingArrival = nil
     }
-
-    /// How much of its width a tile's picture keeps, become its card.
-    static let cardShrink: CGFloat = 0.6
 
     /// Flights sent back the way they came, `speed` times as fast, from
     /// where they've got to; `view` fading out meanwhile. Then they're put

@@ -823,23 +823,21 @@ final class HostPickerView: NSView {
                 Theme.text.withAlphaComponent(0.09).setFill()
                 NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
             }
-            // A grey band under the pointer, as the menus have it.
-            let lit = false
             let dot = NSRect(x: r.minX + 9, y: r.midY - 3.5, width: 7, height: 7)
-            (row.connected ? Status.done : Theme.tertiaryText).withAlphaComponent(lit ? 1 : 0.9).setFill()
+            (row.connected ? Status.done : Theme.tertiaryText).withAlphaComponent(0.9).setFill()
             NSBezierPath(ovalIn: dot).fill()
             let count = NSAttributedString(string: row.spaces == 1 ? "1 space" : "\(row.spaces) spaces",
-                                           attributes: [.font: UIType.detail, .foregroundColor: lit ? NSColor.white.withAlphaComponent(0.8) : Theme.tertiaryText])
+                                           attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText])
             let cz = count.size()
             count.draw(at: NSPoint(x: r.maxX - 10 - cz.width, y: r.midY - cz.height / 2))
             var x = dot.maxX + 9
-            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: lit ? .white : Theme.accent) {
+            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: Theme.accent) {
                 let z = image.size
                 image.draw(in: NSRect(x: x, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 x += z.width + 6
             }
-            NSAttributedString(string: row.label, attributes: [.font: UIType.row, .foregroundColor: lit ? NSColor.white : row.connected ? Theme.text : Theme.secondaryText])
+            NSAttributedString(string: row.label, attributes: [.font: UIType.row, .foregroundColor: row.connected ? Theme.text : Theme.secondaryText])
                 .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, r.maxX - 16 - cz.width - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }

@@ -29,7 +29,6 @@ enum Radius {
 /// faces are the theme's): a big field, a heading, a block's title, a
 /// row, body, a detail beside or under it, a caption, a count.
 enum UIType {
-    static let display = NSFont.systemFont(ofSize: 22)
     static let heading = NSFont.systemFont(ofSize: 15, weight: .semibold)
     static let title = NSFont.systemFont(ofSize: 13, weight: .semibold)
     static let row = NSFont.systemFont(ofSize: 13)
@@ -111,7 +110,6 @@ enum Motion {
 enum EdgeColor {
     static let hairline = Theme.panelBorder
     static let subtle = Theme.cardBorder
-    static let strong = Theme.sheetEdge(hovered: false)
     /// A control's edge that must show on any ground — a checkbox, a
     /// slider's knob, a badge — and a sheet's or a tab's behind a tile;
     /// a step darker under the pointer.

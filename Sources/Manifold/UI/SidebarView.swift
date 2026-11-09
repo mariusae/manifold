@@ -517,8 +517,6 @@ final class ClosureMenuItem: NSMenuItem {
     /// As choosing the item (a row that offers it, the Inspector's).
     func perform() { handler() }
 
-    /// Debugging: as choosing the item.
-    func debugRun() { handler() }
 }
 
 /// One of the bar's tabs: what the sidebar lists (spaces, files,

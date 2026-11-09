@@ -307,17 +307,6 @@ public enum NoteOutlineEditing {
         return sinkDone(&rows, around: parent + 1, following: parent) != nil
     }
 
-    /// Every list in the note with its done items below the rest. Says
-    /// whether any moved.
-    @discardableResult
-    public static func moveAllDoneToBottom(_ rows: inout [NoteRow]) -> Bool {
-        var moved = false
-        // A list is sorted from its first item, before any list in it: the
-        // rows only move within the list, so those after are still to come.
-        for index in rows.indices where sinkDone(&rows, around: index, following: index) != nil { moved = true }
-        return moved
-    }
-
     /// The done items of the list `member` is in, moved below the rest;
     /// where the row at `following` then is.
     private static func sinkDone(_ rows: inout [NoteRow], around member: Int, following: Int) -> Int? {

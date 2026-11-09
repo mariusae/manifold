@@ -470,10 +470,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
 
     /// ⌘+, ⌘−, ⌘0: the page zoomed a step, as Safari steps it, or back.
     private static let zooms: [CGFloat] = [0.5, 0.75, 0.85, 1, 1.15, 1.25, 1.5, 1.75, 2, 2.5, 3]
-    @objc func increaseFontSize(_ sender: Any?) { web.pageZoom = Self.zooms.first { $0 > web.pageZoom + 0.001 } ?? web.pageZoom }
-    @objc func decreaseFontSize(_ sender: Any?) { web.pageZoom = Self.zooms.last { $0 < web.pageZoom - 0.001 } ?? web.pageZoom }
-    @objc func resetFontSize(_ sender: Any?) { web.pageZoom = 1 }
-    var debugZoom: CGFloat { web.pageZoom }
     /// Debugging: how the page is loaded, the address the block keeps, the
     /// one WebKit has, and the store it's in.
     var debugRoute: String {

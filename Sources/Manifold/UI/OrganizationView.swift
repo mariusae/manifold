@@ -1124,7 +1124,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         guard let node = outline.item(atRow: row) as? OrgNode, let menu = delegate?.organizationMenu(for: node) else { return "no menu" }
         if choose.isEmpty { return menu.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n") }
         guard let item = menu.items.first(where: { $0.title == choose }) as? ClosureMenuItem else { return "no such item" }
-        item.debugRun()
+        item.perform()
         return "chose \(choose)"
     }
 

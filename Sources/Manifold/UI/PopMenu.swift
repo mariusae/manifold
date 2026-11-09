@@ -142,13 +142,6 @@ final class PopMenu: NSView, NSTextFieldDelegate {
         filterButton.layer?.backgroundColor = chipsShown ? Theme.text.withAlphaComponent(0.08).cgColor : nil
     }
 
-    func setOn(_ ids: Set<String>) {
-        on = ids
-        for (b, c) in zip(chipButtons, chips) { b.isOn = on.contains(c.id) }
-        if !on.isEmpty { chipsShown = true }
-        updateFilterLook()
-    }
-
     /// Made again from the provider, the first row chosen.
     func refresh() {
         let q = field.stringValue.trimmingCharacters(in: .whitespaces)

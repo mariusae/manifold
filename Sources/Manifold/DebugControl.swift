@@ -690,7 +690,7 @@ enum DebugControl {
             if words.count > 1 {
                 guard let item = menu.items.first(where: { $0.title == words[1] }) as? ClosureMenuItem else { return "no item \(words[1])" }
                 guard item.isEnabled else { return "\(words[1]) is disabled" }
-                item.debugRun()
+                item.perform()
                 return "chose \(words[1])"
             }
             return menu.items.map { $0.isSeparatorItem ? "—" : $0.title + ($0.isEnabled ? "" : " (disabled)") }.joined(separator: "\n")

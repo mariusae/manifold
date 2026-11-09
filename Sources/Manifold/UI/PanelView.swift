@@ -35,8 +35,6 @@ final class PanelView: NSView, PaneContent {
 
     var focusView: NSView { self }
     var isDead: Bool { false }
-    var navLocation: NavLocation? { nil }
-    func go(to location: NavLocation) {}
     func destroy() {}
 
     init(placement: PlacementID, block: BlockID) {

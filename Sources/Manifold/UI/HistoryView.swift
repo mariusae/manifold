@@ -168,8 +168,6 @@ final class StaticDocument: TextViewDocument {
 /// titles, the top one whole.
 final class ArrangementDiagram: NSView {
     var state = ArrangementState() { didSet { needsDisplay = true } }
-    /// Set when the files are to be shown as of a moment: a note on each.
-    var rewoundTo: Stamp? { didSet { needsDisplay = true } }
     var titleOf: (BlockID) -> String = { $0.description }
     var symbolOf: (Lens) -> String = { _ in "doc" }
 

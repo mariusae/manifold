@@ -184,11 +184,6 @@ public enum InlineMarkup {
         inner.location >= outer.location && NSMaxRange(inner) <= NSMaxRange(outer)
     }
 
-    /// The runs of hidden markup in a range, each run the markup of one
-    /// span, in order.
-    public static func hiddenRuns(in text: NSString, range: NSRange) -> [NSRange] {
-        spans(in: text, range: range).flatMap(\.markup).sorted { $0.location < $1.location }
-    }
 }
 
 /// Arrows typed as two characters — `->`, `<-`, `<->` — shown as one; the

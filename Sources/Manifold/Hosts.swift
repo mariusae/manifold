@@ -409,12 +409,6 @@ final class Hosts {
         }.subtracting(gone.map { [$0] } ?? [])
     }
 
-    /// Whether a block exists and nothing reaches it: closed, and to be
-    /// collected unless something takes it up again.
-    func isUnreached(_ block: BlockID, reachable: Set<BlockID>) -> Bool {
-        self.block(block) != nil && !reachable.contains(block)
-    }
-
     func pin(_ block: BlockID, _ on: Bool) { propose(.pin(block, on)) }
 
     /// Holds (§4): each strong reference from one host's shards to a

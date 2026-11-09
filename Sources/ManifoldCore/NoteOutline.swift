@@ -118,13 +118,6 @@ public struct NoteRow: Equatable, Sendable {
         task?.isDone == true && text.count <= 80 && !text.contains(where: \.isNewline)
     }
 
-    /// A top-level item with children — open or folded — a group's head,
-    /// set a little heavier. Not a task: it is a thing to do, not a heading.
-    public func headsGroup(before next: NoteRow?) -> Bool {
-        guard depth == 0, kind.isListItem, task == nil else { return false }
-        return isFolded || (next?.depth ?? 0) > 0
-    }
-
     /// A top-level item after another's children: a new group, given room above.
     public func startsGroup(after previous: NoteRow?) -> Bool {
         guard let previous, depth == 0, kind.isListItem else { return false }

@@ -648,18 +648,6 @@ extension Flat {
 
 // MARK: Backgrounds
 
-/// A panel's own window's background, drawn (so it's in the window's
-/// appearance whenever it's drawn, as the glass it replaces was; a layer's
-/// color is only as current as the last switch it heard of).
-final class FlatBackground: NSView {
-    var color: NSColor = Theme.panel { didSet { needsDisplay = true } }
-
-    override func draw(_ dirtyRect: NSRect) {
-        color.setFill()
-        dirtyRect.fill()
-    }
-}
-
 // MARK: Dividers
 
 /// A hairline between two parts of a view, in the dividers' grey.

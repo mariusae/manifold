@@ -396,11 +396,6 @@ final class FloatingList: NSView {
         scheduleHide()
     }
 
-    /// The pointer back on what opened it.
-    func openerEntered(_ owner: AnyObject) {
-        if opener === owner { hideWork?.cancel() }
-    }
-
     /// Gone in a moment — unless by then the pointer is on it, or back on
     /// what opened it, when it's looked at again a moment later. (It opens
     /// under the pointer, over the ticks: the pointer is on it without

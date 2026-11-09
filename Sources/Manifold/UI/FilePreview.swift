@@ -145,21 +145,3 @@ final class FilePreviewView: NSView {
         icon.frame = NSRect(x: area.midX - side / 2, y: area.midY - side / 2, width: side, height: side)
     }
 }
-
-/// The browser's preview column (§7.4): the preview of whatever leaf the
-/// browser has selected, as it sets it.
-final class FilePreviewController: NSViewController {
-    let preview = FilePreviewView()
-    var nodeShown: ((BrowserNode?) -> Void)?
-
-    override func loadView() {
-        // The browser sizes the column, not the view in it: it fills it.
-        preview.frame = NSRect(x: 0, y: 0, width: 260, height: 400)
-        preview.autoresizingMask = [.width, .height]
-        view = preview
-    }
-
-    override var representedObject: Any? {
-        didSet { preview.show(representedObject as? BrowserNode) }
-    }
-}

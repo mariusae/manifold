@@ -607,12 +607,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         refresh()
     }
 
-    /// Results came in (a host's search): listed again.
-    func refreshResults() {
-        guard panel.isVisible, scope != .names else { return }
-        refresh()
-    }
-
     /// Debugging: the chips and the counts.
     func debugKinds() -> String {
         let shownCounts = countRow.subviews.compactMap { ($0 as? KindToken)?.said }

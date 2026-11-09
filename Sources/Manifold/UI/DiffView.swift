@@ -534,13 +534,9 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         return convert(NSRect(x: 0, y: a.minY, width: 40, height: CGFloat(c.count) * a.height), from: rowsView)
     }
 
-    func clearChosen() { rowsView.chosen = nil }
     func debugChoose(_ lines: ClosedRange<Int>) { rowsView.chosen = lines }
     /// Where a row is, in this view.
     func rect(ofRow i: Int) -> NSRect { convert(rowsView.rect(ofRow: i), from: rowsView) }
-
-    /// The rows on a line on screen.
-    func rowsOnLine(_ line: Int) -> [Int] { rowsView.rows(onLines: line...line) }
 
     /// The file a row is in, as a path on the diff's host.
     func filePath(ofRow i: Int) -> String? {

@@ -1982,10 +1982,9 @@ final class TextView: NSView, NSTextInputClient {
         endPeek()
         peekWord = w
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.peekWord == w, let window = self.window else { return }
+            guard let self, self.peekWord == w, self.window != nil else { return }
             let r = self.rects(of: w).first ?? .zero
             self.delegate?.textView(self, peekAt: w, in: self.convert(r, to: nil))
-            _ = window
         }
         peekWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
@@ -2196,11 +2195,9 @@ final class TextView: NSView, NSTextInputClient {
     private func delete(_ f: (Selection) -> Selection) {
         guard isEditable else { return }
         let ranges = selections.map { s -> Selection in s.isCaret ? f(s) : s }
-        let before = selections
         selections = ranges
         normalizeSelections()
         insert(selections.map { _ in "" }, typing: false)
-        _ = before
     }
 
     private func deleteBackward() {
@@ -2381,7 +2378,6 @@ final class TextView: NSView, NSTextInputClient {
         }
         guard !edits.isEmpty else { return }
         let before = selections
-        let text = self.text
         replace(edits, selectAfter: before.map { s in
             func shift(_ o: Int) -> Int {
                 var o = o
@@ -2390,7 +2386,6 @@ final class TextView: NSView, NSTextInputClient {
                 }
                 return max(o, 0)
             }
-            _ = text
             return Selection(shift(s.anchor), shift(s.head))
         })
     }
@@ -2480,9 +2475,9 @@ final class TextView: NSView, NSTextInputClient {
         let lines = selectedLines()
         guard let first = lines.first, let last = lines.last else { return }
         let start = text.offset(ofLine: first)
-        var end = last + 1 < text.lineCount ? text.offset(ofLine: last + 1) : text.count
+        let end = last + 1 < text.lineCount ? text.offset(ofLine: last + 1) : text.count
         var s = start
-        if end == text.count, start > 0, end > start { s = start - 1 } else if end == text.count { end = text.count }
+        if end == text.count, start > 0, end > start { s = start - 1 }
         replace([(TextRange(s, end), "")], selectAfter: [Selection(at: min(s, max(0, text.count - (end - s))))])
     }
 

@@ -1528,7 +1528,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }.joined(separator: "\n")
         }
         guard let item = menu.items.first(where: { $0.title == title }) as? ClosureMenuItem else { return "no such item" }
-        item.debugRun()
+        item.perform()
         return "chose \(title)"
     }
 
@@ -1677,7 +1677,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    var debugSidebarView: SidebarView { sidebar }
     /// Debugging: the output tiles, as shown; "raw", what each holds,
     /// escaped; "copy" and "back", the focused one's buttons pressed.
     /// Debugging: the focused search's preview; "searchpreview <n>", the nth hit chosen.

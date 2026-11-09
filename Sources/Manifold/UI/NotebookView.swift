@@ -1224,11 +1224,6 @@ final class ActionCapsule: NSView {
         }
     }
 
-    /// Debugging: an action pressed.
-    func debugPress(_ i: Int) {
-        guard i < actions.count, actions[i].enabled else { return }
-        actions[i].perform(self, rect(i))
-    }
 }
 
 /// A quiet link of a control: a symbol and a word in the secondary colour,
