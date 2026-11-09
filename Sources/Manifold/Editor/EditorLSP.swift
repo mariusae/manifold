@@ -14,7 +14,7 @@ extension EditorView {
         let c = caret
         let at = textView.diagnostics.first { $0.range.start <= c && c <= max($0.range.end, $0.range.start) }
         statusMessage = at.map { d in
-            let what = d.severity == 1 ? "Error" : d.severity == 2 ? "Warning" : "Note"
+            let what = switch d.level { case .error: "Error"; case .warning: "Warning"; default: "Note" }
             return "\(what): \(d.message.replacingOccurrences(of: "\n", with: " "))"
         }
     }
@@ -34,8 +34,10 @@ extension EditorView {
             return
         }
         status.stringValue = message
-        let severity = loadingMessage != nil || busyMessage != nil ? 0 : (textView.diagnostics.first { $0.range.start <= caret && caret <= max($0.range.end, $0.range.start) }?.severity ?? 3)
-        let tint: NSColor = severity == 0 ? Theme.panel : TextView.diagnosticColor(severity).withAlphaComponent(0.12)
+        // Busy: the panel's own; else the diagnostic's, a note's for words of ours.
+        let level: Diagnostic.Severity? = loadingMessage != nil || busyMessage != nil ? nil
+            : textView.diagnostics.first { $0.range.start <= caret && caret <= max($0.range.end, $0.range.start) }?.level ?? .information
+        let tint: NSColor = level.map { TextView.diagnosticColor($0).withAlphaComponent(0.12) } ?? Theme.panel
         // Themed once (each `themed` adds a hook for good), the tint kept.
         statusTint = tint
         if statusThemed {
@@ -432,6 +434,8 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
     private let table = NSTableView()
     private let font: NSFont
     private var closed = false
+    /// Over the caret, for want of room under it: it shrinks toward it.
+    private var above = false
 
     var isEmpty: Bool { shown.isEmpty }
 
@@ -474,13 +478,10 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
 
     func show(for view: TextView, at offset: Int) {
         guard let parent = view.window, !closed else { return }
-        let r = view.caretRectInWindow(offset)
-        var origin = parent.convertToScreen(NSRect(origin: NSPoint(x: r.minX - 8, y: r.minY), size: .zero)).origin
-        origin.y -= window.frame.height
-        if let screen = parent.screen, origin.y < screen.visibleFrame.minY {
-            origin.y = parent.convertToScreen(NSRect(origin: NSPoint(x: r.minX, y: r.maxY), size: .zero)).origin.y
-        }
-        window.setFrameOrigin(origin)
+        let placed = CaretPopup.frame(width: window.frame.width, height: window.frame.height, by: view.caretRectInWindow(offset), in: parent,
+                                      above: false, gap: 0, lead: 8)
+        above = placed.above
+        window.setFrame(placed.frame, display: false)
         parent.addChildWindow(window, ordered: .above)
     }
 
@@ -493,9 +494,10 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
             }
         table.reloadData()
         if !shown.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
+        // The edge by the caret kept where it is.
         let height = min(CGFloat(shown.count) * table.rowHeight + 8, 200)
-        let top = window.frame.maxY
-        window.setFrame(NSRect(x: window.frame.minX, y: top - height, width: window.frame.width, height: height), display: true)
+        let y = above ? window.frame.minY : window.frame.maxY - height
+        window.setFrame(NSRect(x: window.frame.minX, y: y, width: window.frame.width, height: height), display: true)
     }
 
     func handle(_ event: NSEvent) -> Bool {
@@ -510,12 +512,7 @@ final class CompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDelegat
         }
     }
 
-    private func move(_ delta: Int) {
-        guard !shown.isEmpty else { return }
-        let row = min(max(table.selectedRow + delta, 0), shown.count - 1)
-        table.selectRowIndexes([row], byExtendingSelection: false)
-        table.scrollRowToVisible(row)
-    }
+    private func move(_ delta: Int) { CaretPopup.move(table, by: delta, count: shown.count) }
 
     private func choose() {
         let row = table.selectedRow

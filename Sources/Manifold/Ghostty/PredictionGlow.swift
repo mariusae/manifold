@@ -34,7 +34,7 @@ final class PredictionGlow: NSView {
             fade(l, to: 0, over: Self.fadeOut) { l.removeFromSuperlayer() }
         }
         guard glow, let root = layer else { return }
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = effectiveAppearance.isDark
         let grid = CellGrid(info, height: bounds.height)
         for c in cells {
             let key = c.y << 16 | c.x
@@ -58,20 +58,19 @@ final class PredictionGlow: NSView {
             linkGlow = nil
             return
         }
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = effectiveAppearance.isDark
         let l = linkGlow ?? CALayer()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         l.frame = bounds
         l.shadowPath = glyphs
         l.shadowOffset = .zero
-        l.shadowRadius = max(3, cellHeight * 0.28)
+        l.shadowRadius = LinkGlow.radius(rowHeight: cellHeight)
         var cg = color.cgColor
         effectiveAppearance.performAsCurrentDrawingAppearance { cg = color.cgColor }
         l.shadowColor = cg
-        // On light paper a glow is a smudge unless it's faint.
-        l.shadowOpacity = dark ? 0.85 : 0.55
-        l.compositingFilter = dark ? "screenBlendMode" : "multiplyBlendMode"
+        l.shadowOpacity = Float(LinkGlow.opacity(dark: dark))
+        l.compositingFilter = LinkGlow.filter(dark: dark)
         CATransaction.commit()
         if linkGlow == nil {
             root.addSublayer(l)
@@ -95,7 +94,7 @@ final class PredictionGlow: NSView {
     /// highlight stays as it is).
     func pulse(around runs: [(y: Int, from: Int, to: Int)], info: ghostty_manifold_info_s) {
         guard !runs.isEmpty, let root = layer else { return }
-        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let dark = effectiveAppearance.isDark
         let grid = CellGrid(info, height: bounds.height), ch = grid.cellHeight
         var shape = CGPath(rect: .null, transform: nil)
         for r in runs {

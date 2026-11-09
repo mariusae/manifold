@@ -12,6 +12,35 @@ import UniformTypeIdentifiers
 /// typed at the cursor as the shell would have it: relative to the
 /// folder when it's under it, else from `~`, quoted where it needs to be;
 /// a folder with its slash, a file with a space after.
+/// What a list by the caret does, Insert Path's and a completion's alike:
+/// where it goes beside the caret, and its choice moved by ↑ ↓.
+enum CaretPopup {
+    /// Its frame on the screen, beside `caret` (in `window`'s coordinates):
+    /// over it if `above`, else under it — or the other way where there's
+    /// no room in the window for `fitting` (its height, if not given); its
+    /// left `lead` before the caret's, kept in the window. And whether it's
+    /// over the caret.
+    static func frame(width: CGFloat, height: CGFloat, fitting: CGFloat? = nil, by caret: NSRect, in window: NSWindow,
+                      above: Bool, gap: CGFloat, lead: CGFloat) -> (frame: NSRect, above: Bool) {
+        let content = window.contentView.map { $0.convert($0.bounds, to: nil) } ?? .zero
+        let room = content.insetBy(dx: 8, dy: 8)
+        let need = fitting ?? height
+        let fitsAbove = caret.maxY + gap + need <= room.maxY, fitsBelow = caret.minY - gap - need >= room.minY
+        let up = above ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove
+        var frame = NSRect(x: caret.minX - lead, y: up ? caret.maxY + gap : caret.minY - gap - height, width: width, height: height)
+        frame.origin.x = min(max(frame.minX, room.minX), room.maxX - frame.width)
+        return (window.convertToScreen(frame), up)
+    }
+
+    /// The list's choice moved `by` rows, kept in sight.
+    static func move(_ table: NSTableView, by: Int, count: Int) {
+        guard count > 0 else { return }
+        let row = min(max(table.selectedRow + by, 0), count - 1)
+        table.selectRowIndexes([row], byExtendingSelection: false)
+        table.scrollRowToVisible(row)
+    }
+}
+
 final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     static let shared = PathInserter()
 
@@ -400,14 +429,10 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     /// cursor; under the line if there's no room over it.
     private func place(over caret: NSRect, in window: NSWindow) {
         layout()
-        let content = window.contentView.map { $0.convert($0.bounds, to: nil) } ?? .zero
-        let room = content.insetBy(dx: 8, dy: 8)
         let full = Self.pad + CGFloat(Self.visibleRows) * Self.rowHeight + 2 * Self.pad + Self.fieldHeight
-        growsDown = caret.maxY + 4 + full > room.maxY && caret.minY - 4 - full > room.minY
-        let height = panel.frame.height
-        var frame = NSRect(x: caret.minX - 14, y: growsDown ? caret.minY - 4 - height : caret.maxY + 4, width: Self.width, height: height)
-        frame.origin.x = min(max(frame.minX, room.minX), room.maxX - frame.width)
-        panel.setFrame(window.convertToScreen(frame), display: false)
+        let placed = CaretPopup.frame(width: Self.width, height: panel.frame.height, fitting: full, by: caret, in: window, above: true, gap: 4, lead: 14)
+        growsDown = !placed.above
+        panel.setFrame(placed.frame, display: false)
     }
 
     // MARK: Keys
@@ -440,10 +465,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
             crawl.going = true
             updateStatus()
         }
-        guard !rows.isEmpty else { return }
-        let row = min(max(table.selectedRow + by, 0), rows.count - 1)
-        table.selectRowIndexes([row], byExtendingSelection: false)
-        table.scrollRowToVisible(row)
+        CaretPopup.move(table, by: by, count: rows.count)
     }
 
     private func descend() {

@@ -157,7 +157,8 @@ final class OutlineNoteView: NSView, PaneContent {
     }
 
     static func metrics(_ theme: FontTheme) -> NoteOutlineMetrics {
-        NoteOutlineMetrics(body: theme.font(.proportional, size: 14.5), code: theme.font(.monospaced, size: 12.5))
+        let body = theme.font(.proportional, size: 14.5)
+        return NoteOutlineMetrics(body: body, code: theme.font(.monospaced, size: 12.5), lineHeightMultiple: theme.editorLineHeight(.proportional, font: body))
     }
 
     // MARK: The note, both ways
@@ -661,7 +662,8 @@ struct NoteOutlineMetrics: Equatable {
     var fontSize: CGFloat { body.pointSize }
     /// How far each level is in.
     var indent: CGFloat { round(fontSize * 1.45) }
-    var lineHeightMultiple: CGFloat { 1.18 }
+    /// Lines as the theme sets the editor's (a multiple of the face's own height).
+    var lineHeightMultiple: CGFloat = 1.18
     var rowSpacing: CGFloat { round(fontSize * 0.28) }
 
     func heading(_ level: Int) -> NSFont {
@@ -808,11 +810,15 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
         for span in NoteOutlineText.spans(in: text, range: body, shown: shows) {
             let content = span.content
             switch span.kind {
+            // Bold and italic as the editor makes them (`emphasized`): a
+            // light face's bold a heavier face, not the face unchanged.
             case .strong:
-                storage.addAttribute(.font, value: NSFontManager.shared.convert(font(at: content.location), toHaveTrait: .boldFontMask), range: content)
+                let plain = font(at: content.location), traits = plain.fontDescriptor.symbolicTraits
+                if !traits.contains(.bold) {
+                    storage.addAttribute(.font, value: plain.emphasized(bold: true, italic: traits.contains(.italic)), range: content)
+                }
             case .emphasis:
-                let plain = font(at: content.location)
-                let italic = NSFontManager.shared.convert(plain, toHaveTrait: .italicFontMask)
+                let italic = font(at: content.location).emphasized(italic: true)
                 if italic.fontDescriptor.symbolicTraits.contains(.italic) {
                     storage.addAttribute(.font, value: italic, range: content)
                 } else {
@@ -1318,7 +1324,9 @@ final class NoteOutlineTextView: NSTextView {
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
-        insertionPointColor = Theme.accent
+        // The caret and the selection as the editor's.
+        insertionPointColor = Tints.caret
+        selectedTextAttributes = [.backgroundColor: Tints.textSelection]
         linkTextAttributes = [.cursor: NSCursor.pointingHand, .foregroundColor: Theme.accent]
         textSelectionAttributes = selectedTextAttributes
         dropLine.wantsLayer = true

@@ -1203,10 +1203,10 @@ final class TextView: NSView, NSTextInputClient {
         // The blur is in device pixels, not this view's points.
         let scale = abs(ctx.convertToDeviceSpace(CGSize(width: 1, height: 0)).width)
         ctx.saveGState()
-        ctx.setBlendMode(dark ? .screen : .multiply)
+        ctx.setBlendMode(LinkGlow.blend(dark: dark))
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.setBlendMode(.normal)
-        ctx.setShadow(offset: .zero, blur: max(3, font.pointSize * 0.4) * scale, color: color.copy(alpha: dark ? 0.9 : 0.6))
+        ctx.setShadow(offset: .zero, blur: 2 * LinkGlow.radius(rowHeight: lineHeight) * scale, color: color.copy(alpha: LinkGlow.opacity(dark: dark)))
         for run in runs {
             ctx.textPosition = origin
             CTRunDraw(run, ctx, CFRange())
@@ -1396,7 +1396,7 @@ final class TextView: NSView, NSTextInputClient {
         if !diagnostics.isEmpty {
             let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
             for d in diagnostics where d.range.end >= firstOffset && d.range.start <= lastOffset {
-                let color = Self.diagnosticColor(d.severity)
+                let color = Self.diagnosticColor(d.level)
                 let range = d.range.isEmpty ? TextRange(d.range.start, text.next(d.range.start)) : d.range
                 color.setFill()
                 underline(range, from: first, to: last)
@@ -1429,11 +1429,11 @@ final class TextView: NSView, NSTextInputClient {
     static let modifiedColor = NSColor.themed { $0.code.modified }
     static let deletedColor = NSColor.themed { $0.code.deleted }
 
-    static func diagnosticColor(_ severity: Int) -> NSColor {
+    static func diagnosticColor(_ level: Diagnostic.Severity) -> NSColor {
         let code = Palette.current.code
-        switch severity {
-        case 1: return code.error.color
-        case 2: return code.warning.color
+        switch level {
+        case .error: return code.error.color
+        case .warning: return code.warning.color
         default: return code.hint.color
         }
     }
@@ -2688,20 +2688,34 @@ final class TextView: NSView, NSTextInputClient {
     private func dragDefinition(_ range: TextRange, _ event: NSEvent) -> Bool {
         let words = text[range]
         guard let writer = delegate?.textView(self, dragSelection: range, text: words) else { return false }
-        let drag = NSDraggingItem(pasteboardWriter: writer)
         let first = text.lineText(text.line(at: range.start)).trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = NSAttributedString(string: String(first.prefix(80)), attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        let size = NSSize(width: min(ceil(label.size().width) + 16, 420), height: ceil(label.size().height) + 8)
+        beginDrag(writer, showing: String(first.prefix(80)), font: font, event)
+        return true
+    }
+
+    /// A drag begun, shown as its words on a card as a thing's pill is
+    /// (§3.11, `DragPill`), so they read over whatever they pass — as the
+    /// outline's rows are.
+    private func beginDrag(_ writer: NSPasteboardWriting, showing words: String, font: NSFont, _ event: NSEvent) {
+        let drag = NSDraggingItem(pasteboardWriter: writer)
+        let label = NSAttributedString(string: words, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let size = NSSize(width: min(ceil(label.size().width) + 16, 420), height: min(ceil(label.size().height) + 8, 140))
+        let appearance = effectiveAppearance
         let image = NSImage(size: size, flipped: false) { r in
-            NSColor.windowBackgroundColor.withAlphaComponent(0.9).setFill()
-            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
-            label.draw(in: r.insetBy(dx: 8, dy: 4))
+            appearance.performAsCurrentDrawingAppearance {
+                let card = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
+                DragPill.fill.setFill()
+                card.fill()
+                EdgeColor.controlHovered.setStroke()
+                card.lineWidth = 0.5
+                card.stroke()
+                label.draw(in: r.insetBy(dx: 8, dy: 4))
+            }
             return true
         }
         let p = convert(event.locationInWindow, from: nil)
         drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
         beginDraggingSession(with: [drag], event: event, source: self)
-        return true
     }
 
     /// Debugging: where the definition bar is, and what dragging it writes.
@@ -2789,19 +2803,7 @@ final class TextView: NSView, NSTextInputClient {
     /// delegate's), shown as the line's words; false if it carries nothing.
     private func dragLine(_ line: Int, _ event: NSEvent) -> Bool {
         guard let writer = delegate?.textView(self, dragLine: line) else { return false }
-        let drag = NSDraggingItem(pasteboardWriter: writer)
-        let words = text.lineText(line).trimmingCharacters(in: .whitespaces)
-        let label = NSAttributedString(string: String(words.prefix(80)), attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        let size = NSSize(width: min(ceil(label.size().width) + 16, 420), height: ceil(label.size().height) + 8)
-        let image = NSImage(size: size, flipped: false) { r in
-            NSColor.windowBackgroundColor.withAlphaComponent(0.9).setFill()
-            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
-            label.draw(in: r.insetBy(dx: 8, dy: 4))
-            return true
-        }
-        let p = convert(event.locationInWindow, from: nil)
-        drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
-        beginDraggingSession(with: [drag], event: event, source: self)
+        beginDrag(writer, showing: String(text.lineText(line).trimmingCharacters(in: .whitespaces).prefix(80)), font: font, event)
         return true
     }
 
@@ -2813,20 +2815,8 @@ final class TextView: NSView, NSTextInputClient {
         // Its place too, where there's one to refer to (one selection).
         let one = selections.filter { !$0.isCaret }
         let writer: NSPasteboardWriting = one.count == 1 ? delegate?.textView(self, dragSelection: one[0].range, text: s) ?? Self.words(s) : Self.words(s)
-        let drag = NSDraggingItem(pasteboardWriter: writer)
         let shown = String(s.prefix(200)).replacingOccurrences(of: "\t", with: "  ")
-        let label = NSAttributedString(string: shown.split(separator: "\n", omittingEmptySubsequences: false).prefix(6).joined(separator: "\n"),
-                                       attributes: [.font: UIType.body, .foregroundColor: NSColor.labelColor])
-        let size = NSSize(width: min(ceil(label.size().width) + 12, 420), height: min(ceil(label.size().height) + 8, 140))
-        let image = NSImage(size: size, flipped: false) { r in
-            NSColor.windowBackgroundColor.withAlphaComponent(0.85).setFill()
-            NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5).fill()
-            label.draw(in: r.insetBy(dx: 6, dy: 4))
-            return true
-        }
-        let p = convert(event.locationInWindow, from: nil)
-        drag.setDraggingFrame(NSRect(x: p.x - 8, y: p.y - size.height + 8, width: size.width, height: size.height), contents: image)
-        beginDraggingSession(with: [drag], event: event, source: self)
+        beginDrag(writer, showing: shown.split(separator: "\n", omittingEmptySubsequences: false).prefix(6).joined(separator: "\n"), font: UIType.body, event)
     }
 
     private static func words(_ s: String) -> NSPasteboardItem {

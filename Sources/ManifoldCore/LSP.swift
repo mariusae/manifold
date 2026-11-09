@@ -90,6 +90,14 @@ public struct Diagnostic: Codable, Equatable, Sendable {
         self.message = message
         self.source = source
     }
+
+    /// How much it matters, as LSP numbers it.
+    public enum Severity: Int, Sendable {
+        case error = 1, warning, information, hint
+    }
+
+    /// Its severity; a number out of range taken as a hint.
+    public var level: Severity { Severity(rawValue: severity) ?? .hint }
 }
 
 /// A place in a file on a host, as a server points to it (line and
