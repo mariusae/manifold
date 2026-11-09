@@ -171,9 +171,7 @@ final class SpaceStripView: NSView {
             path.setLineDash([3, 2], count: 2, phase: 0)
             path.stroke()
             if let image = Theme.symbol("plus", size: 11, weight: .semibold, color: hovered == plus ? Theme.text : Theme.secondaryText) {
-                let z = image.size
-                image.draw(in: NSRect(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
-                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
             }
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
@@ -200,9 +198,7 @@ final class SpaceStripView: NSView {
             }
             let ink = c.color.blended(withFraction: 0.25, of: Theme.text) ?? c.color
             if let s = c.symbol, let image = Theme.symbol(s, size: 11.5, weight: .semibold, color: ink) {
-                let z = image.size
-                image.draw(in: NSRect(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
-                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
             } else {
                 let t = NSAttributedString(string: c.letter, attributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: ink])
                 let z = t.size()
@@ -669,9 +665,7 @@ final class NeedsYouView: NSView {
             NSBezierPath(roundedRect: sq, xRadius: 4, yRadius: 4).fill()
             let sInk = item.spaceColor.blended(withFraction: 0.25, of: Theme.text) ?? item.spaceColor
             if let s = item.spaceSymbol, let image = Theme.symbol(s, size: 8.5, weight: .semibold, color: sInk) {
-                let z = image.size
-                image.draw(in: NSRect(x: (sq.midX - z.width / 2).rounded(), y: (sq.midY - z.height / 2).rounded(), width: z.width, height: z.height),
-                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                image.draw(centeredAt: NSPoint(x: sq.midX, y: sq.midY))
             } else {
                 let t = NSAttributedString(string: item.spaceLetter, attributes: [.font: NSFont.systemFont(ofSize: 9, weight: .bold), .foregroundColor: sInk])
                 let z = t.size()

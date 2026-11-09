@@ -369,9 +369,7 @@ final class PopMenuList: NSView {
                 if let image = item.image {
                     image.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 } else if let image = Theme.symbol(item.symbol, size: 12.5, weight: .regular, color: lit ? Flat.onBand() : Theme.secondaryText) {
-                    let z = image.size
-                    image.draw(in: NSRect(x: iconRect.midX - z.width / 2, y: iconRect.midY - z.height / 2, width: z.width, height: z.height),
-                               from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                    image.draw(centeredAt: NSPoint(x: iconRect.midX, y: iconRect.midY))
                 }
                 var right = w - 16
                 if item.chevron, let c = Theme.symbol("chevron.right", size: 10, weight: .semibold, color: lit ? Flat.onBand(dim: true) : Theme.tertiaryText) {

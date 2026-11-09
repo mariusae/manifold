@@ -415,7 +415,7 @@ final class IconButton: NSButton {
         let scale = window?.backingScaleFactor ?? 2
         func px(_ v: CGFloat) -> CGFloat { (v * scale).rounded() / scale }
         let r = NSRect(x: px((bounds.width - size.width) / 2), y: px((bounds.height - size.height) / 2), width: size.width, height: size.height)
-        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.35, respectFlipped: true, hints: nil)
+        tinted.draw(in: r, from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : Flat.disabledAlpha, respectFlipped: true, hints: nil)
     }
 
     private struct TintKey: Hashable {

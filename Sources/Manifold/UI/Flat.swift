@@ -21,6 +21,9 @@ enum Flat {
     /// what's chosen (a grey button pressed doesn't flash blue).
     static let pressed = NSColor.themed { $0.chrome.pressed }
 
+    /// How far a control that can't be used now is faded: every one alike.
+    static let disabledAlpha: CGFloat = 0.4
+
     /// A panel floating over the window: rounded, a hairline round it, and
     /// one soft shadow — the same for every one (but one in a window of its
     /// own, whose window casts the shadow).
@@ -338,7 +341,7 @@ final class FlatButton: NSButton {
             v.addSymbolEffect(.rotate.clockwise, options: .repeat(.continuous))
         }
         v.contentTintColor = ink
-        v.alphaValue = isEnabled ? 1 : 0.4
+        v.alphaValue = isEnabled ? 1 : Flat.disabledAlpha
         v.frame = r
     }
 

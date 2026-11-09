@@ -182,8 +182,7 @@ final class SendButton: ClickView {
         NSBezierPath(ovalIn: r).fill()
         let ink: NSColor = isEnabled ? .white : Theme.tertiaryText
         if let image = Theme.symbol("arrow.up", size: 12, weight: .bold, color: ink) {
-            let z = image.size
-            image.draw(in: NSRect(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height))
+            image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
     }
 

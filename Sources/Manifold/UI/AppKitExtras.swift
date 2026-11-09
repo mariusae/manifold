@@ -104,3 +104,13 @@ extension URL {
         (path.isEmpty ? "/" : path) + (query.map { "?" + $0 } ?? "") + (fragment.map { "#" + $0 } ?? "")
     }
 }
+
+extension NSImage {
+    /// Drawn at its own size, its centre on `p` (on whole points, so a
+    /// symbol stays crisp), flipped views as well.
+    func draw(centeredAt p: NSPoint, fraction: CGFloat = 1) {
+        let z = size
+        draw(in: NSRect(x: (p.x - z.width / 2).rounded(), y: (p.y - z.height / 2).rounded(), width: z.width, height: z.height),
+             from: .zero, operation: .sourceOver, fraction: fraction, respectFlipped: true, hints: nil)
+    }
+}

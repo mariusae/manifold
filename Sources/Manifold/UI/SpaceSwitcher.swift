@@ -77,9 +77,7 @@ final class SpaceSwitcherView: PopoverView {
             NSBezierPath(roundedRect: sq, xRadius: 5, yRadius: 5).fill()
             let ink = c.color.blended(withFraction: 0.25, of: Theme.text) ?? c.color
             if let s = c.symbol, let image = Theme.symbol(s, size: 10, weight: .semibold, color: ink) {
-                let z = image.size
-                image.draw(in: NSRect(x: sq.midX - z.width / 2, y: sq.midY - z.height / 2, width: z.width, height: z.height),
-                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                image.draw(centeredAt: NSPoint(x: sq.midX, y: sq.midY))
             } else {
                 let t = NSAttributedString(string: c.letter, attributes: [.font: NSFont.systemFont(ofSize: 10.5, weight: .bold), .foregroundColor: ink])
                 let z = t.size()
