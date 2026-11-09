@@ -755,12 +755,19 @@ final class HostClient {
         return id
     }
 
+    /// The deepest block of a kind whose folder holds a path (or is it).
+    private func block(kind: BlockKind, rooting path: String, where also: (Block) -> Bool = { _ in true }) -> Block? {
+        node.blocks.filter { b in
+            guard b.kind == kind, let root = b.path else { return false }
+            return (path == root || path.hasPrefix(root + "/")) && also(b)
+        }.max { $0.path!.count < $1.path!.count }
+    }
+
     /// The git block for the repository a path is in: an existing one
     /// whose root holds the path, else a new one the host roots.
     /// `done`, with why not if the host couldn't make the block.
     func gitBlock(for path: String, done: ((String?) -> Void)? = nil) -> BlockID {
-        let roots = node.blocks.filter { $0.kind == .git && $0.git?.scope == nil && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
-        if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
+        if let b = block(kind: .git, rooting: path, where: { $0.git?.scope == nil }) {
             propose(.refreshGit(block: b.id))
             done?(nil)
             return b.id
@@ -796,8 +803,7 @@ final class HostClient {
     /// An Interactive Smartlog block for the repository holding `path`: the
     /// one there is, its host's smartlog asked for again, else a new one.
     func smartlogBlock(for path: String, done: ((String?) -> Void)? = nil) -> BlockID {
-        let roots = node.blocks.filter { $0.kind == .smartlog && $0.path != nil && (path == $0.path! || path.hasPrefix($0.path! + "/")) }
-        if let b = roots.max(by: { $0.path!.count < $1.path!.count }) {
+        if let b = block(kind: .smartlog, rooting: path) {
             propose(.smartlog(block: b.id, path: b.path!), done: done)
             return b.id
         }

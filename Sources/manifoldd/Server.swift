@@ -277,7 +277,7 @@ final class Server {
         pruneHistory()
         machine.start()
         // Its language servers as its own settings say, from the start.
-        languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
+        reconfigureLanguageServers()
         // Its projects' repositories watched, for their working copies moving;
         // each with its other spelling, if it has one.
         for var p in node.desk(host).projects {
@@ -435,8 +435,7 @@ final class Server {
             // Beside a Markdown file; for a note, in Manifold's own folder.
             guard let stream = self.stream(conn) else { return }
             FileReceiver.start(stream, path: (folder ?? Self.imagesFolder) + "/" + name, mode: .unique, queue: queue) { [weak self] path in
-                guard let self, self.node.block(block) == nil else { return }
-                self.append(.create(kind: .image, title: nil, path: path), to: .block(block))
+                self?.ensure(block, kind: .image, path: path)
             }
         case let .agent(block, event)?:
             agentEvent(block, event)
@@ -800,6 +799,31 @@ final class Server {
         return entry
     }
 
+    /// A block made here if there isn't one by that id — its kind, title
+    /// and file, and the folder it's at home in — and whether it was.
+    @discardableResult
+    func ensure(_ block: BlockID, kind: BlockKind, title: String? = nil, path: String? = nil, cwd: String? = nil) -> Bool {
+        guard node.block(block) == nil else { return false }
+        append(.create(kind: kind, title: title, path: path), to: .block(block))
+        if let cwd { append(.cwd(cwd), to: .block(block)) }
+        return true
+    }
+
+    /// Work done off the queue — a filesystem's, a count's, a command's —
+    /// and what it found then taken on it.
+    func offQueue<T>(qos: DispatchQoS.QoSClass = .userInitiated, _ work: @escaping () -> T, then: @escaping (T) -> Void) {
+        DispatchQueue.global(qos: qos).async { [queue] in
+            let found = work()
+            queue.async { then(found) }
+        }
+    }
+
+    /// The language servers as the desk's table and this host's own
+    /// settings over it say.
+    private func reconfigureLanguageServers() {
+        languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, node.desk(host).preferences.lsp))
+    }
+
     /// Where a note's images are kept: Manifold's own, on this host.
     static var imagesFolder: String { Paths.directory.appendingPathComponent("Images").path }
 
@@ -974,18 +998,13 @@ final class Server {
         func done(_ error: String? = nil) { conn.send(.message(ServerMessage.done(id: id, error: error))) }
         switch proposal {
         case let .newTerminal(block, cwd):
-            if node.block(block) == nil {
-                append(.create(kind: .terminal, title: nil, path: nil), to: .block(block))
-                if let cwd { append(.cwd(cwd), to: .block(block)) }
-            }
+            ensure(block, kind: .terminal, cwd: cwd)
             done()
         case let .endTerminal(block):
             sessions[block]?.terminate()
             done()
         case let .newAgent(block, cwd, command):
-            if node.block(block) == nil {
-                append(.create(kind: .agent, title: nil, path: nil), to: .block(block))
-                if let cwd { append(.cwd(cwd), to: .block(block)) }
+            if ensure(block, kind: .agent, cwd: cwd) {
                 append(.command(command), to: .block(block))
                 // Its repository as it starts, to show what it changed since.
                 if let cwd, let (root, vcs) = git.repository(of: cwd), vcs == .git {
@@ -997,9 +1016,7 @@ final class Server {
             }
             done()
         case let .newNotebook(block, cwd):
-            if node.block(block) == nil {
-                append(.create(kind: .notebook, title: nil, path: nil), to: .block(block))
-                if let cwd { append(.cwd(cwd), to: .block(block)) }
+            if ensure(block, kind: .notebook, cwd: cwd) {
                 append(.notebook(.insert(NotebookCell(id: NotebookCell.newID()), at: 0)), to: .block(block))
             }
             startNotebook(block)
@@ -1055,8 +1072,8 @@ final class Server {
             // A command's output as a block of its own (§3.8): the bytes the
             // terminal received for it, from this host's buffer — or the
             // screen's text, when they've gone from it.
-            if node.block(block) == nil {
-                let c = node.block(terminal)?.terminal?.commands?.first { $0.id == command }
+            let c = node.block(terminal)?.terminal?.commands?.first { $0.id == command }
+            if ensure(block, kind: .output, title: c?.text, cwd: node.block(terminal)?.terminal?.cwd) {
                 var state = OutputState(source: terminal, command: command, line: c?.text ?? "", status: c?.status, ran: c?.at, ended: c?.ended)
                 if let data = sessions[terminal]?.output(ofCommand: command), !data.isEmpty {
                     // A megabyte at most: the end of it, which is what a terminal shows.
@@ -1066,22 +1083,19 @@ final class Server {
                     state.output = fallback
                     state.plain = true
                 }
-                append(.create(kind: .output, title: c?.text, path: nil), to: .block(block))
-                if let cwd = node.block(terminal)?.terminal?.cwd { append(.cwd(cwd), to: .block(block)) }
                 append(.output(state), to: .block(block))
                 append(.link(Link(from: terminal, to: block, kind: .opened, at: clock.now(), context: "command \(command)")), to: .links(host))
             }
             done()
         case let .listFolder(path):
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let entries = FolderListing.children(of: path)
-                self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: entries, complete: true))) }
+            offQueue({ FolderListing.children(of: path) }) { entries in
+                conn.send(.message(ServerMessage.listing(id: id, entries: entries, complete: true)))
             }
         case let .lookUpPaths(paths):
             // Each path looked at, for so long: a slow filesystem (a
             // network's) answers for those looked at in time, the rest
             // left as the app had them.
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            offQueue({ () -> [PathKind?] in
                 let fm = FileManager.default, until = Date().addingTimeInterval(1.5)
                 var kinds: [PathKind?] = []
                 for p in paths.prefix(4000) {
@@ -1090,14 +1104,17 @@ final class Server {
                     let path = (p as NSString).expandingTildeInPath
                     kinds.append(fm.fileExists(atPath: path, isDirectory: &isDir) ? (isDir.boolValue ? .folder : .file) : nil)
                 }
-                self?.queue.async { conn.send(.message(ServerMessage.pathKinds(id: id, kinds))) }
+                return kinds
+            }) { kinds in
+                conn.send(.message(ServerMessage.pathKinds(id: id, kinds)))
             }
         case let .listTree(path, limit):
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            offQueue({ () -> (entries: [DirectoryEntry], complete: Bool)? in
                 var isDir: ObjCBool = false
                 let readable = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-                let tree = readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
-                self?.queue.async { conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false))) }
+                return readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
+            }) { tree in
+                conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false)))
             }
         case let .languages(path):
             // Counted off the queue, kept a minute (a homepage asks as it shows).
@@ -1105,12 +1122,9 @@ final class Server {
                 conn.send(.message(ServerMessage.languages(id: id, kept.counts)))
                 return
             }
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                let counts = Self.languages(of: path)
-                self?.queue.async {
-                    if let counts { self?.languageCounts[path] = (Date(), counts) }
-                    conn.send(.message(ServerMessage.languages(id: id, counts)))
-                }
+            offQueue(qos: .utility, { Self.languages(of: path) }) { [weak self] counts in
+                if let counts { self?.languageCounts[path] = (Date(), counts) }
+                conn.send(.message(ServerMessage.languages(id: id, counts)))
             }
         case let .fileHistory(request):
             fileHistory(request) { result in conn.send(.message(ServerMessage.fileHistory(id: id, result))) }
@@ -1128,10 +1142,7 @@ final class Server {
             git.run(git.repository(of: repo)?.vcs ?? .git, ["show", "\(revision):\(rel)"], in: repo) { [weak self] result in
                 guard let self else { return }
                 guard case .success(let text) = result else { return done("\(rel) isn't in \(revision.prefix(10))") }
-                if self.node.block(block) == nil {
-                    self.append(.create(kind: .output, title: title, path: nil), to: .block(block))
-                    self.append(.cwd(path.deletingLastPathComponent), to: .block(block))
-                }
+                self.ensure(block, kind: .output, title: title, cwd: path.deletingLastPathComponent)
                 self.append(.output(OutputState(line: title, status: 0, output: text, plain: true)), to: .block(block))
                 done()
             }
@@ -1156,9 +1167,7 @@ final class Server {
                 done(error.localizedDescription)
             }
         case let .processes(block):
-            if node.block(block) == nil {
-                append(.create(kind: .process, title: nil, path: nil), to: .block(block))
-            }
+            ensure(block, kind: .process)
             listProcesses(block)
             done()
         case let .machine(query):
@@ -1204,9 +1213,7 @@ final class Server {
             }
         case let .directory(block, path):
             let standard = URL(fileURLWithPath: path).standardizedFileURL.path
-            if node.block(block) == nil {
-                append(.create(kind: .directory, title: nil, path: standard), to: .block(block))
-            }
+            ensure(block, kind: .directory, path: standard)
             list(block)
             done()
         case let .listDirectory(block):
@@ -1230,7 +1237,7 @@ final class Server {
                 // Another shell may find other agents.
                 indexAgents(again: true)
                 // Its language servers as its settings now say.
-                languageServers.configure(LanguageServerConfig.applying(deskLanguageServers, p.lsp))
+                reconfigureLanguageServers()
             }
             done()
         case let .environment(name, value, scope):
@@ -1313,7 +1320,7 @@ final class Server {
         case let .languageServers(configs):
             // The desk's table, with this host's own settings over it.
             deskLanguageServers = configs
-            languageServers.configure(LanguageServerConfig.applying(configs, node.desk(host).preferences.lsp))
+            reconfigureLanguageServers()
             done()
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
@@ -1323,9 +1330,7 @@ final class Server {
             done()
         case let .git(block, path):
             guard let (root, vcs) = git.repository(of: path.expandingTildeInPath) else { return done("\(path) isn't in a git or Sapling repository") }
-            if node.block(block) == nil {
-                append(.create(kind: .git, title: nil, path: root), to: .block(block))
-            }
+            ensure(block, kind: .git, path: root)
             if node.block(block)?.git?.vcs != vcs { append(.vcs(vcs), to: .block(block)) }
             refreshGit(block)
             watchRepo(root, vcs)
@@ -1333,9 +1338,7 @@ final class Server {
         case let .projectGit(block, root):
             let full = root.expandingTildeInPath
             guard let (repo, vcs) = git.repository(of: full) else { return done("\(root) isn't in a git or Sapling repository") }
-            if node.block(block) == nil {
-                append(.create(kind: .git, title: nil, path: repo), to: .block(block))
-            }
+            ensure(block, kind: .git, path: repo)
             let scope = Project(root: repo, made: clock.now()).relative(full)
             let wanted = full == repo || scope == full ? nil : scope
             if node.block(block)?.git?.scope != wanted { append(.gitScope(wanted), to: .block(block)) }
@@ -1375,7 +1378,7 @@ final class Server {
                 // Named for its repository, or, with none, the folder it was asked in.
                 var isDir: ObjCBool = false
                 let folder = FileManager.default.fileExists(atPath: full, isDirectory: &isDir) && !isDir.boolValue ? full.deletingLastPathComponent : full
-                append(.create(kind: .smartlog, title: nil, path: repo?.root ?? folder), to: .block(block))
+                ensure(block, kind: .smartlog, path: repo?.root ?? folder)
             }
             // Sapling's or git's: sl web serves either.
             guard let repo else {
@@ -1400,7 +1403,7 @@ final class Server {
                 case let .uncommitted(repo): path = repo
                 case let .since(repo, _, _), let .trees(repo, _, _, _): path = repo
                 }
-                append(.create(kind: .diff, title: nil, path: path), to: .block(block))
+                ensure(block, kind: .diff, path: path)
             }
             append(.diffSubject(subject), to: .block(block))
             loadDiff(block)
@@ -1415,9 +1418,7 @@ final class Server {
             // (§2.6), else its repository.
             let project = node.desk(host).project(holding: q.root).flatMap { $0.root == q.root ? nil : $0.root }
             q.project = project ?? VCS.repository(of: q.root)?.root
-            if node.block(block) == nil {
-                append(.create(kind: .search, title: nil, path: nil), to: .block(block))
-            }
+            ensure(block, kind: .search)
             append(.search(q, at: clock.now()), to: .block(block))
             let kinds = Set(q.kinds ?? ["text"])
             if kinds.contains("text") {
@@ -1462,23 +1463,26 @@ final class Server {
         // Listed off the queue (asking git what's ignored takes a moment);
         // only a change is written, so a listing asked for again and again
         // (a folder view keeping current) doesn't grow the log.
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let entries = FolderListing.children(of: path) else {
-                // Said why, once: the folder isn't left waiting to be listed.
-                var isDir: ObjCBool = false
-                let why = !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) ? "This folder isn't there"
-                    : !isDir.boolValue ? "This isn't a folder" : "This folder can't be read"
-                self?.queue.async {
-                    guard let self, let d = self.node.block(block)?.directory, d.error != why else { return }
-                    self.append(.listingFailed(why, at: self.clock.now()), to: .block(block))
-                }
-                return
-            }
-            self?.queue.async {
-                guard let self, let d = self.node.block(block)?.directory else { return }
+        offQueue({ () -> Result<[DirectoryEntry], ListingFailed> in
+            if let entries = FolderListing.children(of: path) { return .success(entries) }
+            var isDir: ObjCBool = false
+            return .failure(ListingFailed(why: !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) ? "This folder isn't there"
+                : !isDir.boolValue ? "This isn't a folder" : "This folder can't be read"))
+        }) { [weak self] listed in
+            guard let self, let d = self.node.block(block)?.directory else { return }
+            switch listed {
+            case let .success(entries):
                 if entries != d.entries || d.listedAt == nil || d.error != nil { self.append(.entries(entries, at: self.clock.now()), to: .block(block)) }
+            case let .failure(failed):
+                // Said why, once: the folder isn't left waiting to be listed.
+                if d.error != failed.why { self.append(.listingFailed(failed.why, at: self.clock.now()), to: .block(block)) }
             }
         }
+    }
+
+    /// Why a folder couldn't be listed.
+    private struct ListingFailed: Error {
+        var why: String
     }
 
     // MARK: Processes
@@ -1489,7 +1493,7 @@ final class Server {
     /// agent's shell, each tagged with its block, shells first.
     private func listProcesses(_ block: BlockID) {
         let shells = sessions.map { ($0.key, $0.value.pid) }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        offQueue({ () -> [ProcessEntry] in
             let out = (try? Child.run(["ps", "-eo", "pid=,ppid=,user=,%cpu=,rss=,args="], timeout: 20, quiet: true).output) ?? Data()
             var all: [Int32: ProcessEntry] = [:]
             let ours = Session.startupArguments
@@ -1518,10 +1522,10 @@ final class Server {
                     queue.append(contentsOf: (children[pid] ?? []).sorted())
                 }
             }
-            self?.queue.async {
-                guard let self, self.node.block(block)?.kind == .process else { return }
-                self.append(.processes(entries, at: self.clock.now()), to: .block(block))
-            }
+            return entries
+        }) { [weak self] entries in
+            guard let self, self.node.block(block)?.kind == .process else { return }
+            self.append(.processes(entries, at: self.clock.now()), to: .block(block))
         }
     }
 
@@ -1590,15 +1594,14 @@ final class Server {
     private func findFiles(_ block: BlockID, _ q: SearchQuery) {
         let root = q.root
         let cached = fileLists[root].flatMap { Date().timeIntervalSince($0.at) < 30 ? $0.files : nil }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        offQueue({ () -> (files: [String], best: [String]) in
             let files = cached ?? FileFinder.list(root: root)
-            let best = Array(FileFinder.rank(q.text, files, limit: 30))
-            self?.queue.async {
-                guard let self else { return }
-                if cached == nil { self.fileLists[root] = (Date(), files) }
-                guard self.node.block(block)?.search?.query == q else { return }
-                self.append(.searchFiles(best), to: .block(block))
-            }
+            return (files, Array(FileFinder.rank(q.text, files, limit: 30)))
+        }) { [weak self] found in
+            guard let self else { return }
+            if cached == nil { self.fileLists[root] = (Date(), found.files) }
+            guard self.node.block(block)?.search?.query == q else { return }
+            self.append(.searchFiles(found.best), to: .block(block))
         }
     }
     private var fileLists: [String: (at: Date, files: [String])] = [:]
@@ -1971,9 +1974,7 @@ final class Server {
 
     private func attach(_ conn: any Channel, _ req: AttachRequest) {
         let id = req.block
-        if node.block(id) == nil {
-            append(.create(kind: .terminal, title: nil, path: nil), to: .block(id))
-        }
+        ensure(id, kind: .terminal)
         guard let block = node.block(id), block.kind == .terminal || block.kind == .agent, let state = block.terminal else {
             conn.close()
             return
@@ -2387,9 +2388,7 @@ final class Server {
     private func writeTurn(_ block: BlockID, agent: BlockID, turn id: Int) {
         guard let a = node.block(agent), let t = a.terminal?.turns?.first(where: { $0.id == id }) else { return }
         let firstLine = t.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
-        if node.block(block) == nil {
-            append(.create(kind: .output, title: "Turn: " + String(firstLine.prefix(80)), path: nil), to: .block(block))
-            if let cwd = a.terminal?.cwd { append(.cwd(cwd), to: .block(block)) }
+        if ensure(block, kind: .output, title: "Turn: " + String(firstLine.prefix(80)), cwd: a.terminal?.cwd) {
             append(.link(Link(from: agent, to: block, kind: .opened, at: clock.now(), context: "turn \(id)")), to: .links(host))
         }
         // Who, and how long; then what was asked, as it was typed — a
@@ -2599,13 +2598,10 @@ final class Server {
         if !again, let t = agentsIndexed, Date().timeIntervalSince(t) < 10 { return }
         agentsIndexed = Date()
         let shell = node.desk(host).preferences.shell
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let found = Session.availableAgents(preferred: shell)
-            self?.queue.async {
-                guard let self, found != self.node.desk(self.host).agents else { return }
-                log("agents here: \(found.isEmpty ? "none" : found.joined(separator: ", "))")
-                self.append(.agents(found), to: .desk(self.host))
-            }
+        offQueue(qos: .utility, { Session.availableAgents(preferred: shell) }) { [weak self] found in
+            guard let self, found != self.node.desk(self.host).agents else { return }
+            log("agents here: \(found.isEmpty ? "none" : found.joined(separator: ", "))")
+            self.append(.agents(found), to: .desk(self.host))
         }
     }
 

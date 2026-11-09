@@ -36,8 +36,7 @@ extension Server {
     /// comment; a `thread` link from its space (keeping it) and an
     /// `annotates` link to what it's about (keeping that, and its anchor).
     func makeThread(_ block: BlockID, space: BlockID?, about: ThreadPlace, text: String, author: ThreadAuthor) {
-        guard node.block(block) == nil else { return }
-        append(.create(kind: .thread, title: nil, path: nil), to: .block(block))
+        guard ensure(block, kind: .thread) else { return }
         if let space { append(.threadSpace(space), to: .block(block)) }
         append(.threadAbout(about), to: .block(block))
         let now = clock.now()
