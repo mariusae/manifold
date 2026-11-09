@@ -537,13 +537,7 @@ final class LanguageServer {
         guard let body = try? JSONSerialization.data(withJSONObject: m) else { return }
         var data = Data("Content-Length: \(body.count)\r\n\r\n".utf8)
         data.append(body)
-        data.withUnsafeBytes { raw in
-            var off = 0
-            while off < raw.count {
-                let n = write(child.input, raw.baseAddress! + off, raw.count - off)
-                if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { break }
-            }
-        }
+        FD.writeAll(child.input, data)
     }
 
     /// Reads messages off the server's stdout (on its own thread) and hands

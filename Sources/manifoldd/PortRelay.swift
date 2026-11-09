@@ -107,14 +107,7 @@ final class PortRelay {
     /// holds up only its own tunnel), and said to be when it is.
     func write(_ data: Data) {
         writes.async { [weak self, fd, queue] in
-            data.withUnsafeBytes { raw in
-                guard let base = raw.baseAddress else { return }
-                var off = 0
-                while off < raw.count {
-                    let n = Foundation.write(fd, base + off, raw.count - off)
-                    if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return }
-                }
-            }
+            FD.writeAll(fd, data)
             queue.async { self?.onWritten?(data.count) }
         }
     }

@@ -890,7 +890,6 @@ public enum Mani {
     }
 
     public static func fail(_ message: String) -> Never {
-        FileHandle.standardError.write(Data("mani: \(message)\n".utf8))
-        exit(1)
+        exit(ManiClient.fail(message))
     }
 }

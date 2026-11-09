@@ -17,7 +17,7 @@ public enum OpenCommand {
     /// exit status: 0 when done, 1 when it couldn't be, `ManiClient.absent`
     /// when the app wasn't there to ask.
     public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "mani") -> Int32 {
-        run(fd: fd, wait: false, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
+        run(fd: fd, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
     }
 
     /// The patch on standard input, or why there is none.
@@ -29,57 +29,29 @@ public enum OpenCommand {
         return .success(text)
     }
 
-    private static func run(fd: Int32, wait: Bool, name: String, request: (Int) -> ClientMessage) -> Int32 {
-        func send(_ message: ClientMessage) -> Bool {
-            let data = Frame.message(message).encoded
-            return data.withUnsafeBytes { raw in
-                var off = 0
-                while off < raw.count {
-                    let n = write(fd, raw.baseAddress! + off, raw.count - off)
-                    if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return false }
-                }
-                return true
-            }
-        }
-        guard send(.hello(version: protocolVersion, name: name)) else { return fail("lost the connection to Manifold") }
-        var decoder = FrameDecoder()
-        var buf = [UInt8](repeating: 0, count: 1 << 20)
-        var welcomed = false
+    private static func run(fd: Int32, name: String, request: (Int) -> ClientMessage) -> Int32 {
+        var channel = BlockingChannel(fd: fd)
+        guard channel.hello(name) else { return ManiClient.fail("lost the connection to Manifold") }
         var deadline = Date().addingTimeInterval(10)
         while true {
-            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-            let left = wait && welcomed ? Int32(60_000) : Int32(max(0, deadline.timeIntervalSinceNow) * 1000)
-            guard left > 0 || (wait && welcomed) else { return fail("Manifold didn't answer") }
-            let r = poll(&pfd, 1, left)
-            if r == 0 { continue }
-            guard r > 0 else { if errno == EINTR { continue }; return fail("lost the connection to Manifold") }
-            let n = read(fd, &buf, buf.count)
-            guard n > 0 else { return fail("lost the connection to Manifold") }
-            decoder.append(Data(buf[0..<n]))
-            while let frame = try? decoder.next() {
-                switch frame.decode(ServerMessage.self) {
-                case let .welcome(version, _, _, _, _, _, _, _, _, _)?:
-                    if version != protocolVersion {
-                        return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
-                    }
-                    welcomed = true
-                    guard send(request(1)) else { return fail("lost the connection to Manifold") }
-                    deadline = Date().addingTimeInterval(15)
-                case let .done(id, error)?:
-                    guard id == 1 else { continue }
-                    if let error, error.contains("isn't attached") { return ManiClient.absent }
-                    if let error { return fail(error) }
-                    return 0
-                default:
-                    continue
-                }
+            switch channel.next(until: deadline) {
+            case .timedOut:
+                return ManiClient.fail("Manifold didn't answer")
+            case .closed:
+                return ManiClient.fail("lost the connection to Manifold")
+            case let .message(.welcome(version, _, _, _, _, _, _, _, _, _)):
+                if version != protocolVersion { return ManiClient.fail(ManiClient.otherVersion) }
+                guard channel.send(request(1)) else { return ManiClient.fail("lost the connection to Manifold") }
+                deadline = Date().addingTimeInterval(15)
+            case let .message(.done(id, error)):
+                guard id == 1 else { continue }
+                if let error, error.contains("isn't attached") { return ManiClient.absent }
+                if let error { return ManiClient.fail(error) }
+                return 0
+            case .message:
+                continue
             }
         }
-    }
-
-    private static func fail(_ message: String) -> Int32 {
-        FileHandle.standardError.write(Data("mani: \(message)\n".utf8))
-        return 1
     }
 
     /// Paths made absolute against the working directory, checked to exist.
@@ -114,61 +86,44 @@ public enum ManiClient {
     public static let absent: Int32 = -1
 
     public static func run(fd: Int32, request: ManiRequest) -> Int32 {
-        func send(_ message: ClientMessage) -> Bool {
-            let data = Frame.message(message).encoded
-            return data.withUnsafeBytes { raw in
-                var off = 0
-                while off < raw.count {
-                    let n = write(fd, raw.baseAddress! + off, raw.count - off)
-                    if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return false }
-                }
-                return true
-            }
-        }
         func say(_ s: String, to handle: FileHandle) {
             guard !s.isEmpty else { return }
             handle.write(Data(s.utf8))
         }
-        func fail(_ message: String) -> Int32 {
-            say("mani: \(message)\n", to: .standardError)
-            return 1
-        }
-        guard send(.hello(version: protocolVersion, name: Mani.name)) else { return absent }
-        var decoder = FrameDecoder()
-        var buf = [UInt8](repeating: 0, count: 1 << 20)
+        var channel = BlockingChannel(fd: fd)
+        guard channel.hello(Mani.name) else { return absent }
         var welcomed = false
         let deadline = Date().addingTimeInterval(10)
         while true {
-            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
             // Answered at once, once asked; then as long as it takes.
-            let left = welcomed ? Int32(60_000) : Int32(max(0, deadline.timeIntervalSinceNow) * 1000)
-            guard welcomed || left > 0 else { return fail("Manifold didn't answer") }
-            let r = poll(&pfd, 1, left)
-            if r == 0 { continue }
-            guard r > 0 else { if errno == EINTR { continue }; return fail("lost the connection to Manifold") }
-            let n = read(fd, &buf, buf.count)
-            guard n > 0 else { return welcomed ? fail("lost the connection to Manifold") : absent }
-            decoder.append(Data(buf[0..<n]))
-            while let frame = try? decoder.next() {
-                switch frame.decode(ServerMessage.self) {
-                case let .welcome(version, _, _, _, _, _, _, _, _, _)?:
-                    if version != protocolVersion {
-                        return fail("Manifold's server is from another version; restart it (Manifold ▸ Restart Server)")
-                    }
-                    welcomed = true
-                    guard send(.command(id: 1, request)) else { return fail("lost the connection to Manifold") }
-                case let .commandReply(id, reply)? where id == 1:
-                    say(reply.out, to: .standardOutput)
-                    say(reply.err, to: .standardError)
-                    if let status = reply.status { return status }
-                case let .done(id, error)? where id == 1:
-                    // Only when the host couldn't pass it on: the app isn't there.
-                    if let error, error.contains("isn't attached") { return absent }
-                    return error.map(fail) ?? 0
-                default:
-                    continue
-                }
+            switch channel.next(until: welcomed ? nil : deadline) {
+            case .timedOut:
+                return fail("Manifold didn't answer")
+            case .closed:
+                return welcomed ? fail("lost the connection to Manifold") : absent
+            case let .message(.welcome(version, _, _, _, _, _, _, _, _, _)):
+                if version != protocolVersion { return fail(otherVersion) }
+                welcomed = true
+                guard channel.send(.command(id: 1, request)) else { return fail("lost the connection to Manifold") }
+            case let .message(.commandReply(id, reply)) where id == 1:
+                say(reply.out, to: .standardOutput)
+                say(reply.err, to: .standardError)
+                if let status = reply.status { return status }
+            case let .message(.done(id, error)) where id == 1:
+                // Only when the host couldn't pass it on: the app isn't there.
+                if let error, error.contains("isn't attached") { return absent }
+                return error.map(fail) ?? 0
+            case .message:
+                continue
             }
         }
     }
+
+    /// Why `mani` stopped, on stderr; status 1.
+    public static func fail(_ message: String) -> Int32 {
+        FileHandle.standardError.write(Data("mani: \(message)\n".utf8))
+        return 1
+    }
+
+    static let otherVersion = "Manifold's server is from another version; restart it (Manifold ▸ Restart Server)"
 }

@@ -140,13 +140,6 @@ public enum AgentHookCommand {
     private static func send(_ event: AgentEvent, about block: BlockID) {
         guard let fd = try? UnixSocket.connect(path: Paths.socket) else { return }
         defer { close(fd) }
-        let data = Frame.message(ClientMessage.agent(block: block, event)).encoded
-        data.withUnsafeBytes { raw in
-            var off = 0
-            while off < raw.count {
-                let n = write(fd, raw.baseAddress! + off, raw.count - off)
-                if n > 0 { off += n } else if n < 0 && errno == EINTR { continue } else { return }
-            }
-        }
+        FD.writeAll(fd, Frame.message(ClientMessage.agent(block: block, event)).encoded)
     }
 }

@@ -62,13 +62,9 @@ enum Bridge {
             if n < 0 && errno == EINTR { continue }
             if debug { FileHandle.standardError.write(Data("bridge \(label): read \(n) errno \(errno)\n".utf8)) }
             guard n > 0 else { return }
-            var off = 0
-            while off < n {
-                let w = buf.withUnsafeBytes { raw in write(to, raw.baseAddress! + off, n - off) }
-                if w > 0 { off += w } else if w < 0 && errno == EINTR { continue } else {
-                    if debug { FileHandle.standardError.write(Data("bridge \(label): write failed errno \(errno)\n".utf8)) }
-                    return
-                }
+            guard buf.withUnsafeBytes({ FD.writeAll(to, UnsafeRawBufferPointer(rebasing: $0[0..<n])) }) else {
+                if debug { FileHandle.standardError.write(Data("bridge \(label): write failed errno \(errno)\n".utf8)) }
+                return
             }
         }
     }

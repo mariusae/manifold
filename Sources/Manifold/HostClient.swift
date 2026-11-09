@@ -920,10 +920,9 @@ final class HostClient {
     /// Ends the server and every session in it.
     static func stopServer() {
         guard let fd = try? UnixSocket.connect(path: Paths.socket) else { return }
-        let frame = Frame.message(ClientMessage.shutdown).encoded
-        _ = frame.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-        var b: UInt8 = 0
-        _ = read(fd, &b, 1)
+        var channel = BlockingChannel(fd: fd)
+        channel.send(.shutdown)
+        _ = channel.next()
         close(fd)
     }
 

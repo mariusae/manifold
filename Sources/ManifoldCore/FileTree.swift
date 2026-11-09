@@ -340,11 +340,8 @@ public final class TreeCopier {
                     let n = buffer.withUnsafeMutableBytes { read(input, $0.baseAddress, $0.count) }
                     if n == 0 { break }
                     guard n > 0 else { return fail(String(cString: strerror(errno))) }
-                    var off = 0
-                    while off < n {
-                        let w = buffer.withUnsafeBytes { write(output, $0.baseAddress! + off, n - off) }
-                        guard w > 0 else { return fail(String(cString: strerror(errno))) }
-                        off += w
+                    guard buffer.withUnsafeBytes({ FD.writeAll(output, UnsafeRawBufferPointer(rebasing: $0[0..<n])) }) else {
+                        return fail(String(cString: strerror(errno)))
                     }
                     done += Int64(n)
                     if Date().timeIntervalSince(said) > 0.1 {
