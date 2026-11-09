@@ -511,14 +511,7 @@ extension MainWindowController: GridDelegate {
                 menu.addItem(ClosureMenuItem("Save", symbol: "square.and.arrow.down", key: "s") { [weak self] in self?.save(block, from: placement) })
             }
         }
-        if let ws = selected {
-            let on = isPinned(block, in: ws)
-            let pin = ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin", key: "t") { [weak self] in
-                self?.setPinned(block, in: ws, !on)
-            }
-            pin.keyEquivalentModifierMask = [.command, .control]
-            menu.addItem(pin)
-        }
+        menu.addItem(pinItem(block, in: id, key: true))
         if views[placement]?.outline != nil {
             menu.addItem(ClosureMenuItem("Find in Outline…", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
                 guard let self else { return }
@@ -534,9 +527,7 @@ extension MainWindowController: GridDelegate {
             for item in own { menu.addItem(item) }
             menu.addItem(.separator())
         }
-        if hosts.block(block)?.statusRecord != nil {
-            menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) })
-        }
+        if let clear = clearStatusItem(block) { menu.addItem(clear) }
         if let last = hosts.block(block)?.terminal?.turns?.last {
             let sub = NSMenu()
             for item in turnItems(last, of: block, beside: placement) { sub.addItem(item) }
@@ -560,9 +551,7 @@ extension MainWindowController: GridDelegate {
         launch.setSymbol("sparkle", size: 12)
         launch.submenu = agents
         menu.addItem(launch)
-        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
-            self?.showNeighborhood(around: block)
-        })
+        menu.addItem(neighborhoodItem(block))
         if let b = hosts.block(block), b.isNote {
             menu.addItem(ClosureMenuItem("Name…", symbol: "pencil") { [weak self] in self?.nameNote(placement) })
         }

@@ -116,7 +116,7 @@ extension MainWindowController: OrganizationViewDelegate {
 
     func organizationHover(_ node: OrgNode?, at rect: NSRect, in view: NSView) {
         // A host's row: its machine, and a remote's link, live.
-        if let node, node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), let window {
+        if let node, let c = hostClient(of: node), let window {
             return showHostCard(c, beside: rect, in: window)
         }
         guard let node, let id = node.block, let window else { return HoverCard.shared.hide() }
@@ -212,21 +212,25 @@ extension MainWindowController: OrganizationViewDelegate {
         if tilePictures.count > 200 { tilePictures = tilePictures.filter { hosts.block($0.key) != nil } }
     }
 
+    /// A host's row's host.
+    func hostClient(of node: OrgNode) -> HostClient? {
+        guard node.id.hasPrefix("host:") else { return nil }
+        return hosts.all.first { "host:\($0.host.raw)" == node.id }
+    }
+
     func organizationMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
-        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }) {
+        if let c = hostClient(of: node) {
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.host(c.host.raw), open: true) })
             menu.addItem(.separator())
-        }
-        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.watching {
-            menu.addItem(ClosureMenuItem("Take Over", symbol: "hand.raised") { [weak self] in self?.takeOver(c) })
-            menu.addItem(.separator())
-        }
-        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), !c.isRemote {
-            for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
-            return menu
-        }
-        if node.id.hasPrefix("host:"), let c = hosts.all.first(where: { "host:\($0.host.raw)" == node.id }), c.isRemote {
+            if c.watching {
+                menu.addItem(ClosureMenuItem("Take Over", symbol: "hand.raised") { [weak self] in self?.takeOver(c) })
+                menu.addItem(.separator())
+            }
+            guard c.isRemote else {
+                for item in hostItems(c.host, ownRow: true) { menu.addItem(item) }
+                return menu
+            }
             if c.link != .connected {
                 menu.addItem(ClosureMenuItem("Try Again Now", symbol: "arrow.clockwise") { [weak self] in
                     c.retryNow()
@@ -272,14 +276,11 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, node.style == .row {
-            let on = isPinned(id, in: arr)
-            menu.addItem(ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin") { [weak self] in
-                self?.setPinned(id, in: arr, !on)
-            })
+            menu.addItem(pinItem(id, in: arr))
             menu.addItem(.separator())
         }
-        if hosts.block(id)?.statusRecord != nil {
-            menu.addItem(ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(id)) })
+        if let clear = clearStatusItem(id) {
+            menu.addItem(clear)
             menu.addItem(.separator())
         }
         // A note: as an outline, or as text — its tile here turned, else opened so.
@@ -296,12 +297,34 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.organizationOpen(node, modifiers: [.option]) })
             menu.addItem(.separator())
         }
-        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
-            self?.showNeighborhood(around: id)
-        })
+        menu.addItem(neighborhoodItem(id))
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(id.host))
         return menu
+    }
+
+    // MARK: Items a block's menus share (its pill's, its sidebar row's)
+
+    /// Pin in Space, or Unpin; with its key (⌃⌘T) where the tile's focused.
+    func pinItem(_ block: BlockID, in space: BlockID, key: Bool = false) -> NSMenuItem {
+        let on = isPinned(block, in: space)
+        let item = ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin", key: key ? "t" : "") { [weak self] in
+            self?.setPinned(block, in: space, !on)
+        }
+        if key { item.keyEquivalentModifierMask = [.command, .control] }
+        return item
+    }
+
+    /// Clear Status, if it has one.
+    func clearStatusItem(_ block: BlockID) -> NSMenuItem? {
+        guard hosts.block(block)?.statusRecord != nil else { return nil }
+        return ClosureMenuItem("Clear Status", symbol: "eraser") { [weak self] in self?.hosts.propose(.clearStatus(block)) }
+    }
+
+    func neighborhoodItem(_ block: BlockID) -> NSMenuItem {
+        ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in
+            self?.showNeighborhood(around: block)
+        }
     }
 
     // MARK: Drops on the sidebar (§3.6)
