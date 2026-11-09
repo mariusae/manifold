@@ -116,7 +116,7 @@ final class GridView: NSView, NSDraggingSource {
     private var columnDividers: [DividerView] = []
     private var rowDividers: [RowDividerView] = []
     private let dropOverlay = DropOverlayView()
-    private var drop: (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)?
+    private var drop: DropSlot?
     /// The drop under way covers the tile it's on (⌥-drag).
     private var dropCovers = false
     /// The tile a thing dropped would link, by its title, for the palette.
@@ -162,6 +162,21 @@ final class GridView: NSView, NSDraggingSource {
 
     var views: [PaneContent] { columns.flatMap { $0.map(\.view) } }
 
+    /// A tile's card: its bar over `body`.
+    static func card(of body: NSRect) -> NSRect {
+        NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + barHeight)
+    }
+
+    /// A card's body, under its bar.
+    static func body(of card: NSRect) -> NSRect {
+        NSRect(x: card.minX, y: card.minY, width: card.width, height: max(0, card.height - barHeight))
+    }
+
+    /// A card's bar, along its top.
+    static func bar(of card: NSRect) -> NSRect {
+        NSRect(x: card.minX, y: card.maxY - barHeight, width: card.width, height: barHeight)
+    }
+
     /// A card's body: the content view rounded at the bottom, as every
     /// place that shows a tile (the grid, the overview) has it.
     static func styleBody(_ view: NSView) {
@@ -188,9 +203,9 @@ final class GridView: NSView, NSDraggingSource {
         var zoomFrom: (PlacementID, NSRect)?
         if full != self.full, window != nil, !isHiddenOrHasHiddenAncestor {
             if let f = full, let body = lastFrames[f], body.height > 0 {
-                zoomFrom = (f, NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight))
+                zoomFrom = (f, Self.card(of: body))
             } else if let w = self.full, let v = views.first(where: { $0.placement == w }), !v.isHidden {
-                zoomFrom = (w, NSRect(x: v.frame.minX, y: v.frame.minY, width: v.frame.width, height: v.frame.height + Self.barHeight))
+                zoomFrom = (w, Self.card(of: v.frame))
             }
         }
         // Known before the layout, which leaves the rest shown under it.
@@ -532,13 +547,13 @@ final class GridView: NSView, NSDraggingSource {
 
     /// Debugging: each tile's dirty dot: hidden, grey or amber.
     var debugDirty: String {
-        columns.flatMap { $0 }.map { t in "\(t.shown.title): \(pills[t.shown.id]?.debugDirty ?? "-")" }.joined(separator: "\n")
+        tiles.map { t in "\(t.shown.title): \(pills[t.shown.id]?.debugDirty ?? "-")" }.joined(separator: "\n")
     }
 
     /// Debugging: each tile's view, as laid out: its frame, whether it's
     /// hidden (and its layer), and its bar's.
     var debugTiles: String {
-        columns.flatMap { $0 }.map { t in
+        tiles.map { t in
             let v = t.view
             let p = pills[t.shown.id]
             return "\(t.shown.title): view=\(NSStringFromRect(v.frame)) hidden=\(v.isHidden) layerHidden=\(v.layer?.isHidden ?? false) bar=\(p.map { NSStringFromRect($0.frame) } ?? "-") collapsedBar=\(p?.collapsed ?? false) summarized=\(summarized.contains(t.shown.id))"
@@ -546,7 +561,7 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     var debugPills: String {
-        columns.flatMap { $0 }.map { t in
+        tiles.map { t in
             let p = pills[t.shown.id]
             let order = p.flatMap { subviews.firstIndex(of: $0) }.map(String.init) ?? "-"
             let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
@@ -644,11 +659,11 @@ final class GridView: NSView, NSDraggingSource {
         let shownBefore = mayGlide ? companionsShown() : [:]
         lastCompanionsShown = shownBefore
         defer { carryCompanions(from: shownBefore, gliding: mayGlide) }
-        if let full, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == full }) {
+        if let full, let tile = tile(full) {
             // One tile over everything; the rest wait behind it — once it's
             // grown over them.
             if zooming != full {
-                for t in columns.flatMap({ $0 }) where t.shown.id != full {
+                for t in tiles where t.shown.id != full {
                     setHidden(t.view, true)
                     pills[t.shown.id]?.isHidden = true
                     badges[t.shown.id]?.isHidden = true
@@ -663,20 +678,20 @@ final class GridView: NSView, NSDraggingSource {
             // shows whole now (restored that short, the card comes back).
             tileSummaries[full]?.isHidden = true
             let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
-            tile.view.frame = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - Self.barHeight)
+            tile.view.frame = Self.body(of: r)
             placeTicks(of: tile, in: tile.view.frame, shown: true)
             focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
                 pill.collapsed = false
-                pill.frame = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
+                pill.frame = Self.bar(of: r)
                 keep(pill, above: tile.view)
             }
             if let badge = badges[full] { placeBadge(badge, of: full, in: r) }
             if let badge = badges[full], let pill = pills[full] { keep(badge, above: pill) }
             return
         }
-        for t in columns.flatMap({ $0 }) {
+        for t in tiles {
             let out = pushedOut(t.shown.id)
             // Hidden if pushed out; shown or not, by whether it's collapsed,
             // below — not shown here first and hidden again there, which
@@ -726,7 +741,7 @@ final class GridView: NSView, NSDraggingSource {
             for (i, tile) in columns[c].enumerated() {
                 guard !pushedOut(tile.shown.id) else { continue }
                 let r = tiles[i]
-                let body = NSRect(x: r.minX, y: r.minY, width: r.width, height: max(0, r.height - Self.barHeight))
+                let body = Self.body(of: r)
                 let was = lastFrames[tile.shown.id]
                 // Too little of its content under the bar to be worth
                 // showing: its summary card in its place; less than a line
@@ -735,7 +750,7 @@ final class GridView: NSView, NSDraggingSource {
                 let summarized = !collapsed && body.height < Self.summarizeBelow
                 if collapsed { collapsedNow.insert(tile.shown.id) }
                 if summarized { summarizedNow.insert(tile.shown.id) }
-                frameNow[tile.shown.id] = collapsed ? NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: 0) : body
+                frameNow[tile.shown.id] = collapsed ? Self.body(of: Self.bar(of: r)) : body
                 // Gone to or from its summary card (a divider dragged, a
                 // neighbour grown): the one crosses over to the other.
                 if !collapsed, was != nil, summarized != self.summarized.contains(tile.shown.id), !self.collapsed.contains(tile.shown.id),
@@ -765,9 +780,9 @@ final class GridView: NSView, NSDraggingSource {
                 placeTicks(of: tile, in: body, shown: !collapsed && !summarized)
                 if let pill = pills[tile.shown.id] {
                     pill.collapsed = collapsed
-                    let bar = NSRect(x: r.minX, y: r.maxY - Self.barHeight, width: r.width, height: Self.barHeight)
+                    let bar = Self.bar(of: r)
                     barTargets[tile.shown.id] = bar
-                    settle(pill, bar, was: was.map { NSRect(x: $0.minX, y: $0.maxY, width: $0.width, height: Self.barHeight) })
+                    settle(pill, bar, was: was.map { Self.bar(of: Self.card(of: $0)) })
                     keep(pill, above: tile.view)
                 }
                 if let badge = badges[tile.shown.id] {
@@ -786,13 +801,13 @@ final class GridView: NSView, NSDraggingSource {
         // Tiles placed since the last layout come in where they land.
         var cameIn: Set<PlacementID> = []
         if gliding, !lastFrames.isEmpty {
-            for t in columns.flatMap({ $0 }) where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !placed.contains(t.shown.id) {
+            for t in tiles where frameNow[t.shown.id] != nil && lastFrames[t.shown.id] == nil && !placed.contains(t.shown.id) {
                 comeIn([t.view, pills[t.shown.id], tileSummaries[t.shown.id]].compactMap { $0 }.filter { !$0.isHidden })
                 cameIn.insert(t.shown.id)
             }
         }
-        placed = Set(columns.flatMap { $0 }.map(\.shown.id))
-        if let t = traveller { raise(t.id, from: NSRect(x: t.was.minX, y: t.was.minY, width: t.was.width, height: t.was.height + Self.barHeight), among: shownBefore) }
+        placed = Set(tiles.map(\.shown.id))
+        if let t = traveller { raise(t.id, from: Self.card(of: t.was), among: shownBefore) }
         let wasFrames = lastFrames
         lastFrames = frameNow
         self.collapsed = collapsedNow
@@ -801,17 +816,17 @@ final class GridView: NSView, NSDraggingSource {
         if dragging { dragCatcher.frame = bounds }
         // The focus ring: around the focused tile, over everything (once a
         // tile shrinking back to its place is there).
-        if let focused, zooming == nil, let t = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }), !pushedOut(focused) {
+        if let focused, zooming == nil, let t = tile(focused), !pushedOut(focused) {
             focusRing.isHidden = false
             let body = frameNow[focused] ?? t.view.frame
-            let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+            let card = Self.card(of: body)
             if focusRing.frame != card {
                 // With its tile as it glides; to another (the one left
                 // focused by a tile closed), from where that one was.
                 if gliding, ringFor == focused, focusRing.frame != .zero {
                     focusRing.glide(to: card)
                 } else if gliding, ringFor != nil, let was = wasFrames[focused], was.height > 0 {
-                    focusRing.glide(to: card, from: NSRect(x: was.minX, y: was.minY, width: was.width, height: was.height + Self.barHeight))
+                    focusRing.glide(to: card, from: Self.card(of: was))
                 } else {
                     focusRing.frame = card
                 }
@@ -991,7 +1006,7 @@ final class GridView: NSView, NSDraggingSource {
     /// and put down — its bar, badge and companions (those that showed
     /// on it, `card`) and its ring with it — and back among them there.
     private func raise(_ id: PlacementID, from card: NSRect, among shown: [ObjectIdentifier: NSRect], by lift: CGFloat = 10, for duration: TimeInterval = GridView.glide) {
-        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }) else { return }
+        guard let tile = tile(id) else { return }
         var views: [NSView] = [tile.view]
         if let p = pills[id] { views.append(p) }
         if let b = badges[id] { views.append(b) }
@@ -1226,7 +1241,7 @@ final class GridView: NSView, NSDraggingSource {
     /// Overview's cards to be seen coming from them, and going back.
     func tileParts() -> [BlockID: Pictured] {
         var out: [BlockID: Pictured] = [:]
-        for t in columns.flatMap({ $0 }) {
+        for t in tiles {
             guard let b = t.shown.block?.id, out[b] == nil, let body = shownBody(t) else { continue }
             out[b] = pictured(body, pills[t.shown.id])
         }
@@ -1236,7 +1251,7 @@ final class GridView: NSView, NSDraggingSource {
     /// Each tile in view, by its placement, as `tileParts` has them.
     func placedParts() -> [PlacementID: Pictured] {
         var out: [PlacementID: Pictured] = [:]
-        for t in columns.flatMap({ $0 }) {
+        for t in tiles {
             guard let body = shownBody(t) else { continue }
             out[t.shown.id] = pictured(body, pills[t.shown.id])
         }
@@ -1247,7 +1262,7 @@ final class GridView: NSView, NSDraggingSource {
     /// where it is (the grid's terms) with a picture of it.
     func placedBars() -> [PlacementID: Pictured] {
         var out: [PlacementID: Pictured] = [:]
-        for t in columns.flatMap({ $0 }) where shownBody(t) == nil {
+        for t in tiles where shownBody(t) == nil {
             guard let bar = pills[t.shown.id], !bar.isHidden, bar.frame.height > 0 else { continue }
             let alpha = bar.alphaValue
             bar.alphaValue = 1
@@ -1314,7 +1329,7 @@ final class GridView: NSView, NSDraggingSource {
     func bar(of placement: PlacementID) -> NSView? { pills[placement] }
 
     func tileViews(of block: BlockID) -> [NSView] {
-        guard let t = columns.flatMap({ $0 }).first(where: { $0.shown.block?.id == block && shownBody($0) != nil }), let body = shownBody(t) else { return [] }
+        guard let t = tiles.first(where: { $0.shown.block?.id == block && shownBody($0) != nil }), let body = shownBody(t) else { return [] }
         return [body] + (pills[t.shown.id].map { [$0] } ?? []) + (t.shown.id == focused && !focusRing.isHidden ? [focusRing] : [])
     }
 
@@ -1469,12 +1484,12 @@ final class GridView: NSView, NSDraggingSource {
     /// motion, it fades in where it ends.
     private var zooming: PlacementID?
     private func zoom(_ id: PlacementID, from source: NSRect) {
-        guard let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == id }) else {
+        guard let tile = tile(id) else {
             zooming = nil
             return needsLayout = true
         }
         let body = tile.view.frame
-        let dest = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+        let dest = Self.card(of: body)
         guard source.width > 1, source.height > 1, dest.width > 1, dest.height > 1, source != dest else {
             zooming = nil
             needsLayout = true
@@ -1499,9 +1514,9 @@ final class GridView: NSView, NSDraggingSource {
             // Over the rest on the way, the bar and what goes with the
             // tile too; the body's edges and the bar's from where it was.
             raise(id, from: source, among: lastCompanionsShown, by: 20)
-            slide(tile.view, to: body, from: NSRect(x: source.minX, y: source.minY, width: source.width, height: source.height - Self.barHeight))
+            slide(tile.view, to: body, from: Self.body(of: source))
             if let pill = pills[id] {
-                slide(pill, to: pill.frame, from: NSRect(x: source.minX, y: source.maxY - Self.barHeight, width: source.width, height: Self.barHeight))
+                slide(pill, to: pill.frame, from: Self.bar(of: source))
             }
         }
         CATransaction.commit()
@@ -1531,7 +1546,7 @@ final class GridView: NSView, NSDraggingSource {
             let shade = Palette.current.backdrop.tileShadow
             l.shadowColor = shade.color.cgColor
             l.shadowOpacity = Float(shade.opacity)
-            let card = NSRect(x: body.minX, y: body.minY, width: body.width, height: body.height + Self.barHeight)
+            let card = Self.card(of: body)
             let path = CGPath(roundedRect: card, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
             // Gliding with its card, from where it shows.
             if gliding, let was = (l.presentation() ?? l).path, was != path {
@@ -1709,7 +1724,7 @@ final class GridView: NSView, NSDraggingSource {
 
     /// ⌘L: the focused tile's pill edits what its view offers, if anything.
     func editFocusedPill() -> Bool {
-        guard let focused, let tile = columns.flatMap({ $0 }).first(where: { $0.shown.id == focused }),
+        guard let focused, let tile = tile(focused),
               let edit = tile.view.pillEdit, let pill = pills[focused] else { return false }
         pill.beginEditing(edit)
         return true
@@ -1734,7 +1749,7 @@ final class GridView: NSView, NSDraggingSource {
     /// icon).
     private func beginDrag(of placement: PlacementID, event: NSEvent, from view: NSView, thing: Bool = false) {
         let item = NSPasteboardItem()
-        let shown = columns.flatMap { $0 }.first { $0.shown.id == placement }?.shown
+        let shown = tile(placement)?.shown
         coverDrag = event.modifierFlags.contains(.option)
         if thing || event.modifierFlags.contains(.shift) {
             // ⇧-drag, or by the icon: not the tile but the thing it is
@@ -1802,13 +1817,13 @@ final class GridView: NSView, NSDraggingSource {
     /// A tile's own buttons changed (a page could go back, or loads): its bar
     /// shows them as they are.
     func barChanged(_ id: PlacementID) {
-        guard let view = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view else { return }
+        guard let view = tile(id)?.view else { return }
         pills[id]?.viewButtons = view.barButtons
     }
 
     /// A tile's own sidebar shown or put away: its bar's button says so.
     func sidebarChanged(_ id: PlacementID) {
-        guard let view = columns.flatMap({ $0 }).first(where: { $0.shown.id == id })?.view else { return }
+        guard let view = tile(id)?.view else { return }
         pills[id]?.sidebar = view.hasSidebar ? view.sidebarShown : nil
     }
 
@@ -1864,18 +1879,28 @@ final class GridView: NSView, NSDraggingSource {
         coverDrag = false
     }
 
+    /// Where a drop lands: at `at` in column `column` — a new column
+    /// there, if `newColumn` — or on the tile `onto`; `rect` shows it.
+    private struct DropSlot {
+        var column: Int
+        var at: Int
+        var rect: NSRect
+        var newColumn = false
+        var onto: PlacementID?
+    }
+
     /// On a tile's pill (or, ⌥, the tile): in its place, it docked under
-    /// the one dropped (a placement, not the one dragged). Near a column's side: a new column there. Else between
-    /// two tiles (or above the first, below the last) of the column under
-    /// the pointer.
-    private func dropTarget(at point: NSPoint, dragged: PlacementID?) -> (column: Int, at: Int, rect: NSRect, newColumn: Bool, onto: PlacementID?)? {
+    /// the one dropped (a placement, not the one dragged). Near a column's
+    /// side: a new column there. Else between two tiles (or above the
+    /// first, below the last) of the column under the pointer.
+    private func dropTarget(at point: NSPoint, dragged: PlacementID?) -> DropSlot? {
         let frames = columnFrames()
-        guard !frames.isEmpty else { return (0, 0, bounds, true, nil) }
+        guard !frames.isEmpty else { return DropSlot(column: 0, at: 0, rect: bounds, newColumn: true) }
         if dragged != nil, coverDrag || NSEvent.modifierFlags.contains(.option) {
             // ⌥: onto the tile under the pointer, whole — its shape the sign.
             for c in columns.indices {
                 for (i, t) in columns[c].enumerated() where t.shown.id != dragged && !t.view.isHidden {
-                    if t.view.frame.contains(point) { return (c, i, t.view.frame, false, t.shown.id) }
+                    if t.view.frame.contains(point) { return DropSlot(column: c, at: i, rect: t.view.frame, onto: t.shown.id) }
                 }
             }
         }
@@ -1884,26 +1909,26 @@ final class GridView: NSView, NSDraggingSource {
                 for (i, t) in columns[c].enumerated() where t.shown.id != dragged {
                     guard let pill = pills[t.shown.id], !pill.isHidden else { continue }
                     let capsule = pill.capsule(in: self).insetBy(dx: -4, dy: -4)
-                    if capsule.contains(point) { return (c, i + 1, capsule, false, t.shown.id) }
+                    if capsule.contains(point) { return DropSlot(column: c, at: i + 1, rect: capsule, onto: t.shown.id) }
                 }
             }
         }
         for (c, f) in frames.enumerated() where point.x >= f.minX && point.x <= f.maxX + Self.gap {
             let edge = min(f.width * 0.2, 80)
             if point.x < f.minX + edge {
-                return (c, 0, NSRect(x: f.minX, y: f.minY, width: f.width / 2, height: f.height), true, nil)
+                return DropSlot(column: c, at: 0, rect: NSRect(x: f.minX, y: f.minY, width: f.width / 2, height: f.height), newColumn: true)
             }
             if point.x > f.maxX - edge {
-                return (c + 1, 0, NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height), true, nil)
+                return DropSlot(column: c + 1, at: 0, rect: NSRect(x: f.midX, y: f.minY, width: f.width / 2, height: f.height), newColumn: true)
             }
             let tiles = tileFrames(column: c, in: f)
             for (i, r) in tiles.enumerated() where point.y >= r.minY && point.y <= r.maxY {
                 if point.y > r.midY {
-                    return (c, i, NSRect(x: r.minX, y: r.midY, width: r.width, height: r.height / 2), false, nil)
+                    return DropSlot(column: c, at: i, rect: NSRect(x: r.minX, y: r.midY, width: r.width, height: r.height / 2))
                 }
-                return (c, i + 1, NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height / 2), false, nil)
+                return DropSlot(column: c, at: i + 1, rect: NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height / 2))
             }
-            return (c, tiles.count, f, false, nil)
+            return DropSlot(column: c, at: tiles.count, rect: f)
         }
         return nil
     }
@@ -2110,7 +2135,10 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    private func tile(_ id: PlacementID) -> Tile? { columns.flatMap { $0 }.first { $0.shown.id == id } }
+    /// Every tile, column by column.
+    private var tiles: [Tile] { columns.flatMap { $0 } }
+
+    private func tile(_ id: PlacementID) -> Tile? { tiles.first { $0.shown.id == id } }
 
     /// The shown tile under a point.
     private func tile(at point: NSPoint) -> Tile? {
@@ -3545,7 +3573,7 @@ extension GridView: DropTaking {
         if forms.first == .linkTile, let t = linkTarget(d, at: p) {
             lastLinkTitle = t.shown.title
             showDrop(t.view.frame)
-            drop = (0, 0, t.view.frame, false, t.shown.id)
+            drop = DropSlot(column: 0, at: 0, rect: t.view.frame, onto: t.shown.id)
         } else if let slot = dropTarget(at: p, dragged: nil) {
             lastLinkTitle = linkTarget(d, at: p)?.shown.title
             showDrop(slot.rect)
