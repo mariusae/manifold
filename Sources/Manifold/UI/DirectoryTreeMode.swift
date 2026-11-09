@@ -85,7 +85,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         split.addArrangedSubview(left)
         split.addArrangedSubview(right)
         addSubview(split)
-        scroll.watchScrolling { [weak owner] _, y in owner?.keeper.note(["scroll": "\(y)"]) }
+        owner.keeper.keepScroll(of: scroll)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -331,13 +331,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         // The scroll as it was left, the first time.
         if !scrollRestored, !model.filtering, outline.numberOfRows > 0 {
             scrollRestored = true
-            if let y = owner.keeper.double("scroll") {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    let most = max(0, self.outline.frame.height - self.scroll.contentView.bounds.height)
-                    self.scroll.scrollTo(x: 0, y: min(y, most))
-                }
-            }
+            owner.keeper.restoreScroll(of: scroll, clamped: true)
         }
     }
 

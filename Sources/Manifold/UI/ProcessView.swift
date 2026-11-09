@@ -129,7 +129,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         addSubview(scroll)
         addSubview(note)
         note.host = block.host
-        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll)
         documentChanged()
     }
 
@@ -151,7 +151,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
             let pids = Set(s.split(separator: ",").compactMap { Int32($0) })
             select(pids)
         }
-        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+        keeper.restoreScroll(of: scroll)
     }
 
     /// The controls go under the pill's band, not beside it: the filter

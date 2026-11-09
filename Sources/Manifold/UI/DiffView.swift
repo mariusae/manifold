@@ -138,7 +138,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         addSubview(sticky)
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in self?.updateSticky() }
-        scroll.watchScrolling { [weak self] x, y in self?.keeper.note(["scrollX": "\(x)", "scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll, x: true)
         documentChanged()
     }
 
@@ -158,8 +158,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             collapsed = Set(c.components(separatedBy: "\n"))
             rebuild()
         }
-        let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
-        if x != 0 || y != 0 { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: x, y: y) } }
+        keeper.restoreScroll(of: scroll, x: true)
     }
 
     override func layout() {

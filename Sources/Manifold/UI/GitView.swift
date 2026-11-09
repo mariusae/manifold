@@ -106,7 +106,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         split.addArrangedSubview(listBox)
         split.addArrangedSubview(paneBox)
         addSubview(split)
-        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll)
         documentChanged()
     }
 
@@ -173,7 +173,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         if let key = keeper.value("selected"), let i = rows.firstIndex(where: { rowKey($0) == key }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
-        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+        keeper.restoreScroll(of: scroll)
     }
 
     /// Refresh, under the pointer on the branch's strip.

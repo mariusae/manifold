@@ -95,7 +95,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         addSubview(scroll)
-        scroll.watchScrolling { [weak self] x, y in self?.keeper.note(["scrollX": "\(x)", "scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll, x: true)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -143,8 +143,7 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private func restoreScroll() {
         guard !keeper.restored else { return }
         keeper.restored = true
-        let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
-        if x != 0 || y != 0 { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: x, y: y) } }
+        keeper.restoreScroll(of: scroll, x: true)
     }
 
     @objc private func backClicked() {

@@ -97,7 +97,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         addSubview(scroll)
         addBelow.clicked = { [weak self] in self?.addAtEnd() }
         stack.addSubview(addBelow)
-        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -163,7 +163,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         keeper.restored = true
         if let f = keeper.value("focused"), cells[f] != nil { focusedCell = f }
         cells.values.forEach { $0.focused = $0.id == focusedCell }
-        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+        keeper.restoreScroll(of: scroll)
     }
 
     /// What a running cell has printed so far, as the host sends it.

@@ -132,7 +132,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         table.allowsMultipleSelection = true
         scroll.hold(table)
         addSubview(scroll)
-        scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
+        keeper.keepScroll(of: scroll)
         addSubview(split)
         preview.host = block.host
         preview.read = { [weak self] path, done in
@@ -177,7 +177,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         if let key = keeper.value("selected"), let i = rows.firstIndex(where: { $0.asHit(root: query?.root ?? "").map { "\($0.path):\($0.line)" == key } ?? false }) {
             table.selectRowIndexes([i], byExtendingSelection: false)
         }
-        if let y = keeper.double("scroll") { DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: 0, y: y) } }
+        keeper.restoreScroll(of: scroll)
     }
 
     override func layout() {

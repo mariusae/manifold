@@ -284,6 +284,31 @@ final class ViewStateKeeper {
     func value(_ key: String) -> String? { pending[key] ?? load()[key] }
     func double(_ key: String) -> Double? { value(key).flatMap(Double.init) }
     func int(_ key: String) -> Int? { value(key).flatMap(Int.init) }
+
+    /// Keeps where `scroll` is scrolled to as it scrolls — down (`scroll`),
+    /// and across too (`scrollX`) if `x` — with what `with` says beside it.
+    func keepScroll(of scroll: NSScrollView, x: Bool = false, with more: (() -> [String: String])? = nil) {
+        scroll.watchScrolling { [weak self] sx, sy in
+            var values = ["scroll": "\(sy)"]
+            if x { values["scrollX"] = "\(sx)" }
+            if let more { values.merge(more()) { a, _ in a } }
+            self?.note(values)
+        }
+    }
+
+    /// `scroll` scrolled back to where it was kept, a turn later (once its
+    /// content's laid out): across too if `x`; no further down than its
+    /// content goes now, if `clamped`.
+    func restoreScroll(of scroll: NSScrollView, x: Bool = false, clamped: Bool = false) {
+        let kx = x ? double("scrollX") : nil, ky = double("scroll")
+        guard kx != nil || ky != nil else { return }
+        DispatchQueue.main.async { [weak scroll] in
+            guard let scroll else { return }
+            var y = ky ?? 0
+            if clamped { y = min(y, max(0, (scroll.documentView?.frame.height ?? 0) - scroll.contentView.bounds.height)) }
+            scroll.scrollTo(x: kx ?? 0, y: y)
+        }
+    }
 }
 
 /// A lens that keeps its state through a keeper.

@@ -141,10 +141,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             scroll.autohidesScrollers = true
             scroll.drawsBackground = false
             addSubview(scroll)
-            scroll.watchScrolling { [weak self] x, y in
-                guard let self, self.keeper.restored else { return }
-                self.keeper.note(["scrollX": "\(x)", "scroll": "\(y)", "zoom": "\(self.scroll.magnification)"])
-            }
+            keeper.keepScroll(of: scroll, x: true) { [unowned scroll] in ["zoom": "\(scroll.magnification)"] }
         }
         if let p = pdfView {
             NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: p, queue: .main) { [weak self] _ in
@@ -179,8 +176,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         } else if let z = keeper.double("zoom") {
             fitted = true
             scroll.magnification = z
-            let x = keeper.double("scrollX") ?? 0, y = keeper.double("scroll") ?? 0
-            DispatchQueue.main.async { [weak self] in self?.scroll.scrollTo(x: x, y: y) }
+            keeper.restoreScroll(of: scroll, x: true)
         }
     }
 
