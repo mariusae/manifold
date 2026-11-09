@@ -376,13 +376,24 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 /// A search field's cell for a field without its bezel: what's typed kept
 /// between the magnifying glass and the ⓧ (unbezeled, AppKit lays the
 /// text over the glass), and in the middle of its height.
-private final class CapsuleSearchCell: NSSearchFieldCell {
-    override func drawingRect(forBounds r: NSRect) -> NSRect {
+final class CapsuleSearchCell: NSSearchFieldCell {
+    /// The words' room: after the glass, before the ×, a line high, in the
+    /// middle — the same whether they're drawn or being typed (the field
+    /// editor is put where `searchTextRect` says: left as the cell's own,
+    /// it ran under the glass).
+    private func wordsRect(_ r: NSRect) -> NSRect {
         let glass = searchButtonRect(forBounds: r), clear = cancelButtonRect(forBounds: r)
         let left = glass.maxX + 2, right = clear.isEmpty ? r.maxX - 6 : clear.minX - 2
-        let h = cellSize(forBounds: r).height
-        let text = super.drawingRect(forBounds: r)
-        let height = min(text.height, max(h, 16))
-        return NSRect(x: left, y: r.midY - height / 2, width: max(0, right - left), height: height)
+        let line = ceil(NSLayoutManager().defaultLineHeight(for: font ?? UIType.field))
+        let height = min(r.height, max(line, 16))
+        return NSRect(x: left, y: (r.midY - height / 2).rounded(), width: max(0, right - left), height: height)
+    }
+    override func drawingRect(forBounds r: NSRect) -> NSRect { wordsRect(r) }
+    override func searchTextRect(forBounds r: NSRect) -> NSRect { wordsRect(r) }
+    override func select(withFrame r: NSRect, in view: NSView, editor: NSText, delegate: Any?, start: Int, length: Int) {
+        super.select(withFrame: wordsRect(r), in: view, editor: editor, delegate: delegate, start: start, length: length)
+    }
+    override func edit(withFrame r: NSRect, in view: NSView, editor: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: wordsRect(r), in: view, editor: editor, delegate: delegate, event: event)
     }
 }
