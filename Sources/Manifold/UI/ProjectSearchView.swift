@@ -30,7 +30,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     private let status = NSTextField(labelWithString: "")
     private let popOut = FlatButton("Open in a Tile", symbol: "arrow.up.right.square", font: UIType.detail)
     private let scroll = ClippingScrollView()
-    private let table = ResultsTable()
+    private let table = FlatTable(column: "found")
     private var state: SearchState?
     private var root = ""
     /// The host its project is on: whose files its rows drag.
@@ -50,26 +50,15 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         popOut.target = self
         popOut.action = #selector(popOutClicked)
         popOut.toolTip = "This search in a tile of its own, beside: every symbol, file and line found, kept"
-        let column = NSTableColumn(identifier: .init("found"))
-        column.resizingMask = .autoresizingMask
-        table.addTableColumn(column)
-        table.headerView = nil
         table.dataSource = self
         table.delegate = self
-        table.style = .plain
-        table.intercellSpacing = NSSize(width: 0, height: 0)
-        table.backgroundColor = .clear
         table.target = self
         table.action = #selector(clicked)
-        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        table.onKey = { [weak self] code in self?.key(code) ?? false }
+        table.onKey = { [weak self] event in self?.key(event.keyCode) ?? false }
         // Several chosen (⌘-, ⇧-click): dragged together, not opened.
         table.allowsMultipleSelection = true
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(table)
         for v in [status, popOut, scroll] as [NSView] { addSubview(v) }
     }
 
@@ -199,9 +188,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         return debugState
     }
 
-    var debugDragItems: [NSPasteboardWriting] {
-        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
-    }
+    var debugDragItems: [NSPasteboardWriting] { table.debugDragItems }
 
     /// A symbol, a line dragged out: its file at its line; a file, the file.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
@@ -215,15 +202,6 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         case let .file(p): return Drags.file(root.appendingPathComponent(p), isDirectory: false, on: host)
         case let .hit(h): return Drags.place?(Place(file: h.path, on: host, at: .line(h.line)), nil)
         }
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
     }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
@@ -317,15 +295,6 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
             case let .found(.hit(h)): return "\(relative(h.path)):\(h.line) \(h.text.trimmingCharacters(in: .whitespaces))"
             }
         } + (table.selectedRowIndexes.count > 1 ? ["chosen \(table.selectedRowIndexes.count)"] : selectedFound.map { ["chosen \($0)"] } ?? [])).joined(separator: "\n")
-    }
-}
-
-/// The results' table: the keys it doesn't take itself told first.
-private final class ResultsTable: NSTableView {
-    var onKey: ((UInt16) -> Bool)?
-    override func keyDown(with event: NSEvent) {
-        if onKey?(event.keyCode) == true { return }
-        super.keyDown(with: event)
     }
 }
 

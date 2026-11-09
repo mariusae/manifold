@@ -32,7 +32,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     /// One folder's entries, a list of its own.
     final class Column: NSView {
         let scroll = ColumnScroll()
-        let table = ColumnTable()
+        let table = FlatTable(column: "name", rowHeight: 24)
         var folder = ""
         /// Its entries, in the order shown.
         private(set) var nodes: [BrowserNode] = []
@@ -59,22 +59,11 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
         override init(frame: NSRect) {
             super.init(frame: frame)
-            let c = NSTableColumn(identifier: .init("name"))
-            table.addTableColumn(c)
-            table.headerView = nil
-            table.style = .plain
-            table.rowHeight = 24
-            table.intercellSpacing = NSSize(width: 0, height: 0)
-            table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
             table.allowsEmptySelection = true
             table.allowsMultipleSelection = true
-            table.backgroundColor = .clear
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
             table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
-            scroll.documentView = table
-            scroll.hasVerticalScroller = true
-            scroll.autohidesScrollers = true
-            scroll.drawsBackground = false
+            scroll.hold(table)
             addSubview(scroll)
         }
 
@@ -155,8 +144,13 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         c.table.doubleAction = #selector(doubleClicked(_:))
         c.table.menu = NSMenu()
         c.table.menu?.delegate = self
-        c.table.onSlash = { [unowned owner] in owner.focusFilter() }
-        c.table.onArrow = { [weak self, unowned c] right in self?.arrow(right: right, from: c) }
+        // ← and → between columns; / (or ⇥) to the filter.
+        c.table.onKey = { [weak self, unowned owner, unowned c] event in
+            guard event.keyMods.isEmpty else { return false }
+            if event.charactersIgnoringModifiers == "/" || event.keyCode == 48 { owner.focusFilter(); return true }
+            if event.keyCode == 124 || event.keyCode == 123 { self?.arrow(right: event.keyCode == 124, from: c); return true }
+            return false
+        }
         strip.addSubview(c)
         return c
     }
@@ -255,15 +249,6 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         column(of: tableView)?.node(row).map(owner.pasteboardWriter)
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -510,20 +495,6 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         }.joined(separator: "\n")
             + "\npreview " + (previewBox.isHidden ? "none" : "\(preview.node?.name ?? "nothing") \(Int(previewBox.frame.width)) wide")
             + " · keyboard in column \(focusedColumn) · strip \(Int(strip.frame.width)) in \(Int(scroll.contentSize.width))"
-    }
-}
-
-/// A column's list: ← and → go between columns; / (or ⇥) to the filter.
-final class ColumnTable: NSTableView {
-    var onSlash: (() -> Void)?
-    var onArrow: ((Bool) -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        let mods = event.keyMods
-        if mods.isEmpty, event.charactersIgnoringModifiers == "/" || event.keyCode == 48, let onSlash { return onSlash() }
-        if mods.isEmpty, event.keyCode == 124 { return onArrow?(true) ?? () }
-        if mods.isEmpty, event.keyCode == 123 { return onArrow?(false) ?? () }
-        super.keyDown(with: event)
     }
 }
 

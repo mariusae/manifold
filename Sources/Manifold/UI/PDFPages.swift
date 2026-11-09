@@ -19,7 +19,7 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
     private let scroll = ClippingScrollView()
-    private let table = NSTableView()
+    private let table = FlatTable(column: "page", rowHeight: PDFPagesView.thumbnail.height + 32)
     private var count = 0
     /// A page clicked: gone to (by its index), as the tile goes places.
     var onGo: ((Int) -> Void)?
@@ -32,13 +32,6 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     init(block: BlockID) {
         self.block = block
         super.init(frame: .zero)
-        let column = NSTableColumn(identifier: .init("page"))
-        table.addTableColumn(column)
-        table.headerView = nil
-        table.style = .plain
-        table.backgroundColor = .clear
-        table.intercellSpacing = .zero
-        table.rowHeight = Self.thumbnail.height + 32
         table.allowsMultipleSelection = true
         table.dataSource = self
         table.delegate = self
@@ -46,10 +39,7 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.action = #selector(clicked)
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(table)
         addSubview(scroll)
     }
 
@@ -117,20 +107,11 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         return item
     }
 
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
-    }
-
     /// Debugging: the pages chosen (counted from 1) as ⌘-clicks, and what
     /// dragging them writes.
     func debugChoose(_ pages: [Int]) -> [NSPasteboardWriting] {
         if !pages.isEmpty { table.selectRowIndexes(IndexSet(pages.map { $0 - 1 }.filter { $0 >= 0 && $0 < count }), byExtendingSelection: false) }
-        return table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
+        return table.debugDragItems
     }
 
     /// Debugging: the list as drawn, written to `path`.

@@ -28,7 +28,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let branchLabel = NSTextField(labelWithString: "")
     private let refresh = IconButton(symbol: "arrow.clockwise", size: 11, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
-    private let table = NSTableView()
+    private let table = FlatTable(column: "row", rowHeight: 22)
 
     private enum Row {
         /// A section's heading: what it says, and which (`changes`,
@@ -82,18 +82,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         refresh.alphaValue = 0
         for v in [branchLabel, refresh] { addSubview(v) }
 
-        let column = NSTableColumn(identifier: .init("row"))
-        column.resizingMask = .autoresizingMask
-        table.addTableColumn(column)
-        table.headerView = nil
-        // On the tile's ground, the theme's, not the system's white.
-        table.backgroundColor = .clear
         table.dataSource = self
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
-        table.rowHeight = 22
-        table.style = .plain
-        table.intercellSpacing = NSSize(width: 0, height: 0)
         table.target = self
         table.doubleAction = #selector(rowChosen)
         // Several changes, commits, chosen at once (⌘-, ⇧-click): dragged
@@ -102,11 +93,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         // A row right-clicked: its menu, or the menu of every row chosen with it.
         table.menu = NSMenu()
         table.menu?.delegate = self
-        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(table)
         listBox.addSubview(scroll)
         listBox.addSubview(note)
         note.host = block.host
@@ -495,18 +482,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     /// What dragging its chosen rows writes (debugging).
-    var debugDragItems: [NSPasteboardWriting] {
-        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
-    }
+    var debugDragItems: [NSPasteboardWriting] { table.debugDragItems }
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = SelectionRowView()
         v.inert = !selectable(row)

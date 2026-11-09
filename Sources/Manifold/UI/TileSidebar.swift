@@ -34,15 +34,6 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         Drags.writer(rows.indices.contains(row) ? outline.dragItem(rows[row]) : nil)
     }
 
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
-    }
-
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard rows.indices.contains(table.clickedRow), let m = outline.menuFor?(rows[table.clickedRow]) else { return }
@@ -59,7 +50,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     private var onSearchEnd: (() -> Void)?
     private var filtering: Bool { !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }
     private let scroll = ClippingScrollView()
-    private let table = NSTableView()
+    private let table = FlatTable(column: "entry", rowHeight: 24)
     private let empty = NSTextField(labelWithString: "")
     private let tabs: FlatSegments?
     private let pagesView: NSView?
@@ -93,24 +84,13 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             DispatchQueue.main.async { [weak v] in v?.shadeGround() }
             v.edge.backgroundColor = Theme.divider.cgColor
         }
-        let c = NSTableColumn(identifier: .init("entry"))
-        table.addTableColumn(c)
-        table.headerView = nil
         table.target = self
         table.action = #selector(rowClicked)
         // Several entries chosen (⌘-, ⇧-click), not gone to: dragged together.
         table.allowsMultipleSelection = true
         table.dataSource = self
         table.delegate = self
-        table.rowHeight = 24
-        table.style = .plain
-        table.intercellSpacing = NSSize(width: 0, height: 0)
-        table.backgroundColor = .clear
-        table.selectionHighlightStyle = .regular
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(table)
         addSubview(scroll)
         empty.stringValue = emptyText
         empty.font = UIType.body

@@ -14,7 +14,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     private let split = NSSplitView()
     private let left = NSView()
     private let scroll = ClippingScrollView()
-    private let outline = TreeOutline()
+    private let outline = TreeOutline(column: "name", rowHeight: 24)
     private let right = NSView()
     private let preview = FilePreviewView()
     private let nothing = NSTextField(labelWithString: "")
@@ -46,21 +46,19 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         self.model = model
         expanded = Set((owner.keeper.value("expanded") ?? "").split(separator: "\n").map(String.init))
         super.init(frame: .zero)
-        outline.onSlash = { [unowned owner] in owner.focusFilter() }
-        let column = NSTableColumn(identifier: .init("name"))
-        outline.addTableColumn(column)
-        outline.outlineTableColumn = column
-        outline.headerView = nil
+        // / typed in the list (or ⇥, ⇧⇥, as ⇥ there comes here): to the
+        // filter, before select-by-typing takes it.
+        outline.onKey = { [unowned owner] event in
+            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                  event.charactersIgnoringModifiers == "/" || event.keyCode == 48 else { return false }
+            owner.focusFilter()
+            return true
+        }
         outline.dataSource = self
         outline.delegate = self
-        outline.style = .plain
-        outline.rowHeight = 24
         outline.indentationPerLevel = 14
-        outline.intercellSpacing = NSSize(width: 0, height: 0)
-        outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         // Several entries chosen (⌘-, ⇧-click): dragged together.
         outline.allowsMultipleSelection = true
-        outline.backgroundColor = .clear
         outline.target = self
         outline.action = #selector(clicked)
         outline.doubleAction = #selector(doubleClicked)
@@ -69,10 +67,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         outline.menu?.delegate = self
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
-        scroll.documentView = outline
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(outline)
         left.addSubview(scroll)
         preview.makePage = { [weak owner] path, source in owner?.makePage(path, source: source) }
         preview.resolve = { [weak owner] path, done in
@@ -185,15 +180,6 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         (item as? BrowserNode).map(owner.pasteboardWriter)
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
-        DragPill.dress(session, from: outlineView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
     }
 
     var shownFolders: [String] { model.filtering ? [] : expanded.map { model.absolute($0) } }
@@ -383,20 +369,9 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 /// The tree's outline: a file's row starts where a folder's chevron is, so
 /// the file's symbol stands in the chevron's column and every name lines
 /// up, as Claude Code's do.
-final class TreeOutline: NSOutlineView {
+final class TreeOutline: FlatOutline {
     /// How wide a folder's chevron is, as measured from one.
     private(set) var chevronWidth: CGFloat = 16
-    /// /, typed in the list (or ⇥): to the filter (before select-by-typing
-    /// takes it).
-    var onSlash: (() -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        let mods = event.modifierFlags.intersection([.command, .control, .option])
-        if mods.isEmpty, event.charactersIgnoringModifiers == "/", let onSlash { return onSlash() }
-        // ⇥ (⇧⇥): to the filter, as ⇥ there comes here.
-        if mods.isEmpty, event.keyCode == 48, let onSlash { return onSlash() }
-        super.keyDown(with: event)
-    }
 
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         var f = super.frameOfCell(atColumn: column, row: row)

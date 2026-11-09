@@ -40,7 +40,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let projectButton = FlatButton("Expand to Project", symbol: "arrow.up.left.and.arrow.down.right", font: UIType.detail)
     private let status = NSTextField(labelWithString: "")
     private let scroll = ClippingScrollView()
-    private let table = NSTableView()
+    private let table = FlatTable(column: "hit", rowHeight: 20)
     private let preview = SearchPreviewView()
     private let split = FlatDivider()
     /// The code face, for the preview.
@@ -123,28 +123,14 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         relationControl.setToolTip("The definitions that call it, and theirs", forSegment: 2)
         for v in [fieldBox, caseButton, regexButton, pathBox, projectButton, status, relationControl] { addSubview(v) }
 
-        let column = NSTableColumn(identifier: .init("hit"))
-        column.resizingMask = .autoresizingMask
-        table.addTableColumn(column)
-        table.headerView = nil
-        // On the tile's ground, the theme's, not the system's white.
-        table.backgroundColor = .clear
         table.dataSource = self
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
-        table.rowHeight = 20
-        table.style = .plain
-        table.intercellSpacing = NSSize(width: 0, height: 0)
-        table.usesAlternatingRowBackgroundColors = false
         table.target = self
         table.doubleAction = #selector(rowChosen)
         // Several hits chosen (⌘-, ⇧-click): dragged together.
         table.allowsMultipleSelection = true
-        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
+        scroll.hold(table)
         addSubview(scroll)
         scroll.watchScrolling { [weak self] _, y in self?.keeper.note(["scroll": "\(y)"]) }
         addSubview(split)
@@ -502,18 +488,8 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     /// What dragging its chosen rows writes (debugging).
-    var debugDragItems: [NSPasteboardWriting] {
-        table.selectedRowIndexes.compactMap { tableView(table, pasteboardWriterForRow: $0) }
-    }
+    var debugDragItems: [NSPasteboardWriting] { table.debugDragItems }
 
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
-        DragPill.dress(session, from: tableView, at: screenPoint)
-        DragCursor.began()
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        DragCursor.ended()
-    }
     // Each row looked up only where it is: asked for one the table still
     // thinks it has, nothing.
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
