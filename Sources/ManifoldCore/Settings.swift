@@ -1,5 +1,14 @@
 import Foundation
 
+extension KeyedDecodingContainer {
+    /// What's under `key` decoded onto `value`, if it's there and reads;
+    /// else `value` left as it was — its default, for what was saved
+    /// before it existed, or in a form since gone.
+    func opt<T: Decodable>(_ value: inout T, _ key: Key) {
+        if let v = try? decodeIfPresent(T.self, forKey: key) { value = v }
+    }
+}
+
 /// The window: where it is, and the sidebar.
 public struct WindowState: Codable, Equatable, Sendable {
     /// x, y, width, height in screen coordinates.
@@ -37,11 +46,12 @@ public struct ClientState: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        selected = try? c.decodeIfPresent(BlockID.self, forKey: .selected)
-        window = (try? c.decodeIfPresent(WindowState.self, forKey: .window)) ?? WindowState()
-        appearance = (try? c.decodeIfPresent(Appearance.self, forKey: .appearance)) ?? Appearance()
-        hostOrder = (try? c.decodeIfPresent([String].self, forKey: .hostOrder)) ?? []
-        collapsedRows = (try? c.decodeIfPresent([String].self, forKey: .collapsedRows)) ?? []
+        self.init()
+        c.opt(&selected, .selected)
+        c.opt(&window, .window)
+        c.opt(&appearance, .appearance)
+        c.opt(&hostOrder, .hostOrder)
+        c.opt(&collapsedRows, .collapsedRows)
     }
 
     enum CodingKeys: String, CodingKey { case selected, window, appearance, hostOrder, collapsedRows }
@@ -77,15 +87,17 @@ public struct Appearance: Codable, Equatable, Sendable {
     // Settings saved before a setting existed get its default.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        theme = (try? c.decodeIfPresent(FontTheme.self, forKey: .theme)) ?? .apple
-        colorScheme = (try? c.decodeIfPresent(ColorScheme.self, forKey: .colorScheme)) ?? .system
-        contrastCorrection = (try? c.decodeIfPresent(ContrastCorrection.self, forKey: .contrastCorrection)) ?? .deuteranopia
-        editorFont = (try? c.decodeIfPresent(EditorFont.self, forKey: .editorFont)) ?? .proportional
-        tint = (try? c.decodeIfPresent(Tint.self, forKey: .tint)) ?? .theme
-        colorTheme = (try? c.decodeIfPresent(String.self, forKey: .colorTheme)) ?? "paper"
-        typography = (try? c.decodeIfPresent(Typography.self, forKey: .typography)) ?? .apple
+        self.init()
+        c.opt(&theme, .theme)
+        c.opt(&colorScheme, .colorScheme)
+        c.opt(&contrastCorrection, .contrastCorrection)
+        c.opt(&editorFont, .editorFont)
+        c.opt(&tint, .tint)
+        c.opt(&colorTheme, .colorTheme)
+        c.opt(&typography, .typography)
         // On for those who set a custom theme before there was the switch.
-        advancedTypography = (try? c.decodeIfPresent(Bool.self, forKey: .advancedTypography)) ?? (theme == .custom)
+        advancedTypography = theme == .custom
+        c.opt(&advancedTypography, .advancedTypography)
     }
 }
 
@@ -120,15 +132,16 @@ public struct Settings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        collectAfterMinutes = (try? c.decodeIfPresent(Int.self, forKey: .collectAfterMinutes)) ?? 30
-        terminalDormantAfterHours = (try? c.decodeIfPresent(Int.self, forKey: .terminalDormantAfterHours)) ?? 8
-        textHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .textHistoryDays)) ?? 0
-        terminalHistoryDays = (try? c.decodeIfPresent(Int.self, forKey: .terminalHistoryDays)) ?? 30
-        undoDepth = (try? c.decodeIfPresent(Int.self, forKey: .undoDepth)) ?? 0
-        rootsSettled = (try? c.decodeIfPresent(Bool.self, forKey: .rootsSettled)) ?? false
-        languageServers = (try? c.decodeIfPresent([LanguageServerConfig].self, forKey: .languageServers)) ?? LanguageServerConfig.defaults
-        agentCommand = (try? c.decodeIfPresent(String.self, forKey: .agentCommand)) ?? "claude"
-        copyOnSelect = (try? c.decodeIfPresent(Bool.self, forKey: .copyOnSelect)) ?? true
+        self.init()
+        c.opt(&collectAfterMinutes, .collectAfterMinutes)
+        c.opt(&terminalDormantAfterHours, .terminalDormantAfterHours)
+        c.opt(&textHistoryDays, .textHistoryDays)
+        c.opt(&terminalHistoryDays, .terminalHistoryDays)
+        c.opt(&undoDepth, .undoDepth)
+        c.opt(&rootsSettled, .rootsSettled)
+        c.opt(&languageServers, .languageServers)
+        c.opt(&agentCommand, .agentCommand)
+        c.opt(&copyOnSelect, .copyOnSelect)
     }
 }
 
@@ -198,9 +211,10 @@ public struct HostPreferences: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        shell = try? c.decodeIfPresent(String.self, forKey: .shell)
-        lsp = (try? c.decodeIfPresent([String: String].self, forKey: .lsp)) ?? [:]
-        environment = try? c.decodeIfPresent([EnvironmentVariable].self, forKey: .environment)
+        self.init()
+        c.opt(&shell, .shell)
+        c.opt(&lsp, .lsp)
+        c.opt(&environment, .environment)
     }
 
     enum CodingKeys: String, CodingKey { case shell, lsp, environment }
@@ -274,16 +288,17 @@ public struct TypeStyle: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        family = (try? c.decodeIfPresent(String.self, forKey: .family)) ?? ""
-        size = (try? c.decodeIfPresent(Double.self, forKey: .size)) ?? 14
-        weight = (try? c.decodeIfPresent(Int.self, forKey: .weight)) ?? 400
-        lineHeight = (try? c.decodeIfPresent(Double.self, forKey: .lineHeight)) ?? 1.3
-        tracking = (try? c.decodeIfPresent(Double.self, forKey: .tracking)) ?? 0
-        features = (try? c.decodeIfPresent(String.self, forKey: .features)) ?? ""
-        measure = (try? c.decodeIfPresent(Double.self, forKey: .measure)) ?? 0
-        paragraphSpacing = (try? c.decodeIfPresent(Double.self, forKey: .paragraphSpacing)) ?? 1
-        headingWeight = (try? c.decodeIfPresent(Int.self, forKey: .headingWeight)) ?? 700
-        boldFace = (try? c.decodeIfPresent(String.self, forKey: .boldFace)) ?? ""
+        self.init(family: "", size: 14, lineHeight: 1.3)
+        c.opt(&family, .family)
+        c.opt(&size, .size)
+        c.opt(&weight, .weight)
+        c.opt(&lineHeight, .lineHeight)
+        c.opt(&tracking, .tracking)
+        c.opt(&features, .features)
+        c.opt(&measure, .measure)
+        c.opt(&paragraphSpacing, .paragraphSpacing)
+        c.opt(&headingWeight, .headingWeight)
+        c.opt(&boldFace, .boldFace)
     }
 
     /// The features as tags and values: "-liga" is liga 0, "cv05=2" cv05 2,
