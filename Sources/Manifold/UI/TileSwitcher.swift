@@ -213,10 +213,7 @@ extension MainWindowController {
     func go(to p: Settled) {
         guard let t = p.tile, let a = hosts.arrangement(p.space), a.placement(t) != nil else { return NSSound.beep() }
         if stateView != nil { hideStateView() }
-        if selected != p.space { hosts.select(p.space) }
-        if a.focused != t || a.isDocked(t) || (a.full != nil && a.full != t) {
-            hosts.append(arriving(t, in: a), to: .block(p.space))
-        }
+        land(on: t, in: p.space, a)
         render()
         warpPointerToFocus()
     }

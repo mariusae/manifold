@@ -33,10 +33,8 @@ extension MainWindowController {
     /// shown, the block in a tile there again.
     func recallPinned(_ block: BlockID, in workspace: BlockID) {
         guard let b = hosts.block(block) else { return }
+        if let a = hosts.arrangement(workspace), let t = a.placements(of: block).first { return land(on: t.id, in: workspace, a) }
         if selected != workspace { hosts.select(workspace) }
-        if let a = hosts.arrangement(workspace), let t = a.placements(of: block).first {
-            return hosts.append(arriving(t.id, in: a), to: .block(workspace))
-        }
         show(block, lens: Lens.default(for: b.kind, path: b.path), .here, context: "pinned")
     }
 

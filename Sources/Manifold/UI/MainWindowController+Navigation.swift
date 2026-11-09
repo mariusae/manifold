@@ -130,10 +130,7 @@ extension MainWindowController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.navigating = false }
         var target: PlacementID?
         if let pid = e.placement, let w = e.workspace, allWorkspaces.contains(w), let a = hosts.arrangement(w), a.placement(pid) != nil {
-            if selected != w { hosts.select(w) }
-            if a.focused != pid || a.isDocked(pid) || (a.full != nil && a.full != pid) {
-                hosts.append(arriving(pid, in: a), to: .block(w))
-            }
+            land(on: pid, in: w, a)
             target = pid
         } else if hosts.block(e.block) != nil {
             goTo(e.block)

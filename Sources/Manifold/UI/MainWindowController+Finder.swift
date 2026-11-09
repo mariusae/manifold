@@ -615,16 +615,12 @@ extension MainWindowController {
         if let a = arrangement, let t = nearest(a.placements(of: id), to: near, in: a), let here = selected {
             // Here already: out of its stack, from behind a maximized
             // tile, and focused.
-            return hosts.append(arriving(t.id, in: a), to: .block(here))
+            return land(on: t.id, in: here, a)
         }
         let recent = hosts.recentWorkspaces()
         let order = recent + allWorkspaces.filter { !recent.contains($0) }
         for arr in order where arr != selected {
-            if let a = hosts.arrangement(arr), let t = a.placements(of: id).first {
-                hosts.select(arr)
-                hosts.append(arriving(t.id, in: a), to: .block(arr))
-                return
-            }
+            if let a = hosts.arrangement(arr), let t = a.placements(of: id).first { return land(on: t.id, in: arr, a) }
         }
         show(id, lens: Lens.default(for: block.kind, path: block.path), .here)
     }

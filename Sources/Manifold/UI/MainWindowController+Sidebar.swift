@@ -74,15 +74,15 @@ extension MainWindowController: OrganizationViewDelegate {
         let d = Disposition(modifiers)
         if let arr = node.arrangement, d == .goTo {
             hideStateView()
-            if arr != selected { hosts.select(arr) }
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
                 // Out of its stack, from behind a maximized tile, focused,
                 // and the pointer on it.
-                hosts.append(arriving(p, in: a), to: .block(arr))
+                land(on: p, in: arr, a)
                 warpPointerToFocus()
-            } else if node.column == nil {
+            } else {
+                if arr != selected { hosts.select(arr) }
                 // A space's heading: the space in the inspector.
-                inspect(.space(arr))
+                if node.column == nil { inspect(.space(arr)) }
             }
             return
         }

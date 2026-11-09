@@ -1782,6 +1782,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         showingSome(a.revealing(placement), in: a)
     }
 
+    /// A space shown, and a tile in it arrived at (`arriving`) — nothing
+    /// appended when it's focused, in the grid and not behind another
+    /// maximized already.
+    func land(on tile: PlacementID, in space: BlockID, _ a: ArrangementState) {
+        if selected != space { hosts.select(space) }
+        guard a.focused != tile || a.isDocked(tile) || (a.full != nil && a.full != tile) else { return }
+        hosts.append(arriving(tile, in: a), to: .block(space))
+    }
+
     /// How much of a tile gone to is shown, grown to it (as apex does for a
     /// window it goes to): its content's height, at most, and as a part
     /// of the column.
