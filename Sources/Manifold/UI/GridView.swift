@@ -1,12 +1,6 @@
 import AppKit
 import ManifoldCore
 
-/// A view only it can draw (a page, in its own process): a picture of it
-/// comes a moment later, from it.
-protocol Snapshotting: AnyObject {
-    func snapshot(_ done: @escaping (NSImage?) -> Void)
-}
-
 protocol GridDelegate: AnyObject {
     func gridFocus(_ placement: PlacementID)
     /// A block's last picture, kept (a page's, which can't be drawn at once).

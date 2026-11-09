@@ -30,7 +30,8 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     weak var delegate: SmartlogViewDelegate?
     var source: () -> Block? = { nil }
     private let web: PlainWebView
-    private let note = NSTextField(wrappingLabelWithString: "")
+    /// What's said in the page's place: it starting, why it can't be.
+    private let note = BusyNote()
     /// The host's URL loaded (or being), and whether it has drawn.
     private var loaded: String?
     private var shown = false
@@ -62,9 +63,6 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
         // Nothing white before the page draws.
         web.setValue(false, forKey: "drawsBackground")
         web.isHidden = true
-        note.font = UIType.row
-        note.textColor = Theme.secondaryText
-        note.alignment = .center
         addSubview(web)
         addSubview(note)
         refresh()
@@ -82,31 +80,29 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     override func layout() {
         super.layout()
         web.frame = bounds
-        let w = min(bounds.width - 40, 420)
-        let h = note.sizeThatFits(NSSize(width: w, height: 200)).height
-        note.frame = NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
+        note.frame = bounds
     }
 
-    private func say(_ text: String) {
-        note.stringValue = text
-        note.isHidden = false
+    /// The page hidden for what's said in its place: waiting on it, or why
+    /// it isn't there.
+    private func say(_ state: BusyNote.State) {
+        note.set(state)
         web.isHidden = true
-        needsLayout = true
     }
 
     /// The block as it stands: the page loaded once the host says where it
     /// is; what's wrong said, if it can't be.
     func refresh() {
         let s = source()?.smartlog
-        if let error = s?.error { loaded = nil; return say(error) }
-        guard let url = s?.url else { return say("Starting Interactive Smartlog…") }
+        if let error = s?.error { loaded = nil; return say(.message(error)) }
+        guard let url = s?.url else { return say(.busy("Starting Interactive Smartlog…")) }
         guard url != loaded else { return }
         loaded = url
         shown = false
-        if web.isHidden { say("Opening Interactive Smartlog…") }
+        if web.isHidden { say(.busy("Opening Interactive Smartlog…")) }
         delegate?.smartlog(self, localURL: url) { [weak self] local in
             guard let self, self.loaded == url else { return }
-            guard let local else { return self.say("The host's smartlog can't be reached from here") }
+            guard let local else { return self.say(.message("The host's smartlog can't be reached from here")) }
             self.web.load(URLRequest(url: local))
         }
     }
@@ -116,7 +112,7 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         shown = true
         retried = false
-        note.isHidden = true
+        note.set(.idle)
         web.isHidden = false
     }
 
@@ -127,10 +123,10 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { web.reload() }
 
     private func failed() {
-        guard !retried else { return say("Interactive Smartlog stopped; it's asked for again when this tile is shown") }
+        guard !retried else { return say(.message("Interactive Smartlog stopped; it's asked for again when this tile is shown")) }
         retried = true
         loaded = nil
-        say("Starting Interactive Smartlog…")
+        say(.busy("Starting Interactive Smartlog…"))
         delegate?.smartlogStart(self)
     }
 
@@ -230,7 +226,7 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
 
     /// Debugging: what it shows.
     var debugState: String {
-        "loaded \(loaded ?? "-") shown \(shown) note \(note.isHidden ? "hidden" : "“\(note.stringValue)”") page \(web.url?.absoluteString ?? "-")"
+        "loaded \(loaded ?? "-") shown \(shown) note \(note.state) page \(web.url?.absoluteString ?? "-")"
     }
 
     var pillItems: [NSMenuItem] {

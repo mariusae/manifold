@@ -31,7 +31,7 @@ private final class PreviewWebView: WKWebView {
 /// a web view, and rendered again as the text changes (edits in an editor
 /// on the same block, or the file saved by another program), keeping the
 /// scroll position.
-final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNavigationDelegate {
+final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     let placement: PlacementID
     let keeper = ViewStateKeeper()
     /// The page was (re)loaded: its scroll and selection go back after
@@ -47,20 +47,9 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     private var made: WKWebView?
     private var web: WKWebView { made ?? makeWeb() }
 
-    /// The page for printing, fitted to the paper's width.
-    var webPrint: NSPrintOperation {
-        let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
-        info.isVerticallyCentered = false
-        let op = web.printOperation(with: info)
-        op.view?.frame = web.bounds
-        op.jobTitle = path.isEmpty ? "Note" : path.lastPathComponent
-        return op
-    }
-
-    /// A picture of the page as it is now, when it's ready (for a card).
-    func snapshot(_ done: @escaping (NSImage?) -> Void) {
-        web.takeSnapshot(with: nil) { image, _ in done(image) }
-    }
+    var page: WKWebView { web }
+    let pageFinder = PageFinder()
+    var printTitle: String? { path.isEmpty ? "Note" : path.lastPathComponent }
 
     /// The line of the text (from 0, a fraction into it) at the top of
     /// the page now, by where the page's elements came from.
@@ -368,7 +357,6 @@ final class MarkdownView: NSView, PaneContent, KeepsViewState, Snapshotting, WKN
     // MARK: Find
 
     private lazy var finder = FindHost(view: self, target: self)
-    private var findQuery = (text: "", caseSensitive: false)
 
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
@@ -711,32 +699,6 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
     }
 }
 
-extension MarkdownView: Searchable {
-    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
-        findQuery = (query, caseSensitive)
-        web.evaluateJavaScript(PageFind.search(query, caseSensitive: caseSensitive)) { n, _ in done(query.isEmpty ? nil : (n as? Int) ?? (n as? Double).map(Int.init)) }
-    }
-
-    func findNext(forward: Bool) {
-        guard !findQuery.text.isEmpty else { return }
-        web.evaluateJavaScript(PageFind.next(findQuery.text, caseSensitive: findQuery.caseSensitive, forward: forward))
-    }
-
-    func endSearch() {
-        web.evaluateJavaScript(PageFind.end)
-        window?.makeFirstResponder(web)
-    }
-
-    func textForFind(_ done: @escaping (String?) -> Void) {
-        web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
-    }
-}
-
-extension MarkdownView: Printable {
-    /// The page as rendered.
-    func printOperation() -> NSPrintOperation? { webPrint }
-}
-
 /// Things dropped on the page go into its text, at the end, as a note
 /// takes them (§3.11): a block's link, a picture kept and shown — ⌃ for
 /// the rest. A page that isn't a text's hands them on to the grid.
@@ -758,12 +720,6 @@ extension MarkdownView: DropTaking {
             // (The blocks named come after the text: linked once it's in.)
             DispatchQueue.main.async { self.delegate?.markdownView(self, append: markdown, naming: named) }
         }, linked: { named.append($0) })
-    }
-}
-
-extension MarkdownView {
-    func maniSelection() async -> ManiSelected? {
-        await PageSelection.text(in: web).map { ManiSelected(text: $0) }
     }
 }
 

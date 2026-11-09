@@ -54,7 +54,7 @@ protocol WebViewDelegate: AnyObject {
 /// here. The block keeps its pages' addresses as the host has them
 /// (`localhost:3000`, not the port here). Loaded the other way, the
 /// page is made again in a web view of the other store.
-final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNavigationDelegate {
+final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     let keeper = ViewStateKeeper()
     let placement: PlacementID
     let block: BlockID
@@ -68,12 +68,8 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     /// How far the page has loaded, as a thin line along its top while it
     /// loads (as Safari's address bar fills) — a slow page seen coming.
     private let loadLine = NSView()
-    fileprivate var webForPrinting: WKWebView { web }
-
-    /// A picture of the page as it is now, when it's ready (for a card).
-    func snapshot(_ done: @escaping (NSImage?) -> Void) {
-        web.takeSnapshot(with: nil) { image, _ in done(image) }
-    }
+    var page: WKWebView { web }
+    let pageFinder = PageFinder()
     private var shownURL: String?
 
     /// The host the page is loaded through, or nil: from here.
@@ -251,7 +247,6 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
     // MARK: Find
 
     private lazy var finder = FindHost(view: self, target: self)
-    private var findQuery = (text: "", caseSensitive: false)
 
     @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
 
@@ -694,38 +689,6 @@ extension WebView: WKUIDelegate {
     }
 }
 
-extension WebView: Searchable {
-    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
-        findQuery = (query, caseSensitive)
-        web.evaluateJavaScript(PageFind.search(query, caseSensitive: caseSensitive)) { n, _ in done(query.isEmpty ? nil : (n as? Int) ?? (n as? Double).map(Int.init)) }
-    }
-
-    func findNext(forward: Bool) {
-        guard !findQuery.text.isEmpty else { return }
-        web.evaluateJavaScript(PageFind.next(findQuery.text, caseSensitive: findQuery.caseSensitive, forward: forward))
-    }
-
-    func endSearch() {
-        web.evaluateJavaScript(PageFind.end)
-        window?.makeFirstResponder(web)
-    }
-
-    func textForFind(_ done: @escaping (String?) -> Void) {
-        web.evaluateJavaScript(PageFind.selection) { s, _ in done((s as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)) }
-    }
-}
-
-extension WebView: Printable {
-    /// The page as it shows.
-    func printOperation() -> NSPrintOperation? {
-        let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
-        info.isVerticallyCentered = false
-        let op = webForPrinting.printOperation(with: info)
-        op.view?.frame = webForPrinting.bounds
-        return op
-    }
-}
-
 /// A web tile's page: the app's own keys are the app's — ⌘L edits the
 /// address (WebKit would take it, before the menu sees it).
 final class PageWebView: WKWebView {
@@ -742,10 +705,6 @@ extension WebView {
     var here: Place? {
         let w = source()?.web
         return Place(block: block, name: w?.url.map { WebAddress.plain($0) }, title: w?.title)
-    }
-
-    func maniSelection() async -> ManiSelected? {
-        await PageSelection.text(in: web).map { ManiSelected(text: $0) }
     }
 
     func maniText(_ options: ManiReadOptions) async -> String? { await PageSelection.pageText(in: web) }
