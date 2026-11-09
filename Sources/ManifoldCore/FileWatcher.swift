@@ -71,11 +71,12 @@ public final class FileWatcher {
         source = nil
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            // Gone, perhaps mid-save: look again shortly, for a while.
-            if retries < 20 {
-                queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                    self?.start(retries: retries + 1)
-                }
+            // Gone, perhaps mid-save: looked for again shortly, for a
+            // while; then once a second, for as long as it's watched — a
+            // file made again later is followed again (§ M4), as Linux's
+            // polling does.
+            queue.asyncAfter(deadline: .now() + (retries < 20 ? 0.1 : 1)) { [weak self] in
+                self?.start(retries: retries + 1)
             }
             return
         }

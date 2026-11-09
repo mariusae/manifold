@@ -195,7 +195,10 @@ no show came after it began. Machine: M30.
 - SCIP: a re-index asked for while the root is indexing is dropped; the
   index stays stale until the next save. **confirmed on reading** (M5)
 - File watcher (Darwin) gives up 2 s after a file's deleted; recreated
-  later, it isn't followed again (Linux polls on). **confirmed on reading** (M4)
+  later, it isn't followed again (Linux polls on). **fixed**: after its
+  quick looks it looks once a second for as long as it's watched. Test:
+  `ManifoldCoreTests/FileWatcherTests` (made again 3 s on: unheard on the
+  old code). (M4)
 - Space slide: a second switch within the slide is cut short by the first
   one's completion. **suspected** (M22)
 - `$EDITOR` stacks not pruned when the editor goes off screen. **suspected** (M23)
@@ -268,9 +271,9 @@ I-5 — fixed. `showMessage` text still goes out through `onState`.
 #### M4 FileWatcher · implicit
 `FileWatcher` (ManifoldCore/FileWatcher.swift). `source`, a retry count in
 an `asyncAfter` chain (Darwin); a polling timer (Linux).
-States (Darwin): watching → (deleted/renamed) retrying(n ≤ 20) → watching |
-lost. Invariant wanted: a watched path is followed for as long as it's
-watched. Finding: I-8 (lost after 2 s, silently).
+States (Darwin): watching → (deleted/renamed) looking (every 0.1 s, 20
+times; then every 1 s) → watching (and heard as a change). Invariant: a
+watched path is followed for as long as it's watched. Finding: I-8 — fixed.
 
 #### M5 SCIP indexing per root · implicit
 `SCIPService` `running: Set<root>`, `failures[root]`, `pendingIndex`.
