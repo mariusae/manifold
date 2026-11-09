@@ -635,7 +635,7 @@ final class Server {
             }
             // `mani` asks; the app acting for the host does it and answers.
             guard let app = actingApp() else {
-                conn.send(.message(ServerMessage.done(id: id, error: noneActs)))
+                answer(id, .done(noneActs), to: conn)
                 return
             }
             // Who asked, as this host finds it — not as the request says.
@@ -649,11 +649,11 @@ final class Server {
             // `mani diff`: the patch becomes a diff block here, and the
             // app, if attached, places it and answers the command.
             guard let app = actingApp() else {
-                conn.send(.message(ServerMessage.done(id: id, error: noneActs)))
+                answer(id, .done(noneActs), to: conn)
                 return
             }
             guard patch.utf8.count <= 64 << 20 else {
-                conn.send(.message(ServerMessage.done(id: id, error: "that patch is over 64 MB")))
+                answer(id, .done("that patch is over 64 MB"), to: conn)
                 return
             }
             let block = BlockID(host: host)
@@ -983,8 +983,13 @@ final class Server {
 
     // MARK: Proposals
 
+    /// Proposal `id` answered (or `mani`'s command, no app taking it).
+    private func answer(_ id: Int, _ r: ServerMessage.Reply, to conn: any Channel) {
+        conn.send(.message(ServerMessage.reply(id: id, r)))
+    }
+
     private func propose(_ id: Int, _ proposal: Proposal, from conn: any Channel) {
-        func done(_ error: String? = nil) { conn.send(.message(ServerMessage.done(id: id, error: error))) }
+        func done(_ error: String? = nil) { answer(id, .done(error), to: conn) }
         switch proposal {
         case let .newTerminal(block, cwd):
             ensure(block, kind: .terminal, cwd: cwd)
@@ -1078,7 +1083,7 @@ final class Server {
             done()
         case let .listFolder(path):
             offQueue({ FolderListing.children(of: path) }) { entries in
-                conn.send(.message(ServerMessage.listing(id: id, entries: entries, complete: true)))
+                self.answer(id, .listing(entries: entries, complete: true), to: conn)
             }
         case let .lookUpPaths(paths):
             // Each path looked at, for so long: a slow filesystem (a
@@ -1093,26 +1098,26 @@ final class Server {
                 }
                 return kinds
             }) { kinds in
-                conn.send(.message(ServerMessage.pathKinds(id: id, kinds)))
+                self.answer(id, .pathKinds(kinds), to: conn)
             }
         case let .listTree(path, limit):
             offQueue({ () -> (entries: [DirectoryEntry], complete: Bool)? in
                 return FileManager.default.isDirectory(atPath: path) == true ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
             }) { tree in
-                conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false)))
+                self.answer(id, .listing(entries: tree?.entries, complete: tree?.complete ?? false), to: conn)
             }
         case let .languages(path):
             // Counted off the queue, kept a minute (a homepage asks as it shows).
             if let kept = languageCounts[path], Date().timeIntervalSince(kept.at) < 60 {
-                conn.send(.message(ServerMessage.languages(id: id, kept.counts)))
+                answer(id, .languages(kept.counts), to: conn)
                 return
             }
             offQueue(qos: .utility, { Self.languages(of: path) }) { [weak self] counts in
                 if let counts { self?.languageCounts[path] = (Date(), counts) }
-                conn.send(.message(ServerMessage.languages(id: id, counts)))
+                self?.answer(id, .languages(counts), to: conn)
             }
         case let .fileHistory(request):
-            fileHistory(request) { result in conn.send(.message(ServerMessage.fileHistory(id: id, result))) }
+            fileHistory(request) { [weak self] result in self?.answer(id, .fileHistory(result), to: conn) }
         case let .captureTurn(block, agent, turn):
             writeTurn(block, agent: agent, turn: turn)
             done(node.block(block) == nil ? "no such turn" : nil)
@@ -1158,7 +1163,7 @@ final class Server {
         case let .machine(query):
             let shells = sessions.map { ($0.key, $0.value.pid) }
             machine.sample(query, shells: shells) { [weak self] sample in
-                self?.queue.async { conn.send(.message(ServerMessage.machine(id: id, sample))) }
+                self?.queue.async { self?.answer(id, .machine(sample), to: conn) }
             }
         case let .signal(pid, sig):
             if kill(pid, sig) != 0 { return done(String(cString: strerror(errno))) }
@@ -1279,7 +1284,7 @@ final class Server {
             conn.send(.message(ServerMessage.history(shard: shard, base: h.base, entries: h.entries)))
             done()
         case let .openDone(openID, client):
-            peer(numbered: client)?.conn.send(.message(ServerMessage.done(id: openID, error: nil)))
+            if let p = peer(numbered: client) { answer(openID, .done(nil), to: p.conn) }
             done()
         case let .commandReply(commandID, client, reply):
             if reply.status != nil {
@@ -1421,12 +1426,12 @@ final class Server {
             }
             done()
         case let .lsp(request):
-            languageServers.request(request) { result in
-                conn.send(.message(ServerMessage.lspResult(id: id, result)))
+            languageServers.request(request) { [weak self] result in
+                self?.answer(id, .lsp(result), to: conn)
             }
         case let .scip(request):
-            scip.request(request) { result in
-                conn.send(.message(ServerMessage.scipResult(id: id, result)))
+            scip.request(request) { [weak self] result in
+                self?.answer(id, .scip(result), to: conn)
             }
         case let .editFile(path, edits):
             guard let contents = TextFile.read(path) else { return done("can't read \(path)") }

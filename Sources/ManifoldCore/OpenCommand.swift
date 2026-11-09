@@ -43,7 +43,7 @@ public enum OpenCommand {
                 if version != protocolVersion { return ManiClient.fail(ManiClient.otherVersion) }
                 guard channel.send(request(1)) else { return ManiClient.fail("lost the connection to Manifold") }
                 deadline = Date().addingTimeInterval(15)
-            case let .message(.done(id, error)):
+            case let .message(.reply(id, .done(error))):
                 guard id == 1 else { continue }
                 if let error, error.contains("isn't attached") { return ManiClient.absent }
                 if let error { return ManiClient.fail(error) }
@@ -108,7 +108,7 @@ public enum ManiClient {
                 say(reply.out, to: .standardOutput)
                 say(reply.err, to: .standardError)
                 if let status = reply.status { return status }
-            case let .message(.done(id, error)) where id == 1:
+            case let .message(.reply(id, .done(error))) where id == 1:
                 // Only when the host couldn't pass it on: the app isn't there.
                 if let error, error.contains("isn't attached") { return absent }
                 return error.map(fail) ?? 0

@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 69
+public let protocolVersion = 70
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -133,14 +133,14 @@ public enum ProtocolError: Error {
     case badFrameKind
 }
 
-/// What a client asks of a host that only the host can do (its files, its
-/// processes, its own shards), answered with `done`, and with entries or a
-/// proposal back.
 /// What a path is on its host.
 public enum PathKind: String, Codable, Sendable {
     case file, folder
 }
 
+/// What a client asks of a host that only the host can do (its files, its
+/// processes, its own shards), answered with a `reply` — done, or what was
+/// asked — and with entries or a proposal back.
 public enum Proposal: Codable, Sendable {
     /// Makes a terminal block, with a shell started when it's attached to.
     case newTerminal(block: BlockID, cwd: String?)
@@ -500,8 +500,8 @@ public enum ClientMessage: Codable, Sendable {
     /// Asks the server to exit, ending every session.
     case shutdown
     /// A `mani` command the app does (`ManiRequest`): answered with
-    /// `commandReply`s, the last with its status — or `done`, with why
-    /// not, when there's no app.
+    /// `commandReply`s, the last with its status — or a `reply` (`.done`,
+    /// with why not) when there's no app.
     case command(id: Int, ManiRequest)
     /// `mani diff`: a patch read from its input, shown as a diff block
     /// (its files opened against `root`, the command's directory).
@@ -729,7 +729,10 @@ public enum ServerMessage: Codable, Sendable {
     /// machine (`actor`, none if no one does: all watching).
     case attachment(epoch: UInt64, by: String?, yours: Bool, present: Bool, superseded: Bool, acts: Bool = false, actor: String? = nil)
     case propose(shard: ShardID, HostProposal)
-    case done(id: Int, error: String?)
+    /// The answer to proposal `id` (`ClientMessage.propose`), each
+    /// proposal answered once: done, or what was asked. To `mani`, the
+    /// answer to its command when no app takes it (`.done`, with why).
+    case reply(id: Int, Reply)
     /// A shard's history: the state its (compacted) log starts from, if
     /// any, and the entries since.
     case history(shard: ShardID, base: ShardSnapshot?, entries: [Entry])
@@ -745,10 +748,6 @@ public enum ServerMessage: Codable, Sendable {
     case show(id: Int, client: Int, block: BlockID, beside: BlockID?)
     /// A language server's diagnostics for a block, as they stand.
     case diagnostics(BlockID, [Diagnostic])
-    /// The answer to a `lsp` proposal.
-    case lspResult(id: Int, LSPResult)
-    /// The answer to a `scip` proposal.
-    case scipResult(id: Int, SCIPResult)
     /// A language server's state: starting, ready, or gone, with a word.
     case languageServer(language: String, root: String, state: String)
     /// How the host's ssh agent stands (§8.6): said on hello, and as it
@@ -756,18 +755,6 @@ public enum ServerMessage: Codable, Sendable {
     case agentLink(AgentLinkStatus)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
-
-    /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
-    /// be read; `complete` false when the tree had more than asked for.
-    case listing(id: Int, entries: [DirectoryEntry]?, complete: Bool)
-    /// A project's languages, most first (nil: it can't be read).
-    case languages(id: Int, [Linguist.Count]?)
-    case fileHistory(id: Int, FileHistoryResult)
-    /// What `lookUpPaths` asked, path by path, in order (nil: nothing
-    /// there); fewer than asked when the host ran out of time looking.
-    case pathKinds(id: Int, [PathKind?])
-    /// What `machine` asked; nil if the host couldn't read it.
-    case machine(id: Int, MachineSample?)
     /// What a notebook's running cell has printed so far (its end, if
     /// long): sent as it comes, not kept; the cell's output is written
     /// when it ends (§7.7).
@@ -776,6 +763,27 @@ public enum ServerMessage: Codable, Sendable {
     /// echoing, lines edited): the Mac's keyboard kept from other apps
     /// while it is (§9). Said as it changes, not kept.
     case passwordInput(block: BlockID, Bool)
+}
+
+public extension ServerMessage {
+    /// What a proposal is answered with (`reply`): done, with what went
+    /// wrong if anything — or, for a question, its answer.
+    enum Reply: Codable, Sendable {
+        case done(String?)
+        /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
+        /// be read; `complete` false when the tree had more than asked for.
+        case listing(entries: [DirectoryEntry]?, complete: Bool)
+        /// What `lookUpPaths` asked, path by path, in order (nil: nothing
+        /// there); fewer than asked when the host ran out of time looking.
+        case pathKinds([PathKind?])
+        /// A project's languages, most first (nil: it can't be read).
+        case languages([Linguist.Count]?)
+        case fileHistory(FileHistoryResult)
+        /// What `machine` asked; nil if the host couldn't read it.
+        case machine(MachineSample?)
+        case lsp(LSPResult)
+        case scip(SCIPResult)
+    }
 }
 
 /// A `mani` command as the app is asked to do it: the command and what it

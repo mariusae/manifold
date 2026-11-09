@@ -248,7 +248,7 @@ final class HostClient {
     /// first (or never was) — so no one waits on an answer that can't come.
     private var waiting: [Int: Waiting] = [:]
     private struct Waiting {
-        let answer: (Any) -> Void
+        let answer: (ServerMessage.Reply) -> Void
         let drop: () -> Void
     }
     /// What the host's server can do beyond its protocol (`welcome`).
@@ -513,19 +513,16 @@ final class HostClient {
         }
     }
 
-    /// Asks the host something, `done` with its answer — or with `offline`
-    /// at once when not attached, and when the link drops before it comes.
-    private func ask<T>(_ proposal: Proposal, offline: T, _ done: @escaping (T) -> Void) {
+    /// Asks the host something, `done` with its answer as `read` takes it
+    /// from the reply — or with `offline` at once when not attached, when
+    /// the link drops before it comes, and when the reply isn't one `read`
+    /// takes (a server that couldn't say, `.done` with why).
+    private func ask<T>(_ proposal: Proposal, offline: T, _ read: @escaping (ServerMessage.Reply) -> T?, _ done: @escaping (T) -> Void) {
         guard conn != nil else { return done(offline) }
         let id = nextProposal
         nextProposal += 1
-        waiting[id] = Waiting(answer: { ($0 as? T).map(done) }, drop: { done(offline) })
+        waiting[id] = Waiting(answer: { done(read($0) ?? offline) }, drop: { done(offline) })
         conn?.send(.message(ClientMessage.propose(id: id, proposal)))
-    }
-
-    /// The answer to proposal `id`, to whoever's waiting on it.
-    private func answer<T>(_ id: Int, _ value: T) {
-        waiting.removeValue(forKey: id)?.answer(value)
     }
 
     /// Asks the host to do something only it can; `done` with what went
@@ -539,17 +536,32 @@ final class HostClient {
             conn?.send(.message(ClientMessage.propose(id: id, proposal)))
             return
         }
-        ask(proposal, offline: "not attached" as String?, done)
+        ask(proposal, offline: "not attached" as String?, { r -> String?? in
+            guard case let .done(error) = r else { return .some(nil) }
+            return .some(error)
+        }, done)
     }
 
     /// Asks the block's host's language server something.
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
-        ask(.lsp(request), offline: .error("not attached"), done)
+        ask(.lsp(request), offline: .error("not attached"), { r in
+            switch r {
+            case let .lsp(result): result
+            case let .done(error): .error(error ?? "no answer")
+            default: nil
+            }
+        }, done)
     }
 
     /// A question for the host's SCIP index of a file's project (§2.5).
     func scip(_ request: SCIPRequest, done: @escaping (SCIPResult) -> Void) {
-        ask(.scip(request), offline: .error("not attached"), done)
+        ask(.scip(request), offline: .error("not attached"), { r in
+            switch r {
+            case let .scip(result): result
+            case let .done(error): .error(error ?? "no answer")
+            default: nil
+            }
+        }, done)
     }
 
     /// A folder's entries, ignored ones marked (§7.4).
@@ -561,7 +573,7 @@ final class HostClient {
     /// for none, not attached. Fewer than asked when the host ran out of
     /// time looking.
     func lookUp(_ paths: [String], done: @escaping ([PathKind?]?) -> Void) {
-        ask(.lookUpPaths(paths: paths), offline: nil, done)
+        ask(.lookUpPaths(paths: paths), offline: nil, { r -> [PathKind?]?? in if case let .pathKinds(k) = r { .some(k) } else { nil } }, done)
     }
 
     /// Whether the host's server can read its machine (one from before can't).
@@ -574,7 +586,19 @@ final class HostClient {
         guard conn != nil, readsMachine else { return done(nil) }
         var q = query
         q.since = machineHistory.last?.at
-        ask(.machine(q), offline: nil, done)
+        ask(.machine(q), offline: nil, { r -> MachineSample?? in if case let .machine(s) = r { .some(s) } else { nil } }) { [weak self] (sample: MachineSample?) in
+            if let sample, let self {
+                // The history, what's new added on, five minutes kept.
+                let last = self.machineHistory.last?.at ?? 0
+                self.machineHistory += sample.history.filter { $0.at > last }
+                let cutoff = sample.at - 300
+                if let i = self.machineHistory.firstIndex(where: { $0.at >= cutoff }), i > 0 { self.machineHistory.removeFirst(i) }
+                var kept = sample
+                kept.history = []
+                self.machineLatest = kept
+            }
+            done(sample)
+        }
     }
 
     /// The tree under a folder, less what's ignored, named relative to it.
@@ -584,16 +608,24 @@ final class HostClient {
 
     /// A project's languages as GitHub counts them (§2.6), from its host.
     func languages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) {
-        ask(.languages(path: path), offline: nil, done)
+        ask(.languages(path: path), offline: nil, { r -> [Linguist.Count]?? in if case let .languages(c) = r { .some(c) } else { nil } }, done)
     }
 
     /// A file's history, as the host's version control has it.
     func fileHistory(_ request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void) {
-        ask(.fileHistory(request), offline: .error("not attached"), done)
+        ask(.fileHistory(request), offline: .error("not attached"), { r in
+            switch r {
+            case let .fileHistory(result): result
+            case let .done(error): .error(error ?? "no answer")
+            default: nil
+            }
+        }, done)
     }
 
     private func list(_ proposal: Proposal, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
-        ask(proposal, offline: Listing(entries: nil, complete: false)) { done($0.entries, $0.complete) }
+        ask(proposal, offline: Listing(entries: nil, complete: false), { r in
+            if case let .listing(entries, complete) = r { Listing(entries: entries, complete: complete) } else { nil }
+        }) { done($0.entries, $0.complete) }
     }
     private struct Listing { var entries: [DirectoryEntry]?; var complete: Bool }
 
@@ -1345,9 +1377,9 @@ final class HostClient {
             onAttachment?()
         case let .propose(shard, proposal):
             lower(proposal, into: shard)
-        case let .done(id, error):
-            if let error { NSLog("proposal %d: %@", id, error) }
-            answer(id, error)
+        case let .reply(id, r):
+            if case let .done(error?) = r { NSLog("proposal %d: %@", id, error) }
+            waiting.removeValue(forKey: id)?.answer(r)
         case let .history(shard, base, entries):
             delegate?.client(self, history: shard, base: base, entries: entries)
         case let .command(id, client, request):
@@ -1364,34 +1396,10 @@ final class HostClient {
         case let .gutter(block, marks):
             gutters[block] = marks
             delegate?.client(self, gutter: block)
-        case let .lspResult(id, result):
-            answer(id, result)
-        case let .scipResult(id, result):
-            answer(id, result)
         case let .notebookLive(block, cell, output):
             delegate?.client(self, notebookLive: block, cell: cell, output: output)
         case let .passwordInput(block, on):
             SecureInput.shared.set(block, readingPassword: on)
-        case let .listing(id, entries, complete):
-            answer(id, Listing(entries: entries, complete: complete))
-        case let .languages(id, counts):
-            answer(id, counts)
-        case let .fileHistory(id, result):
-            answer(id, result)
-        case let .pathKinds(id, kinds):
-            answer(id, kinds)
-        case let .machine(id, sample):
-            if let sample {
-                // The history, what's new added on, five minutes kept.
-                let last = machineHistory.last?.at ?? 0
-                machineHistory += sample.history.filter { $0.at > last }
-                let cutoff = sample.at - 300
-                if let i = machineHistory.firstIndex(where: { $0.at >= cutoff }), i > 0 { machineHistory.removeFirst(i) }
-                var kept = sample
-                kept.history = []
-                machineLatest = kept
-            }
-            answer(id, sample)
         case let .agentLink(status):
             agentLink = status
             delegate?.clientChanged(self)

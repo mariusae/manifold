@@ -363,6 +363,32 @@ private final class Inbox: @unchecked Sendable {
     #expect(noBuild == nil)
 }
 
+@Test func everyAnswerComesAsOneReplyAndReadsBackAsSent() throws {
+    func back(_ r: ServerMessage.Reply, id: Int = 7) -> ServerMessage.Reply? {
+        guard case let .reply(got, r)? = Frame.message(ServerMessage.reply(id: id, r)).decode(ServerMessage.self), got == id else { return nil }
+        return r
+    }
+    guard case .done(nil)? = back(.done(nil)) else { Issue.record("done"); return }
+    guard case .done("exists")? = back(.done("exists")) else { Issue.record("done, failing"); return }
+    let entry = DirectoryEntry(name: "a.txt", isDirectory: false, size: 3, modified: 1_793_000_000, isHidden: false, isIgnored: true)
+    guard case let .listing(entries, true)? = back(.listing(entries: [entry], complete: true)) else { Issue.record("listing"); return }
+    #expect(entries == [entry])
+    guard case .listing(nil, false)? = back(.listing(entries: nil, complete: false)) else { Issue.record("listing, unread"); return }
+    guard case let .pathKinds(kinds)? = back(.pathKinds([.file, nil, .folder])) else { Issue.record("path kinds"); return }
+    #expect(kinds == [.file, nil, .folder])
+    guard case let .languages(counts)? = back(.languages([Linguist.Count(name: "Swift", bytes: 12)])) else { Issue.record("languages"); return }
+    #expect(counts == [Linguist.Count(name: "Swift", bytes: 12)])
+    guard case .languages(nil)? = back(.languages(nil)) else { Issue.record("languages, unread"); return }
+    guard case .fileHistory(.error("no repository"))? = back(.fileHistory(.error("no repository"))) else { Issue.record("file history"); return }
+    guard case .fileHistory(.untracked)? = back(.fileHistory(.untracked)) else { Issue.record("file history, untracked"); return }
+    guard case .machine(nil)? = back(.machine(nil)) else { Issue.record("machine"); return }
+    guard case .lsp(.hover("a function"))? = back(.lsp(.hover("a function"))) else { Issue.record("lsp"); return }
+    guard case .lsp(.none)? = back(.lsp(.none)) else { Issue.record("lsp, nothing"); return }
+    guard case .scip(.error("not indexed"))? = back(.scip(.error("not indexed"))) else { Issue.record("scip"); return }
+    // Numbered as asked: the id is the proposal's.
+    guard case .reply(123_456, .done(nil))? = Frame.message(ServerMessage.reply(id: 123_456, .done(nil))).decode(ServerMessage.self) else { Issue.record("id"); return }
+}
+
 @Test func aTTYModeGoesAsAByteAndOnlyToAnAppThatAsks() throws {
     let mode: TTYMode = [.echo, .canonical]
     #expect(TTYMode(mode.frame) == mode)
