@@ -204,7 +204,7 @@ final class TextView: NSView, NSTextInputClient {
         return CGFloat((b.commits[i].at - a.oldest) / (a.newest - a.oldest))
     }
 
-    private func drawBlame(line n: Int, top lineTop: CGFloat, height: CGFloat, first: Int, font gutterFont: NSFont) {
+    private func drawBlame(line n: Int, top lineTop: CGFloat, height: CGFloat, first: Int) {
         guard blame != nil, let idx = blameIndex(n) else { return }
         let x0 = Self.insets.left, w = blameWidth - 8
         Theme.text.withAlphaComponent(idx < 0 ? 0.13 : 0.025 + 0.11 * recency(idx)).setFill()
@@ -278,16 +278,15 @@ final class TextView: NSView, NSTextInputClient {
     /// border) — 5 points after the widest number, clear of a digit and of
     /// the marks by the text.
     private var markX: CGFloat { textLeft - 25 }
-    /// A digit's width in the gutter's font: read at every layout and
-    /// draw, so measured once a size.
-    private var gutterDigitWidth: CGFloat {
-        let size = max(9, font.pointSize * 0.78)
-        if let w = Self.digitWidths[size] { return w }
-        let w = ceil(("0" as NSString).size(withAttributes: [.font: NSFont.systemDigits(ofSize: size)]).width)
-        Self.digitWidths[size] = w
-        return w
+    /// The gutter's face for the line numbers and the blame, and a digit's
+    /// width in it (read at every layout and draw): set with the font.
+    private var gutter = TextView.gutter(for: .systemFont(ofSize: 14))
+    private var gutterFont: NSFont { gutter.font }
+    private var gutterDigitWidth: CGFloat { gutter.digit }
+    private static func gutter(for font: NSFont) -> (font: NSFont, digit: CGFloat) {
+        let face = NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78))
+        return (face, ceil(("0" as NSString).size(withAttributes: [.font: face]).width))
     }
-    private static var digitWidths: [CGFloat: CGFloat] = [:]
 
     // Selection.
     private(set) var selections: [Selection] = [Selection(at: 0)] {
@@ -575,6 +574,7 @@ final class TextView: NSView, NSTextInputClient {
 
     private func fontChanged() {
         boldFont = Self.bold(of: font)
+        gutter = Self.gutter(for: font)
         let a = CTFontGetAscent(font), d = CTFontGetDescent(font), l = CTFontGetLeading(font)
         lineHeight = ceil((a + d + l) * lineHeightMultiple)
         averageAdvance = ("abcdefghijklmnopqrstuvwxyz " as NSString).size(withAttributes: [.font: font]).width / 27
@@ -760,8 +760,12 @@ final class TextView: NSView, NSTextInputClient {
     /// The tints behind a row's chips (code spans, blocks' links): drawn
     /// under the text, around each such run.
     private func drawChips(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
-        guard let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return }
-        ctx.restoreGState()
+        let runs = runs(in: row)
+        guard !runs.isEmpty else { return }
+        withViewCoordinates(ctx) { drawChips(runs, at: rowTop) }
+    }
+
+    private func drawChips(_ runs: [Run], at rowTop: CGFloat) {
         var x0: CGFloat?, x1: CGFloat = 0
         var color: NSColor?
         func flush() {
@@ -772,28 +776,49 @@ final class TextView: NSView, NSTextInputClient {
             x0 = nil
             color = nil
         }
-        if let first = runs.first, (CTRunGetAttributes(first) as NSDictionary)[MarkdownStyle.codeBlock] != nil {
+        if let first = runs.first, first.attributes[MarkdownStyle.codeBlock] != nil {
             markdownPalette.codeTint.setFill()
             NSRect(x: textLeft - 6, y: rowTop, width: max(0, bounds.width - Self.insets.right - textLeft + 12), height: lineHeight).fill()
-            ctx.saveGState()
-            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
             return
         }
         for run in runs {
-            let attrs = CTRunGetAttributes(run) as NSDictionary
-            let range = CTRunGetStringRange(run)
-            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
-            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
+            let attrs = run.attributes
             if let tint = attrs[MarkdownStyle.chip] as? NSColor, attrs[MarkdownStyle.hidden] == nil {
-                if x0 == nil || tint !== color { flush(); x0 = start; color = tint }
-                x1 = start + width
+                if x0 == nil || tint !== color { flush(); x0 = run.x; color = tint }
+                x1 = run.x + run.width
             } else if attrs[MarkdownStyle.hidden] == nil {
                 flush()
             }
         }
         flush()
+    }
+
+    /// A run of a row: its attributes, and where it is across the row.
+    private struct Run {
+        let run: CTRun
+        let row: CTLine
+        var attributes: NSDictionary { CTRunGetAttributes(run) as NSDictionary }
+        var x: CGFloat { CTLineGetOffsetForStringIndex(row, CTRunGetStringRange(run).location, nil) }
+        var width: CGFloat { CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil)) }
+    }
+
+    private func runs(in row: CTLine) -> [Run] {
+        (CTLineGetGlyphRuns(row) as? [CTRun] ?? []).map { Run(run: $0, row: row) }
+    }
+
+    /// The text's state for drawing a row (its matrix flipped for this
+    /// flipped view), saved over the view's; `restoreGState` ends it.
+    private func beginText(_ ctx: CGContext) {
         ctx.saveGState()
         ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+    }
+
+    /// Drawn by AppKit's means in the midst of the text: the text's state
+    /// put aside for `draw`, then taken up again.
+    private func withViewCoordinates(_ ctx: CGContext, _ draw: () -> Void) {
+        ctx.restoreGState()
+        draw()
+        beginText(ctx)
     }
 
     private func attributes() -> [NSAttributedString.Key: Any] {
@@ -826,6 +851,9 @@ final class TextView: NSView, NSTextInputClient {
         let b = n + 1 < text.lineCount ? top(ofLine: n + 1) : frame.height
         return t + CGFloat(min(max(l - Double(n), 0), 1)) * (b - t)
     }
+
+    /// The bottom of a logical line's last row.
+    func bottom(ofLine n: Int) -> CGFloat { top(ofLine: n) + CGFloat(layout(line: n).rows.count) * lineHeight }
 
     func top(ofLine n: Int) -> CGFloat {
         ensureRowStarts(through: n)
@@ -971,8 +999,8 @@ final class TextView: NSView, NSTextInputClient {
 
     /// Where line `n`'s note is drawn: under its rows.
     private func noteRect(ofLine n: Int) -> NSRect? {
-        guard let l = noteLayouts[n], let lineLayout = layouts[n], !hiddenLines.contains(n) else { return nil }
-        let y = top(ofLine: n) + CGFloat(lineLayout.rows.count) * lineHeight + 4
+        guard let l = noteLayouts[n], layouts[n] != nil, !hiddenLines.contains(n) else { return nil }
+        let y = bottom(ofLine: n) + 4
         return NSRect(x: textLeft, y: y, width: l.width + 14, height: l.height + 2)
     }
 
@@ -1173,7 +1201,7 @@ final class TextView: NSView, NSTextInputClient {
     /// layer of their own, the letters then cleared from it, so only the
     /// light is left for the text to be drawn over.
     private func drawGlow(_ row: CTLine, at origin: CGPoint, _ ctx: CGContext) {
-        let runs = (CTLineGetGlyphRuns(row) as? [CTRun] ?? []).filter { (CTRunGetAttributes($0) as NSDictionary)[Self.glows] != nil }
+        let runs = runs(in: row).filter { $0.attributes[Self.glows] != nil }.map(\.run)
         guard !runs.isEmpty else { return }
         let dark = effectiveAppearance.isDark
         var color = Self.linkColor.cgColor
@@ -1211,43 +1239,37 @@ final class TextView: NSView, NSTextInputClient {
     /// A block's pill over its link's run (§7): the symbol, name and
     /// status its tile's pill shows, at the row's height.
     private func drawPills(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
-        guard let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return }
-        var drew = false
-        for run in runs {
-            let attrs = CTRunGetAttributes(run) as NSDictionary
-            guard let look = attrs[MarkdownStyle.pill] as? PillLook else { continue }
-            if !drew { ctx.restoreGState(); drew = true }
-            let range = CTRunGetStringRange(run)
-            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
-            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
-            let r = NSRect(x: textLeft + start, y: rowTop + 1.5, width: width, height: lineHeight - 3)
-            let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-            LinkCapsule.fill.setFill()
-            capsule.fill()
-            LinkCapsule.edge.setStroke()
-            capsule.lineWidth = LinkCapsule.edgeWidth
-            capsule.stroke()
-            var x = r.minX + 8
-            if let image = Self.tinted(look.symbol, size: LinkCapsule.symbolSize, color: Theme.secondaryText) {
-                image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            }
-            x += 18
-            let title = NSAttributedString(string: look.title, attributes: [.font: MarkdownStyle.pillFont, .foregroundColor: Theme.text])
-            let size = title.size()
-            title.draw(at: NSPoint(x: x, y: r.midY - size.height / 2))
-            if let status = look.status {
-                let g = NSRect(x: r.maxX - 8 - 11, y: r.midY - 5.5, width: 11, height: 11)
-                // The glyph is drawn y up: the square flipped back for it.
-                ctx.saveGState()
-                ctx.translateBy(x: 0, y: g.minY + g.maxY)
-                ctx.scaleBy(x: 1, y: -1)
-                StatusGlyph.draw(status, in: g, phase: pillPhase)
-                ctx.restoreGState()
-            }
+        let pills = runs(in: row).compactMap { run in (run.attributes[MarkdownStyle.pill] as? PillLook).map { (run, $0) } }
+        guard !pills.isEmpty else { return }
+        withViewCoordinates(ctx) {
+            for (run, look) in pills { drawPill(look, over: run, at: rowTop, ctx) }
         }
-        if drew {
+    }
+
+    private func drawPill(_ look: PillLook, over run: Run, at rowTop: CGFloat, _ ctx: CGContext) {
+        let r = NSRect(x: textLeft + run.x, y: rowTop + 1.5, width: run.width, height: lineHeight - 3)
+        let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        LinkCapsule.fill.setFill()
+        capsule.fill()
+        LinkCapsule.edge.setStroke()
+        capsule.lineWidth = LinkCapsule.edgeWidth
+        capsule.stroke()
+        var x = r.minX + 8
+        if let image = Self.tinted(look.symbol, size: LinkCapsule.symbolSize, color: Theme.secondaryText) {
+            image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        x += 18
+        let title = NSAttributedString(string: look.title, attributes: [.font: MarkdownStyle.pillFont, .foregroundColor: Theme.text])
+        let size = title.size()
+        title.draw(at: NSPoint(x: x, y: r.midY - size.height / 2))
+        if let status = look.status {
+            let g = NSRect(x: r.maxX - 8 - 11, y: r.midY - 5.5, width: 11, height: 11)
+            // The glyph is drawn y up: the square flipped back for it.
             ctx.saveGState()
-            ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+            ctx.translateBy(x: 0, y: g.minY + g.maxY)
+            ctx.scaleBy(x: 1, y: -1)
+            StatusGlyph.draw(status, in: g, phase: pillPhase)
+            ctx.restoreGState()
         }
     }
 
@@ -1276,14 +1298,10 @@ final class TextView: NSView, NSTextInputClient {
         let r = min(max(Int((p.y - top(ofLine: n)) / lineHeight), 0), l.rows.count - 1)
         let row = l.rows[r]
         let x = p.x - textLeft
-        guard x >= 0, let runs = CTLineGetGlyphRuns(row) as? [CTRun] else { return nil }
-        for run in runs {
-            let attrs = CTRunGetAttributes(run) as NSDictionary
-            guard let target = attrs[MarkdownStyle.target] as? String else { continue }
-            let range = CTRunGetStringRange(run)
-            let start = CTLineGetOffsetForStringIndex(row, range.location, nil)
-            let width = CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil))
-            if x >= start, x <= start + width { return target }
+        guard x >= 0 else { return nil }
+        for run in runs(in: row) {
+            guard let target = run.attributes[MarkdownStyle.target] as? String else { continue }
+            if x >= run.x, x <= run.x + run.width { return target }
         }
         return nil
     }
@@ -1298,49 +1316,28 @@ final class TextView: NSView, NSTextInputClient {
 
         if let h = highlightedLine, h >= first, h <= last, h < text.lineCount {
             Self.lineHighlight.setFill()
-            NSRect(x: 0, y: top(ofLine: h), width: bounds.width, height: CGFloat(layout(line: h).rows.count) * lineHeight).fill()
+            NSRect(x: 0, y: top(ofLine: h), width: bounds.width, height: bottom(ofLine: h) - top(ofLine: h)).fill()
         }
 
         // Pinned symbols' uses, each its colour; the caret's symbol's other
         // uses, faintly; matches, then selections' backgrounds.
-        if !pinned.isEmpty {
-            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
-            for (h, color) in pinnedUses() where h.end >= firstOffset && h.start <= lastOffset {
-                color.setFill()
-                rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill() }
-            }
-        }
-        if !symbolUses.isEmpty {
-            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
-            Self.useColor.setFill()
-            for h in symbolUses where h.end >= firstOffset && h.start <= lastOffset {
-                rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.08), xRadius: 3, yRadius: 3).fill() }
-            }
-        }
-        if !highlights.isEmpty {
-            let firstOffset = text.offset(ofLine: first), lastOffset = text.lineRange(last).end
-            Self.matchColor.setFill()
-            for h in highlights where h.end >= firstOffset && h.start <= lastOffset {
-                drawSelection(h, from: first, to: last)
-            }
+        let shown = TextRange(text.offset(ofLine: first), text.lineRange(last).end)
+        for (h, color) in pinned.isEmpty ? [] : pinnedUses() { fillBands([h], color, within: shown, from: first, to: last) }
+        fillBands(symbolUses, Self.useColor, within: shown, from: first, to: last)
+        Self.matchColor.setFill()
+        for h in highlights where h.end >= shown.start && h.start <= shown.end {
+            rows(of: h, from: first, to: last, extendingBreaks: true) { $0.fill() }
         }
         Self.selectionColor.setFill()
         for s in selections where !s.isCaret {
-            drawSelection(s.range, from: first, to: last)
+            rows(of: s.range, from: first, to: last, extendingBreaks: true) { $0.fill() }
         }
         drawStructure(from: first, to: last)
         // The link under the pointer (⌘ held), on its band.
-        if let h = hoveredLink, !h.isEmpty {
-            Self.linkHover.setFill()
-            rows(of: h, from: first, to: last) { r in
-                NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill()
-            }
-        }
+        if let h = hoveredLink, !h.isEmpty { fillBands([h], Self.linkHover, within: shown, from: first, to: last) }
 
         // Text.
-        ctx.saveGState()
-        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        let gutterFont = NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78))
+        beginText(ctx)
         foldChips = [:]
         for n in first...last {
             if hiddenLines.contains(n) { continue }
@@ -1349,11 +1346,10 @@ final class TextView: NSView, NSTextInputClient {
             if showsLineNumbers {
                 let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: gutterColor])
                 let size = s.size()
-                ctx.restoreGState()
-                drawBlame(line: n, top: lineTop, height: CGFloat(max(l.rows.count, 1)) * lineHeight, first: first, font: gutterFont)
-                s.draw(at: NSPoint(x: Self.insets.left + blameWidth + 2, y: lineTop + (lineHeight - size.height) / 2))
-                ctx.saveGState()
-                ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+                withViewCoordinates(ctx) {
+                    drawBlame(line: n, top: lineTop, height: CGFloat(max(l.rows.count, 1)) * lineHeight, first: first)
+                    s.draw(at: NSPoint(x: Self.insets.left + blameWidth + 2, y: lineTop + (lineHeight - size.height) / 2))
+                }
             }
             guard !l.text.isEmpty else { continue }
             for (r, row) in l.rows.enumerated() {
@@ -1368,16 +1364,10 @@ final class TextView: NSView, NSTextInputClient {
                 if markdown { drawPills(in: row, at: rowTop, ctx) }
             }
             if cardLines[n] != nil {
-                ctx.restoreGState()
-                drawCard(ofLine: n)
-                ctx.saveGState()
-                ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+                withViewCoordinates(ctx) { drawCard(ofLine: n) }
             }
             if noteLayouts[n] != nil || foldStarts[n] != nil || placeByLine[n]?.links.isEmpty == false || (placeByLine[n]?.threads ?? 0) > 0 {
-                ctx.restoreGState()
-                drawPlace(ofLine: n, layout: l, top: lineTop)
-                ctx.saveGState()
-                ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+                withViewCoordinates(ctx) { drawPlace(ofLine: n, layout: l, top: lineTop) }
             }
         }
         ctx.restoreGState()
@@ -1393,12 +1383,11 @@ final class TextView: NSView, NSTextInputClient {
                     (m.kind == .added ? Self.addedColor : Self.modifiedColor).setFill()
                     let end = min(m.line + m.count, text.lineCount) - 1
                     guard end >= m.line else { continue }
-                    let y0 = top(ofLine: m.line)
-                    let y1 = top(ofLine: end) + CGFloat(layout(line: end).rows.count) * lineHeight
+                    let y0 = top(ofLine: m.line), y1 = bottom(ofLine: end)
                     NSRect(x: x, y: y0 + 1, width: 3, height: y1 - y0 - 2).fill()
                 case .deleted:
                     Self.deletedColor.setFill()
-                    let y = m.line < text.lineCount ? top(ofLine: m.line) : top(ofLine: text.lineCount - 1) + CGFloat(layout(line: text.lineCount - 1).rows.count) * lineHeight
+                    let y = m.line < text.lineCount ? top(ofLine: m.line) : bottom(ofLine: text.lineCount - 1)
                     let p = NSBezierPath()
                     p.move(to: NSPoint(x: x, y: y - 4))
                     p.line(to: NSPoint(x: x + 7, y: y))
@@ -1474,32 +1463,10 @@ final class TextView: NSView, NSTextInputClient {
         convert(caretRect(offset), to: nil)
     }
 
-    private func rows(of range: TextRange, from first: Int, to last: Int, _ each: (NSRect) -> Void) {
-        let text = self.text
-        let startLine = max(text.line(at: range.start), first)
-        let endLine = min(text.line(at: range.end), last)
-        guard startLine <= endLine else { return }
-        for n in startLine...endLine where !hiddenLines.contains(n) {
-            let l = layout(line: n)
-            let lineStart = text.offset(ofLine: n)
-            let lineEnd = lineStart + l.text.utf8.count
-            let s = max(range.start, lineStart), e = min(range.end, lineEnd)
-            let su = utf16Index(in: l.text, byteOffset: s - lineStart)
-            let eu = utf16Index(in: l.text, byteOffset: e - lineStart)
-            let lineTop = top(ofLine: n)
-            for (r, row) in l.rows.enumerated() {
-                let rs = l.rowStarts[r]
-                let re = r + 1 < l.rowStarts.count ? l.rowStarts[r + 1] : (l.text as NSString).length
-                let a = max(su, rs), b = min(eu, re)
-                guard a <= b, su <= re, eu >= rs else { continue }
-                let x1 = CTLineGetOffsetForStringIndex(row, a, nil)
-                let x2 = CTLineGetOffsetForStringIndex(row, b, nil)
-                each(NSRect(x: textLeft + x1, y: lineTop + CGFloat(r) * lineHeight, width: max(x2 - x1, 0), height: lineHeight))
-            }
-        }
-    }
-
-    private func drawSelection(_ range: TextRange, from first: Int, to last: Int) {
+    /// Each row's rectangle a range covers, lines `first` through `last`.
+    /// `extendingBreaks` (a selection's): over a line break, to the end of
+    /// the row and a little past it.
+    private func rows(of range: TextRange, from first: Int, to last: Int, extendingBreaks: Bool = false, _ each: (NSRect) -> Void) {
         let text = self.text
         let startLine = max(text.line(at: range.start), first)
         let endLine = min(text.line(at: range.end), last)
@@ -1519,11 +1486,19 @@ final class TextView: NSView, NSTextInputClient {
                 guard a <= b, su <= re, eu >= rs else { continue }
                 let x1 = CTLineGetOffsetForStringIndex(row, a, nil)
                 var x2 = CTLineGetOffsetForStringIndex(row, b, nil)
-                // A selection over a line break shows to the end of the row.
-                if range.end > lineEnd, b == re { x2 += 6 }
-                if x2 <= x1 { x2 = x1 + (range.end > lineEnd && b == re ? 6 : 0) }
-                NSRect(x: textLeft + x1, y: lineTop + CGFloat(r) * lineHeight, width: max(x2 - x1, 0), height: lineHeight).fill()
+                if extendingBreaks, range.end > lineEnd, b == re { x2 = max(x2, x1) + 6 }
+                each(NSRect(x: textLeft + x1, y: lineTop + CGFloat(r) * lineHeight, width: max(x2 - x1, 0), height: lineHeight))
             }
+        }
+    }
+
+    /// Bands behind ranges (uses, the link under the pointer): rounded,
+    /// a little wider and shorter than their rows. Only those within
+    /// `shown`, the lines drawn.
+    private func fillBands(_ ranges: [TextRange], _ color: NSColor, within shown: TextRange, from first: Int, to last: Int) {
+        color.setFill()
+        for h in ranges where h.end >= shown.start && h.start <= shown.end {
+            rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill() }
         }
     }
 
@@ -2712,13 +2687,18 @@ final class TextView: NSView, NSTextInputClient {
     /// lines), as it's taken hold of — a little wider than it's drawn —
     /// and the definition.
     private var scopeBar: (rect: NSRect, range: TextRange)? {
-        guard showsLineNumbers, !structure.declarations.isEmpty else { return nil }
+        guard showsLineNumbers, let d = caretDefinition else { return nil }
+        let y0 = top(ofLine: d.first), y1 = bottom(ofLine: d.last)
+        return (NSRect(x: textLeft - 8, y: y0 + 2, width: 7, height: y1 - y0 - 4), d.range)
+    }
+
+    /// The innermost definition the caret's in, if it spans lines: its
+    /// first and last lines, and its text.
+    private var caretDefinition: (first: Int, last: Int, range: TextRange)? {
         let head = primarySelection.head
         guard let d = structure.declarations.last(where: { $0.range.start <= head && head <= $0.range.end }) else { return nil }
         let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
-        guard b > a else { return nil }
-        let y0 = top(ofLine: a), y1 = top(ofLine: b) + CGFloat(layout(line: b).rows.count) * lineHeight
-        return (NSRect(x: textLeft - 8, y: y0 + 2, width: 7, height: y1 - y0 - 4), d.range)
+        return b > a ? (a, b, d.range) : nil
     }
 
     /// The definition the bar's beside, dragged out: a reference to it
@@ -3439,14 +3419,10 @@ extension TextView {
             NSRect(x: x, y: (y - px / 2).rounded(.down), width: max(bounds.width - Self.insets.right - x, 0), height: px).fill()
         }
         // The innermost definition the caret's in, if it spans lines.
-        let head = primarySelection.head
-        if let d = s.declarations.last(where: { $0.range.start <= head && head <= $0.range.end }) {
-            let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
-            if b > a, b >= first, a <= last {
-                let y0 = top(ofLine: a), y1 = top(ofLine: b) + CGFloat(layout(line: b).rows.count) * lineHeight
-                textColor.withAlphaComponent(0.2).setFill()
-                NSRect(x: textLeft - 5, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
-            }
+        if let d = caretDefinition, d.last >= first, d.first <= last {
+            let y0 = top(ofLine: d.first), y1 = bottom(ofLine: d.last)
+            textColor.withAlphaComponent(0.2).setFill()
+            NSRect(x: textLeft - 5, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
         }
     }
 
@@ -3457,12 +3433,11 @@ extension TextView {
     func drawFirstRow(ofLine n: Int, at top: CGFloat, dx: CGFloat, in ctx: CGContext) {
         let l = layout(line: n)
         if showsLineNumbers {
-            let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: NSFont.systemDigits(ofSize: max(9, font.pointSize * 0.78)), .foregroundColor: gutterColor])
+            let s = NSAttributedString(string: "\(n + 1)", attributes: [.font: gutterFont, .foregroundColor: gutterColor])
             s.draw(at: NSPoint(x: Self.insets.left + blameWidth + 2 + dx, y: top + (lineHeight - s.size().height) / 2))
         }
         guard let row = l.rows.first, !l.text.isEmpty else { return }
-        ctx.saveGState()
-        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        beginText(ctx)
         ctx.textPosition = CGPoint(x: textLeft + dx, y: top + ascent)
         CTLineDraw(row, ctx)
         ctx.restoreGState()
