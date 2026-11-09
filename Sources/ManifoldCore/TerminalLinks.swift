@@ -62,8 +62,9 @@ public enum TerminalLinks {
     }
 
     /// A block's reference (`manifold:host/id`, a place after `#`), as an
-    /// agent prints one: an address, opening the block.
-    static let reference = "manifold:[A-Za-z0-9]+/[0-9A-Za-z]+(#[A-Za-z0-9=._-]+)?"
+    /// agent prints one: an address, opening the block. The one pattern a
+    /// reference has (a host's name may have dots and dashes).
+    static let reference = BlockID.referencePattern
 
     private static let opening = Set("([{<\"'`".unicodeScalars)
     private static let closing = Set(")]}>\"'`,;.".unicodeScalars)
