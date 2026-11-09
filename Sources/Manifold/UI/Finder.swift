@@ -416,8 +416,8 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         background.state = .active
         panel.contentView = background
 
-        let glass = NSImageView(image: NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)!
-            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))!)
+        // The ⇧⌘A menu's field, as every search over the window has it.
+        let glass = NSImageView(image: Theme.symbol("magnifyingglass", size: 13, weight: .regular) ?? NSImage())
         glass.contentTintColor = Theme.secondaryText
         glass.frame = NSRect(x: 16, y: 0, width: 22, height: Self.fieldHeight)
         background.addSubview(glass)
@@ -425,7 +425,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 17)
+        field.font = UIType.hudField
         field.placeholderString = "Open quickly…"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
@@ -885,7 +885,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         reachMarker.frame = NSRect(x: Self.width - 16 - marker.width, y: height - Self.fieldHeight + (Self.fieldHeight - marker.height) / 2,
                                    width: marker.width, height: marker.height)
         let markerRoom = marker.width > 0 ? marker.width + 12 : 0
-        field.frame = NSRect(x: 46 + chipsWidth, y: height - Self.fieldHeight + 12, width: Self.width - 64 - chipsWidth - markerRoom, height: 24)
+        // In the middle of its band, by the line its font takes.
+        let lineHeight = ceil(field.intrinsicContentSize.height)
+        field.frame = NSRect(x: 46 + chipsWidth, y: height - Self.fieldHeight + ((Self.fieldHeight - lineHeight) / 2).rounded(),
+                             width: Self.width - 64 - chipsWidth - markerRoom, height: lineHeight)
         scroll.frame = NSRect(x: 0, y: hintHeight, width: Self.width, height: listHeight)
         // The counts in what the keys leave them.
         layoutCounts(width: Self.width - 40)

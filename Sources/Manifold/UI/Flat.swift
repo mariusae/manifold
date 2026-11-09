@@ -145,7 +145,7 @@ final class FlatFieldBox: NSView {
     /// What's in it changed: typed, or emptied by its cross.
     var onChange: () -> Void = {}
 
-    init(symbol: String? = "magnifyingglass", clears: Bool = true, fontSize: CGFloat = 13) {
+    init(symbol: String? = "magnifyingglass", clears: Bool = true, fontSize: CGFloat = UIType.field.pointSize) {
         self.clears = clears
         super.init(frame: NSRect(x: 0, y: 0, width: 160, height: Flat.fieldHeight))
         if let symbol {

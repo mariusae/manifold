@@ -32,6 +32,11 @@ enum UIType {
     static let heading = NSFont.systemFont(ofSize: 15, weight: .semibold)
     static let title = NSFont.systemFont(ofSize: 13, weight: .semibold)
     static let row = NSFont.systemFont(ofSize: 13)
+    /// What's typed in a search over the window — ⇧⌘A, ⌘O, ⌘P, the
+    /// footer's menus — and in one in the sidebar or a tile (a folder's, a
+    /// tile's outline, Search's, Processes').
+    static let hudField = NSFont.systemFont(ofSize: 15)
+    static let field = NSFont.systemFont(ofSize: 13)
     static let body = NSFont.systemFont(ofSize: 12)
     static let detail = NSFont.systemFont(ofSize: 11.5)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .medium)

@@ -65,7 +65,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 15)
+        field.font = UIType.hudField
         field.placeholderString = placeholder
         field.delegate = self
         hintLabel.font = .systemFont(ofSize: 12, weight: .medium)

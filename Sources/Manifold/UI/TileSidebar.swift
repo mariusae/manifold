@@ -110,7 +110,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         search.isSelectable = true
         search.placeholderString = "Filter"
         search.controlSize = .small
-        search.font = UIType.body
+        search.font = UIType.field
         search.focusRingType = .none
         // A quiet grey capsule, as the other fields and chips are; no bezel.
         search.isBezeled = false

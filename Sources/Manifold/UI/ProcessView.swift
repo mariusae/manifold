@@ -37,7 +37,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private var blockSort: (key: String, ascending: Bool)?
     private var machine: MachineSample?
     private var asked: Date?
-    private let fieldBox = FlatFieldBox(fontSize: 12)
+    private let fieldBox = FlatFieldBox()
     private var field: FlatField { fieldBox.field }
     private let status = NSTextField(labelWithString: "")
     private let end = FlatButton("End")
