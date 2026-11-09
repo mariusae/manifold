@@ -417,6 +417,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// Shows a tree; rows open as they were, or as `openByDefault` says
     /// the first time; the row `selected` is highlighted.
     func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
+        shows += 1
         // The same rows in the same places (most of what comes, as the
         // sidebar is made again after each change): the new values taken
         // over and only the rows that look different redrawn — a reload
@@ -701,6 +702,10 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }.joined(separator: "\n")
     }
 
+    /// Times the rows have been given (`show`): a row taken away by a
+    /// build is shown again once they've been given since.
+    private var shows = 0
+
     /// What a tile's row shows, wiped in from its right (the tile pouring
     /// into it there) — or out, the other way — after `delay`, over `d`.
     func wipe(_ p: PlacementID, in appearing: Bool, after delay: Double, over d: Double) {
@@ -765,9 +770,24 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         x.beginTime = CACurrentMediaTime() + delay
         x.fillMode = .backwards
         m.add(x, forKey: "build")
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + d + 0.05) { [weak layer, weak m] in
+        // Done: the mask goes — built up, at once; taken away, once the
+        // rows have been given again (the row gone, or moved: a tile put
+        // back from the dock is the same row under On Screen, and the
+        // mask went with it, the row blank there for good), or after a
+        // while whatever happens.
+        let given = shows
+        weak var row = layer, mask = m
+        func settle(_ tries: Int) {
+            guard let row, let mask, row.mask === mask else { return }
+            if progress.last! >= 1 || shows != given || tries >= 30 {
+                row.mask = nil
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { settle(tries + 1) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + d + 0.05) {
             ink?.removeFromSuperlayer()
-            if progress.last! >= 1, let layer, layer.mask === m { layer.mask = nil }
+            settle(0)
         }
     }
 
