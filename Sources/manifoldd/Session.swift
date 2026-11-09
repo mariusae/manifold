@@ -161,12 +161,26 @@ final class Session {
         return Data(line.utf8)
     }
 
-    /// Hangs up on the shell, as closing a terminal window does.
+    /// Hangs up on the shell, as closing a terminal window does; one that
+    /// ignores it is killed a while on. Until it has exited the session
+    /// keeps itself — the server lets go of it at once (a block deleted)
+    /// — so the shell is still reaped and its pty closed (§ M1).
     func terminate() {
         guard !exited else { return }
+        keptUntilExit = self
         kill(-pid, SIGHUP)
         kill(pid, SIGHUP)
+        queue.asyncAfter(deadline: .now() + Self.killAfter) { [weak self] in
+            guard let self, !self.exited else { return }
+            log("session \(self.id): the shell ignored its hang-up; killed")
+            kill(self.pid, SIGKILL)
+        }
     }
+
+    /// Itself, from being hung up on until its shell has exited.
+    private var keptUntilExit: Session?
+    /// How long a shell hung up on has to end before it's killed.
+    static let killAfter: TimeInterval = 5
 
     /// Ends the shell for having lain idle off screen; its exit is recorded
     /// as dormancy.
@@ -588,6 +602,7 @@ final class Session {
         attachments = []
         for conn in conns { conn.close() }
         onExit?(status)
+        keptUntilExit = nil
     }
 
     /// A shell named in the host's preferences, as a path to run: the

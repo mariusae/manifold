@@ -80,6 +80,8 @@ let package = Package(
         .testTarget(name: "ManifoldCoreTests", dependencies: ["ManifoldCore"]),
         .testTarget(name: "ManifoldMarkdownTests", dependencies: ["ManifoldMarkdown"]),
         .testTarget(name: "ManifoldSyntaxTests", dependencies: ["ManifoldSyntax"]),
+        .testTarget(name: "ManifoldAppTests", dependencies: ["Manifold"]),
+        .testTarget(name: "ManifolddTests", dependencies: ["manifoldd"]),
     ],
     swiftLanguageModes: [.v5]
 )

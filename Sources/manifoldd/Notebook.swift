@@ -139,11 +139,22 @@ final class NotebookShell {
         if group > 0, group != pid { kill(-group, SIGKILL) } else { interrupt() }
     }
 
+    /// Hangs up on the shell; one that ignores it is killed a while on.
+    /// Kept by itself until it has exited, as a terminal's session is
+    /// (§ M2): the server lets go of it at once.
     func terminate() {
         guard !exited else { return }
+        keptUntilExit = self
         kill(-pid, SIGHUP)
         kill(pid, SIGHUP)
+        queue.asyncAfter(deadline: .now() + Session.killAfter) { [weak self] in
+            guard let self, !self.exited else { return }
+            kill(self.pid, SIGKILL)
+        }
     }
+
+    /// Itself, from being hung up on until its shell has exited.
+    private var keptUntilExit: NotebookShell?
 
     // MARK: Reading
 
@@ -251,7 +262,11 @@ final class NotebookShell {
 
     private func processExited() {
         guard !exited else { return }
+        // Reaped: not left a zombie (nothing else waits for it).
+        var status: Int32 = 0
+        guard waitpid(pid, &status, WNOHANG) == pid else { return }
         exited = true
+        exitWatch.cancel()
         log("notebook \(id) shell exited")
         if busy {
             busy = false
@@ -262,5 +277,6 @@ final class NotebookShell {
         readSource.cancel()
         try? FileManager.default.removeItem(at: folder)
         onExit?()
+        keptUntilExit = nil
     }
 }
