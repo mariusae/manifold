@@ -1694,13 +1694,14 @@ extension Palette {
                 failed: failed,
                 running: blue,
                 attention: attention),
-            // GitHub's own washes: its blue into violet into a little of
-            // its pink; by night its navy into indigo.
+            // GitHub's own gradients (Universe's, Copilot's): its blue into
+            // violet into magenta, and a teal; by night navy, indigo, plum
+            // and a deep teal. (Brightness as the calibrated space has it.)
             backdrop: Backdrop(
-                light: .init(stops: [(0.58, 0.14, 0.97), (0.64, 0.12, 0.97), (0.74, 0.10, 0.98), (0.56, 0.07, 0.99)],
-                             pool: (0.14, 1), tintPool: (0.28, 1)),
-                dark: .init(stops: [(0.60, 0.48, 0.22), (0.64, 0.42, 0.21), (0.73, 0.38, 0.21), (0.60, 0.32, 0.13)],
-                            pool: (0.45, 0.3), tintPool: (0.6, 0.34)),
+                light: .init(stops: [(0.57, 0.28, 0.98), (0.71, 0.24, 0.97), (0.87, 0.22, 0.99), (0.47, 0.20, 0.97)],
+                             pool: (0.2, 1), tintPool: (0.38, 1)),
+                dark: .init(stops: [(0.60, 0.58, 0.27), (0.71, 0.50, 0.25), (0.86, 0.44, 0.23), (0.48, 0.50, 0.17)],
+                            pool: (0.5, 0.32), tintPool: (0.62, 0.36)),
                 tileShadow: (Theme.hex(0x1F2328), 0.08),
                 // Rex's panes' hairline: #dfdfe1, #2a3038.
                 tileEdge: muted))
