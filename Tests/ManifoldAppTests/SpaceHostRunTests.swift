@@ -31,3 +31,30 @@ import ManifoldCore
     let colors = SpaceStripView.colors(for: [far, near])
     #expect(colors[far] != colors[near])
 }
+
+// Each host's line stands off whatever it's on — every theme's wash, its
+// pools, its panel — by its lightness, not its hue alone: seen by anyone,
+// colour-blind too.
+@MainActor
+@Test func everyHostsLineStandsOffEveryThemesGround() {
+    for palette in Palette.all {
+        for dark in [false, true] {
+            for i in SpaceStripView.hostPalette.indices {
+                let line = SpaceStripView.lineColor(i, palette: palette, dark: dark)
+                for ground in SpaceStripView.grounds(palette, dark: dark) {
+                    let c = Tints.contrast(line, ground)
+                    #expect(c >= 3, "host \(i)'s line on \(palette.id) \(dark ? "dark" : "light"): \(c):1")
+                }
+            }
+        }
+    }
+}
+
+// The line sits clear of a chosen square's ring.
+@MainActor
+@Test func aLineSitsClearOfAChosenSquaresRing() {
+    // The ring: 2 out from the square, 1.5 wide.
+    #expect(SpaceStripView.underlineDrop > 2 + 0.75 + 1.5)
+    // And clear of the next row.
+    #expect(SpaceStripView.underlineDrop + SpaceStripView.underlineWidth + 3 <= SpaceStripView.gap + SpaceStripView.underlineRoom)
+}

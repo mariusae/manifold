@@ -95,7 +95,7 @@ enum Tints {
 
     /// `color` blended toward `toward` in small steps until it stands off
     /// `ground` by `ratio`.
-    private static func reaching(_ ratio: CGFloat, from color: NSColor, on ground: NSColor, toward: NSColor) -> NSColor {
+    static func reaching(_ ratio: CGFloat, from color: NSColor, on ground: NSColor, toward: NSColor) -> NSColor {
         var c = color
         var f: CGFloat = 0
         while contrast(c, ground) < ratio, f < 1 {

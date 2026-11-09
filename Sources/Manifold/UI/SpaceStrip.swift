@@ -99,9 +99,13 @@ final class SpaceStripView: NSView {
     private(set) var pending: [Pending] = []
     private var pills: [NSRect] = []
     /// Each remote host's colour, its spaces underlined in it.
-    private var hostColors: [HostID: NSColor] = [:]
+    private var hostColors: [HostID: Int] = [:]
     /// More between rows when there are underlines, so each is its row's.
-    static let underlineRoom: CGFloat = 4
+    static let underlineRoom: CGFloat = 8
+    /// An underline: how far under its squares (clear of a chosen
+    /// square's ring), and how thick.
+    static let underlineDrop: CGFloat = 4.5
+    static let underlineWidth: CGFloat = 2
     private var hoveredPill: Int? { didSet { if hoveredPill != oldValue { needsDisplay = true } } }
     /// Each pill's turning ring (or a host unreachable's mark), by host.
     private var glyphs: [HostID: StatusGlyph] = [:]
@@ -241,19 +245,46 @@ final class SpaceStripView: NSView {
 
     /// The colours remote hosts are told apart by: each host's its own,
     /// the same wherever it's seen (from its name), another's if two
-    /// would share one.
-    static let hostPalette: [NSColor] = [.systemBlue, .systemOrange, .systemPurple, .systemTeal, .systemPink,
-                                         .systemGreen, .systemIndigo, .systemYellow, .systemBrown, .systemRed]
+    /// would share one. Deep by day and light by night, so a line stands
+    /// off the ground by its lightness and not its hue alone (seen by
+    /// anyone, colour-blind too); blue and orange first, the pair most
+    /// told apart. No brown (that deep, a grey) nor red (a failure's).
+    static let hostPalette: [Shade] = [
+        .hex(0x0B5CAD, 0x6CB6FF), .hex(0xA14F00, 0xFFB35C), .hex(0x6F42C1, 0xC3A6FF), .hex(0x00756A, 0x4FD1C5),
+        .hex(0xA3307A, 0xFF8FC8), .hex(0x2E7D32, 0x7DDC7F), .hex(0x3949AB, 0x9FA8FF), .hex(0x7A5C00, 0xE8C547),
+    ]
 
-    static func colors(for hosts: [HostID]) -> [HostID: NSColor] {
-        var out: [HostID: NSColor] = [:], taken = Set<Int>()
+    /// What a line must stand off its ground by: more than the 3:1 asked
+    /// of a mark, the wash being lit and turned a little by the day.
+    static let lineContrast: CGFloat = 3.5
+
+    /// What a line can be over in a theme: its wash's colours, the pools
+    /// of light laid on it, and the panel (the sidebar not pinned).
+    static func grounds(_ palette: Palette, dark: Bool) -> [NSColor] {
+        let wash = palette.backdrop.wash(dark: dark)
+        let pools = wash.stops.map { NSColor(calibratedHue: $0.0, saturation: wash.pool.saturation, brightness: wash.pool.brightness, alpha: 1) }
+        return (BackdropView.colors(of: wash) + pools + [palette.chrome.panel.color(dark: dark)]).map { $0.usingColorSpace(.sRGB) ?? $0 }
+    }
+
+    /// Host `i`'s line in a theme: its colour, deepened (by day) or
+    /// lightened (by night) until it stands off every ground it can be on.
+    static func lineColor(_ i: Int, palette: Palette = .current, dark: Bool) -> NSColor {
+        var c = hostPalette[i % hostPalette.count].color(dark: dark).usingColorSpace(.sRGB)!
+        for g in grounds(palette, dark: dark) {
+            c = Tints.reaching(lineContrast, from: c, on: g, toward: dark ? .white : .black)
+        }
+        return c
+    }
+
+    static func colors(for hosts: [HostID]) -> [HostID: Int] {
+        var out: [HostID: Int] = [:], taken = Set<Int>()
         for host in hosts {
             var h: UInt32 = 2166136261
             for b in host.description.utf8 { h = (h ^ UInt32(b)) &* 16777619 }
             var i = Int(h % UInt32(hostPalette.count))
             for _ in hostPalette.indices where taken.contains(i) { i = (i + 1) % hostPalette.count }
             taken.insert(i)
-            out[host] = hostPalette[i]
+            out[host] = i
         }
         return out
     }
@@ -283,7 +314,8 @@ final class SpaceStripView: NSView {
     /// Its height at a width: as many rows as it takes.
     func wantedHeight(width: CGFloat) -> CGFloat {
         guard let last = place(width: width).frames.last else { return Self.height }
-        return last.maxY + (Self.height - Self.side) / 2
+        // Room under the last row's underline, if it has one.
+        return last.maxY + (Self.height - Self.side) / 2 + (hostColors.isEmpty ? 0 : Self.underlineRoom / 2)
     }
 
     override func layout() {
@@ -334,9 +366,10 @@ final class SpaceStripView: NSView {
         }
         // Another machine's spaces: underlined in its colour, row by row
         // (this Mac's aren't), so a host's begun even where a row has.
+        let dark = effectiveAppearance.isDark
         for run in hostRuns() {
-            let line = NSRect(x: run.rect.minX + 2, y: run.rect.maxY + 2, width: run.rect.width - 4, height: 2)
-            (hostColors[run.host] ?? Theme.secondaryText).withAlphaComponent(0.8).setFill()
+            let line = NSRect(x: run.rect.minX + 2, y: run.rect.maxY + Self.underlineDrop, width: run.rect.width - 4, height: Self.underlineWidth)
+            (hostColors[run.host].map { Self.lineColor($0, dark: dark) } ?? Theme.secondaryText).setFill()
             NSBezierPath(roundedRect: line, xRadius: 1, yRadius: 1).fill()
         }
         // A host still being reached: a capsule, its ring turning in it.
