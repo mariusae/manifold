@@ -338,28 +338,24 @@ extension EditorView {
     func textView(_ view: TextView, follow target: String, over: Bool) { delegate?.editor(self, follow: target, over: over) }
 
     func textView(_ view: TextView, commandClickAt offset: Int, over: Bool) {
-        if let url = urlAt(offset) { delegate?.editor(self, open: url, over: over); return }
+        if let target = linkAt(offset) { delegate?.editor(self, follow: target, over: over); return }
         definition(at: offset, over: over)
     }
 
-    /// A web address under an offset, if the line has one there.
-    private func urlAt(_ offset: Int) -> URL? {
+    /// What's under an offset to go to before a definition: an address (a
+    /// web link, a block's reference), or a file named with its line as a
+    /// compiler or a log names one (`main.c:12`), as a terminal's is.
+    private func linkAt(_ offset: Int) -> String? {
         let text = textView.text
         guard text.lineCount > 0 else { return nil }
         let n = text.line(at: offset)
-        let range = text.lineRange(n)
+        let start = text.offset(ofLine: n)
         let line = text.lineText(n)
-        let col = offset - range.start
-        guard let re = try? NSRegularExpression(pattern: #"(?:https?://|manifold:)[^\s<>"'`)\]]+"#) else { return nil }
-        let ns = line as NSString
-        for m in re.matches(in: line, range: NSRange(location: 0, length: ns.length)) {
-            // Offsets are in UTF-16 units either way for ASCII-only lines;
-            // near enough for a click.
-            if m.range.location <= col, col <= m.range.location + m.range.length {
-                var s = ns.substring(with: m.range)
-                while let last = s.last, ".,;:!?".contains(last) { s.removeLast() }
-                return URL(string: s)
-            }
+        let before = String(decoding: text.bytes(in: TextRange(start, offset)), as: UTF8.self)
+        if let found = TextLinks.address(at: before.utf16.count, in: line) { return found.address }
+        if let file = TerminalLinks.link(at: before.unicodeScalars.count, in: line), file.standing != .possible,
+           FileLocation.split(file.target)?.line != nil {
+            return file.target
         }
         return nil
     }

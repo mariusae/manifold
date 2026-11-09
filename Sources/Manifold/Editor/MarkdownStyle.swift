@@ -62,7 +62,7 @@ enum MarkdownStyle {
     private static let sizeNote = try! NSRegularExpression(pattern: #"\G<!--\s*\{[^{}\n]*\}\s*-->"#)
     /// A block's reference written bare (`manifold:host/id#place`, as an
     /// agent writes one): its pill too.
-    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'/\w])"# + BlockID.referencePattern)
+    private static let reference = TextLinks.bareReference
     private static let heading = try! NSRegularExpression(pattern: #"^(#{1,6}) "#)
     private static let listItem = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|\d+[.)])(\s)"#)
     private static let quote = try! NSRegularExpression(pattern: #"^(>\s?)+"#)

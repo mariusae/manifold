@@ -3106,7 +3106,7 @@ final class TextView: NSView, NSTextInputClient {
         }
         guard isEditable, let s = pb.string(forType: .string) else { return }
         // In Markdown, an address pasted over words links them: [words](address).
-        if !plain, acceptsBlockLinks, Self.isAddress(s), selections.contains(where: { !$0.isCaret }) {
+        if !plain, acceptsBlockLinks, TextLinks.isAddress(s), selections.contains(where: { !$0.isCaret }) {
             let address = s.trimmingCharacters(in: .whitespacesAndNewlines)
             var reps: [(TextRange, String)] = []
             var after: [Selection] = []
@@ -3144,16 +3144,9 @@ final class TextView: NSView, NSTextInputClient {
         let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg"), NSPasteboard.PasteboardType("public.heic")]
         guard let image = types.firstIndex(where: imageTypes.contains) else { return types.contains(.fileURL) }
         guard let s = pb.string(forType: .string), let text = types.firstIndex(of: .string) else { return true }
-        if types.contains(.fileURL) || isAddress(s) || image < text { return true }
+        if types.contains(.fileURL) || TextLinks.isAddress(s) || image < text { return true }
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return !t.contains(where: \.isWhitespace) && BlockKind.forFile(t) == .image
-    }
-
-    /// One address and nothing else: a web link, a file, or a block.
-    static func isAddress(_ s: String) -> Bool {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty, !t.contains(where: { $0.isWhitespace }) else { return false }
-        return t.hasPrefix("http://") || t.hasPrefix("https://") || t.hasPrefix("file://") || t.hasPrefix("manifold:")
     }
 
     // MARK: NSTextInputClient

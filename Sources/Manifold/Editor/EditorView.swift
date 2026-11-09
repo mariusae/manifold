@@ -12,12 +12,11 @@ protocol EditorViewDelegate: AnyObject {
     /// An image put in the text (pasted, dropped, from an iPhone): kept as
     /// an image block, and shown where the caret is.
     func editor(_ view: EditorView, image data: Data, kind: String)
-    /// A web address was ⌘-clicked.
-    func editor(_ view: EditorView, open url: URL, over: Bool)
     /// A block was dropped in as a link (§3.11): linked to this one.
     func editor(_ view: EditorView, linkedFrom block: BlockID)
-    /// A link in the text was clicked: a block's pill, or an address;
-    /// with ⌥ (`over`), what opens goes over this tile.
+    /// A link in the text was clicked (a block's pill, or an address), or
+    /// ⌘-clicked (an address, a file at a line); with ⌥ (`over`), what
+    /// opens goes over this tile.
     func editor(_ view: EditorView, follow target: String, over: Bool)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?

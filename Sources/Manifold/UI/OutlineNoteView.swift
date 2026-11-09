@@ -798,13 +798,11 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
             for run in span.markup { storage.addAttribute(.noteHidden, value: true, range: run) }
         }
         // A block's reference written bare: a link to it.
-        for m in Self.reference.matches(in: storage.string, range: body) {
+        for m in TextLinks.bareReference.matches(in: storage.string, range: body) {
             guard let url = URL(string: text.substring(with: m.range)) else { continue }
             storage.addAttributes([.link: url, .foregroundColor: Theme.accent], range: m.range)
         }
     }
-
-    private static let reference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + BlockID.referencePattern)
 
     /// `==text==`'s ground: a highlighter's yellow, the text reading through it.
     static let highlighter = NSColor.themed { $0.code.highlighter }

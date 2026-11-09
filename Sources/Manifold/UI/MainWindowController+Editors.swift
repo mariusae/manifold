@@ -127,10 +127,6 @@ extension MainWindowController: EditorViewDelegate {
         hosts.scip(request, on: view.block.host, done: done)
     }
 
-    func editor(_ view: EditorView, open url: URL, over: Bool) {
-        open(url.absoluteString, from: view.placement, over: over)
-    }
-
     func terminal(_ view: TerminalView, setCopyOnSelect on: Bool) {
         var s = desk.settings
         s.copyOnSelect = on

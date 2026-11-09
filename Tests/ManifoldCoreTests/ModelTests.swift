@@ -1610,6 +1610,24 @@ private final class Seen: @unchecked Sendable {
     #expect(TerminalLinks.links(in: "gone.txt:4:", exists: { _ in false }).isEmpty)
 }
 
+@Test func addressesAreReadOneWay() {
+    // One address and nothing else: any scheme with "//", mailto:, a block's.
+    #expect(TextLinks.isAddress(" https://example.com/a \n"))
+    #expect(TextLinks.isAddress("file:///tmp/x") && TextLinks.isAddress("mailto:a@b.c"))
+    #expect(TextLinks.isAddress("manifold:h4z3gpme3et/01M64ZM5YBM5N0TANK7EW39X2Z"))
+    #expect(!TextLinks.isAddress("see https://example.com") && !TextLinks.isAddress("README.md:781") && !TextLinks.isAddress(""))
+    // In a line: the one under the place (by UTF-16), its punctuation left off.
+    let line = "é see https://example.com/a?b=1). and manifold:my-host.local/01M64ZM5YBM5N0TANK7EW39X2Z#line=4!"
+    #expect(TextLinks.address(at: 10, in: line)?.address == "https://example.com/a?b=1")
+    #expect(TextLinks.address(at: 50, in: line)?.address == "manifold:my-host.local/01M64ZM5YBM5N0TANK7EW39X2Z#line=4")
+    #expect(TextLinks.address(at: 2, in: line) == nil)
+    // A terminal's address ends where a sentence's does.
+    #expect(TerminalLinks.links(in: "go to https://example.com/a!").map(\.target) == ["https://example.com/a"])
+    // A bare reference in prose, not a link's address nor a path's part.
+    let refs = "manifold:h/01M64ZM5YBM5N0TANK7EW39X2Z [x](manifold:h/01M64ZM5YBM5N0TANK7EW39X2Z) a=manifold:h/01M64ZM5YBM5N0TANK7EW39X2Z"
+    #expect(TextLinks.bareReference.matches(in: refs, range: NSRange(location: 0, length: (refs as NSString).length)).count == 1)
+}
+
 @Test func linksNotLookedForAreLikelyOrPossible() {
     // Not looked for (another host's): a path by its look, unsure; a bare
     // name only when asked for, to be looked for.

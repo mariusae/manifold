@@ -86,8 +86,8 @@ public enum InlineMarkup {
     private static let wiki = try! NSRegularExpression(pattern: #"\[\[([^\[\]|\n]+)(?:\|([^\[\]\n]*))?\]\]"#)
     /// `[text](address)`, or with a title after the address: `[text](address "title")`.
     private static let link = try! NSRegularExpression(pattern: #"\[([^\[\]\n]+)\]\(([^)\s]*)(?:\s+"([^"\n]*)")?\)"#)
-    private static let autolink = try! NSRegularExpression(pattern: #"<(https?://[^\s<>]+)>"#)
-    private static let url = try! NSRegularExpression(pattern: #"\bhttps?://[^\s<>\x{2028}]+[^\s<>.,;:!?)\]'"\x{2028}]"#)
+    private static let autolink = try! NSRegularExpression(pattern: "<(" + TextLinks.scheme + #"[^\s<>]+)>"#)
+    private static let url = TextLinks.url
     private static let tag = try! NSRegularExpression(pattern: #"(?<=^|\s)#\p{L}[\p{L}\p{N}/_-]*"#)
     private static let strong = try! NSRegularExpression(pattern: #"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
     private static let strike = try! NSRegularExpression(pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#)

@@ -545,8 +545,7 @@ extension NoteOutlineTextView {
     /// words, their link to it instead). False when it isn't that.
     func pasteLink(_ pasted: String, over range: NSRange) -> Bool {
         let address = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.contains(where: \.isWhitespace), let url = URL(string: address), let scheme = url.scheme?.lowercased(),
-              ["http", "https", "mailto", "manifold"].contains(scheme) else { return false }
+        guard TextLinks.isAddress(address), URL(string: address) != nil else { return false }
         let text = textStorage!.string as NSString
         let words = text.substring(with: range)
         guard !words.contains(NoteOutlineText.lineSeparator), !words.contains("\n"), URL(string: words)?.scheme == nil else { return false }

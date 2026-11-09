@@ -1,5 +1,66 @@
 import Foundation
 
+/// What in a line of text is an address — a web link, a file's, a
+/// block's reference — read one way wherever text is: a terminal's, an
+/// editor's, a note's, a paste.
+public enum TextLinks {
+    /// A scheme and "//" (`https://`, `file://`).
+    static let scheme = #"[A-Za-z][A-Za-z0-9+.-]*://"#
+
+    /// What an address doesn't end with: a sentence's punctuation, a
+    /// bracket or a quote closing around it.
+    static let trailing = Set(".,;:!?)]}>\"'`".unicodeScalars)
+
+    /// An address with what it doesn't end with taken off its end.
+    static func trimmed(_ s: Substring) -> Substring {
+        var s = s
+        while let last = s.unicodeScalars.last, trailing.contains(last) { s.removeLast() }
+        return s
+    }
+
+    /// One address and nothing else (space around it aside): a web link,
+    /// a file's, a mail's, or a block's.
+    public static func isAddress(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !t.contains(where: \.isWhitespace) else { return false }
+        return startsAsAddress(t)
+    }
+
+    /// Whether text starts as an address does: a scheme and "//", or one
+    /// that goes without (`mailto:`), or a block's (`manifold:`).
+    static func startsAsAddress(_ s: String) -> Bool {
+        s.range(of: "^" + scheme + #"\S"#, options: .regularExpression) != nil
+            || s.lowercased().hasPrefix("mailto:") || s.hasPrefix("manifold:")
+    }
+
+    /// A block's reference (`manifold:host/id`, a place after `#`): the one
+    /// pattern a reference has (a host's name may have dots and dashes).
+    public static let reference = BlockID.referencePattern
+
+    /// A reference written bare in prose — not a link's address, nor in
+    /// quotes or brackets, nor part of a longer word or path.
+    public static let bareReference = try! NSRegularExpression(pattern: #"(?<![(\[<"'=/\w])"# + reference)
+
+    /// A web address written bare in prose (`https://…`), what it doesn't
+    /// end with left out.
+    public static let url = try! NSRegularExpression(pattern: #"\b"# + scheme + #"[^\s<>\x{2028}]*[^\s<>.,;:!?)\]}'"`\x{2028}]"#)
+
+    /// The address at a place in a line (by UTF-16 offset) — a web
+    /// address, or a block's reference — and where it is in the line.
+    public static func address(at offset: Int, in line: String) -> (range: NSRange, address: String)? {
+        let ns = line as NSString
+        let all = NSRange(location: 0, length: ns.length)
+        for re in [url, anyReference] {
+            for m in re.matches(in: line, range: all) where m.range.location <= offset && offset <= NSMaxRange(m.range) {
+                return (m.range, ns.substring(with: m.range))
+            }
+        }
+        return nil
+    }
+
+    private static let anyReference = try! NSRegularExpression(pattern: reference)
+}
+
 /// What can be ⌘-clicked in a line of a terminal: addresses, and files —
 /// a path, perhaps with a line and a column as grep, compilers and the
 /// like print them (`path:line:column:` and then the text there).
@@ -21,7 +82,7 @@ public enum TerminalLinks {
 
         /// The file it names, the line and column left off; nil for an address.
         public var path: String? {
-            guard !TerminalLinks.isAddress(target) else { return nil }
+            guard !TextLinks.startsAsAddress(target) else { return nil }
             return target.split(separator: ":", maxSplits: 1).first.map(String.init) ?? target
         }
 
@@ -56,15 +117,6 @@ public enum TerminalLinks {
         }
         return "/" + parts.joined(separator: "/") + (path.hasSuffix("/") && !parts.isEmpty ? "/" : "")
     }
-
-    static func isAddress(_ s: String) -> Bool {
-        s.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://", options: .regularExpression) != nil || s.hasPrefix("manifold:")
-    }
-
-    /// A block's reference (`manifold:host/id`, a place after `#`), as an
-    /// agent prints one: an address, opening the block. The one pattern a
-    /// reference has (a host's name may have dots and dashes).
-    static let reference = BlockID.referencePattern
 
     private static let opening = Set("([{<\"'`".unicodeScalars)
     private static let closing = Set(")]}>\"'`,;.".unicodeScalars)
@@ -106,13 +158,12 @@ public enum TerminalLinks {
         guard a < b else { return nil }
         let word = String(String.UnicodeScalarView(s[a..<b]))
         // An address.
-        if let r = word.range(of: "^[A-Za-z][A-Za-z0-9+.-]*://\\S+", options: .regularExpression) {
-            var w = word[r]
-            while w.hasSuffix(":") { w.removeLast() }
+        if word.range(of: "^" + TextLinks.scheme + #"\S"#, options: .regularExpression) != nil {
+            let w = TextLinks.trimmed(word[...])
             return Link(range: a..<(a + w.unicodeScalars.count), target: String(w))
         }
         // A block's reference, alone or in a Markdown link (`[name](manifold:…)`).
-        if let r = word.range(of: reference, options: .regularExpression),
+        if let r = word.range(of: TextLinks.reference, options: .regularExpression),
            r.lowerBound == word.startIndex || word[..<r.lowerBound].hasSuffix("(") {
             let from = a + word[..<r.lowerBound].unicodeScalars.count
             return Link(range: from..<(from + word[r].unicodeScalars.count), target: String(word[r]))
