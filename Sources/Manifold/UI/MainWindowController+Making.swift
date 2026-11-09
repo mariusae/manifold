@@ -531,10 +531,10 @@ extension MainWindowController {
         case #selector(nextInInbox(_:)):
             return !inboxOrder().isEmpty
         case #selector(printTile(_:)):
-            return arrangement?.focused.flatMap { views[$0] } is Printable
+            return focusedView is Printable
         case #selector(goToLineOrAddress(_:)):
             // Named for what it will do in the focused tile.
-            let v = arrangement?.focused.flatMap { views[$0] }
+            let v = focusedView
             if v is EditorView { item.title = "Go to Line…"; return true }
             item.title = v?.pillEdit != nil ? "Edit Address" : "Go to Line…"
             return v?.pillEdit != nil

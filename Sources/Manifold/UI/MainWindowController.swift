@@ -226,15 +226,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onRefused = { [weak self] client in self?.sayWatching(client, again: true) }
         hosts.onGutter = { [weak self] block in
             guard let self else { return }
-            for case let e as EditorView in self.views.values where e.block == block { e.gutterChanged() }
+            for e in self.views(of: block, as: EditorView.self) { e.gutterChanged() }
         }
         hosts.onNotebookLive = { [weak self] block, cell, output in
             guard let self else { return }
-            for case let n as NotebookView in self.views.values where n.block == block { n.live(cell: cell, output: output) }
+            for n in self.views(of: block, as: NotebookView.self) { n.live(cell: cell, output: output) }
         }
         hosts.onDiagnostics = { [weak self] block in
             guard let self else { return }
-            for case let e as EditorView in self.views.values where e.block == block { e.diagnosticsChanged() }
+            for e in self.views(of: block, as: EditorView.self) { e.diagnosticsChanged() }
         }
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
                      NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
@@ -266,6 +266,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Rendering
 
     /// What's known of a placement on the desk.
+    /// The tiles showing a block (in any space), as a kind of view.
+    func views<T>(of block: BlockID, as: T.Type = PaneContent.self) -> [T] {
+        views.values.compactMap { $0.block == block ? $0 as? T : nil }
+    }
+
+    /// A tile showing a block, as a kind of view: the shown space's, if it
+    /// has one, else any.
+    func view<T>(of block: BlockID, as type: T.Type = PaneContent.self) -> T? {
+        arrangement?.placements(of: block).lazy.compactMap { self.views[$0.id] as? T }.first ?? views(of: block, as: type).first
+    }
+
+    /// The focused tile's view.
+    var focusedView: PaneContent? { focusedView }
+
+    /// The focused tile, and its view as a kind of view (nil when it's another).
+    func focused<T>(_ type: T.Type) -> (shown: Shown, view: T)? {
+        guard let f = focusedShown, let v = views[f.id] as? T else { return nil }
+        return (f, v)
+    }
+
     func shown(_ id: PlacementID) -> Shown? {
         for a in allWorkspaces.compactMap({ hosts.arrangement($0) }) {
             if let p = a.placement(id) { return shown(p) }
@@ -711,7 +731,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             t.setSidebar(viewState(of: p)["outline"] == "1")
             t.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
             SecureInput.shared.onChange = { [weak self] block in
-                for case let v as TerminalView in self?.views.values.map({ $0 }) ?? [] where v.block == block {
+                for v in self?.views(of: block, as: TerminalView.self) ?? [] {
                     v.readingPassword = SecureInput.shared.reading.contains(block)
                 }
             }

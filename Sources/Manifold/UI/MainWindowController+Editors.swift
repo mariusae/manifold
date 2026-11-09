@@ -30,7 +30,7 @@ extension MainWindowController: EditorViewDelegate {
         op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
-    var debugPrintOperation: NSPrintOperation? { (arrangement?.focused.flatMap { views[$0] } as? Printable)?.printOperation() }
+    var debugPrintOperation: NSPrintOperation? { (focusedView as? Printable)?.printOperation() }
 
     /// ⌘/: the focused tile's own sidebar, shown or put away — a
     /// Markdown text's headings, a PDF's contents and pages (§7.5).

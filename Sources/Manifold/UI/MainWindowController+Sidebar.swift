@@ -177,7 +177,7 @@ extension MainWindowController: OrganizationViewDelegate {
         } else {
             // Out of sight: its last picture (a terminal's screen as it
             // holds it), and the summary card says the rest.
-            if let t = views.values.first(where: { $0.block == id && $0 is TerminalView }) as? TerminalView,
+            if let t = view(of: id, as: TerminalView.self),
                let image = HoverCard.surfacePicture(of: t) {
                 picture = image
             } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is WebView) && !($0 is MarkdownView) }),

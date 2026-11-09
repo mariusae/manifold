@@ -23,7 +23,7 @@ extension MainWindowController: GridDelegate {
         guard let b = hosts.block(block), var at = fragment.flatMap(Locator.init(fragment:)), var s = b.summary(at: at) else { return cardContent(for: block) }
         if let id = at.anchorID, let legible = b.anchors?[id]?.legible { at = legible }
         var thumbnail: NSImage?
-        if case let .command(id) = at, let t = views.values.first(where: { $0.block == block }) as? TerminalView, let out = t.transcript(ofCommand: id)?.1 {
+        if case let .command(id) = at, let t = view(of: block, as: TerminalView.self), let out = t.transcript(ofCommand: id)?.1 {
             s.lines += out.split(separator: "\n").map { Block.oneLine(String($0)) }.filter { !$0.isEmpty }.suffix(2)
         }
         if case let .page(n) = at, block.host == host.host, let path = b.path,
@@ -40,7 +40,7 @@ extension MainWindowController: GridDelegate {
     /// as it was last seen. `view`: its tile's, if it has one shown.
     func cardContent(for block: BlockID, view: PaneContent? = nil, id: PlacementID = "") -> SummaryCardContent? {
         guard let b = hosts.block(block) else { return nil }
-        let view = view ?? views.values.first { $0.block == block }
+        let view = view ?? self.view(of: block)
         var s = b.summary()
         // A shell's screen says more than its command: its last lines (not
         // the prompt waiting at the end).

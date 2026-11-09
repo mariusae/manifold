@@ -182,7 +182,7 @@ extension MainWindowController {
             // (a git block's, a search's, a folder's, its homepage's sidebar's
             // or search's), dragged together.
             guard spec.count > 1, let id = BlockID(string: spec[1]),
-                  let v = views.values.first(where: { $0.block == id }) else { return "chosen <block> [sidebar|results]" }
+                  let v = view(of: id) else { return "chosen <block> [sidebar|results]" }
             if let g = v as? GitView { several = g.debugDragItems }
             else if let d = v as? DirectoryView { several = d.debugDragItems(from: spec.count > 2 ? spec[2] : nil) }
             else if let r = v as? SearchView { several = r.debugDragItems }
@@ -222,17 +222,17 @@ extension MainWindowController {
             item = rows[n].drag?([])
         case "from":
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
-                  let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "from <terminal> <i>" }
+                  let source = view(of: t, as: TerminalView.self) else { return "from <terminal> <i>" }
             item = source.debugOutlineDrag(n)
         case "cell":
             // "cell <notebook> <i>": that cell dragged by its gutter.
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
-                  let source = views.values.first(where: { $0.block == t }) as? NotebookView else { return "cell <notebook> <i>" }
+                  let source = view(of: t, as: NotebookView.self) else { return "cell <notebook> <i>" }
             item = source.debugCellDrag(n)
         case "dot":
             // "dot <terminal> <command id>": that command's dot dragged.
             guard spec.count == 3, let t = BlockID(string: spec[1]), let n = Int(spec[2]),
-                  let source = views.values.first(where: { $0.block == t }) as? TerminalView else { return "dot <terminal> <command id>" }
+                  let source = view(of: t, as: TerminalView.self) else { return "dot <terminal> <command id>" }
             item = source.debugDotDrag(n)
         default:
             return "drop block|place|file|finder|text|url|image|row|from|dot|chosen … [as <form>] [grid <column> <at>]"
@@ -299,7 +299,7 @@ extension MainWindowController {
     /// which keeps its own count of what's saved and names a note's file;
     /// else straight to its file.
     func save(_ block: BlockID, from placement: PlacementID) {
-        let editors = views.values.compactMap { $0 as? EditorView }.filter { $0.block == block }
+        let editors = views(of: block, as: EditorView.self)
         if let e = editors.first(where: { $0.placement == placement }) ?? editors.first { return e.saveDocument(nil) }
         guard let b = hosts.block(block), b.path != nil, !b.needsRead, let t = b.text else { return NSSound.beep() }
         hosts.propose(.writeFile(block, version: t.version))

@@ -10,7 +10,7 @@ extension MainWindowController {
 
     var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
     var debugFocusedMarkdown: MarkdownView? { focusedShown.flatMap { views[$0.id] as? MarkdownView } }
-    var debugFocusedView: NSView? { focusedShown.flatMap { views[$0.id] } }
+    var debugFocusedView: NSView? { focusedView }
     var debugFocusedWebView: WKWebView? {
         guard let v = debugFocusedView else { return nil }
         func find(_ v: NSView) -> WKWebView? { (v as? WKWebView) ?? v.subviews.lazy.compactMap(find).first }
@@ -286,7 +286,7 @@ extension MainWindowController {
     }
 
     func debugOutputs(_ verb: String) -> String {
-        let focused = arrangement?.focused.flatMap { views[$0] as? OutputView }
+        let focused = (focusedView as? OutputView)
         if verb == "copy" { return focused?.debugCopy() ?? "no output focused" }
         if verb == "back" { focused?.debugBack(); return focused == nil ? "no output focused" : "ok" }
         if verb.hasPrefix("find ") { return focused?.debugFind(String(verb.dropFirst(5))) ?? "no output focused" }
@@ -297,8 +297,8 @@ extension MainWindowController {
         }.joined(separator: "\n---\n")
     }
     /// The outline lens made last (placement ids sort by time).
-    var debugFocusedTerminal: TerminalView? { arrangement?.focused.flatMap { views[$0] as? TerminalView } }
-    var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
+    var debugFocusedTerminal: TerminalView? { (focusedView as? TerminalView) }
+    var debugFocusedEditor: EditorView? { (focusedView as? EditorView) }
 
     func debugSidebar(show: Bool) {
         if show { showSidebar(animated: false) } else { hideWork.cancel(); hideSidebar() }
