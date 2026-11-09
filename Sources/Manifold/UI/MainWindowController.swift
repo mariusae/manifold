@@ -3913,12 +3913,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Organizations (§3.6)
 
     private var organizationWork: DispatchWorkItem?
-    /// The block the Links organization is centered on, when not the focused.
 
     var organization: Organization {
-        // (The inspector was once the sidebar's: it's a window of its own now.)
-        let org = Organization(rawValue: hosts.state.window.organization ?? "") ?? .desk
-        return org == .inspector ? .desk : org
+        // One no longer known (the inspector, once the sidebar's): the desk.
+        Organization(rawValue: hosts.state.window.organization ?? "") ?? .desk
     }
 
     @objc func organizeByDesk(_ sender: Any?) { setOrganization(.desk) }
@@ -4313,7 +4311,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .desk: return deskTree()
         case .files: return filesTree()
         case .closed: return closedTree()
-        case .inspector: return inspectorTree()
         case .threads: return ([], []) // the timeline, not a tree
         }
     }
