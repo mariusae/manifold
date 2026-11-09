@@ -395,12 +395,7 @@ final class Session {
         if to > req.limit { from = max(from, to - req.limit) }
         let lost = from > req.from
         func piece(_ lo: UInt64, _ hi: UInt64, _ rows: Data) -> Frame {
-            var d = Data(capacity: 18 + rows.count)
-            withUnsafeBytes(of: lo.bigEndian) { d.append(contentsOf: $0) }
-            withUnsafeBytes(of: hi.bigEndian) { d.append(contentsOf: $0) }
-            withUnsafeBytes(of: screen.width.bigEndian) { d.append(contentsOf: $0) }
-            d.append(rows)
-            return Frame(.data, d)
+            Frame(.data, BackfillPiece(from: lo, to: hi, width: screen.width, rows: rows).encoded)
         }
         let seam = Data("\u{1b}[0m\u{1b}[2m── earlier output not kept ──\u{1b}[0m".utf8)
         var hi = to

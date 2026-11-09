@@ -41,6 +41,31 @@ public enum FrameKind: UInt8, Sendable {
     case linkAck = 9
 }
 
+/// Integers in bytes: big-endian (network order), as frames carry them,
+/// or little-endian, as the logs' records are counted.
+public extension Data {
+    mutating func appendBE<T: FixedWidthInteger>(_ value: T) {
+        Swift.withUnsafeBytes(of: value.bigEndian) { append(contentsOf: $0) }
+    }
+
+    mutating func appendLE<T: FixedWidthInteger>(_ value: T) {
+        Swift.withUnsafeBytes(of: value.littleEndian) { append(contentsOf: $0) }
+    }
+
+    /// The integer `offset` bytes in, if there's room for it.
+    func readBE<T: FixedWidthInteger>(_ type: T.Type, at offset: Int) -> T? {
+        let start = startIndex + offset, size = MemoryLayout<T>.size
+        guard offset >= 0, start + size <= endIndex else { return nil }
+        return self[start..<start + size].reduce(T(0)) { $0 << 8 | T($1) }
+    }
+
+    func readLE<T: FixedWidthInteger>(_ type: T.Type, at offset: Int) -> T? {
+        let start = startIndex + offset, size = MemoryLayout<T>.size
+        guard offset >= 0, start + size <= endIndex else { return nil }
+        return self[start..<start + size].reversed().reduce(T(0)) { $0 << 8 | T($1) }
+    }
+}
+
 public struct Frame: Sendable {
     public var kind: FrameKind
     public var payload: Data
@@ -52,8 +77,7 @@ public struct Frame: Sendable {
 
     public var encoded: Data {
         var d = Data(capacity: 5 + payload.count)
-        let n = UInt32(payload.count).bigEndian
-        withUnsafeBytes(of: n) { d.append(contentsOf: $0) }
+        d.appendBE(UInt32(payload.count))
         d.append(kind.rawValue)
         d.append(payload)
         return d
@@ -65,15 +89,14 @@ public struct Frame: Sendable {
 
     public static func resize(cols: UInt16, rows: UInt16) -> Frame {
         var d = Data()
-        withUnsafeBytes(of: cols.bigEndian) { d.append(contentsOf: $0) }
-        withUnsafeBytes(of: rows.bigEndian) { d.append(contentsOf: $0) }
+        d.appendBE(cols)
+        d.appendBE(rows)
         return Frame(.resize, d)
     }
 
     public var size: (cols: UInt16, rows: UInt16)? {
-        guard kind == .resize, payload.count == 4 else { return nil }
-        let b = [UInt8](payload)
-        return (UInt16(b[0]) << 8 | UInt16(b[1]), UInt16(b[2]) << 8 | UInt16(b[3]))
+        guard kind == .resize, payload.count == 4, let cols = payload.readBE(UInt16.self, at: 0), let rows = payload.readBE(UInt16.self, at: 2) else { return nil }
+        return (cols, rows)
     }
 
     public func decode<T: Decodable>(_ type: T.Type) -> T? {
@@ -95,7 +118,7 @@ public struct FrameDecoder: Sendable {
     public mutating func next() throws -> Frame? {
         guard buffer.count >= 5 else { return nil }
         let start = buffer.startIndex
-        let n = buffer[start..<start + 4].reduce(0) { $0 << 8 | Int($1) }
+        let n = Int(buffer.readBE(UInt32.self, at: 0)!)
         guard n <= 256 << 20 else { throw ProtocolError.frameTooLarge }
         guard buffer.count >= 5 + n else { return nil }
         guard let kind = FrameKind(rawValue: buffer[start + 4]) else { throw ProtocolError.badFrameKind }
@@ -570,19 +593,50 @@ public struct HistoryMark: Equatable, Sendable {
 
     public var frame: Frame {
         var d = Data(capacity: 17)
-        withUnsafeBytes(of: epoch.bigEndian) { d.append(contentsOf: $0) }
-        withUnsafeBytes(of: end.bigEndian) { d.append(contentsOf: $0) }
+        d.appendBE(epoch)
+        d.appendBE(end)
         d.append(screen ? 1 : 0)
         return Frame(.historyMark, d)
     }
 
     public init?(_ frame: Frame) {
         let p = frame.payload
-        guard frame.kind == .historyMark, p.count == 17 else { return nil }
-        func u64(_ at: Int) -> UInt64 { p[p.startIndex + at..<p.startIndex + at + 8].reduce(0) { $0 << 8 | UInt64($1) } }
-        epoch = u64(0)
-        end = u64(8)
+        guard frame.kind == .historyMark, p.count == 17, let epoch = p.readBE(UInt64.self, at: 0), let end = p.readBE(UInt64.self, at: 8) else { return nil }
+        self.epoch = epoch
+        self.end = end
         screen = p[p.startIndex + 16] != 0
+    }
+}
+
+/// A piece of a terminal's history on a backfill stream (`BackfillRequest`),
+/// as a data frame's payload: the first and end rows it holds (8 bytes
+/// each, big-endian), the width they're drawn at (2), then the rows.
+public struct BackfillPiece: Equatable, Sendable {
+    public var from: UInt64
+    public var to: UInt64
+    public var width: UInt16
+    public var rows: Data
+
+    public init(from: UInt64, to: UInt64, width: UInt16, rows: Data) {
+        self.from = from
+        self.to = to
+        self.width = width
+        self.rows = rows
+    }
+
+    public var encoded: Data {
+        var d = Data(capacity: 18 + rows.count)
+        d.appendBE(from)
+        d.appendBE(to)
+        d.appendBE(width)
+        d.append(rows)
+        return d
+    }
+
+    public init?(_ payload: Data) {
+        guard let from = payload.readBE(UInt64.self, at: 0), let to = payload.readBE(UInt64.self, at: 8),
+              let width = payload.readBE(UInt16.self, at: 16) else { return nil }
+        self.init(from: from, to: to, width: width, rows: payload[(payload.startIndex + 18)...])
     }
 }
 

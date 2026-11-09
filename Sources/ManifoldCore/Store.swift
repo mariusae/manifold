@@ -55,16 +55,7 @@ public final class LogStore {
         guard let handle = try? FileHandle(forReadingFrom: logURL(shard)) else { return node.has(shard) }
         defer { try? handle.close() }
         try? handle.seek(toOffset: offset)
-        let data = (try? handle.readToEnd()) ?? Data()
-        var i = data.startIndex
-        while i + 4 <= data.endIndex {
-            let n = Int(data[i]) | Int(data[i + 1]) << 8 | Int(data[i + 2]) << 16 | Int(data[i + 3]) << 24
-            guard n > 0, i + 4 + n <= data.endIndex else { break }
-            if let entry = try? Codec.decode(Entry.self, from: data.subdata(in: i + 4..<i + 4 + n)) {
-                node.apply(entry, to: shard)
-            }
-            i += 4 + n
-        }
+        for entry in Self.records((try? handle.readToEnd()) ?? Data()) { node.apply(entry, to: shard) }
         return node.has(shard)
     }
 
@@ -95,13 +86,7 @@ public final class LogStore {
         }
         guard let newBase = replay.snapshot(shard) else { return }
         try? handles.removeValue(forKey: shard)?.close()
-        var out = Data()
-        for e in all[k...] {
-            guard let bytes = try? Codec.encode(e) else { continue }
-            var n = UInt32(bytes.count).littleEndian
-            withUnsafeBytes(of: &n) { out.append(contentsOf: $0) }
-            out.append(bytes)
-        }
+        let out = Self.records(all[k...])
         guard let baseData = try? Codec.encode(newBase) else { return }
         try? baseData.write(to: baseURL(shard), options: .atomic)
         try? out.write(to: logURL(shard), options: .atomic)
@@ -127,12 +112,29 @@ public final class LogStore {
     /// Every entry in a shard's log, from the beginning (for history).
     public func entries(_ shard: ShardID) -> [Entry] {
         guard let data = try? Data(contentsOf: logURL(shard)) else { return [] }
+        return Self.records(data)
+    }
+
+    /// A log's records: each entry encoded, after its length (4 bytes,
+    /// little-endian). Read, they stop at the first that's cut short (a
+    /// write the server didn't finish); one that doesn't decode is passed
+    /// over.
+    static func records<S: Sequence<Entry>>(_ entries: S) -> Data {
+        var out = Data()
+        for e in entries {
+            guard let bytes = try? Codec.encode(e) else { continue }
+            out.appendLE(UInt32(bytes.count))
+            out.append(bytes)
+        }
+        return out
+    }
+
+    static func records(_ data: Data) -> [Entry] {
         var out: [Entry] = []
-        var i = data.startIndex
-        while i + 4 <= data.endIndex {
-            let n = Int(data[i]) | Int(data[i + 1]) << 8 | Int(data[i + 2]) << 16 | Int(data[i + 3]) << 24
-            guard n > 0, i + 4 + n <= data.endIndex else { break }
-            if let entry = try? Codec.decode(Entry.self, from: data.subdata(in: i + 4..<i + 4 + n)) { out.append(entry) }
+        var i = 0
+        while let n = data.readLE(UInt32.self, at: i).map(Int.init), n > 0, i + 4 + n <= data.count {
+            let start = data.startIndex + i + 4
+            if let entry = try? Codec.decode(Entry.self, from: data.subdata(in: start..<start + n)) { out.append(entry) }
             i += 4 + n
         }
         return out
@@ -153,14 +155,7 @@ public final class LogStore {
             handles[shard] = h
             handle = h
         }
-        var out = Data()
-        for e in entries {
-            guard let bytes = try? Codec.encode(e) else { continue }
-            var n = UInt32(bytes.count).littleEndian
-            withUnsafeBytes(of: &n) { out.append(contentsOf: $0) }
-            out.append(bytes)
-        }
-        try? handle.write(contentsOf: out)
+        try? handle.write(contentsOf: Self.records(entries))
     }
 
     /// Writes a shard's snapshot, marking the log as read up to its end.

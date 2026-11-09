@@ -410,11 +410,8 @@ final class TerminalLink {
     /// A piece of a gap's rows (the newest of what's missing): into the
     /// scrollback above the anchor, which moves to its first row.
     private func filled(_ gap: Gap, _ p: Data) {
-        guard p.count >= 18, let surface, gaps.contains(where: { $0 === gap }) else { return }
-        func u64(_ at: Int) -> UInt64 { p[p.startIndex + at..<p.startIndex + at + 8].reduce(0) { $0 << 8 | UInt64($1) } }
-        let lo = u64(0), hi = u64(8)
-        let cols = UInt16(p[p.startIndex + 16]) << 8 | UInt16(p[p.startIndex + 17])
-        let rows = p[(p.startIndex + 18)...]
+        guard let piece = BackfillPiece(p), let surface, gaps.contains(where: { $0 === gap }) else { return }
+        let lo = piece.from, hi = piece.to, cols = piece.width, rows = piece.rows
         // Older gaps' anchors where this one's is (no rows between them)
         // go up with it, so their rows stay above these.
         let older: [UnsafeMutableRawPointer?] = gaps.prefix { $0 !== gap }.filter { $0.epoch == gap.epoch }.map(\.anchor)
