@@ -1311,8 +1311,6 @@ final class HostClient {
             node.load(snap)
             resyncing[snap.shard] = nil
             if let id = snap.shard.block, wantedReads.contains(id) { requestRead(id) }
-        case let .rejected(shard):
-            NSLog("append to %@ was refused", shard.description)
         case let .fenced(shard, by):
             // Another attachment has the pen: what this one appended since
             // is gone; the snapshot that follows is the truth.
@@ -1352,8 +1350,6 @@ final class HostClient {
             answer(id, error)
         case let .history(shard, base, entries):
             delegate?.client(self, history: shard, base: base, entries: entries)
-        case let .removed(shard):
-            node.remove(shard)
         case let .command(id, client, request):
             delegate?.client(self, command: id, asker: client, request)
         case let .commandEnded(id, client):
@@ -1372,8 +1368,6 @@ final class HostClient {
             answer(id, result)
         case let .scipResult(id, result):
             answer(id, result)
-        case .end:
-            break // only on a file's stream
         case let .notebookLive(block, cell, output):
             delegate?.client(self, notebookLive: block, cell: cell, output: output)
         case let .passwordInput(block, on):

@@ -24,7 +24,7 @@ final class FileSender {
 
     static func start(_ stream: MuxStream, path: String, offset: Int64, length: Int64?, limit: Int64?, queue: DispatchQueue) {
         func refuse(_ why: String) {
-            stream.send(.message(ServerMessage.end(error: why, path: nil)))
+            stream.send(.message(TreeMessage.end(error: why, path: nil)))
             stream.close()
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? nil
@@ -75,7 +75,7 @@ final class FileSender {
 
     private func end(_ error: String?) {
         guard !done else { return }
-        stream.send(.message(ServerMessage.end(error: error, path: nil)))
+        stream.send(.message(TreeMessage.end(error: error, path: nil)))
         stream.close()
     }
 
@@ -192,7 +192,7 @@ final class FileReceiver {
             if failure != nil { unlink(writing) }
             queue.async { [self] in
                 if failure == nil { finished?(path) }
-                stream.send(.message(ServerMessage.end(error: failure, path: failure == nil ? path : nil)))
+                stream.send(.message(TreeMessage.end(error: failure, path: failure == nil ? path : nil)))
                 stream.close()
             }
         }
@@ -201,7 +201,7 @@ final class FileReceiver {
     private func refuse() {
         guard !ended else { return }
         ended = true
-        stream.send(.message(ServerMessage.end(error: failure, path: nil)))
+        stream.send(.message(TreeMessage.end(error: failure, path: nil)))
         stream.close()
     }
 

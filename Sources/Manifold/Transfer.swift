@@ -246,7 +246,7 @@ extension HostClient {
         stream.onFrame = { frame in
             if frame.kind == .data { return onData(frame.payload) }
             if case let .total(n)? = frame.decode(TreeMessage.self) { return onTotal?(n) ?? () }
-            if case let .end(error, _)? = frame.decode(ServerMessage.self) { ended = .some(error) }
+            if case let .end(error, _)? = frame.decode(TreeMessage.self) { ended = .some(error) }
         }
         stream.onClose = { done(ended ?? "the link to the host went") }
         stream.send(.message(ClientMessage.readFile(path: path, offset: offset, length: length, limit: limit)))
@@ -262,7 +262,7 @@ extension HostClient {
         var ended: (String?, String?)?
         var offset = 0, finished = false
         stream.onFrame = { frame in
-            if case let .end(error, path)? = frame.decode(ServerMessage.self) {
+            if case let .end(error, path)? = frame.decode(TreeMessage.self) {
                 ended = (error, path)
                 finished = true
             }

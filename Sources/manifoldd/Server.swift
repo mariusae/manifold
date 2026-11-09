@@ -533,9 +533,9 @@ final class Server {
         return nil
     }
 
-    /// An append to a shard refused: the client is sent the log as it is.
+    /// An append to a shard refused (it didn't continue the log, or the
+    /// client doesn't own the shard): the client is sent the log as it is.
     private func refuse(_ shard: ShardID, to conn: any Channel) {
-        conn.send(.message(ServerMessage.rejected(shard: shard)))
         if let snap = node.snapshot(shard) { conn.send(.message(ServerMessage.snapshot(snap))) }
     }
 

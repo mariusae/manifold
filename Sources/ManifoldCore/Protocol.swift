@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 68
+public let protocolVersion = 69
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -713,9 +713,6 @@ public enum ServerMessage: Codable, Sendable {
     case pong
     case entries(shard: ShardID, entries: [Entry])
     case snapshot(ShardSnapshot)
-    /// The client's append didn't continue the log, or it doesn't own the
-    /// shard; a snapshot follows.
-    case rejected(shard: ShardID)
     /// Another attachment took the pen for a shard (§8.2) — `by`, the
     /// machine it's on: this client stops appending to it and mirrors,
     /// until the user takes it back.
@@ -736,8 +733,6 @@ public enum ServerMessage: Codable, Sendable {
     /// A shard's history: the state its (compacted) log starts from, if
     /// any, and the entries since.
     case history(shard: ShardID, base: ShardSnapshot?, entries: [Entry])
-    /// A shard is gone (a block forgotten).
-    case removed(shard: ShardID)
     /// A `mani` command, for the app to do and answer (`commandReply`).
     case command(id: Int, client: Int, ManiRequest)
     /// Some of what a command prints; the last says its status.
@@ -761,9 +756,6 @@ public enum ServerMessage: Codable, Sendable {
     case agentLink(AgentLinkStatus)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
-    /// A file stream's last word: done (`path`, the file written, for a
-    /// write), or why not.
-    case end(error: String?, path: String?)
 
     /// Entries for `listFolder` or `listTree`; nil if the folder couldn't
     /// be read; `complete` false when the tree had more than asked for.
