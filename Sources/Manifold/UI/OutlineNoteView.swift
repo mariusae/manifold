@@ -1202,8 +1202,7 @@ final class NoteOutlineTextView: NSTextView {
         var stale: [NSRange] = []
         storage.enumerateAttribute(.noteCard, in: NSRange(location: 0, length: storage.length)) { value, run, _ in
             guard let card = value as? NoteCard else { return }
-            let now = cardFor(card.block, card.place)
-            if now?.summary != card.content.summary || now?.symbol != card.content.symbol { stale.append(run) }
+            if card.content.differs(from: cardFor(card.block, card.place)) { stale.append(run) }
         }
         guard !stale.isEmpty else { return }
         storage.beginEditing()

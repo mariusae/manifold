@@ -13,6 +13,13 @@ struct SummaryCardContent {
     /// Its status by its title (`StatusMark`): the title shimmering while
     /// it works, a pill when it needs you.
     var mark: StatusMark? = nil
+
+    /// Whether a card drawn from `other` would look different from this
+    /// one in a note: its summary, its symbol, a picture come or gone.
+    func differs(from other: SummaryCardContent?) -> Bool {
+        guard let other else { return true }
+        return other.summary != summary || other.symbol != symbol || (other.thumbnail == nil) != (thumbnail == nil)
+    }
 }
 
 /// How long ago, in a pill (`Pill`).

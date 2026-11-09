@@ -481,8 +481,7 @@ final class TextView: NSView, NSTextInputClient {
         var stale = pillLook.map { look in pillLines.filter { $0.value.contains { look($0.0) != $0.1 } }.map(\.key) } ?? []
         // And cards whose summaries changed.
         stale += cardLines.filter { n, c in
-            guard let now = cardFor?(c.block, c.place) else { return true }
-            return now.summary != c.content.summary || now.symbol != c.content.symbol || (now.thumbnail == nil) != (c.content.thumbnail == nil)
+            c.content.differs(from: cardFor?(c.block, c.place))
         }.map(\.key)
         guard !stale.isEmpty else { return }
         for n in stale {
