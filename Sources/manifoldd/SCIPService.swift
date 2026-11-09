@@ -264,7 +264,10 @@ final class SCIPService {
                             isDefinition: o.isDefinition, text: words.trimmingCharacters(in: .whitespaces))
     }
 
-    /// The indexer run for a root, in the user's login shell, its index
+    /// The shell terminals run (the host's preference), for indexers too.
+    var preferredShell: () -> String? = { nil }
+
+    /// The indexer run for a root, in the shell terminals run, its index
     /// written beside the others once it's done (its words kept if it fails).
     private func index(_ root: String, with indexer: SCIPIndexer) {
         guard !running.contains(root) else { return }
@@ -273,9 +276,10 @@ final class SCIPService {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let out = file(root), partial = out.appendingPathExtension("part")
         let command = "cd '\(root.replacingOccurrences(of: "'", with: "'\\''"))' && " + indexer.command(root: root, out: partial.path)
+        let shell = Session.chosenShell(preferred: preferredShell())
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let p = Process()
-            p.executableURL = URL(fileURLWithPath: Self.loginShell)
+            p.executableURL = URL(fileURLWithPath: shell)
             p.arguments = ["-l", "-c", command]
             // The host's variables for its tools: a proxy for npx's fetch.
             p.environment = SpawnEnvironment.environment(.tools)
@@ -289,7 +293,7 @@ final class SCIPService {
                 output = pipe.fileHandleForReading.readDataToEndOfFile()
                 p.waitUntilExit()
             } catch {
-                output = Data("can't run \(Self.loginShell): \(error)".utf8)
+                output = Data("can't run \(shell): \(error)".utf8)
             }
             let ok = p.terminationStatus == 0 && FileManager.default.fileExists(atPath: partial.path)
             if ok {
@@ -309,11 +313,5 @@ final class SCIPService {
                 if !ok { self?.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }
             }
         }
-    }
-
-    /// The user's shell, as their account has it (for a login's PATH).
-    static var loginShell: String {
-        if let pw = getpwuid(getuid()), let shell = pw.pointee.pw_shell { return String(cString: shell) }
-        return "/bin/sh"
     }
 }

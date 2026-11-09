@@ -206,6 +206,7 @@ final class Server {
         languageServers = LanguageServers(queue: queue)
         scip = SCIPService(queue: queue)
         scip.projects = { [weak self] in self.map { $0.node.desk($0.host).projects } ?? [] }
+        scip.preferredShell = { [weak self] in self.flatMap { $0.node.desk($0.host).preferences.shell } }
         mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
         mentions.mentions = { [weak self] block in
             guard let g = self?.node.graph else { return [] }
