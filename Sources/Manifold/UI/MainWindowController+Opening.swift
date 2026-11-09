@@ -157,24 +157,34 @@ extension MainWindowController {
     /// it has found the command's row (a moment, for a tile just made).
     /// A place in a block, once its tile is up: a line (in a preview, the
     /// line's place on the page), a PDF's page.
-    func goToPlace(_ place: NavLocation, in block: BlockID, tries: Int = 20) {
-        if let v = content.views.first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }) {
-            if case let .line(n) = place, let m = v as? MarkdownView { return m.reveal(line: n) }
-            // A PDF's document comes a moment after its tile.
-            if case .page = place, let m = v as? MediaView, m.navLocation == nil, tries > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToPlace(place, in: block, tries: tries - 1) }
-                return
-            }
-            return v.go(to: place)
-        }
-        guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToPlace(place, in: block, tries: tries - 1) }
+    /// `attempt` until it says it's done — every `every` seconds, at most
+    /// `tries` times more: for what comes a moment after it's asked for (a
+    /// tile just made, a PDF's document, a terminal's command).
+    func retry(_ tries: Int = 20, every: TimeInterval = 0.15, _ attempt: @escaping () -> Bool) {
+        guard !attempt(), tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + every) { [weak self] in self?.retry(tries - 1, every: every, attempt) }
     }
 
-    func goToCommand(_ id: Int, in block: BlockID, tries: Int = 20) {
-        if let t = content.views.compactMap({ $0 as? TerminalView }).first(where: { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }), t.go(toCommand: id) { return }
-        guard tries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToCommand(id, in: block, tries: tries - 1) }
+    /// A tile showing a block on screen now (not hidden), as a kind of view.
+    func shownView<T>(of block: BlockID, as: T.Type = PaneContent.self) -> T? {
+        content.views.lazy.filter { $0.block == block && !$0.isHiddenOrHasHiddenAncestor }.compactMap { $0 as? T }.first
+    }
+
+    /// A place in a block, gone to in its tile once it's shown.
+    func goToPlace(_ place: NavLocation, in block: BlockID) {
+        retry { [weak self] in
+            guard let self, let v = self.shownView(of: block) else { return false }
+            if case let .line(n) = place, let m = v as? MarkdownView { m.reveal(line: n); return true }
+            // A PDF's document comes a moment after its tile.
+            if case .page = place, let m = v as? MediaView, m.navLocation == nil { return false }
+            v.go(to: place)
+            return true
+        }
+    }
+
+    /// A terminal's command, gone to once its tile's shown.
+    func goToCommand(_ id: Int, in block: BlockID) {
+        retry { [weak self] in self?.shownView(of: block, as: TerminalView.self)?.go(toCommand: id) == true }
     }
 
     /// Go to a block from a click: where it is — or, with ⌥ held, over
