@@ -101,3 +101,36 @@ private func total(_ items: [StripItem]) -> Double { (items.last.map { $0.start 
     let b = StripLayout.rest(items, total: t, focus: 0.41, policy: .document, budget: 9, previous: Set(a))
     #expect(a == b)
 }
+
+// Its chevrons, as claude.ai's strip has its ⌃: to the item before where
+// you are (the start of the one you're in, if you're well into it), and
+// to the one after; none where there's nowhere to go.
+@MainActor
+@Test func theChevronsGoToTheItemBeforeAndAfter() {
+    let outline = Outline()
+    outline.set((0..<6).map { Outline.Item(title: "Section \($0)") })
+    var picked: [Int] = []
+    outline.onPick = { picked.append($0) }
+    let strip = OutlineStripView(outline: outline, policy: .document)
+    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width, height: 300)
+    strip.set((0..<6).map { StripItem(start: Double($0 * 100), size: 100) })
+    // At the start of section 2.
+    strip.update(total: 600, offset: 200, shown: 100)
+    outline.current = 2
+    strip.layoutSubtreeIfNeeded()
+    #expect(strip.previousTarget == 1)
+    #expect(strip.nextTarget == 3)
+    strip.go(.up)
+    strip.go(.down)
+    #expect(picked == [1, 3])
+    // Well into section 2: ⌃ goes back to its start first.
+    strip.update(total: 600, offset: 250, shown: 100)
+    #expect(strip.previousTarget == 2)
+    // At the first, nothing before; at the last, nothing after.
+    strip.update(total: 600, offset: 0, shown: 100)
+    outline.current = 0
+    #expect(strip.previousTarget == nil)
+    outline.current = 5
+    strip.update(total: 600, offset: 500, shown: 100)
+    #expect(strip.nextTarget == nil)
+}

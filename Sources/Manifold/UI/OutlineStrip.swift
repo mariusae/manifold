@@ -43,8 +43,8 @@ enum StripLayout {
     /// The room a mark takes at rest, and the least between two magnified.
     static let pitch: CGFloat = 12
     static let minPitch: CGFloat = 7
-    /// Top and bottom, kept clear.
-    static let pad: CGFloat = 8
+    /// Top and bottom, kept clear: the chevrons' room.
+    static let pad: CGFloat = 14
 
     /// How many marks fit at rest.
     static func budget(height: CGFloat) -> Int { max(3, Int((height - 2 * pad) / pitch)) }
@@ -190,6 +190,11 @@ final class OutlineStripView: NSView {
     private var hovered: Int?
     private var markLayers: [Int: CALayer] = [:]
     private let knob = CALayer()
+    /// The way to the item before where you are, and the one after (as
+    /// claude.ai's strip has its ⌃): shown when there's one to go to.
+    private let up = CAShapeLayer(), down = CAShapeLayer()
+    private var onChevron: Chevron?
+    enum Chevron { case up, down }
     private let card = StripCard()
     private var dragging: (grab: CGFloat, start: Double)?
     private var dragged = false
@@ -205,6 +210,13 @@ final class OutlineStripView: NSView {
         knob.cornerRadius = Radius.inline
         knob.opacity = 0
         layer?.addSublayer(knob)
+        for c in [up, down] {
+            c.fillColor = nil
+            c.lineWidth = 1.5
+            c.lineCap = .round
+            c.lineJoin = .round
+            layer?.addSublayer(c)
+        }
         outline.watch(self) { [weak self] in self?.relayout() }
         themed { $0.recolor() }
     }
@@ -299,8 +311,12 @@ final class OutlineStripView: NSView {
             l.frame = NSRect(x: right - length, y: (m.y - thick / 2).rounded(.down), width: length, height: thick)
             l.cornerRadius = thick / 2
             effectiveAppearance.performAsCurrentDrawingAppearance { l.backgroundColor = color(item, m.index).cgColor }
+            // What shows (or where you are) in full; the rest paler, the
+            // landmarks less so — all of it full while the pointer's on it.
             let lit = hovered == m.index
-            l.opacity = lit || pointer != nil || dragging != nil ? 1 : (item.level == 0 || item.failed || item.running || item.you ? 0.85 : 0.6)
+            let inView = scrolls ? item.start < offset + shown && item.start + item.size > offset : m.index == outline.current
+            let landmark = item.level == 0 || item.failed || item.running || item.you
+            l.opacity = lit || pointer != nil || dragging != nil || inView ? 1 : (landmark ? 0.7 : 0.45)
             l.borderWidth = lit ? 1.5 : 0
             effectiveAppearance.performAsCurrentDrawingAppearance { l.borderColor = Theme.accent.cgColor }
         }
@@ -314,7 +330,56 @@ final class OutlineStripView: NSView {
         } else {
             knob.isHidden = true
         }
+        drawChevrons()
         CATransaction.commit()
+    }
+
+    /// The item ⌃ goes to: the start of the one you're in, if you're well
+    /// into it; else the one before. And ⌄: the one after.
+    var previousTarget: Int? {
+        let shownItems = outline.shown
+        guard let c = outline.current else { return nil }
+        if scrolls, items.indices.contains(c), shownItems.contains(c), offset > items[c].start + shown * 0.05 { return c }
+        return shownItems.last { $0 < c }
+    }
+
+    var nextTarget: Int? {
+        let c = outline.current ?? -1
+        return outline.shown.first { $0 > c }
+    }
+
+    private func drawChevrons() {
+        let x = bounds.width - 2 - 5.5
+        func path(_ y: CGFloat, pointingUp: Bool) -> CGPath {
+            let p = CGMutablePath()
+            let h: CGFloat = 3.5
+            p.move(to: CGPoint(x: x - h, y: pointingUp ? y + h / 2 : y - h / 2))
+            p.addLine(to: CGPoint(x: x, y: pointingUp ? y - h / 2 : y + h / 2))
+            p.addLine(to: CGPoint(x: x + h, y: pointingUp ? y + h / 2 : y - h / 2))
+            return p
+        }
+        up.path = path(StripLayout.pad / 2, pointingUp: true)
+        down.path = path(bounds.height - StripLayout.pad / 2, pointingUp: false)
+        up.isHidden = previousTarget == nil || items.isEmpty
+        down.isHidden = nextTarget == nil || items.isEmpty
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            up.strokeColor = (onChevron == .up ? Theme.text : Theme.tertiaryText).cgColor
+            down.strokeColor = (onChevron == .down ? Theme.text : Theme.tertiaryText).cgColor
+        }
+    }
+
+    /// Which chevron a height in the strip is on, if one's shown there.
+    private func chevron(at y: CGFloat) -> Chevron? {
+        if y < StripLayout.pad, !up.isHidden { return .up }
+        if y > bounds.height - StripLayout.pad, !down.isHidden { return .down }
+        return nil
+    }
+
+    /// A chevron clicked: the item it goes to.
+    func go(_ c: Chevron) {
+        guard let i = c == .up ? previousTarget : nextTarget else { return }
+        card.hide()
+        outline.pick(i)
     }
 
     private func recolor() {
@@ -374,6 +439,20 @@ final class OutlineStripView: NSView {
     /// The pointer at a height: the marks magnified around it, the one
     /// there lit and its card shown; nil, off it.
     func hover(at y: CGFloat?) {
+        // On a chevron: the item it goes to, in the card; the marks calm.
+        if let y, let c = chevron(at: y) {
+            onChevron = c
+            pointer = nil
+            hovered = c == .up ? previousTarget : nextTarget
+            relayout()
+            if let i = hovered, outline.items.indices.contains(i) {
+                let item = outline.items[i]
+                card.show(title: item.title, detail: c == .up ? "Previous" : "Next", lines: preview?(i) ?? [],
+                          code: previewIsCode || item.code, beside: self, at: c == .up ? StripLayout.pad / 2 : bounds.height - StripLayout.pad / 2, pointerAt: y)
+            }
+            return
+        }
+        onChevron = nil
         pointer = y.map(fraction)
         relayout()
         hovered = y.flatMap { mark(near: $0)?.index }
@@ -397,6 +476,7 @@ final class OutlineStripView: NSView {
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         dragged = false
+        guard chevron(at: p.y) == nil else { return }
         if scrolls, knob.frame.insetBy(dx: 0, dy: -2).contains(p), mark(near: p.y) == nil {
             dragging = (p.y, offset)
             recolor()
@@ -420,6 +500,7 @@ final class OutlineStripView: NSView {
         dragging = nil
         recolor()
         if dragged || wasDragging { return }
+        if let c = chevron(at: p.y) { return go(c) }
         // On a mark: its item gone to; else, the page there.
         if let m = mark(near: p.y) {
             card.hide()
@@ -436,7 +517,7 @@ final class OutlineStripView: NSView {
             let t = outline.items.indices.contains(m.index) ? outline.items[m.index].title : "?"
             return "\(m.index) y \(Int(m.y)) x\(String(format: "%.2f", m.scale))\(m.extra ? " +" : "")\(hovered == m.index ? " *" : "") \(t.prefix(40))"
         }
-        return "items \(items.count) rest \(rest.count) budget \(StripLayout.budget(height: bounds.height)) pointer \(pointer.map { String(format: "%.2f", $0) } ?? "-") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
+        return "up \(up.isHidden ? "-" : previousTarget.map(String.init) ?? "-") down \(down.isHidden ? "-" : nextTarget.map(String.init) ?? "-") items \(items.count) rest \(rest.count) budget \(StripLayout.budget(height: bounds.height)) pointer \(pointer.map { String(format: "%.2f", $0) } ?? "-") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
     }
 
     func debug(_ arg: String) -> String {
@@ -445,6 +526,8 @@ final class OutlineStripView: NSView {
         case "hover": if let f = a.dropFirst().first.flatMap(Double.init) { hover(at: StripLayout.pad + CGFloat(f) * max(bounds.height - 2 * StripLayout.pad, 1)) }
         case "off": hover(at: nil)
         case "pick": if let i = a.dropFirst().first.flatMap(Int.init) { outline.pick(i) }
+        case "up": go(.up)
+        case "down": go(.down)
         default: break
         }
         return debugState
