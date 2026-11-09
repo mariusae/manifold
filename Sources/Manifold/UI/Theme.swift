@@ -43,6 +43,8 @@ enum Theme {
         NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
     static let panel = NSColor.themed { $0.chrome.panel }
+    /// A tile's bar: the panel's ground, unless the theme has one of its own.
+    static let tileBar = NSColor.themed { $0.chrome.bar ?? $0.chrome.panel }
     static let panelBorder = NSColor.themed { $0.chrome.panelBorder }
     /// Over the window, behind the palette.
     static let scrim = NSColor.themed { $0.chrome.scrim }

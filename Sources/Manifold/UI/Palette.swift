@@ -102,6 +102,9 @@ struct Palette {
         var pill: Shade
         /// A history's picture of a space: a wash from one to the other.
         var historyWash: (from: Shade, to: Shade)
+        /// A tile's bar, where it isn't the panel's ground (Claude Warm's,
+        /// a step off its pages, not white over them).
+        var bar: Shade? = nil
     }
 
     struct Text {
@@ -1020,7 +1023,9 @@ extension Palette {
             accent: TintColors(accent: clay, caret: blue, textSelection: selection),
             tints: Palette.paper.tints,
             code: Code(
-                page: .hex(0xFFFFFF, 0x191919),
+                // Read, not edited (view mode, a search's preview): a grey
+                // step off the white pages edited; by night its sidebar's.
+                page: .hex(0xF7F7F7, 0x1F1F1F),
                 text: .hex(0x14181F, 0xEAECF0),
                 lineNumber: .hex(0x878787, 0x878787),
                 // Its editor's line highlight: #1a1a1a at 4%, white at 5%.
@@ -1083,7 +1088,8 @@ extension Palette {
             // As it sets a reply: its page, its ink, its links (blue 500,
             // 300), its code on black or white at 5%.
             page: Page(
-                background: .hex(0xFFFFFF, 0x191919),
+                // A rendered page, read: as its code read.
+                background: .hex(0xF7F7F7, 0x1F1F1F),
                 text: .hex(0x0B0B0B, 0xEFEFEF),
                 strong: .hex(0x000000, 0xFFFFFF),
                 link: .hex(0x256ABF, 0x6DA7EC),
@@ -1108,15 +1114,15 @@ extension Palette {
                 // Running, as its spinner: clay.
                 running: .hex(0xD97757, 0xD97757),
                 attention: attention),
-            // Its window: flat greys, the sidebar's #fafafa and #1f1f1f,
-            // with only clay's pool of light in it.
+            // Under its grey pages, Claude's illustrations' colours: sky
+            // into lavender into clay into peach; by night ink-blue into
+            // plum into a clay ember. Clay's pool of light in it.
+            // (Brightness as the calibrated space has it.)
             backdrop: Backdrop(
-                light: .init(stops: [(0, 0, 0.98), (0, 0, 0.975), (0.04, 0.01, 0.965), (0, 0, 0.975)],
-                             pool: (0, 0.99), tintPool: (0.04, 0.99)),
-                // (Brightness as the calibrated space has it: 0.077 is
-                // sRGB's #1f1f1f.)
-                dark: .init(stops: [(0, 0, 0.08), (0, 0, 0.077), (0.04, 0.03, 0.074), (0, 0, 0.068)],
-                            pool: (0, 0.09), tintPool: (0.1, 0.095))))
+                light: .init(stops: [(0.58, 0.22, 0.97), (0.74, 0.18, 0.97), (0.035, 0.30, 0.99), (0.09, 0.22, 1.0)],
+                             pool: (0.2, 1), tintPool: (0.38, 1)),
+                dark: .init(stops: [(0.61, 0.42, 0.2), (0.77, 0.34, 0.18), (0.03, 0.48, 0.2), (0.07, 0.3, 0.11)],
+                            pool: (0.45, 0.3), tintPool: (0.6, 0.34))))
     }()
 }
 
@@ -1181,7 +1187,11 @@ extension Palette {
                 well: wash(0.05, 0.07),
                 pill: wash(0.07, 0.1),
                 // Its pale blue into clay's.
-                historyWash: (from: .hex(0xE6EEF5, 0x1C2B3A), to: .hex(0xF7E6DD, 0x3F2C25))),
+                historyWash: (from: .hex(0xE6EEF5, 0x1C2B3A), to: .hex(0xF7E6DD, 0x3F2C25)),
+                // A tile's bar a step off its pages, as claude.ai's sidebar
+                // is (bg-200): #f5f4ed on #faf9f5, #1f1e1d on #262624 — not
+                // its cards' white over the ivory.
+                bar: .hex(0xF5F4ED, 0x1F1E1D)),
             text: Text(
                 primary: .hex(0x141413, 0xFAF9F5),
                 body: .hex(0x141413, 0xFAF9F5),
@@ -1194,7 +1204,9 @@ extension Palette {
             accent: TintColors(accent: clay, caret: blue, textSelection: selection),
             tints: Palette.paper.tints,
             code: Code(
-                page: .hex(0xFAF9F5, 0x262624),
+                // Read, not edited: its cards' ground (white, #30302e),
+                // as claude.ai sets what's rendered apart from its ivory.
+                page: .hex(0xFFFFFF, 0x30302E),
                 text: .hex(0x141413, 0xFAF9F5),
                 lineNumber: .hex(0x9C9A92, 0x73726C),
                 lineHighlight: .hex(0xF1F0EC, 0x2F2F2D),
@@ -1249,7 +1261,8 @@ extension Palette {
                                       extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
             // As claude.ai sets a reply: on its ivory, its inks, its links.
             page: Page(
-                background: .hex(0xFAF9F5, 0x262624),
+                // A rendered page, read: on its cards' ground.
+                background: .hex(0xFFFFFF, 0x30302E),
                 text: .hex(0x141413, 0xFAF9F5),
                 strong: .hex(0x000000, 0xFFFFFF),
                 link: link,
@@ -1273,14 +1286,15 @@ extension Palette {
                 failed: failed,
                 running: .hex(0xD97757, 0xD97757),
                 attention: attention),
-            // Its bg-200 and bg-300 by day (#f5f4ed, #f0eee6), #1f1e1d by
-            // night, a little clay in its light. (Brightness as the
-            // calibrated space has it: 0.077 is about sRGB's #1f.)
+            // Under its ivory, Claude's warm illustration colours: clay
+            // into kraft into manilla into oat; by night embers of the
+            // same. Clay's pool of light in it. (Brightness as the
+            // calibrated space has it.)
             backdrop: Backdrop(
-                light: .init(stops: [(0.16, 0.03, 0.96), (0.155, 0.032, 0.955), (0.15, 0.036, 0.945), (0.155, 0.03, 0.955)],
-                             pool: (0.02, 0.98), tintPool: (0.04, 0.98)),
-                dark: .init(stops: [(0.083, 0.07, 0.08), (0.083, 0.065, 0.077), (0.06, 0.08, 0.075), (0.083, 0.06, 0.07)],
-                            pool: (0.05, 0.09), tintPool: (0.2, 0.1)),
+                light: .init(stops: [(0.035, 0.34, 0.97), (0.075, 0.30, 0.97), (0.12, 0.28, 0.98), (0.14, 0.16, 0.97)],
+                             pool: (0.24, 1), tintPool: (0.42, 1)),
+                dark: .init(stops: [(0.03, 0.5, 0.2), (0.065, 0.45, 0.18), (0.11, 0.38, 0.16), (0.08, 0.25, 0.1)],
+                            pool: (0.5, 0.28), tintPool: (0.6, 0.32)),
                 tileShadow: (Theme.hex(0x3D3D3A), 0.1)))
     }()
 }
@@ -1357,7 +1371,9 @@ extension Palette {
             accent: TintColors(accent: clay, caret: blue, textSelection: selection),
             tints: Palette.paper.tints,
             code: Code(
-                page: .hex(0xFFFFFF, 0x1A1A19),
+                // Read, not edited: its gray-30 (#f6f6f4) off its white;
+                // by night its chat's ground (#151515).
+                page: .hex(0xF6F6F4, 0x151515),
                 text: .hex(0x14181F, 0xEAECF0),
                 lineNumber: .hex(0x97958D, 0x7B7974),
                 lineHighlight: .hex(0xF6F6F6, 0x252524),
@@ -1411,9 +1427,9 @@ extension Palette {
                 dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#0099ff", cursorText: dark.bg,
                                       selectionBackground: "#12405e", selectionForeground: dark.fg, ansi: dark.ansi,
                                       extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
-            // As it set a reply: on its chat's ground.
+            // A rendered page, read: as its code read.
             page: Page(
-                background: .hex(0xF9F9F7, 0x151515),
+                background: .hex(0xF6F6F4, 0x151515),
                 text: .hex(0x131313, 0xF9F9F7),
                 strong: .hex(0x0B0B0B, 0xFFFFFF),
                 link: link,
@@ -1437,12 +1453,14 @@ extension Palette {
                 failed: failed,
                 running: .hex(0xD97757, 0xD97757),
                 attention: attention),
-            // Its sidebar: gray-40 (#f3f3f0) by day, gray-870 (#111111) by
-            // night. (Brightness as the calibrated space has it.)
+            // Under its white cards, Claude's quieter illustration colours:
+            // sage into heather into clay into oat; by night deep teal into
+            // aubergine into a clay ember. Clay's pool of light in it.
+            // (Brightness as the calibrated space has it.)
             backdrop: Backdrop(
-                light: .init(stops: [(0.14, 0.012, 0.945), (0.14, 0.014, 0.94), (0.13, 0.016, 0.935), (0.14, 0.012, 0.942)],
-                             pool: (0.01, 0.96), tintPool: (0.04, 0.96)),
-                dark: .init(stops: [(0, 0, 0.04), (0, 0, 0.038), (0.04, 0.03, 0.036), (0, 0, 0.034)],
-                            pool: (0, 0.045), tintPool: (0.1, 0.05))))
+                light: .init(stops: [(0.42, 0.18, 0.93), (0.70, 0.16, 0.95), (0.035, 0.28, 0.98), (0.11, 0.20, 0.97)],
+                             pool: (0.2, 0.99), tintPool: (0.36, 0.99)),
+                dark: .init(stops: [(0.47, 0.45, 0.15), (0.76, 0.38, 0.14), (0.03, 0.5, 0.16), (0.09, 0.3, 0.08)],
+                            pool: (0.45, 0.24), tintPool: (0.6, 0.28))))
     }()
 }

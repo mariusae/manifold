@@ -2295,7 +2295,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.cornerCurve = .continuous
         glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         glass.layer?.borderWidth = 0
-        glass.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
+        glass.themed { $0.layer?.backgroundColor = Theme.tileBar.cgColor }
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
