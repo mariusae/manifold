@@ -395,7 +395,7 @@ extension MainWindowController {
     /// ⌘L: in an editor, Go to Line; elsewhere, the tile's address edited
     /// (a page's, as a browser's ⌘L).
     @objc func goToLineOrAddress(_ sender: Any?) {
-        if let e = arrangement?.focused.flatMap({ views[$0] }) as? EditorView { return e.goToLine(sender) }
+        if let e = focusedView as? EditorView { return e.goToLine(sender) }
         editAddress(sender)
     }
 
@@ -427,17 +427,11 @@ extension MainWindowController {
     @objc func closePaneOrTab(_ sender: Any?) {
         if let key = NSApp.keyWindow, key !== window, key.styleMask.contains(.closable) { return key.performClose(sender) }
         guard let a = arrangement, let id = selected else { return }
-        let before = hosts.reachable()
-        if let f = a.focused {
-            // Taken off, a tile's room goes back where it came from — to a
-            // tile docked under it (a terminal its `$EDITOR` was over),
-            // which comes back in its place and takes the focus (the
-            // model's doing); else to its neighbours.
-            let block = a.placement(f)?.block
-            noteClosing(f, in: id)
-            hosts.append([.remove(f)], to: .block(id))
-        }
-        afterClosing(reachedBefore: before)
+        // Taken off, a tile's room goes back where it came from — to a
+        // tile docked under it (a terminal its `$EDITOR` was over), which
+        // comes back in its place and takes the focus (the model's
+        // doing); else to its neighbours.
+        if let f = a.focused { closeTile(f, in: id) } else { afterClosing(reachedBefore: hosts.reachable()) }
     }
 
     /// ⌘D: the focused tile's block deleted (or `sender`'s, a menu's).
