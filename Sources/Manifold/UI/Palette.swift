@@ -1204,12 +1204,14 @@ extension Palette {
             accent: TintColors(accent: clay, caret: blue, textSelection: selection),
             tints: Palette.paper.tints,
             code: Code(
-                // Read, not edited: its cards' ground (white, #30302e),
-                // as claude.ai sets what's rendered apart from its ivory.
-                page: .hex(0xFFFFFF, 0x30302E),
+                // Read, not edited: as claude.ai sets code, a step deeper
+                // than its page — its oat (bg-300, #f0eee6) under the
+                // ivory; by night its cards' #30302e over #262624.
+                page: .hex(0xF0EEE6, 0x30302E),
                 text: .hex(0x141413, 0xFAF9F5),
                 lineNumber: .hex(0x9C9A92, 0x73726C),
-                lineHighlight: .hex(0xF1F0EC, 0x2F2F2D),
+                // The caret's line, seen on the ivory and the oat both.
+                lineHighlight: .hex(0xEBE9E1, 0x363634),
                 gutterText: .hex(0x9C9A92, 0x73726C),
                 use: alpha(0x2C84DB, 0.1, 0x2C84DB, 0.18),
                 match: alpha(0xFFD500, 0.25, 0xFFD500, 0.18),
@@ -1261,12 +1263,13 @@ extension Palette {
                                       extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
             // As claude.ai sets a reply: on its ivory, its inks, its links.
             page: Page(
-                // A rendered page, read: on its cards' ground.
-                background: .hex(0xFFFFFF, 0x30302E),
+                // A rendered page, read: as its code read.
+                background: .hex(0xF0EEE6, 0x30302E),
                 text: .hex(0x141413, 0xFAF9F5),
                 strong: .hex(0x000000, 0xFFFFFF),
                 link: link,
-                code: .hex(0xF0EEE6, 0x1F1E1D),
+                // Inline code a step deeper again (bg-400).
+                code: .hex(0xE8E6DC, 0x1F1E1D),
                 codeText: .hex(0x141413, 0xFAF9F5),
                 copy: .hex(0xFFFFFF, 0x30302E),
                 copyEdge: .hex(0xE4E3DF, 0x42413E),
@@ -1277,7 +1280,7 @@ extension Palette {
                 quote: .hex(0x3D3D3A, 0xC2C0B6),
                 quoteRule: .hex(0xD9D8D5, 0x42413E),
                 rule: .hex(0xE4E3DF, 0x383835),
-                tableHead: .hex(0xF0EEE6, 0x30302E),
+                tableHead: .hex(0xE8E6DC, 0x3A3A37),
                 tableStripe: .hex(0xF5F4ED, 0x2B2B29),
                 struck: .hex(0x73726C, 0x9C9A92),
                 missing: failed,
