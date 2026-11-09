@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifier = Notifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ScrollerFlash.install()
         signal(SIGPIPE, SIG_IGN)
         CrashGuard.start()
         safeMode = CrashGuard.unfinished >= 2 && askSafeMode()

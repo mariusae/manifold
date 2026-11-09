@@ -419,7 +419,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let leaving = old.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
             content = grid(for: selected)
             content.frame = stage.bounds
-            content.isHidden = stateView != nil
+            // The grid come into sight all at once: its scrollers not
+            // flashing, every tile's together.
+            ScrollerFlash.quietly { content.isHidden = stateView != nil }
             if old !== content {
                 if let from = shownArrangement, let to = selected {
                     let dir = slideDirection(from: from, to: to)
