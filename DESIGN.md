@@ -602,8 +602,10 @@ destination:
    in place (a page, a preview, a listing).
 3. **The switchers are the trail at three scales**, as ⌘⇥ and ⌘` are
    the Mac's at two: ⌘` its spaces (cards while ⌘ is held, a picture
-   of each space's grid: `SpaceSwitcherView`), ⌃⇥ this space's tiles — its docked tiles too, a card each (out of its row
-   in the sidebar, and back), one settled on going back where it was.
+   of each space's grid: `SpaceSwitcherView`), ⌃⇥ this space's tiles — its docked tiles too, in the grid itself: the focus
+   ring and the sidebar's row move as it walks, a docked one shown in its
+   column where it would come back (the others parting for it, closing
+   again as the walk goes past), one settled on going back where it was.
    Each walks while its modifier is held and
    settles where it's let go, so a tap goes back and forth between two;
    only what's settled on goes on the trail, and settling on a tile
@@ -612,17 +614,10 @@ destination:
    a time, a tap going further back rather than back and forth. What
    the window settled on comes first, ahead of the hosts' trail, so a
    switch doesn't wait on a host to hear of it.
-   ⌃⇥ held, its cards are in place 270 ms after the
-   press: made out of sight as it's pressed (some 25 ms), shown 120 ms on
-   and unfolding in the 150 ms left — long enough to be seen coming out
-   of where they are, which says what they are (an earlier 150 ms, shown
-   at 60, was over before it was seen), and late enough that a quick tap
-   sees nothing (shown at 30, most taps caught them). Let go before they show, it was a
-   tap: nothing's seen, the tile behind comes up; let go as they unfold,
-   they fold back the way they came, four times as fast (from where
-   they've got to, no jump), then it comes up. ⇥ again before they show
-   is no tap, and they come at once, in place 60 ms on; ⇥ while they
-   unfold sends them the rest of the way four times as fast.
+   ⌃⇥ shows nothing of its own — no cards, no panel: what it walks is
+   shown where it is (a preview of the space, the space itself kept until
+   the walk settles), so there's nothing to come and go but the tiles,
+   and settling is the arrival's glow on the ring.
 4. **Open Quickly (⌘O) is ranked by the graph.** Only what is kept (§4)
    is found. With nothing typed, the focused block's neighborhood,
    nearest first; typed, what the query names best first — its title,
@@ -2888,8 +2883,8 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⌘` walks spaces,** the app's windows; with one space it walks
   windows.
 - **⌃⇥ walks the space's tiles,** docked ones too, as a browser's tabs,
-  in every view, a terminal's too; a quick release switches without
-  showing cards, as ⌘⇥ does.
+  in every view, a terminal's too — in place, the focus ring walking,
+  with no switcher of its own.
 - **⌥⇥ is left unbound.** It once walked every space's tiles; ⌘`'s
   cards and ⌃⇥ cover that, and a terminal keeps Meta-Tab.
 - **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-

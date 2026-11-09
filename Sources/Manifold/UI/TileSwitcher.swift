@@ -9,13 +9,14 @@ extension MainWindowController {
     // MARK: ⌃⇥
 
     /// ⌃⇥ (⌃⇧⇥ back): this space's tiles — those in the grid and those
-    /// docked (§3.1) — the latest settled on first. As ⌘⇥ is: let go
-    /// quickly, and it's gone to the one before (back and forth between
-    /// two); held a moment, the cards come, each ⌃⇥ a step further, and
-    /// letting go of control goes to the one chosen — its card becoming
-    /// its tile (a docked one going back where it was). Those passed on the
-    /// way aren't settled on; Escape leaves things be. From the menu it's
-    /// one step.
+    /// docked (§3.1) — the latest settled on first. Each step shows the
+    /// next as it would be gone to, in the grid itself: the focus ring and
+    /// the sidebar's row on it — a docked one in its column where it would
+    /// come back, the others parting for it (and closing again as the walk
+    /// goes past). Letting go of control settles there, the ring glowing as
+    /// an arrival's does; a quick tap goes back and forth between two.
+    /// Those passed on the way aren't settled on; Escape leaves things be.
+    /// From the menu it's one step.
     @objc func walkSpaceTiles(_ sender: Any?) { walkTiles(back: false) }
     @objc func walkSpaceTilesBack(_ sender: Any?) { walkTiles(back: true) }
 
@@ -46,7 +47,6 @@ extension MainWindowController {
     static let tileWalkLimit = 24
 
     private func walkTiles(back: Bool) {
-        let pressed = Date()
         let step = back ? -1 : 1
         if var w = tileWalk {
             // Its key let go unheard (the app left meanwhile): over.
@@ -54,15 +54,7 @@ extension MainWindowController {
                 let n = w.places.count
                 w.index = ((w.index + step) % n + n) % n
                 tileWalk = w
-                tileSwitcher?.column.choose(w.index)
-                if tileUnseen != nil {
-                    // ⇥ again before the cards showed: no tap — they come at once.
-                    w.show.cancel()
-                    revealTileSwitcher(settledBy: Date() + Self.switcherHurried)
-                } else {
-                    // On their way: what's wanted is plain, the rest hurried.
-                    GridView.hurry(tileFlights)
-                }
+                previewWalk()
                 return
             }
         }
@@ -73,123 +65,43 @@ extension MainWindowController {
         let n = places.count
         let index = ((start + step) % n + n) % n
         guard NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return go(to: places[index]) }
-        // The cards made now, out of sight, shown in a moment if control's
-        // still held, and in place when the wait's done.
-        let work = DispatchWorkItem { [weak self] in self?.revealTileSwitcher(settledBy: pressed + Self.switcherSettled) }
-        tileWalk = (places, index, work)
-        watchTileWalk()
-        prepareTileSwitcher()
-        // From the press, not from when they're made.
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + Self.switcherDelay).timeIntervalSinceNow), execute: work)
-    }
-
-
-    private func watchTileWalk() {
+        tileWalk = (places, index)
         tileHold = ModifierHold(tileWalkKey, released: { [weak self] in self?.endTileWalk(settling: true) },
                                 escaped: { [weak self] in self?.endTileWalk(settling: false) })
+        previewWalk()
     }
 
-    /// Control let go (`settling`), or Escape: let go before the cards
-    /// showed, gone to the tile stepped to with nothing shown; after, the
-    /// card chosen becomes its tile, and the rest go back to theirs.
-    private func endTileWalk(settling: Bool, to chosen: Int? = nil) {
+    /// The walk's tile shown as it would be gone to — focused (the ring,
+    /// the sidebar's row), and docked or behind a maximized tile, in its
+    /// column where it would come back, the others parting for it — in the
+    /// grid only: nothing's gone to yet (the space as it is, kept).
+    private func previewWalk() {
+        guard let w = tileWalk, let space = selected, let a = hosts.arrangement(space),
+              let t = w.places[w.index].tile, a.placement(t) != nil else { return }
+        var preview = a
+        let hidden = a.isDocked(t) || (a.full != nil && a.full != t)
+        for e in hidden ? arriving(t, in: a) : [.focus(t)] { preview.apply(e) }
+        walkPreview = preview
+        // Shown in its column where it is, not flown out of the dock.
+        dockSeen = (space, Set(preview.docked.map(\.placement.id)))
+        render()
+        refreshOrganization(now: true)
+    }
+
+    /// Control let go (`settling`): gone to the tile walked to, as the grid
+    /// shows it already, the ring glowing on it. Escape: the space as it
+    /// was, the others closing back over a docked one shown.
+    private func endTileWalk(settling: Bool) {
         tileHold?.stop()
         tileHold = nil
         debugHeld = false
         guard let w = tileWalk else { return }
         tileWalk = nil
-        w.show.cancel()
-        let index = chosen ?? w.index
-        let target = settling && w.places.indices.contains(index) ? w.places[index] : nil
-        guard let (frame, column) = tileSwitcher else {
-            if let target { go(to: target) }
-            return
-        }
-        // Let go before the cards were in place (unseen, or unfolding): a
-        // tap — put away at once, gone to the tile stepped to.
-        if tileUnseen != nil {
-            tileUnseen = nil
-            tileSwitcher = nil
-            landTiles()
-            frame.removeFromSuperview()
-            if let target { go(to: target) }
-            return
-        }
-        // Unfolding: folded back the way they came, then gone there.
-        if !column.cardsShown {
-            tileSwitcher = nil
-            let flights = tileFlights
-            tileFlights = []
-            GridView.foldBack(flights, began: tileUnfoldBegan, fading: frame) { [weak self] in
-                if let target { self?.go(to: target) }
-            }
-            return
-        }
-        tileSwitcher = nil
-        landTiles()
-        let cards = column.cardPictures(in: root)
-        frame.removeFromSuperview()
-        let home = arrangement?.focused
-        if let target { go(to: target) }
-        guard let host = root.layer else { return }
-        // Where the space has its tiles now (the one gone to, if another).
-        content.layoutSubtreeIfNeeded()
-        let tiles = partsInRoot(content.placedParts(), from: content)
-        let arriving = target?.tile ?? home
-        for c in cards where c.frame != .zero {
-            let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
-            if c.id == arriving {
-                // The one chosen (or, let be, the one it began from) becomes its tile.
-                content.becomeTile(c.id, from: card, picture: c.picture, at: c.frame, in: root)
-            } else if let tile = tiles[c.id] {
-                // Back into its tile, here: grown to its size where it is,
-                // then across into it, becoming it (as a docked bar comes out).
-                let scale = window?.backingScaleFactor ?? 2
-                var l: CALayer?
-                l = Genie.flight(tile.whole, Genie.image(of: tile, scale: scale), ground: tile.ground, to: c.frame, c.picture, ground: c.ground,
-                                 out: true, in: host, over: Motion.morph, scale: scale) { l?.removeFromSuperlayer() }
-                if let l { tileFlights.append(l) }
-            } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
-                      let row = dockedSpot(t, in: place.space) {
-                // Docked: back into its row in the sidebar, as a bar docks — across, then its size, becoming it.
-                let scale = window?.backingScaleFactor ?? 2
-                tileFlights.append(Genie.flight(c.frame, c.picture, ground: c.ground, to: row, sidebar.organizationView.picture(of: t, in: root)?.image, ground: nil,
-                                                fade: true, corner: Radius.control, in: host, over: Motion.morph, scale: scale))
-            } else {
-                // Its tile's in another space: gone, sinking a little.
-                let l = CALayer()
-                l.contents = c.picture
-                l.backgroundColor = c.ground
-                l.frame = c.frame
-                l.cornerRadius = Radius.surface
-                l.cornerCurve = .continuous
-                l.masksToBounds = true
-                l.zPosition = 39
-                l.opacity = 0
-                host.addSublayer(l)
-                let fade = CABasicAnimation(keyPath: "opacity")
-                fade.fromValue = 1
-                fade.toValue = 0
-                let sink = CABasicAnimation(keyPath: "transform.scale")
-                sink.fromValue = 1
-                sink.toValue = Motion.reduced ? 1 : 0.94
-                let g = CAAnimationGroup()
-                g.animations = [fade, sink]
-                g.duration = Motion.fast
-                g.timingFunction = Motion.disappear
-                CATransaction.begin()
-                CATransaction.setCompletionBlock { l.removeFromSuperlayer() }
-                l.add(g, forKey: "gone")
-                CATransaction.commit()
-                tileFlights.append(l)
-            }
-        }
-    }
-
-    private func landTiles() {
-        tileFlights.forEach { $0.removeFromSuperlayer() }
-        tileFlights = []
-        tileSwitcher?.column.cardsShown = true
+        walkPreview = nil
+        if settling, w.places.indices.contains(w.index) { return go(to: w.places[w.index]) }
+        if let space = selected, let a = hosts.arrangement(space) { dockSeen = (space, Set(a.docked.map(\.placement.id))) }
+        render()
+        refreshOrganization(now: true)
     }
 
     /// Goes to a place: its space shown, its tile back from the dock (or
@@ -202,194 +114,34 @@ extension MainWindowController {
         warpPointerToFocus()
     }
 
-    /// The cards now (debugging): made, and unfolding as a click's would.
-    private func showTileSwitcher() {
-        prepareTileSwitcher()
-        revealTileSwitcher(settledBy: Date() + Motion.morph)
-    }
-
-    /// The cards shown, unfolding to be in place by `settledBy`, if they're
-    /// made and not yet seen.
-    private func revealTileSwitcher(settledBy: Date) {
-        guard let go = tileUnseen else { return }
-        tileUnseen = nil
-        go(settledBy)
-    }
-
-    /// The cards made, over the space, out of sight till they're shown —
-    /// the one stepped to chosen; the focused tile to become the first,
-    /// the rest to come from their tiles here, or out from under it.
-    private func prepareTileSwitcher() {
-        guard let w = tileWalk, tileSwitcher == nil, NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return }
-        let entries = w.places.compactMap { p -> SummaryCardContent? in
-            guard let t = p.tile, let b = hosts.arrangement(p.space)?.placement(t)?.block, var c = cardContent(for: b, view: views[t], id: t) else { return nil }
-            // Where it is, if not here.
-            if p.space != selected, let a = hosts.arrangement(p.space) { c.age = title(of: a) }
-            return c
-        }
-        guard entries.count == w.places.count else { return endTileWalk(settling: false) }
-        let column = CardColumnView(entries: entries, selection: w.index)
-        column.onPick = { [weak self] id, _ in
-            guard let self, let i = self.tileWalk?.places.firstIndex(where: { $0.tile == id }) else { return }
-            self.endTileWalk(settling: true, to: i)
-        }
-        column.onCancel = { [weak self] in self?.endTileWalk(settling: false) }
-        let room = root.convert(content.bounds, from: content).insetBy(dx: 32, dy: 32)
-        let width = min(520, room.width)
-        let height = min(CardColumnView.height(for: entries.count), room.height, 640)
-        // Floating over the space: a shadow under the column.
-        let frame = NSView(frame: NSRect(x: room.midX - width / 2, y: room.midY - height / 2, width: width, height: height).integral)
-        frame.wantsLayer = true
-        Elevation.float.apply(to: frame.layer!)
-        frame.layer?.shadowPath = CGPath(roundedRect: frame.bounds, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
-        frame.layer?.zPosition = 30
-        column.frame = frame.bounds
-        column.autoresizingMask = [.width, .height]
-        frame.addSubview(column)
-        root.addSubview(frame, positioned: .above, relativeTo: stateView ?? stage)
-        tileSwitcher = (frame, column)
-        column.present(dealt: false)
-        // Out of sight till shown; its cards' pictures taken now.
-        frame.alphaValue = 0
-        guard !Motion.reduced, let host = root.layer else {
-            tileUnseen = { [weak self, weak frame] _ in
-                guard let self, let frame else { return }
-                frame.alphaValue = 1
-                self.fadeIn(frame)
-            }
-            return
-        }
-        content.layoutSubtreeIfNeeded()
-        let tiles = partsInRoot(content.placedParts(), from: content)
-        let cards = column.cardPictures(in: root)
-        guard let first = cards.first(where: { $0.frame != .zero }) else {
-            tileUnseen = { [weak frame] _ in frame?.alphaValue = 1 }
-            return
-        }
-        // Each card a little after the one before, within the time given.
-        let stagger = 0.008, staggered = min(Double(cards.count - 1) * stagger, 0.024)
-        var items: [GridView.Morph] = []
-        // Tiles into their cards as a bar into its row: across at their
-        // size, then made the card's, becoming it.
-        var flights: [(tile: GridView.Pictured, card: NSRect, picture: CGImage?, ground: CGColor, delay: Double)] = []
-        for (i, c) in cards.enumerated() where c.frame != .zero {
-            let card = GridView.Pictured(parts: [(c.frame, c.picture)], ground: c.ground)
-            let delay = min(Double(i) * stagger, staggered)
-            if let tile = tiles[c.id] {
-                flights.append((tile, c.frame, c.picture, c.ground, delay))
-            } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
-                      let row = dockedSpot(t, in: place.space) {
-                // Docked: out of its row in the sidebar, as a docked bar comes out.
-                flights.append((GridView.Pictured(parts: [(row, sidebar.organizationView.picture(of: t, in: root)?.image)], ground: nil),
-                                c.frame, c.picture, c.ground, delay))
-            } else {
-                // Elsewhere: out from under the first.
-                items.append(GridView.Morph(from: first.frame, to: c.frame, coming: card, delay: delay))
-            }
-        }
-        column.cardsShown = false
-        tileUnseen = { [weak self, weak frame, weak column] settledBy in
-            guard let self, let frame, let column, self.tileSwitcher?.column === column else { return }
-            frame.alphaValue = 1
-            // (A frame allowed for its many flights to be put on screen.)
-            let d = max(settledBy.timeIntervalSinceNow - staggered - 1.0 / 60, 0.05) * Motion.slowdown
-            self.debugTilesShown = Date()
-            self.tileUnfoldBegan = CACurrentMediaTime()
-            // The cards shown once every flight's there (the morphs' and the tiles').
-            var waiting = flights.count + 1
-            var flown: [CALayer] = []
-            let arrived = { [weak self, weak column] in
-                waiting -= 1
-                guard waiting == 0 else { return }
-                column?.cardsShown = true
-                flown.forEach { $0.removeFromSuperlayer() }
-                self?.debugTilesSettled = Date()
-            }
-            let scale = self.window?.backingScaleFactor ?? 2
-            for f in flights {
-                let l = Genie.flight(f.tile.whole, Genie.image(of: f.tile, scale: scale), ground: f.tile.ground, to: f.card, f.picture, ground: f.ground,
-                                     in: host, over: d, delay: f.delay, scale: scale) { arrived() }
-                flown.append(l)
-                self.tileFlights.append(l)
-            }
-            self.tileFlights += GridView.morph(items, in: host, over: d) { arrived() }
-            // The column's ground comes in under them.
-            if let l = column.layer, let ground = l.backgroundColor {
-                let a = CABasicAnimation(keyPath: "backgroundColor")
-                a.fromValue = ground.copy(alpha: 0)
-                a.toValue = ground
-                a.duration = d
-                a.timingFunction = Motion.appear
-                l.add(a, forKey: "ground")
-                let s = CABasicAnimation(keyPath: "shadowOpacity")
-                s.fromValue = 0
-                s.toValue = frame.layer?.shadowOpacity ?? 0
-                s.duration = d
-                frame.layer?.add(s, forKey: "ground")
-            }
-        }
-    }
-
-
-    /// "tilewalk step|back|end|escape|order|pick <n>": ⌃⇥ pressed with
-    /// control held, control let go, Escape, a card clicked; or the walk and
+    /// "tilewalk step|back|end|escape|tap [s]|order": ⌃⇥ pressed with
+    /// control held, control let go, Escape, a quick tap; or the walk and
     /// ⌃⇥'s order.
     func debugTileWalk(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         switch w.first ?? "" {
         case "step", "back", "space", "spaceback":
-            // ("space", "spaceback": the same, as they were once another walk's.)
             debugHeld = true
-            if tileWalk == nil { debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil }
             walkTiles(back: w.first == "back" || w.first == "spaceback")
-        case "again":
-            // "tilewalk again <seconds>": ⌃⇥ pressed, then ⇥ again that much later.
-            debugHeld = true
-            debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil
-            walkTiles(back: false)
-            let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.03
-            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (debugTilesPressed! + after).timeIntervalSinceNow)) { [weak self] in self?.walkTiles(back: false) }
         case "tap":
             // "tilewalk tap <seconds>": ⌃⇥ pressed, control let go that much later.
-            // (Timed from the press, as a key let go is, not from when the
-            // cards are made.)
             debugHeld = true
-            let pressed = Date()
-            debugTilesPressed = pressed; debugTilesShown = nil; debugTilesSettled = nil
             walkTiles(back: false)
             let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.08
-            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + after).timeIntervalSinceNow)) { [weak self] in self?.endTileWalk(settling: true) }
-        case "timing":
-            // From the first step's press: when the cards were shown, and in place.
-            let ms = { (d: Date?) in d.flatMap { d in self.debugTilesPressed.map { String(Int(d.timeIntervalSince($0) * 1000)) } } ?? "-" }
-            return "shown \(ms(debugTilesShown)) settled \(ms(debugTilesSettled)) ms"
-        case "show": tileWalk.map { _ in showTileSwitcher() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in self?.endTileWalk(settling: true) }
         case "end": endTileWalk(settling: true)
         case "escape": endTileWalk(settling: false)
-        case "pick": if let i = w.dropFirst().first.flatMap({ Int($0) }) { tileSwitcher.map { _ = $0.column.debugPick(i) } }
         default: break
         }
         func name(_ p: Settled) -> String {
             let t = p.tile.flatMap { hosts.arrangement(p.space)?.placement($0)?.block }.flatMap { hosts.block($0)?.summary().title } ?? "-"
             return t + (p.space == selected ? "" : "@" + String(p.space.ulid.suffix(4)))
         }
-        let here = selected.map { name(Settled(space: $0, tile: arrangement?.focused)) } ?? "-"
+        let here = selected.map { name(Settled(space: $0, tile: walkPreview?.focused ?? arrangement?.focused)) } ?? "-"
         let docked = Set(arrangement?.docked.map(\.placement.id) ?? [])
         func named(_ p: Settled) -> String { name(p) + (p.tile.map(docked.contains) == true ? "(docked)" : "") }
-        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") } ?? "-") cards=\(tileSwitcher != nil) order=\(tileTrail().prefix(8).map(named).joined(separator: ",")) space=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
+        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") } ?? "-") previewing=\(walkPreview != nil) order=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
     }
-
-    /// ⌃⇥ held, its cards are in place this long after it's pressed:
-    /// settled by then, not starting — but long enough that they're seen
-    /// coming out of where they are, which says what they are.
-    static let switcherSettled: TimeInterval = 0.27
-    /// When they start: long enough after the press that a quick tap (let
-    /// go within it) switches with nothing seen — at 30 ms most taps
-    /// caught the cards; after, they fold back as they came.
-    static let switcherDelay: TimeInterval = 0.12
-    /// ⇥ pressed again before they showed: no quick switch wanted — they
-    /// come at once, in place this long after.
-    static let switcherHurried: TimeInterval = 0.06
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window
     /// (or, backward, its previous) — Settings, another window.

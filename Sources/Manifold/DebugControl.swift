@@ -637,9 +637,6 @@ enum DebugControl {
             guard let cg, let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return "not an image (a surface?)" }
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(cg.width)x\(cg.height)"
-        case "flights":
-            // ⌃⇥'s pictures on their way, this moment.
-            return wc?.debugFlights ?? "no window"
         case "tilewalk":
             // ⌃⇥: "tilewalk step|back|show|end|escape|pick <n>|order".
             return wc?.debugTileWalk(arg) ?? "no window"

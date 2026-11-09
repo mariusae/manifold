@@ -1913,31 +1913,6 @@ final class GridView: NSView, NSDraggingSource {
         pendingArrival = nil
     }
 
-    /// Flights sent back the way they came, `speed` times as fast, from
-    /// where they've got to; `view` fading out meanwhile. Then they're put
-    /// away, `view` taken out, and `done`.
-    static func foldBack(_ flights: [CALayer], began: CFTimeInterval?, fading view: NSView, speed: Double = 4, done: @escaping () -> Void) {
-        let now = CACurrentMediaTime()
-        var back: TimeInterval = 0
-        for l in flights {
-            let t = l.convertTime(now, from: nil)
-            if let began { back = max(back, (t - began) / speed) }
-            l.timeOffset = t
-            l.beginTime = now
-            l.speed = Float(-speed)
-        }
-        back = min(max(back, 0), 0.12)
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = back
-            view.animator().alphaValue = 0
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + back) {
-            flights.forEach { $0.removeFromSuperlayer() }
-            view.removeFromSuperview()
-            done()
-        }
-    }
-
     /// Where a tile's × is, in the window's terms (laid out as it ends, not
     /// as it moves there); nil if it has none showing.
     func closeButtonInWindow(_ id: PlacementID) -> NSPoint? {
@@ -1945,17 +1920,6 @@ final class GridView: NSView, NSDraggingSource {
         guard let pill = pills[id], !pill.isHidden, let r = pill.closeButtonFrame else { return nil }
         let f = pill.convert(r, to: nil)
         return NSPoint(x: f.midX, y: f.midY)
-    }
-
-    /// Flights hurried the rest of their way, their time carried on from
-    /// where they are, so nothing jumps.
-    static func hurry(_ layers: [CALayer]) {
-        let now = CACurrentMediaTime()
-        for l in layers where l.speed == 1 {
-            l.timeOffset = l.convertTime(now, from: nil)
-            l.beginTime = now
-            l.speed = 4
-        }
     }
 
     /// A tile chosen in a switcher, waiting to be laid out where it goes,
@@ -2013,26 +1977,6 @@ final class GridView: NSView, NSDraggingSource {
         w.cornerCurve = .continuous
         host.addSublayer(w)
         flying.append(w)
-    }
-
-    /// A card chosen elsewhere (⌃⇥'s), where it is in `view`'s terms,
-    /// becoming tile `id` once the tile's laid out where it goes — the tile
-    /// out of sight till then (a second at most).
-    func becomeTile(_ id: PlacementID, from card: GridView.Pictured, picture: CGImage?, at r: NSRect, in view: NSView) {
-        land()
-        let at = Date()
-        hold(picture, ground: card.ground ?? .clear, at: r, in: view)
-        pendingArrival = (id, card, r, at, view)
-        // Its focus ring with it: waiting for its tile.
-        for v in [tile(id)?.view, pills[id], tileSummaries[id], id == focused ? focusRing : nil].compactMap({ $0 }) {
-            v.alphaValue = 0
-            unseen.append(v)
-        }
-        needsLayout = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self, self.pendingArrival?.at == at else { return }
-            self.land()
-        }
     }
 
     /// Every tile, column by column.

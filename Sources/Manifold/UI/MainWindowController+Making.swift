@@ -622,8 +622,6 @@ extension MainWindowController {
         hosts.select(id)
     }
 
-    var debugFlights: String { GridView.describe(tileFlights) }
-
 
     /// Where the window is now, settled on: the latest place on its trail.
     func settleHere() {

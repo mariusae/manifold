@@ -77,9 +77,10 @@ parts from the Mac's conventions on purpose.
   **⌃⇥** walks the space's tiles, docked ones too, the latest settled on
   first: let go quickly and it goes to the
   one before, so a tap goes back and forth between two (⌃⇧⇥, the
-  farthest); held a moment, their summary cards come, a docked one's out
-  of its row in the sidebar, each ⇥ a card further, and letting go goes
-  to the one chosen (Escape leaves things be). ⌃⇥ is the space's in
+  farthest); held, each ⇥ moves the focus ring (and the sidebar's row)
+  to the next, a docked one shown in its column where it would come back,
+  the others parting for it and closing again as you go past; letting go
+  settles there, the ring glowing (Escape leaves things be). ⌃⇥ is the space's in
   every tile, a terminal's too, so tmux and Emacs don't get it. Docking
   isn't pinning: a pin keeps a block in the space for good; a docked
   tile is only out of the grid for now. A tile docked flies into its
@@ -1613,11 +1614,9 @@ has its focus ring swell and glow a moment; one too short for its
 content crosses over to its summary card, and back; Maximize slides the
 tile's edges out from its place over the rest, Restore back in — what
 any tile shows held still as its edges pass, never stretched; with ⌃⇥ the
-tile becomes its card, shrinking as it goes, and the rest of the
-space's come out of their tiles (a docked one out of its row in the
-sidebar), each a whole card, down to their places; the
-one chosen becomes its tile again as the rest go back to theirs
-(a quick ⌃⇥, let go at once, just goes there);
+focus ring moves from tile to tile, a docked one coming into its column
+as the others part for it (and going again as the walk goes past), and
+the ring glows where it's let go;
 Overview turns each tile into its card where the card is, as Mission
 Control sends windows, and
 back; a toast rises from the window's foot (and shakes

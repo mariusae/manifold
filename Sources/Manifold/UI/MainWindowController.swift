@@ -68,13 +68,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// rest).
     var settled: [Settled] = []
     /// ⌃⇥'s walk, while control is held: the places in the order it began
-    /// with, how far along it is, and what shows its cards if it's held.
-    var tileWalk: (places: [Settled], index: Int, show: DispatchWorkItem)?
+    /// with, and how far along it is.
+    var tileWalk: (places: [Settled], index: Int)?
     /// Control held for ⌃⇥'s walk, watched.
     var tileHold: ModifierHold?
-    /// ⌃⇥'s cards, once they show, and their pictures on their way.
-    var tileSwitcher: (frame: NSView, column: CardColumnView)?
-    var tileFlights: [CALayer] = []
+    /// The space as ⌃⇥'s walk shows it in the grid and the sidebar — the
+    /// tile walked to focused, a docked one in its column — while the
+    /// space itself stays as it is until the walk settles.
+    var walkPreview: ArrangementState?
     let sidebar = SidebarView()
     /// What the window shows with no space at all.
     private var emptyState: EmptyStateView?
@@ -446,7 +447,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if tileWalk == nil { settleHere() }
         }
 
-        if let a = arrangement {
+        if let real = arrangement {
+            // ⌃⇥'s walk shows the space as it would be gone to.
+            let a = walkPreview ?? real
             // The grid (§3.1): every tile, in its column, top to bottom.
             let tiles = a.columns.map { column in
                 column.filter { !recentlyClosed.contains($0.block) }.map { p -> GridView.Tile in
@@ -471,7 +474,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // the view it was in went, as a closed editor's does).
             let responder = window.firstResponder as? NSView
             // Nor while a pill is a field (a note being named, an address typed).
-            if emptyState == nil, stateView == nil, history == nil, neighborhoodView == nil, !content.isEditingPill,
+            if walkPreview == nil, emptyState == nil, stateView == nil, history == nil, neighborhoodView == nil, !content.isEditingPill,
                let focused = a.focused, let view = views[focused], view.superview != nil,
                !(responder?.isDescendant(of: view) ?? false) {
                 // Not while something is over the window with the keyboard.
@@ -494,7 +497,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     window.makeFirstResponder(view.focusView)
                 }
             }
-            lastFocused = a.focused
+            lastFocused = real.focused
             let context = RenderContext(theme: hosts.state.appearance.theme, codeFont: codeFont, places: { [weak self] in self?.places(of: $0) ?? [] })
             for case let v as FollowsModel in views.values { v.modelChanged(context) }
         } else {
@@ -1726,15 +1729,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The key a tile walk is held on.
     let tileWalkKey: NSEvent.ModifierFlags = .control
-    /// ⌃⇥'s cards made out of sight: what shows them, unfolding to be in
-    /// place by the time it's given.
-    var tileUnseen: ((Date) -> Void)?
-    /// When they last began unfolding (media time).
-    var tileUnfoldBegan: CFTimeInterval?
-    /// Debugging: when ⌃⇥'s cards were last asked for, shown, and in place.
-    var debugTilesPressed: Date?
-    var debugTilesShown: Date?
-    var debugTilesSettled: Date?
     var picturing = 0
     // MARK: Tiles
 

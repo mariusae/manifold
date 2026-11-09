@@ -112,7 +112,7 @@ extension MainWindowController {
 
     /// The desk row for the focused tile of the selected arrangement.
     private var deskSelectedRow: String? {
-        guard let id = selected, let a = hosts.arrangement(id) else { return nil }
+        guard let id = selected, let a = walkPreview ?? hosts.arrangement(id) else { return nil }
         if let f = a.focusedPlacement { return "arr/\(id)/tile/\(f.id)" }
         return "arr/\(id)"
     }

@@ -170,7 +170,7 @@ extension MainWindowController {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is CardColumnView || view is OrganizationView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
