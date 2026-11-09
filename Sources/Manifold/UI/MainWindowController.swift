@@ -1376,30 +1376,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
 
-    @objc func setTextHistory(_ sender: NSMenuItem) {
-        var s = desk.settings
-        s.textHistoryDays = sender.tag
-        host.setSettings(s)
-    }
-
-    @objc func setTranscriptHistory(_ sender: NSMenuItem) {
-        var s = desk.settings
-        s.terminalHistoryDays = sender.tag
-        host.setSettings(s)
-    }
-
-    @objc func setUndoDepth(_ sender: NSMenuItem) {
-        var s = desk.settings
-        s.undoDepth = sender.tag
-        host.setSettings(s)
-    }
-
-    @objc func setTerminalDormancy(_ sender: NSMenuItem) {
-        var s = desk.settings
-        s.terminalDormantAfterHours = sender.tag
-        host.setSettings(s)
-    }
-
     /// A terminal's shell ended (not for dormancy): its placements go, as a
     /// closed window's would; the block stays, with its transcript.
 
@@ -3061,31 +3037,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     @objc func togglePinnedSidebar(_ sender: Any?) { sidebarTogglePinned() }
 
-    @objc func setColorScheme(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let scheme = ColorScheme(rawValue: raw) else { return }
+    /// The appearance changed as `change` says (Settings' and debugging's).
+    func changeAppearance(_ change: (inout Appearance) -> Void) {
         var a = hosts.state.appearance
-        a.colorScheme = scheme
-        hosts.setAppearance(a)
-    }
-
-    @objc func setTheme(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let theme = FontTheme(rawValue: raw) else { return }
-        var a = hosts.state.appearance
-        a.theme = theme
-        hosts.setAppearance(a)
-    }
-
-    @objc func setEditorFont(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let font = EditorFont(rawValue: raw) else { return }
-        var a = hosts.state.appearance
-        a.editorFont = font
-        hosts.setAppearance(a)
-    }
-
-    @objc func setContrastCorrection(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String, let mode = ContrastCorrection(rawValue: raw) else { return }
-        var a = hosts.state.appearance
-        a.contrastCorrection = mode
+        change(&a)
         hosts.setAppearance(a)
     }
 
@@ -3098,8 +3053,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             item.title = on ? "Unpin" : "Pin in Space"
             item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
             return true
-        case #selector(setTerminalDormancy(_:)):
-            item.state = item.tag == desk.settings.terminalDormantAfterHours ? .on : .off
         case #selector(nextInInbox(_:)):
             return !inboxOrder().isEmpty
         case #selector(printTile(_:)):
@@ -3129,20 +3082,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let viewing = f.lens == .preview
             item.title = item.action == #selector(toggleEditPreview(_:)) ? (viewing ? "Edit" : "View") : (viewing ? "Edit Beside" : "View Beside")
             return true
-        case #selector(setTextHistory(_:)):
-            item.state = item.tag == desk.settings.textHistoryDays ? .on : .off
-        case #selector(setTranscriptHistory(_:)):
-            item.state = item.tag == desk.settings.terminalHistoryDays ? .on : .off
-        case #selector(setUndoDepth(_:)):
-            item.state = item.tag == desk.settings.undoDepth ? .on : .off
-        case #selector(setColorScheme(_:)):
-            item.state = (item.representedObject as? String) == hosts.state.appearance.colorScheme.rawValue ? .on : .off
-        case #selector(setTheme(_:)):
-            item.state = (item.representedObject as? String) == hosts.state.appearance.theme.rawValue ? .on : .off
-        case #selector(setEditorFont(_:)):
-            item.state = (item.representedObject as? String) == hosts.state.appearance.editorFont.rawValue ? .on : .off
-        case #selector(setContrastCorrection(_:)):
-            item.state = (item.representedObject as? String) == hosts.state.appearance.contrastCorrection.rawValue ? .on : .off
         case #selector(nameFocusedNote(_:)):
             return focusedShown?.block?.isNote == true
         case #selector(togglePinnedSidebar(_:)):

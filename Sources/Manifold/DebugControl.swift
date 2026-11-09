@@ -267,10 +267,8 @@ enum DebugControl {
             }
             return out
         case "contrast":
-            guard let mode = ContrastCorrection(rawValue: arg) else { return "off, typical or deuteranopia" }
-            let item = NSMenuItem()
-            item.representedObject = mode.rawValue
-            wc?.setContrastCorrection(item)
+            guard let wc, let mode = ContrastCorrection(rawValue: arg) else { return "off, typical or deuteranopia" }
+            wc.changeAppearance { $0.contrastCorrection = mode }
             return "ok"
         case "focus":
             // Tells ghostty the app and terminal have focus, without
@@ -1514,32 +1512,24 @@ enum DebugControl {
             }
             return "selections \(tv.selections.map { "\($0.min)-\($0.max)" }) undo \(tv.undoDepth) line \(tv.caretLine + 1) col \(tv.caretColumn)\(tv.debugCards)\n" + tv.text.string
         case "scheme":
-            guard let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
-            let item = NSMenuItem()
-            item.representedObject = scheme.rawValue
-            wc?.setColorScheme(item)
+            guard let wc, let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
+            wc.changeAppearance { $0.colorScheme = scheme }
             return "ok"
         case "colortheme":
             // "colortheme <id>": the colour theme (paper, newsprint, classic, …).
             guard let wc, let p = Palette.all.first(where: { $0.id == arg }) else { return Palette.all.map(\.id).joined(separator: ", ") }
-            var a = wc.hosts.state.appearance
-            a.colorTheme = p.id
-            wc.hosts.setAppearance(a)
+            wc.changeAppearance { $0.colorTheme = p.id }
             return "ok: \(p.title)"
         case "theme":
-            guard let theme = FontTheme(rawValue: arg) else { return FontTheme.allCases.map(\.rawValue).joined(separator: ", ") }
-            let item = NSMenuItem()
-            item.representedObject = theme.rawValue
-            wc?.setTheme(item)
+            guard let wc, let theme = FontTheme(rawValue: arg) else { return FontTheme.allCases.map(\.rawValue).joined(separator: ", ") }
+            wc.changeAppearance { $0.theme = theme }
             // The fonts it resolved to (a missing one falls back to the system's).
             return "ok: editing " + theme.font(.proportional, size: 13).fontName + " (bold " + theme.font(.proportional, size: 13).emphasized(bold: true).fontName
                 + "), reading " + theme.readingFont(size: 13).fontName
                 + ", monospaced " + theme.font(.monospaced, size: 13).fontName
         case "editorfont":
-            guard let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
-            let item = NSMenuItem()
-            item.representedObject = font.rawValue
-            wc?.setEditorFont(item)
+            guard let wc, let font = EditorFont(rawValue: arg) else { return "proportional or monospaced" }
+            wc.changeAppearance { $0.editorFont = font }
             return "ok"
         case "cmdclick":
             // "cmdclick x y [opt]": ⌘ down, the mouse moved there, and a ⌘-click
