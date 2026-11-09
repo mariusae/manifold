@@ -147,14 +147,14 @@ extension MainWindowController {
                 let scale = window?.backingScaleFactor ?? 2
                 var l: CALayer?
                 l = Genie.flight(tile.whole, Genie.image(of: tile, scale: scale), ground: tile.ground, to: c.frame, c.picture, ground: c.ground,
-                                 out: true, in: host, over: Motion.spatial * 1.5, scale: scale) { l?.removeFromSuperlayer() }
+                                 out: true, in: host, over: Motion.morph, scale: scale) { l?.removeFromSuperlayer() }
                 if let l { tileFlights.append(l) }
             } else if let place = w.places.first(where: { $0.tile == c.id }), let t = place.tile,
                       let row = dockedSpot(t, in: place.space) {
                 // Docked: back into its row in the sidebar, as a bar docks — across, then its size, becoming it.
                 let scale = window?.backingScaleFactor ?? 2
                 tileFlights.append(Genie.flight(c.frame, c.picture, ground: c.ground, to: row, sidebar.organizationView.picture(of: t, in: root)?.image, ground: nil,
-                                                fade: true, corner: Radius.control, in: host, over: Motion.spatial * 1.5, scale: scale))
+                                                fade: true, corner: Radius.control, in: host, over: Motion.morph, scale: scale))
             } else {
                 // Its tile's in another space: gone, sinking a little.
                 let l = CALayer()
@@ -205,7 +205,7 @@ extension MainWindowController {
     /// The cards now (debugging): made, and unfolding as a click's would.
     private func showTileSwitcher() {
         prepareTileSwitcher()
-        revealTileSwitcher(settledBy: Date() + Motion.spatial * 1.5)
+        revealTileSwitcher(settledBy: Date() + Motion.morph)
     }
 
     /// The cards shown, unfolding to be in place by `settledBy`, if they're

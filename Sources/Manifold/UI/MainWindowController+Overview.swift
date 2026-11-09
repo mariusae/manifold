@@ -158,7 +158,7 @@ extension MainWindowController {
             flown.append(block)
         }
         guard !items.isEmpty else { return fadeIn(v) }
-        let d = Motion.spatial * 1.5
+        let d = Motion.morph
         GridView.morph(items, in: host, over: d)
         fade(v, over: d)
         for block in flown {
@@ -181,7 +181,7 @@ extension MainWindowController {
             flown.append(block)
         }
         guard !items.isEmpty else { return fadeIn(content) }
-        let d = Motion.spatial * 1.5
+        let d = Motion.morph
         GridView.morph(items, in: host, over: d)
         fade(content, over: d)
         for block in flown {
