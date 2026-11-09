@@ -129,7 +129,7 @@ final class SCIPService {
 
     /// A file saved: its project indexed again, if it has an index, a
     /// while after the last save (a burst of saves, one indexing).
-    private var pendingIndex: [String: DispatchWorkItem] = [:]
+    private lazy var pendingIndex = KeyedDebouncer<String>(queue: queue)
     static var reindexAfter: TimeInterval = 20
 
     func saved(_ path: String) {
@@ -148,13 +148,7 @@ final class SCIPService {
 
     private func again(_ root: String, with indexer: SCIPIndexer) {
         guard FileManager.default.fileExists(atPath: file(root).path) else { return }
-        pendingIndex[root]?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            self?.pendingIndex.removeValue(forKey: root)
-            self?.index(root, with: indexer)
-        }
-        pendingIndex[root] = work
-        queue.asyncAfter(deadline: .now() + Self.reindexAfter, execute: work)
+        pendingIndex.schedule(root, after: Self.reindexAfter) { [weak self] in self?.index(root, with: indexer) }
     }
 
     /// Where a path's index is, and its indexer: its project's (§2.6),

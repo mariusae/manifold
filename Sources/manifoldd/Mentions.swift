@@ -7,7 +7,7 @@ import ManifoldCore
 /// are brought to match, a moment after the last change.
 final class Mentions {
     private let queue: DispatchQueue
-    private var pending: [BlockID: DispatchWorkItem] = [:]
+    private let pending: KeyedDebouncer<BlockID>
     /// The blocks on this host, to resolve against.
     var blocks: () -> [Block] = { [] }
     var mentions: (BlockID) -> [Edge] = { _ in [] }
@@ -18,17 +18,14 @@ final class Mentions {
 
     init(queue: DispatchQueue) {
         self.queue = queue
+        pending = KeyedDebouncer(queue: queue)
     }
 
     func textChanged(_ block: BlockID) {
-        pending[block]?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.refresh(block) }
-        pending[block] = work
-        queue.asyncAfter(deadline: .now() + 1, execute: work)
+        pending.schedule(block, after: 1) { [weak self] in self?.refresh(block) }
     }
 
     private func refresh(_ block: BlockID) {
-        pending.removeValue(forKey: block)
         let all = blocks()
         guard let b = all.first(where: { $0.id == block }), let text = b.text?.text.string else { return }
         // Each block the text names: an image it shows (`![…](…)`) is

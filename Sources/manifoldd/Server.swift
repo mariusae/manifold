@@ -131,14 +131,17 @@ final class Server {
     private let searches: Searches
     private let mentions: Mentions
     /// Threads' places watched for edits (§3.12).
-    let placeWatch = PlaceWatch()
+    let placeWatch: PlaceWatch
     let git: Git
     /// The machine's readings, kept as history (§7.5).
     private let machine = MachineSampler()
     /// The host's ssh agent link (§8.6).
     private let agentLink = AgentLinkKeeper()
-    /// Gutter marks pending for text blocks, a moment after their last change.
-    private var gutterWork: [BlockID: DispatchWorkItem] = [:]
+    /// Gutter marks pending for text blocks, a moment after their last
+    /// change; and the blocks they've ever been asked for, kept current
+    /// as their repository changes.
+    private lazy var gutterWork = KeyedDebouncer<BlockID>(queue: queue)
+    private var guttered: Set<BlockID> = []
     /// Each file's marks as last worked out, for a client that asks after
     /// they were sent (an app opened again, the server kept).
     private var gutters: [BlockID: [GutterMark]] = [:]
@@ -150,7 +153,7 @@ final class Server {
     /// When each repository's git blocks last refreshed for a change
     /// under it, and a refresh waiting its turn.
     private var gitRefreshedAt: [String: Date] = [:]
-    private var gitRefreshDue: [String: DispatchWorkItem] = [:]
+    private lazy var gitRefreshDue = KeyedDebouncer<String>(queue: queue)
 
     /// Held for the life of the server: one per directory.
     private let lock: Int32
@@ -221,6 +224,7 @@ final class Server {
         clock = Clock(host: session.id)
         store = LogStore(directory: Paths.logs)
         git = Git(queue: queue)
+        placeWatch = PlaceWatch(queue: queue)
         searches = Searches(queue: queue)
         mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
@@ -860,7 +864,8 @@ final class Server {
     /// file's expected fingerprint, an agent's turns — let go with it.
     private func forgetRuntime(of block: BlockID) {
         unreachableSince.removeValue(forKey: block)
-        gutterWork.removeValue(forKey: block)?.cancel()
+        gutterWork.cancel(block)
+        guttered.remove(block)
         gutters.removeValue(forKey: block)
         notebookLive.removeValue(forKey: block)
         notebookLiveScheduled.remove(block)
@@ -1324,7 +1329,7 @@ final class Server {
         case let .editing(ids):
             languageServers.setOpen(Set(ids))
             for id in ids {
-                if gutterWork[id] == nil { scheduleGutter(id) } else if let marks = gutters[id] { conn.send(.message(ServerMessage.gutter(id, marks))) }
+                if !guttered.contains(id) { scheduleGutter(id) } else if let marks = gutters[id] { conn.send(.message(ServerMessage.gutter(id, marks))) }
             }
             done()
         case let .git(block, path):
@@ -1555,10 +1560,8 @@ final class Server {
     /// The gutter for a text block in a repository: its lines against
     /// HEAD's, a moment after the last change.
     private func scheduleGutter(_ block: BlockID) {
-        gutterWork[block]?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.computeGutter(block) }
-        gutterWork[block] = work
-        queue.asyncAfter(deadline: .now() + 0.3, execute: work)
+        guttered.insert(block)
+        gutterWork.schedule(block, after: 0.3) { [weak self] in self?.computeGutter(block) }
     }
 
     private func computeGutter(_ block: BlockID) {
@@ -1656,19 +1659,14 @@ final class Server {
         // repository's changes bring come no closer than a second apart,
         // the ones in between folded into one.
         if let last = gitRefreshedAt[root], Date().timeIntervalSince(last) < 1 {
-            guard gitRefreshDue[root] == nil else { return }
-            let work = DispatchWorkItem { [weak self] in
-                self?.gitRefreshDue[root] = nil
-                self?.gitChanged(under: path)
-            }
-            gitRefreshDue[root] = work
-            queue.asyncAfter(deadline: .now() + 1, execute: work)
+            guard !gitRefreshDue.isPending(root) else { return }
+            gitRefreshDue.schedule(root, after: 1) { [weak self] in self?.gitChanged(under: path) }
             return
         }
         gitRefreshedAt[root] = Date()
         for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
         checkHead(root)
-        for b in node.blocks where b.kind == .text && gutterWork[b.id] != nil && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
+        for b in node.blocks where b.kind == .text && guttered.contains(b.id) && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
     }
 
     /// A project's repository watched (§2.6), and where its working copy

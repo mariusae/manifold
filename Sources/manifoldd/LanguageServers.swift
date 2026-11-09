@@ -19,7 +19,10 @@ final class LanguageServers {
     private var servers: [String: LanguageServer] = [:]
     /// Which server has which block open, and the version it has.
     private var opened: [BlockID: (server: String, version: Int)] = [:]
-    private var pending: [BlockID: DispatchWorkItem] = [:]
+    /// Text to give a block's server, a moment after the last change; and
+    /// the blocks it's been asked for since they were last closed.
+    private let pending: KeyedDebouncer<BlockID>
+    private var given: Set<BlockID> = []
     /// Text the server was last given, by path, for turning its positions
     /// into bytes of files that aren't blocks.
     var textOf: (BlockID) -> (text: Rope, path: String?)? = { _ in nil }
@@ -28,6 +31,7 @@ final class LanguageServers {
 
     init(queue: DispatchQueue) {
         self.queue = queue
+        pending = KeyedDebouncer(queue: queue)
     }
 
     func configure(_ configs: [LanguageServerConfig]) {
@@ -68,16 +72,14 @@ final class LanguageServers {
     /// A text block opened, or changed, or saved: its server hears, a
     /// moment after the last change.
     func textChanged(_ block: BlockID, saved: Bool = false) {
-        pending[block]?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.sync(block, saved: saved) }
-        pending[block] = work
-        queue.asyncAfter(deadline: .now() + (saved ? 0 : 0.2), execute: work)
+        given.insert(block)
+        pending.schedule(block, after: saved ? 0 : 0.2) { [weak self] in self?.sync(block, saved: saved) }
     }
 
     /// The blocks placed somewhere: each is open with its server (if its
     /// language has one) while it is, and closed when it's not.
     func setOpen(_ ids: Set<BlockID>) {
-        for block in ids where opened[block] == nil && pending[block] == nil {
+        for block in ids where opened[block] == nil && !given.contains(block) {
             textChanged(block)
         }
         for (block, o) in opened where !ids.contains(block) {
@@ -85,8 +87,8 @@ final class LanguageServers {
                 server.notify("textDocument/didClose", ["textDocument": ["uri": Self.uri(path)]])
             }
             opened.removeValue(forKey: block)
-            pending[block]?.cancel()
-            pending.removeValue(forKey: block)
+            pending.cancel(block)
+            given.remove(block)
         }
     }
 

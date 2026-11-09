@@ -122,10 +122,12 @@ final class PlaceWatch {
     var text: [BlockID: String] = [:]
     /// Edits not yet written, by thread: lines added and taken away, and by whom.
     var pending: [BlockID: (added: Int, removed: Int, author: ThreadAuthor)] = [:]
-    var flush: [BlockID: DispatchWorkItem] = [:]
+    let flush: KeyedDebouncer<BlockID>
     /// Files agents' tools wrote lately: by whom, and when.
     var writes: [String: (block: BlockID, name: String, at: Date)] = [:]
     var gone: Set<BlockID> = []
+
+    init(queue: DispatchQueue) { flush = KeyedDebouncer(queue: queue) }
 }
 
 extension Server {
@@ -183,10 +185,7 @@ extension Server {
             p.added += added
             p.removed += removed
             placeWatch.pending[t.id] = p
-            placeWatch.flush[t.id]?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.flushEdits(t.id) }
-            placeWatch.flush[t.id] = work
-            queue.asyncAfter(deadline: .now() + 20, execute: work)
+            placeWatch.flush.schedule(t.id, after: 20) { [weak self] in self?.flushEdits(t.id) }
         }
     }
 
@@ -202,7 +201,7 @@ extension Server {
 
     /// The edits to a place gathered: written into its thread.
     func flushEdits(_ thread: BlockID) {
-        placeWatch.flush.removeValue(forKey: thread)?.cancel()
+        placeWatch.flush.cancel(thread)
         guard let p = placeWatch.pending.removeValue(forKey: thread), p.added + p.removed > 0, node.block(thread)?.thread != nil else { return }
         append(.threadEntry(ThreadEntry(at: clock.now(), author: p.author, kind: .edited(added: p.added, removed: p.removed))), to: .block(thread))
     }
