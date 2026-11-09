@@ -1694,14 +1694,16 @@ extension Palette {
                 failed: failed,
                 running: blue,
                 attention: attention),
-            // GitHub's own gradients (Universe's, Copilot's): its blue into
-            // violet into magenta, and a teal; by night navy, indigo, plum
-            // and a deep teal. (Brightness as the calibrated space has it.)
+            // Heathered, as merino is, and cool, as Rex is: a slate grey a
+            // step under the white panes (they stand on it, as Rex's on its
+            // #f9f9f9), into teal and GitHub's green — no pink, nothing of
+            // Claude's pastels; by night slate, deep teal, forest. (Brightness
+            // as the calibrated space has it.)
             backdrop: Backdrop(
-                light: .init(stops: [(0.57, 0.28, 0.98), (0.71, 0.24, 0.97), (0.87, 0.22, 0.99), (0.47, 0.20, 0.97)],
-                             pool: (0.2, 1), tintPool: (0.38, 1)),
-                dark: .init(stops: [(0.60, 0.58, 0.27), (0.71, 0.50, 0.25), (0.86, 0.44, 0.23), (0.48, 0.50, 0.17)],
-                            pool: (0.5, 0.32), tintPool: (0.62, 0.36)),
+                light: .init(stops: [(0.59, 0.12, 0.92), (0.52, 0.18, 0.91), (0.40, 0.17, 0.92), (0.60, 0.06, 0.94)],
+                             pool: (0.08, 0.98), tintPool: (0.2, 0.98)),
+                dark: .init(stops: [(0.59, 0.38, 0.22), (0.51, 0.50, 0.20), (0.40, 0.46, 0.18), (0.60, 0.22, 0.12)],
+                            pool: (0.3, 0.28), tintPool: (0.5, 0.32)),
                 tileShadow: (Theme.hex(0x1F2328), 0.08),
                 // Rex's panes' hairline: #dfdfe1, #2a3038.
                 tileEdge: muted))
