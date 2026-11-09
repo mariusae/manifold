@@ -4685,8 +4685,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self, let panel = self.inspector, panel.isVisible else { return }
             self.inspectorIsLive = false
-            let (nodes, open) = self.inspectorTree()
-            _ = open
+            let nodes = self.inspectorTree().0
             panel.show(title: self.inspectorHeader.title, subtitle: self.inspectorHeader.subtitle, symbol: self.inspectorHeader.symbol,
                        tags: self.inspectorHeader.tags, nodes: nodes)
             // Live: again in a second (one tick waiting at a time).
@@ -5106,35 +5105,26 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }, prefix: "closed")
     }
 
+    /// The sidebar's New row: New Terminal, below the focused tile; the
+    /// pointer on it, a chevron for ⌘N's picker (another kind).
+    private func newTileRow(in space: BlockID) -> OrgNode {
+        let terminal = BlockKinds.named("terminal")!
+        let n = OrgNode(id: "arr/\(space)/new", title: "New " + terminal.title, symbol: "plus", detail: "")
+        n.dimmed = true
+        n.age = nil
+        n.action = { [weak self] in self?.makeFromPicker(terminal, nil) }
+        n.tooltip = "A new \(terminal.title.lowercased()), below the focused tile"
+        n.accessories = [.init(symbol: "chevron.down", tip: "Another Kind… (⌘N)", run: { [weak self] in self?.newBlockPicker(nil) })]
+        return n
+    }
+
     /// The space shown (§3.6), one at a time — the others are the strip's,
-    /// at the sidebar's foot: nothing nested, nothing to fold. Its pinned
+    /// at the sidebar's top: nothing nested, nothing to fold. Its pinned
     /// blocks first, in the order pinned (each its tile, or, closed, a row
     /// to recall it here); then what's on screen, as the grid has it —
     /// column by column, top to bottom, a hairline between columns; then
     /// those docked (§3.1), the latest first. The focused tile marked: the
     /// table of contents of the screen.
-    /// The kind a new tile from the sidebar is: always a terminal (its
-    /// chevron, ⌘N's picker, for another).
-    var newTileKind: BlockKinds.Kind? { BlockKinds.named("terminal") }
-
-    /// The sidebar's New row: "New Terminal" (the kind last made), else
-    /// "New Tile…" (⌘N's picker); the pointer on it, a button for the picker.
-    private func newTileRow(in space: BlockID) -> OrgNode {
-        let kind = newTileKind
-        let n = OrgNode(id: "arr/\(space)/new", title: kind.map { "New " + $0.title } ?? "New Tile…", symbol: "plus", detail: "")
-        n.dimmed = true
-        n.age = nil
-        n.action = { [weak self] in
-            guard let self else { return }
-            if let kind = self.newTileKind { self.makeFromPicker(kind, nil) } else { self.newBlockPicker(nil) }
-        }
-        n.tooltip = kind.map { "A new \($0.title.lowercased()), below the focused tile" } ?? "Make a tile (⌘N)"
-        if kind != nil {
-            n.accessories = [.init(symbol: "chevron.down", tip: "Another Kind… (⌘N)", run: { [weak self] in self?.newBlockPicker(nil) })]
-        }
-        return n
-    }
-
     private func deskTree() -> ([OrgNode], Set<String>) {
         guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
         let aid = "arr/\(id)"
@@ -5349,13 +5339,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             n.dimmed = true
         }
         // Its row opens and closes its workspaces; its home folder is in its menu.
-        if false, c.isRemote || c.home != nil {
-            let host = c.host
-            n.action = { [weak self] in
-                guard let self, let home = self.hosts.client(host)?.home ?? (host == self.host.host ? NSHomeDirectory() : nil) else { return }
-                self.openDirectory(home, on: host)
-            }
-        }
     }
 
     /// A folder listed on its host, beside what's focused.
@@ -7281,16 +7264,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         show(f.placement.block, lens: other, .besideOpener(f.id), kind: .opened, context: other == .editor ? "edited beside" : "viewed beside", exact: true)
     }
 
-    /// Opens what a link in a placement points at: Markdown files in a
-    /// preview beside it, folders in a listing, text to edit, anything else
-    /// with the system.
-    /// Whether a link just clicked stays in Manifold: every way of clicking
-    /// it does (⌘ beside, ⌥ over) but ⇧⌘, which goes to the system's app —
-    /// the browser, for an address.
-    static func opensHere(_ flags: NSEvent.ModifierFlags) -> Bool {
-        !flags.isSuperset(of: [.command, .shift])
-    }
-
     /// A block given to the system's app: a page's address to the browser,
     /// a file of this Mac to what opens it; else a beep.
     func openInSystem(_ id: BlockID) {
@@ -8727,7 +8700,7 @@ extension MainWindowController: GridDelegate {
             if b.kind != .directory { items.append(openWithItem(path, on: block.host)) }
             if block.host != host.host {
                 items.append(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in
-                    self?.download(path, isDirectory: b.kind == .directory, on: block.host)
+                    self?.download(path, on: block.host)
                 })
             }
         }
@@ -9836,7 +9809,7 @@ extension MainWindowController: DirectoryViewDelegate {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
             })
         } else {
-            menu.addItem(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in self?.download(path, isDirectory: isDirectory, on: on) })
+            menu.addItem(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in self?.download(path, on: on) })
         }
         menu.addItem(ClosureMenuItem("Copy Path", symbol: "doc.on.clipboard") {
             NSPasteboard.general.clearContents()
@@ -9859,7 +9832,7 @@ extension MainWindowController: DirectoryViewDelegate {
             })
         } else {
             menu.addItem(ClosureMenuItem("Download \(n) Items", symbol: "arrow.down.circle") { [weak self] in
-                for e in entries { self?.download(e.path, isDirectory: e.isDirectory, on: on) }
+                for e in entries { self?.download(e.path, on: on) }
             })
         }
         menu.addItem(ClosureMenuItem("Copy \(n) Paths", symbol: "doc.on.clipboard") {
@@ -10010,7 +9983,7 @@ extension MainWindowController: DirectoryViewDelegate {
 
     /// Another host's file or folder, fetched to Downloads (a name of its
     /// own if one's there), shown in the Finder when it's in.
-    func download(_ path: String, isDirectory: Bool, on h: HostID) {
+    func download(_ path: String, on h: HostID) {
         guard let c = hosts.client(h), let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return NSSound.beep() }
         var url = downloads.appendingPathComponent(path.lastPathComponent)
         var n = 2
@@ -10925,14 +10898,6 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(hostSubmenu(arr.host))
             return menu
         }
-        if node.id.hasPrefix("status:"), let group = StatusGroup.allCases.first(where: { "status:\($0)" == node.id }), group != .inactive {
-            let blocks = (statusGroups()[group] ?? []).map(\.0).filter { $0.statusRecord != nil }
-            guard !blocks.isEmpty else { return nil }
-            menu.addItem(ClosureMenuItem("Clear All \(group.title)", symbol: "eraser") { [weak self] in
-                for b in blocks { self?.hosts.propose(.clearStatus(b.id)) }
-            })
-            return menu
-        }
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, node.style == .row {
             let on = isPinned(id, in: arr)
@@ -10996,7 +10961,7 @@ extension MainWindowController: OrganizationViewDelegate {
             if let node { return node.id == "host:\(a.host.raw)" && index >= 0 }
             return index >= 0
         case .block, .placement:
-            if let node { return node.arrangement != nil || node.id.hasPrefix("host:") || node.id.hasPrefix("kept:") }
+            if let node { return node.arrangement != nil || node.id.hasPrefix("host:") }
             return index >= 0
         }
     }
@@ -11092,16 +11057,6 @@ enum StatusGroup: Int, CaseIterable {
         case .failed: "Failed"
         case .working: "Working"
         case .inactive: "Inactive"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .needsYou: "hand.raised"
-        case .done: "checkmark.circle"
-        case .failed: "exclamationmark.circle"
-        case .working: "circle.dotted"
-        case .inactive: "moon"
         }
     }
 }
