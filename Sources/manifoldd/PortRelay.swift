@@ -62,6 +62,8 @@ final class PortRelay {
         for family in [AF_INET, AF_INET6] {
             let fd = socket(family, Int32(SOCK_STREAM), 0)
             guard fd >= 0 else { continue }
+            // Not handed down to what the server starts (a shell, an agent).
+            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
             #if canImport(Darwin)
             var one: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
