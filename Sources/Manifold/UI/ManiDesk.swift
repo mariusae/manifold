@@ -1342,8 +1342,6 @@ final class ManiDesk {
         hosts.propose(.input(block: terminal, text: command + "\r"))
     }
 
-    /// A word for a shell, quoted as it must be.
-
     private func write(_ r: ManiRequest, _ scope: Scope) throws -> String {
         let t = try resolve(r.args[0], scope)
         guard let b = hosts.block(t.block), b.kind == .text, let text = b.text else {

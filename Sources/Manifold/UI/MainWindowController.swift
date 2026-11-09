@@ -1411,7 +1411,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A terminal's shell ended (not for dormancy): its placements go, as a
     /// closed window's would; the block stays, with its transcript.
-
     private func terminalEnded(_ block: BlockID) { withdraw(block) }
 
     /// A block's tiles taken off every workspace (its shell ended); the
