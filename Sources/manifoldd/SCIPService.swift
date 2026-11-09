@@ -27,6 +27,9 @@ final class SCIPService {
     /// Roots being indexed, and how each last went.
     private var running: Set<String> = []
     private var failures: [String: String] = [:]
+    /// Roots asked to be indexed again while they were being indexed: run
+    /// again once that's done (§ M5), not dropped.
+    private var wantedAgain: Set<String> = []
 
     init(queue: DispatchQueue) {
         self.queue = queue
@@ -264,7 +267,10 @@ final class SCIPService {
     /// The indexer run for a root, in the shell terminals run, its index
     /// written beside the others once it's done (its words kept if it fails).
     private func index(_ root: String, with indexer: SCIPIndexer) {
-        guard !running.contains(root) else { return }
+        guard !running.contains(root) else {
+            wantedAgain.insert(root)
+            return
+        }
         running.insert(root)
         failures.removeValue(forKey: root)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -298,8 +304,10 @@ final class SCIPService {
             let reason = IndexFailure.reason(output: text, exit: status.map { signalled ? $0 - 128 : $0 }, tool: tool ?? indexer.id,
                                              signalled: signalled)
             self?.queue.async {
-                self?.running.remove(root)
-                if !ok { self?.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }
+                guard let self else { return }
+                self.running.remove(root)
+                if !ok { self.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }
+                if self.wantedAgain.remove(root) != nil { self.index(root, with: indexer) }
             }
         }
     }

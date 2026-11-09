@@ -193,7 +193,10 @@ no show came after it began. Machine: M30.
 - Project search: `searchWork` cancelled but not cleared, so a search isn't
   started after type-clear-type with Home toggled. **confirmed on reading** (M31)
 - SCIP: a re-index asked for while the root is indexing is dropped; the
-  index stays stale until the next save. **confirmed on reading** (M5)
+  index stays stale until the next save. **fixed**: it's kept
+  (`wantedAgain`) and run once the current run's done. Test:
+  `ManifolddTests/SCIPReindexTests` (two runs, not three, on the old
+  code). (M5)
 - File watcher (Darwin) gives up 2 s after a file's deleted; recreated
   later, it isn't followed again (Linux polls on). **fixed**: after its
   quick looks it looks once a second for as long as it's watched. Test:
@@ -276,9 +279,10 @@ times; then every 1 s) → watching (and heard as a change). Invariant: a
 watched path is followed for as long as it's watched. Finding: I-8 — fixed.
 
 #### M5 SCIP indexing per root · implicit
-`SCIPService` `running: Set<root>`, `failures[root]`, `pendingIndex`.
-States: idle → running → idle | failed(why). Finding: I-8 (a re-index
-asked while running is dropped).
+`SCIPService` `running: Set<root>`, `wantedAgain`, `failures[root]`,
+`pendingIndex`. States: idle → running(again?) → idle | failed(why); asked
+while running → running(again) → (done) running. Invariant: an index asked
+for is run, at once or after the run under way. Finding: I-8 — fixed.
 
 #### M6 FileReceiver target · implicit · latent
 `FileReceiver` (FileStreams.swift) `path`, `writing`, `handle`, `failure`,
