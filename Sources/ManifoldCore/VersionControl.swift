@@ -28,8 +28,7 @@ public enum VCS: String, Codable, Sendable {
     /// The repository holding a path, by walking up for its markers.
     public static func repository(of path: String) -> (root: String, vcs: VCS)? {
         var dir = path
-        var isDir: ObjCBool = false
-        if !(FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue) {
+        if FileManager.default.isDirectory(atPath: path) != true {
             dir = path.deletingLastPathComponent
         }
         while dir.count > 1 {

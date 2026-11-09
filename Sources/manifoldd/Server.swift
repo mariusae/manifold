@@ -1089,9 +1089,7 @@ final class Server {
                 var kinds: [PathKind?] = []
                 for p in paths.prefix(4000) {
                     guard Date() < until else { break }
-                    var isDir: ObjCBool = false
-                    let path = (p as NSString).expandingTildeInPath
-                    kinds.append(fm.fileExists(atPath: path, isDirectory: &isDir) ? (isDir.boolValue ? .folder : .file) : nil)
+                    kinds.append(fm.isDirectory(atPath: (p as NSString).expandingTildeInPath).map { $0 ? .folder : .file })
                 }
                 return kinds
             }) { kinds in
@@ -1099,9 +1097,7 @@ final class Server {
             }
         case let .listTree(path, limit):
             offQueue({ () -> (entries: [DirectoryEntry], complete: Bool)? in
-                var isDir: ObjCBool = false
-                let readable = FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-                return readable ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
+                return FileManager.default.isDirectory(atPath: path) == true ? FolderListing.tree(of: path, limit: min(limit, 50_000)) : nil
             }) { tree in
                 conn.send(.message(ServerMessage.listing(id: id, entries: tree?.entries, complete: tree?.complete ?? false)))
             }
@@ -1127,7 +1123,7 @@ final class Server {
             }
         case let .showRevision(block, repo, path, revision, title):
             // `git show rev:path`: the file as it was, read-only, in an output block.
-            let rel = path.hasPrefix(repo + "/") ? String(path.dropFirst(repo.count + 1)) : path
+            let rel = path.relative(to: repo) ?? path
             git.run(git.repository(of: repo)?.vcs ?? .git, ["show", "\(revision):\(rel)"], in: repo) { [weak self] result in
                 guard let self else { return }
                 guard case .success(let text) = result else { return done("\(rel) isn't in \(revision.prefix(10))") }
@@ -1342,8 +1338,7 @@ final class Server {
             // Kept as the folder's tile names it, the host's own spelling
             // beside it where links make them differ.
             let full = URL(fileURLWithPath: p.root.expandingTildeInPath).standardizedFileURL.path
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue else { return done("\(p.root) isn't a folder here") }
+            guard FileManager.default.isDirectory(atPath: full) == true else { return done("\(p.root) isn't a folder here") }
             p.root = full
             p.alias = Self.alias(of: full)
             let old = node.desk(host).projects.first { $0.root == full }
@@ -1365,8 +1360,7 @@ final class Server {
             let repo = git.repository(of: full)
             if node.block(block) == nil {
                 // Named for its repository, or, with none, the folder it was asked in.
-                var isDir: ObjCBool = false
-                let folder = FileManager.default.fileExists(atPath: full, isDirectory: &isDir) && !isDir.boolValue ? full.deletingLastPathComponent : full
+                let folder = FileManager.default.isDirectory(atPath: full) == false ? full.deletingLastPathComponent : full
                 ensure(block, kind: .smartlog, path: repo?.root ?? folder)
             }
             // Sapling's or git's: sl web serves either.
@@ -1454,9 +1448,8 @@ final class Server {
         // (a folder view keeping current) doesn't grow the log.
         offQueue({ () -> Result<[DirectoryEntry], ListingFailed> in
             if let entries = FolderListing.children(of: path) { return .success(entries) }
-            var isDir: ObjCBool = false
-            return .failure(ListingFailed(why: !FileManager.default.fileExists(atPath: path, isDirectory: &isDir) ? "This folder isn't there"
-                : !isDir.boolValue ? "This isn't a folder" : "This folder can't be read"))
+            let isDir = FileManager.default.isDirectory(atPath: path)
+            return .failure(ListingFailed(why: isDir == nil ? "This folder isn't there" : isDir == false ? "This isn't a folder" : "This folder can't be read"))
         }) { [weak self] listed in
             guard let self, let d = self.node.block(block)?.directory else { return }
             switch listed {
@@ -1651,7 +1644,7 @@ final class Server {
         gitRefreshedAt[root] = Date()
         for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
         checkHead(root)
-        for b in node.blocks where b.kind == .text && guttered.contains(b.id) && (b.path?.hasPrefix(root + "/") ?? false) { scheduleGutter(b.id) }
+        for b in node.blocks where b.kind == .text && guttered.contains(b.id) && b.path?.isUnder(root) == true { scheduleGutter(b.id) }
     }
 
     /// A project's repository watched (§2.6), and where its working copy
@@ -1676,8 +1669,7 @@ final class Server {
     /// repository lists them, its `.gitattributes` read, and a code file's
     /// beginning where what's generated is told by it.
     static func languages(of root: String) -> [Linguist.Count]? {
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue else { return nil }
+        guard FileManager.default.isDirectory(atPath: root) == true else { return nil }
         let tree = FolderListing.tree(of: root, limit: 50_000)
         let files = tree.entries.filter { !$0.isDirectory }
         let attributes = Linguist.Attributes(files.compactMap { e in

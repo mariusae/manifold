@@ -102,7 +102,7 @@ public final class PathCrawl {
         // Toward the folder wanted: it and those on the way; going, what's
         // under it too.
         if let toward, !toward.isEmpty,
-           let i = pending[head...].firstIndex(where: { toward == $0.path || toward.hasPrefix($0.path + "/") || (going && $0.path.hasPrefix(toward + "/")) }) {
+           let i = pending[head...].firstIndex(where: { toward.isUnder($0.path) || (going && $0.path.isUnder(toward)) }) {
             let next = pending[i]
             pending.remove(at: i)
             return next

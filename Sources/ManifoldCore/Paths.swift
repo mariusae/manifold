@@ -45,6 +45,27 @@ public extension String {
     func standardCompare(_ other: String) -> Bool {
         compare(other, options: [.numeric, .caseInsensitive, .widthInsensitive]) == .orderedAscending
     }
+
+    /// Whether this path is `root` or in it, at any depth ("/" holds every
+    /// absolute path).
+    func isUnder(_ root: String) -> Bool {
+        self == root || hasPrefix(root == "/" ? "/" : root + "/")
+    }
+
+    /// This path from `root`: "" for the root itself; nil for a path not
+    /// under it.
+    func relative(to root: String) -> String? {
+        guard isUnder(root) else { return nil }
+        return self == root ? "" : String(dropFirst(root == "/" ? 1 : root.count + 1))
+    }
+}
+
+public extension FileManager {
+    /// Whether what's at a path is a folder; nil if there's nothing there.
+    func isDirectory(atPath path: String) -> Bool? {
+        var isDir: ObjCBool = false
+        return fileExists(atPath: path, isDirectory: &isDir) ? isDir.boolValue : nil
+    }
 }
 
 /// Where Manifold keeps its socket, state, and logs. MANIFOLD_DIR overrides

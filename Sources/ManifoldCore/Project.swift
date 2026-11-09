@@ -31,20 +31,16 @@ public struct Project: Codable, Equatable, Sendable {
 
     /// Whether a path is the root or under it, in either spelling.
     public func holds(_ path: String) -> Bool {
-        Self.under(path, root) || alias.map { Self.under(path, $0) } == true
+        path.isUnder(root) || alias.map { path.isUnder($0) } == true
     }
 
     /// A path under the root, relative to it ("" for the root); a path
     /// not under it, as it is.
     public func relative(_ path: String) -> String {
-        for r in [root] + (alias.map { [$0] } ?? []) where Self.under(path, r) {
-            return path == r ? "" : String(path.dropFirst(r == "/" ? 1 : r.count + 1))
+        for r in [root] + (alias.map { [$0] } ?? []) {
+            if let rel = path.relative(to: r) { return rel }
         }
         return path
-    }
-
-    static func under(_ path: String, _ root: String) -> Bool {
-        path == root || path.hasPrefix(root == "/" ? "/" : root + "/")
     }
 
     /// The indexer it's indexed with (§2.5), among `indexers`: the one

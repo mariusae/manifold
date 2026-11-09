@@ -20,9 +20,7 @@ final class Git {
     /// The repository a path is in, if any (cached by directory; none
     /// found, only for a while).
     func repository(of path: String) -> (root: String, vcs: VCS)? {
-        var isDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
-        let dir = isDir.boolValue ? path : path.deletingLastPathComponent
+        let dir = FileManager.default.isDirectory(atPath: path) == true ? path : path.deletingLastPathComponent
         if let known = repos[dir] { return known }
         if let at = notRepos[dir], Date().timeIntervalSince(at) < Self.notRepoFor { return nil }
         guard let found = VCS.repository(of: dir) else {
@@ -97,7 +95,7 @@ final class Git {
     /// either system); nil if the revision doesn't have it.
     func show(_ path: String, at revision: String, done: @escaping (String?) -> Void) {
         guard let (root, vcs) = repository(of: path) else { return done(nil) }
-        let rel = path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
+        let rel = path.relative(to: root) ?? path
         run(vcs, vcs.catArguments(path: rel, revision: revision), in: root) { result in
             if case .success(let text) = result { done(text) } else { done(nil) }
         }

@@ -599,8 +599,7 @@ final class Session {
         let name = name.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return nil }
         func runnable(_ path: String) -> Bool {
-            var dir: ObjCBool = false
-            return FileManager.default.fileExists(atPath: path, isDirectory: &dir) && !dir.boolValue && access(path, X_OK) == 0
+            FileManager.default.isDirectory(atPath: path) == false && access(path, X_OK) == 0
         }
         if name.contains("/") {
             let path = (name as NSString).expandingTildeInPath

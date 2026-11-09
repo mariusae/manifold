@@ -213,7 +213,7 @@ final class SCIPService {
         guard let made = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else {
             return done(.error(running.contains(root) ? "\(root) is being indexed" : "\(root) has no index yet (mani index, or Code ▸ Index Project, with \(indexer.id)'s indexer)"))
         }
-        let rel = path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
+        let rel = path.relative(to: root) ?? path
         if let l = loaded[root], l.made == made { return done(body(l.index, root, rel)) }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {

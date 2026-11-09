@@ -279,8 +279,8 @@ public final class Graph {
         guard !paths.isEmpty || !places.isEmpty else { return [] }
         let repos = Set(pathOf.filter { $0.key.host == host && $0.value.kind == .git }.map(\.value.path))
         func root(of path: String) -> String {
-            if let r = repos.filter({ path == $0 || path.hasPrefix($0 + "/") }).max(by: { $0.count < $1.count }) { return r }
-            if let home, path == home || path.hasPrefix(home + "/") { return home }
+            if let r = repos.filter({ path.isUnder($0) }).max(by: { $0.count < $1.count }) { return r }
+            if let home, path.isUnder(home) { return home }
             return "/"
         }
         // A trie under each root.

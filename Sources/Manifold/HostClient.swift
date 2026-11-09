@@ -759,7 +759,7 @@ final class HostClient {
     private func block(kind: BlockKind, rooting path: String, where also: (Block) -> Bool = { _ in true }) -> Block? {
         node.blocks.filter { b in
             guard b.kind == kind, let root = b.path else { return false }
-            return (path == root || path.hasPrefix(root + "/")) && also(b)
+            return path.isUnder(root) && also(b)
         }.max { $0.path!.count < $1.path!.count }
     }
 

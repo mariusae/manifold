@@ -271,10 +271,8 @@ public final class TreeSink {
     /// by the move itself, at once (an editor watching it sees no gap); a
     /// folder, or a file where a folder was, has to go first.
     static func clearFor(_ from: String, _ to: String) {
-        var isDir: ObjCBool = false, wasDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: from, isDirectory: &isDir)
-        FileManager.default.fileExists(atPath: to, isDirectory: &wasDir)
-        if isDir.boolValue || wasDir.boolValue { remove(to) }
+        let isDir = FileManager.default.isDirectory(atPath: from) == true, wasDir = FileManager.default.isDirectory(atPath: to) == true
+        if isDir || wasDir { remove(to) }
     }
 }
 

@@ -155,7 +155,7 @@ final class LanguageServers {
     func workspaceSymbols(root: String, query: String, limit: Int, done: @escaping ([SymbolHit]) -> Void) {
         let canon = Self.canonical(root)
         let asked = servers.values.filter { s in
-            !s.failed && (s.root == canon || s.root.hasPrefix(canon + "/") || canon.hasPrefix(s.root + "/") || s.root == root)
+            !s.failed && (s.root.isUnder(canon) || canon.isUnder(s.root) || s.root == root)
         }
         guard !asked.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty else { return done([]) }
         var waiting = asked.count, found: [SymbolHit] = [], finished = false

@@ -54,9 +54,8 @@ public enum FileFinder {
             guard let names = try? fm.contentsOfDirectory(atPath: dir) else { continue }
             for name in names.sorted() where !name.hasPrefix(".") {
                 let path = rel.isEmpty ? name : rel + "/" + name
-                var isDir: ObjCBool = false
-                guard fm.fileExists(atPath: dir.appendingPathComponent(name), isDirectory: &isDir) else { continue }
-                if isDir.boolValue {
+                guard let isDir = fm.isDirectory(atPath: dir.appendingPathComponent(name)) else { continue }
+                if isDir {
                     let packaged = ["app", "bundle", "framework", "xcodeproj", "xcworkspace"].contains(name.pathExtension)
                     let homeLibrary = rel.isEmpty && name == "Library" && URL(fileURLWithPath: root).standardizedFileURL.path == home
                     if !skipped.contains(name) && !packaged && !homeLibrary { queue.append(path) }

@@ -2,6 +2,20 @@ import Foundation
 import Testing
 @testable import ManifoldCore
 
+@Test func aPathIsUnderItsFoldersAndRelativeToThem() {
+    #expect("/a/b".isUnder("/a"))
+    #expect("/a".isUnder("/a"))
+    #expect(!"/ab".isUnder("/a"))
+    #expect("/a/b".isUnder("/"))
+    #expect("/a/b".relative(to: "/a") == "b")
+    #expect("/a".relative(to: "/a") == "")
+    #expect("/a/b".relative(to: "/") == "a/b")
+    #expect("/ab".relative(to: "/a") == nil)
+    let fm = FileManager.default
+    #expect(fm.isDirectory(atPath: NSTemporaryDirectory()) == true)
+    #expect(fm.isDirectory(atPath: "/no/such/place/here") == nil)
+}
+
 @Test func aPathsProjectIsTheNearestRootAboveIt() {
     let mono = Project(root: "/src/mono", made: Stamp(wall: 1))
     var app = Project(root: "/tmp/mono/app", made: Stamp(wall: 2))
