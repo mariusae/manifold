@@ -355,6 +355,9 @@ public enum Event: Codable, Equatable, Sendable {
     case threadSpace(BlockID?)
     /// A thread's next entry: a comment, or something that happened to it.
     case threadEntry(ThreadEntry)
+    /// A comment's words changed by whoever wrote it: the entry's text
+    /// from then on (protocol 71).
+    case threadEdit(entry: String, text: String, by: ThreadAuthor, at: Stamp)
     /// What you've seen of threads, by thread: their latest entry seen.
     case threadSeen([BlockID: Stamp])
     /// A panel's widgets, the whole of them, as JSON (§7.8).

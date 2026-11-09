@@ -242,6 +242,14 @@ public enum Mani {
              summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", answeredBy: .app),
         Verb(words: ["thread", "reopen"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Reopen a resolved thread", details: "As Reopen in its chat.", answeredBy: .app),
+        Verb(words: ["thread", "edit"], args: "<thread> [text]", minArgs: 1, maxArgs: 2,
+             flags: [Flag(name: "entry", value: "id", help: "that comment of yours (its id, from thread read --json), not the last")],
+             summary: "Change the words of a comment of yours",
+             details: """
+                 Your last comment in the thread (or --entry's) given the text,
+                 else the input — as the agent whose terminal runs it, or as
+                 you: only whoever wrote a comment changes it. Shown as edited.
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["symbols"], args: "<file>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "List a file's declarations (or a Markdown text's headings)",
              details: """

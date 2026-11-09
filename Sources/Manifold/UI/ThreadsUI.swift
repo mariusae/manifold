@@ -336,6 +336,13 @@ extension MainWindowController: ThreadChatDelegate {
         if let card = threadUI.card, card.chat === view { card.threads = [id] }
     }
 
+    func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {
+        guard let id = view.threadID else { return }
+        hosts.editThreadComment(id, entry: entry, text: text) { [weak self] error in
+            if let error { self?.toast.say("The comment wasn't changed: \(error)", .brief) }
+        }
+    }
+
     func threadChat(_ view: ThreadChatView, resolve: Bool) {
         guard let id = view.threadID else { return }
         hosts.addToThread(id, resolve ? .resolved : .reopened)

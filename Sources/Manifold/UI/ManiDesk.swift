@@ -109,7 +109,7 @@ final class ManiDesk {
             hosts.link(from: from.block, to: to.block, kind: .linked, context: r.flags["note"],
                        fromAnchor: fromAnchor, toAnchor: toAnchor, relation: r.flags["as"])
             return ""
-        case "threads", "thread read", "thread new", "thread reply", "thread resolve", "thread reopen":
+        case "threads", "thread read", "thread new", "thread reply", "thread edit", "thread resolve", "thread reopen":
             return try await threads(r, scope)
         case "symbols": return try await symbols(r, scope)
         case "index": return try await index(r, scope)

@@ -50,6 +50,26 @@ extension ManiDesk {
             wc.askAgents(in: t.id, comment: text, author: author)
             if r.flags["resolve"] != nil { hosts.addToThread(t.id, .resolved, author: author) }
             return ""
+        case "thread edit":
+            let t = try await thread(r.args[0], scope)
+            guard let text = (r.args.count > 1 ? r.args[1] : r.input)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+                throw Failure(message: "no text: give it, or pipe it in", status: 2)
+            }
+            let mine = t.thread?.entries.filter { $0.comment != nil && $0.author.same(as: author) } ?? []
+            let e: ThreadEntry
+            if let id = r.flags["entry"] {
+                guard let found = t.thread?.entries.first(where: { $0.id == id && $0.comment != nil }) else { throw Failure(message: "no comment \(id) in that thread") }
+                guard found.author.same(as: author) else { throw Failure(message: "that comment is \(found.author.name)'s: only whoever wrote it changes it") }
+                e = found
+            } else {
+                guard let last = mine.last else { throw Failure(message: "you haven't written in that thread") }
+                e = last
+            }
+            let error: String? = await withCheckedContinuation { c in
+                hosts.editThreadComment(t.id, entry: e.id, text: text, author: author) { c.resume(returning: $0) }
+            }
+            if let error { throw Failure(message: error) }
+            return ""
         case "thread resolve", "thread reopen":
             let t = try await thread(r.args[0], scope)
             hosts.addToThread(t.id, r.verb == "thread resolve" ? .resolved : .reopened, author: author)
@@ -101,7 +121,7 @@ extension ManiDesk {
             let when = ago == "now" ? "just now" : ago + " ago"
             switch e.kind {
             case .comment(let text):
-                out.append("\(e.author.name) (\(when)):")
+                out.append("\(e.author.name) (\(when)\(e.edited == nil ? "" : ", edited")):")
                 out += text.split(separator: "\n", omittingEmptySubsequences: false).map { "    " + $0 }
             case .resolved: out.append("— resolved by \(e.author.name) (\(when))")
             case .reopened: out.append("— reopened by \(e.author.name) (\(when))")
@@ -129,7 +149,8 @@ extension ManiDesk {
             o["line"] = p.line ?? NSNull()
         }
         o["entries"] = t.entries.map { e -> [String: Any] in
-            var x: [String: Any] = ["author": e.author.name, "you": e.author.isYou, "at": e.at.date.timeIntervalSince1970]
+            var x: [String: Any] = ["id": e.id, "author": e.author.name, "you": e.author.isYou, "at": e.at.date.timeIntervalSince1970]
+            if let edited = e.edited { x["edited"] = edited.date.timeIntervalSince1970 }
             if let a = e.author.agentBlock { x["agent"] = MainWindowController.address(a) }
             switch e.kind {
             case .comment(let c): x["comment"] = c

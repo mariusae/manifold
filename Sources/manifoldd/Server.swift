@@ -1066,6 +1066,8 @@ final class Server {
             done()
         case let .threadEntry(block, entry):
             done(addThreadEntry(block, entry))
+        case let .editThreadEntry(block, entry, text, author):
+            done(editThreadEntry(block, entry: entry, text: text, author: author))
         case let .threadSeen(marks):
             threadsSeen(marks)
             done()

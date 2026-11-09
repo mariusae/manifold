@@ -209,6 +209,28 @@ extension ComposerTextView {
         return out as String
     }
 
+    /// A comment's words put back to change: each reference
+    /// (`[name](manifold:…)`) the pill it was written as, sent as the same
+    /// link; the rest as typed.
+    func fill(markdown: String) {
+        let ns = markdown as NSString
+        let out = NSMutableAttributedString()
+        let pattern = try! NSRegularExpression(pattern: #"\[((?:\\\]|[^\]\n])+)\]\((manifold:[^)\s]+)\)"#)
+        var last = 0
+        for m in pattern.matches(in: markdown, range: NSRange(location: 0, length: ns.length)) {
+            out.append(NSAttributedString(string: ns.substring(with: NSRange(location: last, length: m.range.location - last)), attributes: plainAttributes))
+            let title = ns.substring(with: m.range(at: 1)).replacingOccurrences(of: "\\]", with: "]")
+            let marks: [NSAttributedString.Key: Any] = [.foregroundColor: Theme.secondaryText, .mentionLink: ns.substring(with: m.range)]
+            out.append(NSAttributedString(string: title, attributes: plainAttributes.merging(marks) { $1 }))
+            last = NSMaxRange(m.range)
+        }
+        out.append(NSAttributedString(string: ns.substring(from: last), attributes: plainAttributes))
+        textStorage?.setAttributedString(out)
+        typingAttributes = plainAttributes
+        setSelectedRange(NSRange(location: out.length, length: 0))
+        didChangeText()
+    }
+
     /// The plain look of what's typed (none of a pill's).
     var plainAttributes: [NSAttributedString.Key: Any] {
         [.font: font ?? UIType.body, .foregroundColor: Theme.text]

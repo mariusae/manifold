@@ -15,10 +15,13 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, dropped: Dragged, done: @escaping (String?) -> Void)
     /// Its entries were on screen a moment: seen, up to the latest.
     func threadChatSeen(_ view: ThreadChatView)
+    /// A comment of yours given new words.
+    func threadChat(_ view: ThreadChatView, edit entry: String, text: String)
 }
 
 extension ThreadChatDelegate {
     func threadChatSeen(_ view: ThreadChatView) {}
+    func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {}
 }
 
 /// What a chat shows: a thread, or — for one not made yet — what it will
@@ -81,6 +84,11 @@ final class ThreadChatView: NSView {
     /// Fitted to its content (a card), else filling what it's given (a tile).
     var fits = true
     private var seenTimer: Timer?
+    /// The comment of yours being edited (its entry), while the composer
+    /// holds its words: ↩ saves them, ⎋ leaves it as it was; and what was
+    /// being written before, put back after.
+    private(set) var editing: String?
+    private var draft: NSAttributedString?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -123,6 +131,17 @@ final class ThreadChatView: NSView {
         composer.textContainer?.widthTracksTextView = true
         composer.onSend = { [weak self] in self?.send() }
         composer.onChange = { [weak self] in self?.composerChanged() }
+        composer.onEscape = { [weak self] in
+            guard let self, self.editing != nil else { return false }
+            self.stopEditing()
+            return true
+        }
+        // ↑ with nothing written: your last comment, to edit (as Slack's).
+        composer.onUpWhenEmpty = { [weak self] in
+            guard let self, let e = self.model.thread?.thread?.entries.last(where: { $0.author.isYou && $0.comment != nil }) else { return false }
+            self.edit(e.id)
+            return true
+        }
         composer.onDrop = { [weak self] dragged, done in
             guard let self, let delegate = self.delegate else { return done(nil) }
             delegate.threadChat(self, dropped: dragged, done: done)
@@ -181,8 +200,9 @@ final class ThreadChatView: NSView {
             placeholder.stringValue = t?.resolved == true ? "Reply to reopen…" : "Reply…"
         }
         resolveButton.isHidden = t == nil
-        // A new one: what it'll be about, as a card in the box.
-        box.chips = t == nil && !m.placeName.isEmpty ? [ChatBox.Chip(symbol: m.placeSymbol, image: m.placeImage, title: m.placeName, detail: m.placeWhere)] : []
+        // The comment being edited gone (another Mac's undo, a log reset): left.
+        if let id = editing, t?.entries.contains(where: { $0.id == id && $0.comment != nil }) != true { stopEditing() }
+        updateBoxChips()
         resolveButton.title = t?.resolved == true ? "Reopen" : "Resolve"
         resolveButton.symbolName = t?.resolved == true ? "arrow.uturn.backward" : "checkmark"
         composerChanged()
@@ -260,6 +280,7 @@ final class ThreadChatView: NSView {
             guard let self else { return }
             self.delegate?.threadChat(self, follow: url.absoluteString)
         }
+        if e.author.isYou { v.onEdit = { [weak self] in self?.edit(e.id) } }
         return fill(v)
     }
 
@@ -297,6 +318,47 @@ final class ThreadChatView: NSView {
         return v
     }
 
+    // MARK: Editing a comment
+
+    /// A comment of yours, its words in the composer to change; what was
+    /// being written kept aside until it's done.
+    func edit(_ id: String) {
+        guard let e = model.thread?.thread?.entries.first(where: { $0.id == id }), e.author.isYou, let text = e.comment else { return }
+        if editing == nil, !composer.string.isEmpty, let s = composer.textStorage { draft = NSAttributedString(attributedString: s) }
+        editing = id
+        composer.fill(markdown: text)
+        updateBoxChips()
+        composerChanged()
+        focusComposer()
+    }
+
+    /// Done editing (saved, or ⎋): what was being written before, back.
+    private func stopEditing() {
+        editing = nil
+        composer.clear()
+        if let draft {
+            composer.textStorage?.setAttributedString(draft)
+            composer.setSelectedRange(NSRange(location: draft.length, length: 0))
+            self.draft = nil
+        }
+        updateBoxChips()
+        composerChanged()
+    }
+
+    /// The box's card: the comment being edited; a new thread's place.
+    private func updateBoxChips() {
+        if editing != nil {
+            box.chips = [ChatBox.Chip(symbol: "pencil", image: nil, title: "Editing your comment", detail: "↩ to save · ⎋ to leave it as it was")]
+            return
+        }
+        let m = model
+        box.chips = m.thread == nil && !m.placeName.isEmpty ? [ChatBox.Chip(symbol: m.placeSymbol, image: m.placeImage, title: m.placeName, detail: m.placeWhere)] : []
+    }
+
+    var debugEditing: String {
+        editing.map { "editing \($0.suffix(6)): “\(composer.message.prefix(60))”" } ?? "not editing"
+    }
+
     // MARK: The composer
 
     private func composerChanged() {
@@ -310,6 +372,10 @@ final class ThreadChatView: NSView {
     private func send() {
         let text = composer.message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if let id = editing {
+            stopEditing()
+            return delegate?.threadChat(self, edit: id, text: text) ?? ()
+        }
         composer.clear()
         composerChanged()
         delegate?.threadChat(self, send: text)
@@ -391,6 +457,8 @@ final class CommentView: NSView {
     static let gap: CGFloat = 8
     var onAuthor: (() -> Void)?
     var onLink: ((URL) -> Void)? { didSet { body.onLink = onLink } }
+    /// Yours: Edit Comment in its menu.
+    var onEdit: (() -> Void)? { didSet { body.onEdit = onEdit } }
     let body: CommentText
 
     init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat) {
@@ -402,8 +470,10 @@ final class CommentView: NSView {
         var views: [NSView] = []
         if !continued {
             let name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: 12, weight: .semibold))
-            let when = NSTextField.label(BlockSummary.ago(e.at, now: Date()) ?? "", font: UIType.footnote, color: Theme.tertiaryText)
+            let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
+            let when = NSTextField.label(e.edited == nil ? ago : ago + " · edited", font: UIType.footnote, color: Theme.tertiaryText)
             when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
+                + (e.edited.map { "\nEdited " + DateFormatter.localizedString(from: $0.date, dateStyle: .medium, timeStyle: .short) } ?? "")
             if case let .you(machine) = e.author { name.toolTip = machine.map { "From \($0)" } }
             let head = NSStackView(views: [name, when])
             head.spacing = 6
@@ -419,6 +489,12 @@ final class CommentView: NSView {
             ])
         }
         views.append(body)
+        // One more of the same author's, edited: said under its words.
+        if continued, let edited = e.edited {
+            let mark = NSTextField.label("edited", font: UIType.footnote, color: Theme.tertiaryText)
+            mark.toolTip = "Edited " + DateFormatter.localizedString(from: edited.date, dateStyle: .medium, timeStyle: .short)
+            views.append(mark)
+        }
         let column = NSStackView(views: views)
         column.orientation = .vertical
         column.alignment = .leading
@@ -435,6 +511,15 @@ final class CommentView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// Yours: Edit Comment, right-clicked beside its words (on them, their
+    /// own menu has it).
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let onEdit else { return super.menu(for: event) }
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Edit Comment", symbol: "pencil") { onEdit() })
+        return menu
+    }
 
     /// Its words as wide as it is, once it's laid out at its width.
     override func layout() {
@@ -508,6 +593,15 @@ final class Avatar: NSView {
 /// `limit`; links clicked go where they say.
 final class CommentText: NSView, NSTextViewDelegate {
     var onLink: ((URL) -> Void)?
+    /// Yours: Edit Comment, first in its words' menu.
+    var onEdit: (() -> Void)?
+
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        guard let onEdit else { return menu }
+        menu.insertItem(ClosureMenuItem("Edit Comment", symbol: "pencil") { onEdit() }, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
     private let text = NSTextView()
     private let attributed: NSAttributedString
 
@@ -564,6 +658,10 @@ final class ComposerTextView: NSTextView {
     var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
     /// ⎋: what it closes (a card, the overlay).
     var onCancel: (() -> Void)?
+    /// ⎋, asked first: true if it took it (an edit left as it was).
+    var onEscape: (() -> Bool)?
+    /// ↑ with nothing written: true if it took it (your last comment, to edit).
+    var onUpWhenEmpty: (() -> Bool)?
     /// What `@` offers (ThreadMentions.swift): asked for as its list opens.
     var mentionSource: (() -> (String) -> [MentionChoice])?
     private var mentionRanker: ((String) -> [MentionChoice])?
@@ -573,6 +671,7 @@ final class ComposerTextView: NSTextView {
 
     override func cancelOperation(_ sender: Any?) {
         if mentions.isShown { return dismissMentions() }
+        if onEscape?() == true { return }
         if let onCancel { onCancel() } else { super.cancelOperation(sender) }
     }
 
@@ -593,6 +692,7 @@ final class ComposerTextView: NSTextView {
             onSend?()
             return
         }
+        if event.keyCode == 126, plain, string.isEmpty, onUpWhenEmpty?() == true { return }
         super.keyDown(with: event)
     }
 

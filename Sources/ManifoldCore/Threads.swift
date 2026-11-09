@@ -59,6 +59,8 @@ public struct ThreadEntry: Codable, Equatable, Sendable, Identifiable {
     public var at: Stamp
     public var author: ThreadAuthor
     public var kind: ThreadEntryKind
+    /// A comment's words last changed by its author (`threadEdit`), when.
+    public var edited: Stamp?
 
     public init(id: String = ULID.make(), at: Stamp, author: ThreadAuthor, kind: ThreadEntryKind) {
         self.id = id
@@ -156,6 +158,11 @@ public struct ThreadState: Codable, Equatable, Sendable {
             case .reopened: resolved = false
             default: break
             }
+        case let .threadEdit(id, text, by, at):
+            // A comment, by whoever wrote it: no one else's words changed.
+            guard let i = entries.firstIndex(where: { $0.id == id }), entries[i].comment != nil, entries[i].author.same(as: by) else { return }
+            entries[i].kind = .comment(text)
+            entries[i].edited = at
         default: break
         }
     }

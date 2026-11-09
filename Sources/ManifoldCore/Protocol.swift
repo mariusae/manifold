@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 70
+public let protocolVersion = 71
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -294,6 +294,9 @@ public enum Proposal: Codable, Sendable {
     case newThread(block: BlockID, space: BlockID?, about: ThreadPlace, text: String, author: ThreadAuthor)
     /// A thread's next entry (stamped by the host).
     case threadEntry(block: BlockID, ThreadEntry)
+    /// A comment's words changed by whoever wrote it (stamped by the host;
+    /// protocol 71).
+    case editThreadEntry(block: BlockID, entry: String, text: String, author: ThreadAuthor)
     /// Threads seen, each up to an entry's stamp.
     case threadSeen([BlockID: Stamp])
     /// A thread's space (the space it was made in, else where its agent is).
@@ -326,7 +329,7 @@ public extension Proposal {
              let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
-             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .threadSpace(block, _),
+             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .editThreadEntry(block, _, _, _), let .threadSpace(block, _),
              let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
             return block
         case let .lsp(request):

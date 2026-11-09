@@ -82,6 +82,20 @@ extension Server {
         return nil
     }
 
+    /// A comment's words changed, by whoever wrote it: why not, if not.
+    /// The links its words name brought to match, as a new comment's are.
+    func editThreadEntry(_ block: BlockID, entry id: String, text: String, author: ThreadAuthor) -> String? {
+        guard let t = node.block(block)?.thread else { return "not a thread" }
+        guard let e = t.entries.first(where: { $0.id == id }), let was = e.comment else { return "no such comment" }
+        guard e.author.same(as: author) else { return "only whoever wrote a comment edits it" }
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return "nothing to say" }
+        guard words != was else { return nil }
+        append(.threadEdit(entry: id, text: words, by: author, at: clock.now()), to: .block(block))
+        threadMentions(block)
+        return nil
+    }
+
     /// What's been seen, kept on the desk: only ever forward.
     func threadsSeen(_ marks: [BlockID: Stamp]) {
         let desk = node.desk(host)

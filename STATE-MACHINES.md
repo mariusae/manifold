@@ -523,6 +523,29 @@ words (M33), footer menu `(view?, which)` (M34), Finder's mode (M35), the
 thread card popover (M36), copy-check timers, LinkBadge's gap preview,
 MediaView reloading on every window move (M37).
 
+#### M38 A thread chat's composer · explicit (`editing`)
+`ThreadChatView.editing` (the entry), `draft` (what was being written).
+States: composing · editing(entry, draft?).
+
+| From | Event | To |
+|---|---|---|
+| composing | Edit Comment (yours) · ↑ with nothing written (your last) | editing; what was written kept as the draft |
+| editing | ↩ (words) | composing; the edit proposed; the draft back |
+| editing | ⎋ | composing; nothing changed; the draft back |
+| editing | the comment gone from the thread | composing; the draft back |
+
+Invariants: only your own comments are edited (the host refuses another
+author's, `editThreadEntry`; `apply` ignores one); ↩ never sends a new
+comment while editing. Tests: `ManifoldAppTests/CommentEditTests`,
+`ManifoldCoreTests/ThreadEditTests`.
+
+#### M39 A host's pill in the strip · derived
+`SpaceStripView.Pending`: a remote host with no state yet (`!hasState`),
+connecting (turning ring) or unreachable (its mark). Gone once the host
+welcomes this launch and its spaces take its place; the pointer on it,
+the host's card, its standing live (`HostDashboard.standing`: the step
+under way, its progress, how long).
+
 #### Fine as they are (views)
 BusyNote (explicit), HoverCard (has `debugState`), the timeline's visit,
 notebook cells, ManiDesk's waits, PopMenu, ScrollerFlash, ScrubberView,

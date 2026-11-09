@@ -98,4 +98,9 @@ extension Hosts {
         let entry = ThreadEntry(at: client(thread.host)?.clock.now() ?? Stamp(wall: 0), author: author, kind: kind)
         propose(.threadEntry(block: thread, entry), done: done)
     }
+
+    /// A comment's words changed, by whoever wrote it (you, unless said).
+    func editThreadComment(_ thread: BlockID, entry: String, text: String, author: ThreadAuthor = Hosts.you, done: ((String?) -> Void)? = nil) {
+        propose(.editThreadEntry(block: thread, entry: entry, text: text, author: author), done: done)
+    }
 }

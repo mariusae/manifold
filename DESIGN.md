@@ -1281,7 +1281,12 @@ it's on, its place a heading over a hairline — and each event a
 hairline sentence ("Resolved by Claude · 2m"); an agent at work on it
 shows working, as its tile does; at its foot the composer (↩ sends,
 ⇧↩ a line, `@` an agent, drops take references) and Resolve. Replying to
-a resolved thread reopens it. The composer is a chat app's box
+a resolved thread reopens it. A comment of yours is edited in the
+composer — Edit Comment in its menu, or ↑ with nothing written for your
+last — its words there (references as their pills), an "Editing your
+comment" card over them: ↩ saves, ⎋ leaves it as it was and puts back
+what you were writing. It says "edited" by its time after; only whoever
+wrote a comment changes it (an agent its own, `mani thread edit`). The composer is a chat app's box
 (`ChatBox`), the same wherever a comment is written: rounded, growing
 with what's written (then scrolling), a new thread's place as a card at
 its top — its icon (a page's own), its name, where it is — Resolve a
