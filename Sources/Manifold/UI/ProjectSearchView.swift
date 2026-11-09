@@ -242,7 +242,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
             if !h.kind.isEmpty {
                 a.append(NSAttributedString(string: h.kind + "  ", attributes: [.font: NSFont.systemMono(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText]))
             }
-            let name = NSMutableAttributedString(string: h.name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: Theme.text])
+            let name = NSMutableAttributedString(string: h.name, attributes: [.font: UIType.title, .foregroundColor: Theme.text])
             Self.mark(query?.text ?? "", in: name)
             a.append(name)
             if !h.container.isEmpty {

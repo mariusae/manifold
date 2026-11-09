@@ -529,7 +529,7 @@ final class SidebarTab: ClickView {
         self.organization = organization
         super.init(frame: .zero)
         icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
-        badge.font = .monospacedDigitSystemFont(ofSize: 8.5, weight: .bold)
+        badge.font = UIType.badge
         badge.alignment = .center
         // A grey count, as the pills are.
         badge.textColor = Theme.text

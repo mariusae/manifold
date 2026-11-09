@@ -36,7 +36,7 @@ final class FooterButton: ClickView {
     var count: Int = 0 { didSet { if count != oldValue { needsDisplay = true } } }
     private let symbol: String
     private let title: String?
-    private let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    private let font = UIType.label
 
     init(symbol: String, title: String?) {
         self.symbol = symbol

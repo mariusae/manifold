@@ -19,7 +19,7 @@ enum ThreadMark {
     /// In from the right edge it's at.
     static let inset: CGFloat = 14
 
-    private static let countFont = NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .semibold)
+    private static let countFont = UIType.badge
 
     static func size(_ s: State) -> NSSize {
         let count = s.count > 1 ? ceil(("\(s.count)" as NSString).size(withAttributes: [.font: countFont]).width) + 3 : 0

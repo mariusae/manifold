@@ -152,7 +152,7 @@ private final class MentionList: PopoverView {
             } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium, color: lit ? Flat.onBand() : Theme.secondaryText) {
                 image.draw(centeredAt: NSPoint(x: iconRect.midX, y: iconRect.midY))
             }
-            let title = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: lit ? Flat.onBand() : Theme.text])
+            let title = NSAttributedString(string: c.title, attributes: [.font: UIType.row, .foregroundColor: lit ? Flat.onBand() : Theme.text])
             let detail = NSAttributedString(string: c.detail, attributes: [.font: UIType.footnote, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.tertiaryText])
             let x = iconRect.maxX + 8
             let tw = min(title.size().width + 2, r.width - (x - r.minX) - 8)

@@ -211,7 +211,7 @@ final class ChipView: NSView {
         icon.imageScaling = .scaleProportionallyDown
         icon.contentTintColor = Theme.secondaryText
         title.stringValue = chip.title
-        title.font = .systemFont(ofSize: 12.5, weight: .medium)
+        title.font = UIType.label
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail
         detail.stringValue = chip.detail

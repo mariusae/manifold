@@ -81,7 +81,7 @@ final class SpaceSwitcherView: PopoverView {
                 NSBezierPath(ovalIn: NSRect(x: right - 8, y: sq.midY - 4, width: 8, height: 8)).fill()
                 right -= 14
             }
-            let name = NSAttributedString(string: c.name, attributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: Theme.text])
+            let name = NSAttributedString(string: c.name, attributes: [.font: UIType.title, .foregroundColor: Theme.text])
             name.draw(with: NSRect(x: sq.maxX + 8, y: sq.minY + 1, width: max(0, right - sq.maxX - 8), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             // The grid, in miniature.
             let foot: CGFloat = c.docked > 0 || c.host != nil ? 18 : 6

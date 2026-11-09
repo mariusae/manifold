@@ -124,7 +124,7 @@ final class PanelView: NSView, PaneContent {
             let text = (value(item, values) as? String) ?? (item["text"] as? String) ?? label ?? ""
             let l = NSTextField(wrappingLabelWithString: text)
             l.isSelectable = true
-            if item["style"] as? String == "heading" { l.font = .systemFont(ofSize: 14, weight: .semibold) }
+            if item["style"] as? String == "heading" { l.font = UIType.heading }
             if item["style"] as? String == "secondary" { l.textColor = Theme.secondaryText }
             l.fullWidth = true
             if let id { controls[id] = Control(set: { l.stringValue = Self.string($0) }) }

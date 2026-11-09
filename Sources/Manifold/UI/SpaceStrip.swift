@@ -222,7 +222,7 @@ final class SpaceStripView: NSView {
             SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
             // ⌘ held: its number, over its bottom right, as a key's badge.
             if showsNumbers, let n = number(i) {
-                let t = NSAttributedString(string: "\(n)", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .bold), .foregroundColor: Theme.panel])
+                let t = NSAttributedString(string: "\(n)", attributes: [.font: UIType.badge, .foregroundColor: Theme.panel])
                 let z = t.size()
                 let b = NSRect(x: r.maxX - 9, y: r.maxY - 9, width: max(13, z.width + 6), height: 13)
                 Theme.text.withAlphaComponent(0.85).setFill()

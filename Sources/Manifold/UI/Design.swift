@@ -48,6 +48,8 @@ enum UIType {
     /// A note under a table or a pane, a footer's words.
     static let footnote = NSFont.systemFont(ofSize: 11)
     static let count = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+    /// A number on a badge at a corner (a tab's count, a key's number).
+    static let badge = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold)
     /// A block's symbol beside its title, as a row or a card sets it.
     static let symbolSize: CGFloat = 13
 }
