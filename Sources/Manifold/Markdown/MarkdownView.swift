@@ -721,4 +721,22 @@ extension MarkdownView: FollowsFontTheme {
     func fontThemeChanged() {
         if loaded { web.evaluateJavaScript(MarkdownPage.themeScript(theme)) }
     }
+
+    /// The source lines what's selected on the page came from (each end's
+    /// nearest element with a `data-sourcepos`: the paragraph, item or
+    /// heading it's in), and the words; nil for no selection.
+    func selectedSourceLines(_ done: @escaping ((first: Int, last: Int, text: String)?) -> Void) {
+        let js = """
+        (function(){var s=window.getSelection();if(!s||s.isCollapsed||!s.rangeCount)return null;
+        function line(n,end){for(var e=n.nodeType==1?n:n.parentElement;e;e=e.parentElement){var p=e.getAttribute&&e.getAttribute('data-sourcepos');
+        if(p){var m=/^(\\d+):\\d+-(\\d+):/.exec(p);return m?(end?+m[2]:+m[1]):null;}}return null;}
+        var r=s.getRangeAt(0),a=line(r.startContainer,false),b=line(r.endContainer,true);
+        return a==null?null:{first:a,last:(b==null||b<a)?a:b,text:s.toString()};})()
+        """
+        web.evaluateJavaScript(js) { result, _ in
+            guard let d = result as? [String: Any], let first = (d["first"] as? NSNumber)?.intValue else { return done(nil) }
+            done((first, (d["last"] as? NSNumber)?.intValue ?? first, d["text"] as? String ?? ""))
+        }
+    }
+
 }

@@ -434,6 +434,21 @@ extension MainWindowController: ThreadChatDelegate {
                 self.showThreadCard(threads: [], newPlace: place, at: rect, in: d)
             }
         }
+        // A rendered page of a text, its words selected: the lines they came
+        // from, quoted (else, as below, the page).
+        if let m = v as? MarkdownView, hosts.block(m.block)?.text != nil {
+            return m.selectedSourceLines { [weak self] sel in
+                guard let self else { return }
+                guard let sel else {
+                    guard let here else { return self.showThreadOverlay(nil) }
+                    return self.threadPlace(here) { [weak self] in self?.showThreadOverlay($0) }
+                }
+                var p = Place(block: m.block, at: sel.first == sel.last ? .line(sel.first) : .lines(sel.first, sel.last))
+                p.title = here?.title
+                if !sel.text.isEmpty { p.context = "“" + String(sel.text.prefix(400)) + "”" }
+                self.threadPlace(p) { [weak self] in self?.showThreadOverlay($0) }
+            }
+        }
         // Elsewhere, the overlay: about a terminal's command, a PDF's page,
         // a page (its words selected, the quote it's about), the tile; or
         // the space.
