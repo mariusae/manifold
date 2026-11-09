@@ -91,15 +91,15 @@ public enum Paths {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".manifold/bin/manifoldd")
     }
 
-    /// The names of what says who a host is, in its folder (`HostSession`).
+    /// The names of what says who a host is, in its folder (`HostSession`):
+    /// its session id, its label, and the name its first client gave it
+    /// before there were sessions.
     public enum Name {
         public static let session = "session"
         public static let label = "label"
         public static let hostName = "host"
     }
 
-    /// The host's name, as its first client named it (before sessions).
-    public static var hostName: URL { directory.appendingPathComponent(Name.hostName) }
     /// The host's session id (§8), minted once.
     public static var session: URL { directory.appendingPathComponent(Name.session) }
     /// What the host calls itself, for clients to show.
