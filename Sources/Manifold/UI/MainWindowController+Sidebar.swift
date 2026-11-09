@@ -160,13 +160,9 @@ extension MainWindowController: OrganizationViewDelegate {
                     body = t.visibleText
                     font = hosts.state.appearance.theme.font(.monospaced, size: 11)
                 }
-            case let w as WebView:
-                w.snapshot { [weak self] image in
-                    if let image { self?.tilePictures[id] = image }
-                    HoverCard.shared.updatePicture(image, for: key)
-                }
-            case let m as MarkdownView:
-                m.snapshot { [weak self] image in
+            case let page as Snapshotting:
+                // A page's own picture (WebKit draws it apart), when it comes.
+                page.snapshot { [weak self] image in
                     if let image { self?.tilePictures[id] = image }
                     HoverCard.shared.updatePicture(image, for: key)
                 }
@@ -180,7 +176,7 @@ extension MainWindowController: OrganizationViewDelegate {
             if let t = view(of: id, as: TerminalView.self),
                let image = HoverCard.surfacePicture(of: t) {
                 picture = image
-            } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is WebView) && !($0 is MarkdownView) }),
+            } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is Snapshotting) }),
                       let image = HoverCard.picture(of: hidden, evenHidden: true) {
                 // Still drawn, out of sight (another workspace's grid kept,
                 // stacked): pictured now, as it is.
@@ -200,13 +196,10 @@ extension MainWindowController: OrganizationViewDelegate {
     /// `evenHidden`: in a grid kept hidden (a workspace just left), which
     /// still draws as it did.
     func rememberPicture(of view: PaneContent, evenHidden: Bool = false) {
-        switch view {
-        case let w as WebView:
-            w.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
-        case let m as MarkdownView:
-            m.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
-        default:
-            if let image = HoverCard.picture(of: view, evenHidden: evenHidden) { tilePictures[view.block] = image }
+        if let page = view as? Snapshotting {
+            page.snapshot { [weak self] image in if let image { self?.tilePictures[view.block] = image } }
+        } else if let image = HoverCard.picture(of: view, evenHidden: evenHidden) {
+            tilePictures[view.block] = image
         }
         // Kept for the blocks still about.
         if tilePictures.count > 200 { tilePictures = tilePictures.filter { hosts.block($0.key) != nil } }
