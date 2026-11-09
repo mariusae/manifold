@@ -194,10 +194,19 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void) {
-        guard let c = hosts.client(of: view.block) else { return done("the host isn't attached") }
-        let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(hosts.label(of: view.block.host)) to \(url.deletingLastPathComponent().lastPathComponent)", symbol: "arrow.down") { progress, finished in
-            Transfer.download(path, on: c, to: url, progress: progress, done: finished)
-        } then: { error in done(error) }
+        fetch(path, on: view.block.host, to: url, then: done)
+    }
+
+    /// Another host's file or folder fetched to `url`, going in the
+    /// transfers, Show in Finder once it's in; `then` with what went
+    /// wrong, if anything.
+    func fetch(_ path: String, on h: HostID, to url: URL, replace: Bool = true, then: ((String?) -> Void)? = nil) {
+        guard let c = hosts.client(h) else { then?("the host isn't attached"); return }
+        let into = url.deletingLastPathComponent()
+        let detail = "from \(hosts.label(of: h)) to " + (into.lastPathComponent == "Downloads" ? "Downloads" : into.lastPathComponent)
+        let item = Transfers.shared.run(url.lastPathComponent, detail: detail, symbol: "arrow.down") { progress, finished in
+            Transfer.download(path, on: c, to: url, replace: replace, progress: progress, done: finished)
+        } then: { error in then?(error) }
         item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
     }
 
@@ -395,18 +404,9 @@ extension MainWindowController: DirectoryViewDelegate {
     /// Another host's file or folder, fetched to Downloads (a name of its
     /// own if one's there), shown in the Finder when it's in.
     func download(_ path: String, on h: HostID) {
-        guard let c = hosts.client(h), let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return NSSound.beep() }
-        var url = downloads.appendingPathComponent(path.lastPathComponent)
-        var n = 2
-        while FileManager.default.fileExists(atPath: url.path) {
-            let ext = path.pathExtension
-            url = downloads.appendingPathComponent((path.lastPathComponent as NSString).deletingPathExtension + " \(n)" + (ext.isEmpty ? "" : "." + ext))
-            n += 1
-        }
-        let item = Transfers.shared.run(url.lastPathComponent, detail: "from \(hosts.label(of: h)) to Downloads", symbol: "arrow.down") { progress, done in
-            Transfer.download(path, on: c, to: url, replace: false, progress: progress, done: done)
-        }
-        item.action = ("Show in Finder", { NSWorkspace.shared.activateFileViewerSelecting([url]) })
+        guard hosts.client(h) != nil, let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return NSSound.beep() }
+        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: downloads.path)) ?? [])
+        fetch(path, on: h, to: downloads.appendingPathComponent(Self.freeName(path.lastPathComponent, taken: taken)), replace: false)
     }
 
     /// Open With ▸: the apps that open the file, its default first; on
