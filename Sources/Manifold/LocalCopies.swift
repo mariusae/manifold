@@ -12,12 +12,16 @@ final class LocalCopies {
         let path: String
         weak var client: HostClient?
         let label: String
+        /// When it was last sent back (or fetched).
         var modified: Date?
         var sending = false
+        var watcher: FileWatcher?
     }
 
     private var copies: [URL: Copy] = [:]
-    private var timer: Timer?
+    /// A copy's send put off while it's still being written, and tried
+    /// again a while after one didn't go.
+    private let settle = KeyedDebouncer<URL>()
     /// Sent back (or not): the file's name, the host's, and why not.
     var onSentBack: ((String, String, String?) -> Void)?
 
@@ -34,12 +38,15 @@ final class LocalCopies {
         let dir = folder.appendingPathComponent(String(place), isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(path.lastPathComponent)
+        // An earlier copy let go first: what's fetched over it isn't sent back.
+        copies.removeValue(forKey: url)
+        settle.cancel(url)
         Transfers.shared.run(path.lastPathComponent, detail: "from \(label), to open here", symbol: "arrow.down") { progress, finished in
             Transfer.download(path, on: c, to: url, progress: progress, done: finished)
         } then: { [weak self] error in
             guard let self, error == nil else { return done(nil, error) }
             self.copies[url] = Copy(url: url, path: path, client: c, label: label, modified: Self.modified(url))
-            self.watch()
+            self.copies[url]?.watcher = FileWatcher(path: url.path) { [weak self] in self?.changed(url) }
             done(url, nil)
         }
     }
@@ -48,31 +55,36 @@ final class LocalCopies {
         (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
-    private func watch() {
-        guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.check() }
+    /// A copy written to: sent back once the writing stops a moment.
+    private func changed(_ url: URL) {
+        settle.schedule(url, after: 1) { [weak self] in self?.sendBack(url) }
     }
 
-    /// Each copy saved since it was last sent (and not still being
-    /// written: its date unchanged since the last look) goes back.
-    private var seen: [URL: Date] = [:]
-    private func check() {
-        for (url, copy) in copies where !copy.sending {
-            guard FileManager.default.fileExists(atPath: url.path) else { copies.removeValue(forKey: url); continue }
-            guard let m = Self.modified(url), m != copy.modified else { continue }
-            // Settled: the same date as a moment ago.
-            if seen[url] != m { seen[url] = m; continue }
-            guard let c = copy.client else { continue }
-            copies[url]?.sending = true
-            Transfers.shared.run(url.lastPathComponent, detail: "saved, back to \(copy.label)", symbol: "arrow.up") { progress, finished in
-                Transfer.upload(url, to: copy.path, on: c, replace: true, progress: progress, done: finished)
-            } then: { [weak self] error in
-                guard let self else { return }
-                self.copies[url]?.sending = false
-                if error == nil { self.copies[url]?.modified = m }
-                self.onSentBack?(url.lastPathComponent, copy.label, error)
-            }
+    /// The copy, saved since it was last sent, goes back to its host; one
+    /// that didn't go is tried again in a while; one deleted, or whose
+    /// host has gone, is let go.
+    private func sendBack(_ url: URL) {
+        guard let copy = copies[url], !copy.sending else { return }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            copies.removeValue(forKey: url)
+            return
         }
-        if copies.isEmpty { timer?.invalidate(); timer = nil }
+        guard let m = Self.modified(url), m != copy.modified else { return }
+        guard let c = copy.client else {
+            copies.removeValue(forKey: url)
+            onSentBack?(url.lastPathComponent, copy.label, "\(copy.label) isn't connected any more")
+            return
+        }
+        copies[url]?.sending = true
+        Transfers.shared.run(url.lastPathComponent, detail: "saved, back to \(copy.label)", symbol: "arrow.up") { progress, finished in
+            Transfer.upload(url, to: copy.path, on: c, replace: true, progress: progress, done: finished)
+        } then: { [weak self] error in
+            guard let self else { return }
+            self.copies[url]?.sending = false
+            if error == nil { self.copies[url]?.modified = m }
+            self.onSentBack?(url.lastPathComponent, copy.label, error)
+            // Written again while it went, or it didn't go: again.
+            self.settle.schedule(url, after: error == nil ? 0 : 10) { [weak self] in self?.sendBack(url) }
+        }
     }
 }
