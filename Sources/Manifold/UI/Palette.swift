@@ -1256,10 +1256,10 @@ extension Palette {
                 .graphite: TintColors(accent: .hex(0x73726C, 0x9C9A92), caret: .hex(0x3D3D3A, 0xC2C0B6), textSelection: .hex(0xDFDEDA, 0x494945)),
             ],
             code: Code(
-                // Read, not edited: as claude.ai sets code, a step deeper
-                // than its page — its oat (bg-300, #f0eee6) under the
-                // ivory; by night its cards' #30302e over #262624.
-                page: .hex(0xF0EEE6, 0x30302E),
+                // Read, not edited: a step deeper than its page, as claude.ai
+                // sets code — half a step: its oat (#f0eee6) and cards'
+                // #30302e were stark beside the ivory and #262624.
+                page: .hex(0xF4F3EC, 0x2C2C2A),
                 text: .hex(0x141413, 0xFAF9F5),
                 // Quiet, but read: 3.6 on the ivory, 4.0 by night.
                 lineNumber: .hex(0x85837C, 0x85837C),
@@ -1293,7 +1293,7 @@ extension Palette {
                 hunk: .hex(0xEAE9EC, 0x373640),
                 found: .hex(0xF1E0B5, 0x5B5035),
                 current: .hex(0xF1D38B, 0x87713C),
-                page: .hex(0xF0EEE6, 0x30302E)),
+                page: .hex(0xF4F3EC, 0x2C2C2A)),
             found: Found(
                 current: alpha(honey, 0.55, honey, 0.5),
                 currentRing: modified,
@@ -1323,12 +1323,12 @@ extension Palette {
             // As claude.ai sets a reply: on its ivory, its inks, its links.
             page: Page(
                 // A rendered page, read: as its code read.
-                background: .hex(0xF0EEE6, 0x30302E),
+                background: .hex(0xF4F3EC, 0x2C2C2A),
                 text: .hex(0x141413, 0xFAF9F5),
                 strong: .hex(0x000000, 0xFFFFFF),
                 link: link,
-                // Inline code a step deeper again (bg-400).
-                code: .hex(0xE8E6DC, 0x1F1E1D),
+                // Inline code a step deeper again.
+                code: .hex(0xECEAE2, 0x1F1E1D),
                 codeText: .hex(0x141413, 0xFAF9F5),
                 copy: .hex(0xFFFFFF, 0x30302E),
                 copyEdge: .hex(0xE4E3DF, 0x42413E),
@@ -1339,8 +1339,8 @@ extension Palette {
                 quote: .hex(0x3D3D3A, 0xC2C0B6),
                 quoteRule: .hex(0xD9D8D5, 0x42413E),
                 rule: .hex(0xE4E3DF, 0x383835),
-                tableHead: .hex(0xE8E6DC, 0x3A3A37),
-                tableStripe: .hex(0xF5F4ED, 0x2B2B29),
+                tableHead: .hex(0xECEAE2, 0x363634),
+                tableStripe: .hex(0xF0EEE6, 0x313130),
                 struck: .hex(0x73726C, 0x9C9A92),
                 missing: failed,
                 diagramError: failed,
