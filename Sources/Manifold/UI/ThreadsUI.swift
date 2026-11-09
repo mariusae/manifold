@@ -4,8 +4,11 @@ import ManifoldCore
 /// What the window keeps of threads (§3.12): the card shown, the chats
 /// on screen (to be kept up to date), and what each last showed.
 final class ThreadUI {
+    /// The card shown, and its popover: both let go of as it closes
+    /// (§ M36 in STATE-MACHINES.md) — not kept, refreshed and acted on.
     var popover: NSPopover?
     var card: ThreadCardView?
+    var cardClosed: NSObjectProtocol?
     /// Every chat on screen, held weakly: a card's, a tile's, the overlay's.
     var chats: [Weak<ThreadChatView>] = []
     /// Every timeline on screen.
@@ -286,6 +289,16 @@ extension MainWindowController: ThreadChatDelegate {
         pop.contentViewController = vc
         threadUI.popover = pop
         threadUI.card = card
+        if let o = threadUI.cardClosed { NotificationCenter.default.removeObserver(o) }
+        threadUI.cardClosed = NotificationCenter.default.addObserver(forName: NSPopover.didCloseNotification, object: pop, queue: .main) { [weak self, weak pop] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.threadUI.popover === pop else { return }
+                self.threadUI.popover = nil
+                self.threadUI.card = nil
+                if let o = self.threadUI.cardClosed { NotificationCenter.default.removeObserver(o) }
+                self.threadUI.cardClosed = nil
+            }
+        }
         card.chat.composer.onCancel = { [weak pop] in pop?.close() }
         watch(card.chat)
         pop.contentSize = card.wantedSize

@@ -17,7 +17,10 @@ test named).
 
 **Tests.** `ManifoldCoreTests` (model), `ManifolddTests` (the host server,
 `@testable import manifoldd`), `ManifoldAppTests` (the app,
-`@testable import Manifold`); all run by `swift test`.
+`@testable import Manifold`); all run by `swift test`. Window-level ones
+are scenarios run through a debug instance's socket:
+`MANIFOLD_DIR=/tmp/mft Tests/scenarios/run.sh` (a throwaway instance:
+they open files and make threads).
 
 ---
 
@@ -189,7 +192,10 @@ no show came after it began. Machine: M30.
 
 ### I-8 Smaller ones · mixed
 - Thread card: `popover`/`card` never cleared on close; a closed card is
-  refreshed and resized, and debug acts on it. **confirmed on reading** (M36)
+  refreshed and resized, and acted on: `threads reply` posted to a closed
+  card's thread. **fixed**: both let go of as the popover closes. Test:
+  `Tests/scenarios/thread-card-closed.sh` (the reply went through on the
+  old code). (M36)
 - Project search: `searchWork` cancelled but not cleared, so a search isn't
   started after type-clear-type with Home toggled. **confirmed on reading** (M31)
 - SCIP: a re-index asked for while the root is indexing is dropped; the
