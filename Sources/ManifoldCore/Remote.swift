@@ -182,12 +182,13 @@ public struct Child {
     nonisolated(unsafe) public static var environment: (() -> [String: String])?
 
     /// Runs `argv` with pipes; the child's stderr is ours. Searches the PATH.
+    /// `environment`: the child's, else `Child.environment`'s, else ours.
     /// The child has those and nothing else of ours: our pipes are closed
     /// to every other child (a language server started as git runs kept
     /// the end of git's output open, so its reader waited out its timeout,
     /// and every git command after it — a minute at the server's start,
     /// the gutter's marks with it), and on macOS whatever else is open.
-    public static func spawn(_ argv: [String], stderrToNull: Bool = false) throws -> Child {
+    public static func spawn(_ argv: [String], stderrToNull: Bool = false, environment: [String: String]? = nil) throws -> Child {
         var toChild: [Int32] = [0, 0], fromChild: [Int32] = [0, 0]
         guard pipe(&toChild) == 0, pipe(&fromChild) == 0 else { throw POSIXError(.EPIPE) }
         for fd in toChild + fromChild { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
@@ -215,7 +216,7 @@ public struct Child {
         var pid: pid_t = 0
         let cargs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
         defer { for p in cargs { free(p) } }
-        let env = (Child.environment?() ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
+        let env = (environment ?? Child.environment?() ?? ProcessInfo.processInfo.environment).map { "\($0.key)=\($0.value)" }
         let cenv: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0) } + [nil]
         defer { for p in cenv { free(p) } }
         #if canImport(Darwin)
@@ -240,8 +241,9 @@ public struct Child {
     /// gets in all; `progress` is told how much of the input has been
     /// taken as it goes, from another thread.
     public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, stall: TimeInterval? = nil,
-                           progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false) throws -> (output: Data, status: Int32) {
-        let child = try spawn(argv, stderrToNull: quiet)
+                           progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false,
+                           environment: [String: String]? = nil) throws -> (output: Data, status: Int32) {
+        let child = try spawn(argv, stderrToNull: quiet, environment: environment)
         let moved = Moved()
         let writer = Thread {
             input.withUnsafeBytes { raw in

@@ -197,22 +197,9 @@ enum AgentLink {
     static func keys() -> Int? {
         var env = ProcessInfo.processInfo.environment
         env["SSH_AUTH_SOCK"] = path
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        p.arguments = ["ssh-add", "-l"]
-        p.environment = env
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: killer)
-        let out = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        killer.cancel()
+        guard let (out, status) = try? Child.run(["/usr/bin/env", "ssh-add", "-l"], timeout: 5, quiet: true, environment: env) else { return nil }
         // 1: the agent has no keys; 2: it couldn't be reached.
-        switch p.terminationStatus {
+        switch status {
         case 0: return String(decoding: out, as: UTF8.self).split(separator: "\n").count
         case 1: return 0
         default: return nil
