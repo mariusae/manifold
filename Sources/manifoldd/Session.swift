@@ -100,17 +100,7 @@ final class Session {
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
           command: String? = nil, shell preferred: String? = nil, queue: DispatchQueue) {
         var (shell, environment) = Session.shellAndEnvironment(clientEnv: env, preferred: preferred)
-        // So `mani` run in this shell knows where it is, and `$EDITOR`
-        // edits in Manifold, beside it.
-        environment["MANIFOLD_BLOCK"] = id.description
-        environment["MANIFOLD_HOST"] = id.host.raw
-        let editor = Session.editorCommand
-        environment["EDITOR"] = editor
-        environment["VISUAL"] = editor
-        // Set again once your rc files have run (they often set EDITOR,
-        // for other terminals): Manifold's startup for each shell does,
-        // unless MANIFOLD_KEEP_EDITOR says to leave yours.
-        environment["MANIFOLD_EDITOR"] = editor
+        environment.merge(Session.blockEnvironment(for: id)) { $1 }
         let argv0 = "-" + shell.lastPathComponent
         let dir = cwd.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -890,15 +880,30 @@ final class Session {
         }
     }
 
+    /// What a process run for a block is told: the block, so `mani` run
+    /// there knows where it is, and (`editing`) Manifold's `$EDITOR`,
+    /// which edits beside it — set again as MANIFOLD_EDITOR for once your
+    /// rc files have run (they often set EDITOR, for other terminals):
+    /// Manifold's startup for each shell does, unless MANIFOLD_KEEP_EDITOR
+    /// says to leave yours.
+    static func blockEnvironment(for id: BlockID, editing: Bool = true) -> [String: String] {
+        var env = ["MANIFOLD_BLOCK": id.description, "MANIFOLD_HOST": id.host.raw]
+        if editing {
+            let editor = editorCommand
+            env["EDITOR"] = editor
+            env["VISUAL"] = editor
+            env["MANIFOLD_EDITOR"] = editor
+        }
+        return env
+    }
+
     /// Folders with the `mani` command: Helpers/ beside this server in
     /// the app bundle, if there; the server's own folder.
     static var toolDirectories: [String] {
-        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let own = exe.deletingLastPathComponent()
-        let helpers = own.deletingLastPathComponent().appendingPathComponent("Helpers")
         var dirs: [String] = []
-        if FileManager.default.isExecutableFile(atPath: helpers.appendingPathComponent("mani").path) { dirs.append(helpers.path) }
-        if FileManager.default.isExecutableFile(atPath: own.appendingPathComponent("mani").path) { dirs.append(own.path) }
+        for dir in [ServerBundle.helpers, ServerBundle.folder] where FileManager.default.isExecutableFile(atPath: dir.appendingPathComponent("mani").path) {
+            dirs.append(dir.path)
+        }
         return dirs
     }
 
@@ -907,13 +912,11 @@ final class Session {
     /// terminfo the server's own (`shellAndEnvironment`), its resources
     /// from the app bundle this server is in, if it is in one.
     static var unattachedEnvironment: [String: String] {
-        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let contents = exe.deletingLastPathComponent().deletingLastPathComponent()
-        let resources = contents.appendingPathComponent("Resources")
+        let ghostty = ServerBundle.contents.appendingPathComponent("Resources/ghostty")
         var env = ["TERM": "xterm-ghostty", "COLORTERM": "truecolor"]
-        if FileManager.default.fileExists(atPath: resources.appendingPathComponent("ghostty").path) {
-            env["GHOSTTY_RESOURCES_DIR"] = resources.appendingPathComponent("ghostty").path
-            env["GHOSTTY_BIN_DIR"] = contents.appendingPathComponent("MacOS").path
+        if FileManager.default.fileExists(atPath: ghostty.path) {
+            env["GHOSTTY_RESOURCES_DIR"] = ghostty.path
+            env["GHOSTTY_BIN_DIR"] = ServerBundle.contents.appendingPathComponent("MacOS").path
         }
         return env
     }
@@ -932,9 +935,7 @@ final class Session {
     /// host (written there if an older install has none) — as fish takes a
     /// variable as one word, never split; else the command with its words.
     static var editorCommand: String {
-        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
-        let own = exe.deletingLastPathComponent()
-        let helpers = own.deletingLastPathComponent().appendingPathComponent("Helpers")
+        let exe = ServerBundle.executable, own = ServerBundle.folder, helpers = ServerBundle.helpers
         let fm = FileManager.default
         // Quoted only when it must be: a shell expands `$EDITOR` without
         // parsing quotes, and most paths have no spaces.
@@ -961,11 +962,14 @@ final class Session {
     ]
 }
 
-func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R) -> R {
-    var ptrs: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
-    ptrs.append(nil)
-    defer { for p in ptrs { free(p) } }
-    return ptrs.withUnsafeBufferPointer { body($0.baseAddress!) }
+/// Where this server is: its executable (links followed), the folder
+/// it's in, and — in the app bundle — the Contents/ above it, with the
+/// `mani` command in Helpers/.
+enum ServerBundle {
+    static var executable: URL { URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath() }
+    static var folder: URL { executable.deletingLastPathComponent() }
+    static var contents: URL { folder.deletingLastPathComponent() }
+    static var helpers: URL { contents.appendingPathComponent("Helpers") }
 }
 
 func log(_ message: String) {

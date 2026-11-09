@@ -160,6 +160,15 @@ public struct HostsFile: Codable {
     public func label(of host: HostID) -> String? { hosts[host.raw]?.label }
 }
 
+/// Strings as C's argv or envp — each copied, the list ended by NULL —
+/// for as long as `body` runs.
+public func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R) -> R {
+    var ptrs: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
+    ptrs.append(nil)
+    defer { for p in ptrs { free(p) } }
+    return ptrs.withUnsafeBufferPointer { body($0.baseAddress!) }
+}
+
 /// A child process with pipes to its stdin and stdout.
 public struct Child {
     public let pid: pid_t

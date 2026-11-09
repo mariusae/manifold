@@ -1440,9 +1440,3 @@ final class HostClient {
     }
 }
 
-func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R) -> R {
-    var ptrs: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
-    ptrs.append(nil)
-    defer { for p in ptrs { free(p) } }
-    return ptrs.withUnsafeBufferPointer { body($0.baseAddress!) }
-}

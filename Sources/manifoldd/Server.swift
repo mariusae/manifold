@@ -486,8 +486,7 @@ final class Server {
         var env = ProcessInfo.processInfo.environment
         let tools = Session.toolDirectories
         env["PATH"] = (tools + [env["PATH"] ?? "/usr/bin:/bin"]).joined(separator: ":")
-        env["MANIFOLD_BLOCK"] = block.description
-        env["MANIFOLD_HOST"] = block.host.raw
+        env.merge(Session.blockEnvironment(for: block, editing: false)) { $1 }
         env["MANI_EVENT"] = event
         SpawnEnvironment.apply(to: &env, scope: .shells)
         if let data = event.data(using: .utf8), let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let v = o["value"] {

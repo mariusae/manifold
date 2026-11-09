@@ -63,12 +63,7 @@ final class NotebookShell {
         env["PAGER"] = "cat"
         env["GIT_PAGER"] = "cat"
         env["MANPAGER"] = "cat"
-        env["MANIFOLD_BLOCK"] = id.description
-        env["MANIFOLD_HOST"] = id.host.raw
-        let editor = Session.editorCommand
-        env["EDITOR"] = editor
-        env["VISUAL"] = editor
-        env["MANIFOLD_EDITOR"] = editor
+        env.merge(Session.blockEnvironment(for: id)) { $1 }
         let name = shell.lastPathComponent
         var args = ["-" + name]
         if name == "bash", let rc = Session.bashLayer() { args = [name, "--rcfile", rc] }

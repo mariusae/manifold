@@ -74,7 +74,7 @@ enum Bridge {
     }
 
     private static func startServer() {
-        let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
+        let exe = ServerBundle.executable.path
         let path = exe.hasPrefix("/") ? exe : Paths.installedServer.path
         // Its environment is this connection's, which will end (§8.6).
         setenv(SpawnEnvironment.bridgedKey, "1", 1)
