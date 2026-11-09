@@ -793,7 +793,7 @@ final class Server {
         // waited for the next start's pruning).
         try? FileManager.default.removeItem(at: historyFile(block))
         watchers.removeValue(forKey: block)
-        unreachableSince.removeValue(forKey: block)
+        forgetRuntime(of: block)
         guard let b = node.block(block) else { return }
         // An image Manifold kept for a note goes with its block.
         if b.kind == .image, let path = b.path, path.hasPrefix(Self.imagesFolder + "/") { try? FileManager.default.removeItem(atPath: path) }
@@ -803,6 +803,21 @@ final class Server {
         let entry = node.registry(host).blocks[block]
         append(.discarded(Discarded(id: block, kind: b.kind, title: entry?.title ?? b.displayTitle, path: entry?.path ?? b.path, deleted: deleted, at: clock.now())), to: .registry(host))
         append(.unregister(block), to: .registry(host))
+    }
+
+    /// What's kept here only while a block lives — its gutter's marks and
+    /// their pending work, a notebook's live output, a terminal's size, a
+    /// file's expected fingerprint, an agent's turns — let go with it.
+    private func forgetRuntime(of block: BlockID) {
+        unreachableSince.removeValue(forKey: block)
+        gutterWork.removeValue(forKey: block)?.cancel()
+        gutters.removeValue(forKey: block)
+        notebookLive.removeValue(forKey: block)
+        notebookLiveScheduled.remove(block)
+        notebookInterrupted.removeValue(forKey: block)
+        expectedFingerprints.removeValue(forKey: block)
+        lastSizes.removeValue(forKey: block)
+        agentTurns.removeValue(forKey: block)
     }
 
     /// The workspaces are the only roots (§4), kept until removed by
