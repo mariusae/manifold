@@ -49,10 +49,6 @@ final class SidebarView: NSView {
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
     private let tabs: [SidebarTab] = [.desk, .files, .threads].map { SidebarTab($0) }
-    /// A quiet row above the bar (§4): what's closed and not yet
-    /// collected; it opens its list in place of the tree, and again puts
-    /// the tree back.
-    private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
     /// The space's threads (§3.12): the timeline, in place of the tree; at
     /// the right of their header, the filter (which, and where) and Mark
     /// All Read.
@@ -81,7 +77,6 @@ final class SidebarView: NSView {
     let transfers = TransfersView()
     /// Toasts (§4), while it's out: above the copies, as many as are up.
     let toasts = ToastStackView()
-    static let footRowHeight: CGFloat = 22
 
     static let headerHeight: CGFloat = 40
     /// Where everything down the sidebar starts: the space's name, the
@@ -134,10 +129,9 @@ final class SidebarView: NSView {
             }
             card.addSubview(t)
         }
-        for v in [spaces, needsYou, closedRow, transfers, toasts, footer] { card.addSubview(v) }
+        for v in [spaces, needsYou, transfers, toasts, footer] { card.addSubview(v) }
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
-        closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
         threadsFilter.target = self
         threadsFilter.action = #selector(threadsFilterClicked)
         threadsFilter.toolTip = "Filter Threads"
@@ -231,12 +225,6 @@ final class SidebarView: NSView {
         let toastH = toasts.wantedHeight
         toasts.frame = NSRect(x: 8, y: bottom, width: bounds.width - 16, height: toastH)
         bottom += toastH > 0 ? toastH + 8 : 0
-        if !closedRow.isHidden, !titled {
-            closedRow.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: Self.footRowHeight)
-            bottom += Self.footRowHeight + 6
-        } else {
-            closedRow.frame = .zero
-        }
         let timelineShown = organization == .threads
         timeline.isHidden = !timelineShown
         organizationView.isHidden = timelineShown
@@ -264,7 +252,6 @@ final class SidebarView: NSView {
     func setOrganization(_ org: Organization) {
         organization = org
         for t in tabs { t.chosen = t.organization == org }
-        closedRow.current = org == .closed
         pushedTitle.stringValue = org.title
         if org != .threads { pushedSubtitle.stringValue = "" }
         needsLayout = true
@@ -349,12 +336,10 @@ final class SidebarView: NSView {
         spaceHost.show(host: host, standing: standing, pings: pings, remote: remote)
     }
 
-    /// How many are closed awaiting collection: the foot row, hidden at zero.
+    /// How many are closed awaiting collection, under Recently Closed's
+    /// title while it's shown (⇧⌘A's menu has them otherwise).
     func setFoot(closed n: Int) {
-        // No row of its own at the foot: ⇧⌘A's menu (the footer's chevron) has it.
-        closedRow.count = n
-        closedRow.isHidden = true
-        guard organization == .closed else { return needsLayout = true }
+        guard organization == .closed else { return }
         pushedSubtitle.stringValue = n == 1 ? "1 closed" : "\(n) closed"
         needsLayout = true
     }
@@ -601,65 +586,6 @@ final class SidebarTab: NSView {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
-}
-
-/// A row at the sidebar's foot: a symbol, a name, a count at the right;
-/// clicked, its list.
-final class FootRowView: NSView {
-    var onClick: (() -> Void)?
-    var count = 0 { didSet { countLabel.stringValue = count == 0 ? "" : "\(count)"; countLabel.isHidden = count == 0; needsLayout = true } }
-    var current = false { didSet { label.textColor = current ? Theme.text : Theme.secondaryText; icon.contentTintColor = label.textColor } }
-    private let icon = NSImageView()
-    private let label = NSTextField(labelWithString: "")
-    /// The count in the same capsule as the tree's, its right edge on
-    /// theirs (the row sits in the sidebar as the tree's rows do, less
-    /// the room the tree keeps at its right).
-    private let countLabel = CountPill()
-    static let countRightInset: CGFloat = 18
-    private var hovering = false { didSet { needsDisplay = true } }
-
-    init(title: String, symbol: String) {
-        super.init(frame: .zero)
-        // Put away as no room (the sidebar's other lists showing): nothing
-        // of it drawn below the bar.
-        clipsToBounds = true
-        icon.image = Theme.symbol(symbol, size: 11)
-        icon.contentTintColor = Theme.secondaryText
-        label.stringValue = title
-        label.font = UIType.label
-        label.textColor = Theme.secondaryText
-        for v in [icon, label, countLabel] { addSubview(v) }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        let h = bounds.height
-        icon.frame = NSRect(x: 12, y: (h - 12) / 2, width: 14, height: 12)
-        let cw = countLabel.wantedWidth
-        countLabel.frame = NSRect(x: bounds.width - Self.countRightInset - cw, y: ((h - CountPill.height) / 2).rounded(), width: cw, height: CountPill.height)
-        label.frame = NSRect(x: 32, y: (h - 16) / 2, width: max(0, countLabel.frame.minX - 40), height: 16)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard hovering else { return }
-        Theme.hover.setFill()
-        Flat.rowBand(bounds).fill()
-    }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }

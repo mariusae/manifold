@@ -3971,8 +3971,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             let (nodes, open) = self.organizationTree(org)
             let selected = org == .desk ? self.deskSelectedRow : nil
-            let reachable = self.hosts.reachable()
-            self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
+            if org == .closed {
+                let reachable = self.hosts.reachable()
+                self.sidebar.setFoot(closed: self.hosts.all.reduce(0) { $0 + self.closedItems(on: $1, reachable: reachable).count })
+            }
             self.refreshSidebarThreads()
             // Flat, with sections, where rows are blocks by place or state;
             // a tree with chevrons where the nesting is the point (folders, links).
