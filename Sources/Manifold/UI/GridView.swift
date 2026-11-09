@@ -1428,10 +1428,12 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// A soft shadow under each card in the light, none in the dark
-    /// (where the cards are lighter than the wash already).
+    /// (where the cards are lighter than the wash already); and the theme's
+    /// hairline round it, if it has one, in both.
     private func layoutShadows(_ bodies: [PlacementID: NSRect], gliding: Bool) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let wanted = dark || full != nil ? [:] : bodies.filter { $0.value != .zero }
+        let edge = Palette.current.backdrop.tileEdge?.color(dark: dark)
+        let wanted = (dark && edge == nil) || full != nil ? [:] : bodies.filter { $0.value != .zero }
         for (id, l) in shadowLayers where wanted[id] == nil {
             l.removeFromSuperlayer()
             shadowLayers.removeValue(forKey: id)
@@ -1450,7 +1452,10 @@ final class GridView: NSView, NSDraggingSource {
             // In the theme's shade of its ground.
             let shade = Palette.current.backdrop.tileShadow
             l.shadowColor = shade.color.cgColor
-            l.shadowOpacity = Float(shade.opacity)
+            l.shadowOpacity = dark ? 0 : Float(shade.opacity)
+            // Its edge: stroked on the card's outline, the outer half seen.
+            l.strokeColor = edge?.cgColor
+            l.lineWidth = edge == nil ? 0 : 1
             let card = Self.card(of: body)
             let path = CGPath(roundedRect: card, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
             // Gliding with its card, from where it shows.

@@ -255,6 +255,9 @@ struct Palette {
         /// Over the backdrop under the sidebar (pinned), where a colourful
         /// wash would take its words' contrast and hide its chosen row.
         var sidebarVeil: Shade? = nil
+        /// A hairline round each tile, by day and night (Merino's, as Rex
+        /// draws its panes); nil, the shadow alone, by day.
+        var tileEdge: Shade? = nil
 
         func wash(dark isDark: Bool) -> Wash { isDark ? dark : light }
     }
@@ -312,7 +315,7 @@ extension Palette {
     private(set) static var current: Palette = .paper
 
     /// Every theme there is.
-    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes, .claude, .claudeWarm, .claudeClassic]
+    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes, .claude, .claudeWarm, .claudeClassic, .merino]
 
     /// The theme by its id; Paper for one there isn't.
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? .paper }
@@ -1528,5 +1531,178 @@ extension Palette {
                              pool: (0.2, 0.99), tintPool: (0.36, 0.99)),
                 dark: .init(stops: [(0.47, 0.45, 0.15), (0.76, 0.38, 0.14), (0.03, 0.5, 0.16), (0.09, 0.3, 0.08)],
                             pool: (0.45, 0.24), tintPool: (0.6, 0.28))))
+    }()
+}
+
+// MARK: Merino
+
+extension Palette {
+    /// Merino: GitHub's Primer, as its terminal theme of that name sets it —
+    /// GitHub Light's sixteen with its yellows deepened (#9d5c00, #c47a00),
+    /// on white in #1f2328, a blue caret, selection inverted; by night
+    /// GitHub Dark's in #e6edf3, on #161b22 (its subtle canvas: its
+    /// #0d1117 a step too dark). The rest from Primer's tokens:
+    /// canvas white and #f6f8fa (#0d1117, #161b22), its borders (#d0d7de,
+    /// #30363d), its muted inks (#59636e, #9198a1: each over 5:1), its
+    /// blue, and its success, attention, danger and done for what's done,
+    /// waiting, failed, and a chart's third hue. Its chrome as Rex's Merino:
+    /// a tile's bar the page's own, a hairline round it, the blue ring
+    /// round the focused one — and nothing dimmed. What's read on the
+    /// subtle canvas, as GitHub sets code.
+    static let merino: Palette = {
+        let light = (bg: "#ffffff", fg: "#1f2328", ansi: [
+            "#24292f", "#cf222e", "#116329", "#9d5c00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
+            "#57606a", "#a40e26", "#1a7f37", "#c47a00", "#218bff", "#a475f9", "#3192aa", "#8c959f"])
+        let dark = (bg: "#161b22", fg: "#e6edf3", ansi: [
+            "#484f58", "#ff7b72", "#3fb950", "#d29922", "#58a6ff", "#bc8cff", "#39c5cf", "#b1bac4",
+            "#6e7681", "#ffa198", "#56d364", "#e3b341", "#79c0ff", "#d2a8ff", "#56d4dd", "#ffffff"])
+        // Primer's fg.accent, its text selection's blue, its subtle canvas.
+        let blue = Shade.hex(0x0969DA, 0x2F81F7), selection = Shade.hex(0xB6D8FF, 0x234879)
+        let subtle = Shade.hex(0xF6F8FA, 0x1C2128), border = Shade.hex(0xD0D7DE, 0x30363D), muted = Shade.hex(0xDFDFE1, 0x2A3038)
+        let done = Shade.hex(0x1A7F37, 0x3FB950), attention = Shade.hex(0x9A6700, 0xD29922), failed = Shade.hex(0xD1242F, 0xF85149)
+        let purple = Shade.hex(0x8250DF, 0xA371F7), severe = Shade.hex(0xBC4C00, 0xDB6D28), pink = Shade.hex(0xBF3989, 0xDB61A2)
+        let cyan = Shade.hex(0x1B7C83, 0x39C5CF)
+        // Its emphases, as marks (a gutter's), not text.
+        let added = Shade.hex(0x1F883D, 0x2EA043), modified = Shade.hex(0xBF8700, 0xBB8009), removed = Shade.hex(0xCF222E, 0xDA3633)
+        // Primer's neutral (#818b98, #656c76) at an alpha: its hovers and wells.
+        func wash(_ light: CGFloat, _ dark: CGFloat) -> Shade {
+            Shade(Theme.hex(0x818B98).withAlphaComponent(light), Theme.hex(0x656C76).withAlphaComponent(dark))
+        }
+        func alpha(_ hex: Int, _ light: CGFloat, _ darkHex: Int, _ dark: CGFloat) -> Shade {
+            Shade(Theme.hex(hex).withAlphaComponent(light), Theme.hex(darkHex).withAlphaComponent(dark))
+        }
+        return Palette(
+            id: "merino",
+            title: "Merino",
+            chrome: Chrome(
+                hover: wash(0.12, 0.2),
+                selected: wash(0.18, 0.3),
+                pressed: wash(0.24, 0.4),
+                divider: border,
+                panel: .hex(0xFFFFFF, 0x161B22),
+                panelBorder: border,
+                scrim: Shade(NSColor(white: 0.95, alpha: 0.4), Theme.hex(0x0D1117).withAlphaComponent(0.55)),
+                cardBorder: muted,
+                handle: wash(0.4, 0.5),
+                scrubberKnob: wash(0.3, 0.4),
+                sheetEdge: border,
+                sheetEdgeHovered: .hex(0xAFB8C1, 0x6E7681),
+                sheet: { level in .grey(0.95 - CGFloat(level) * 0.04, 0.15 + CGFloat(level) * 0.04) },
+                stack: subtle,
+                dragPill: .hex(0xFFFFFF, 0x1C2128),
+                linkBehind: { depth in .grey(0.96 - CGFloat(depth) * 0.03, 0.15 - CGFloat(depth) * 0.015) },
+                well: .hex(0xF6F8FA, 0x0D1117),
+                pill: wash(0.15, 0.25),
+                // Its accent's subtle into done's.
+                historyWash: (from: .hex(0xDDF4FF, 0x192638), to: .hex(0xFBEFFF, 0x2B2842)),
+                // Its bar the page's (the panel's), its place and buttons
+                // muted, as Rex's (#848689, #90959c) but over 4.5:1.
+                barInk: .hex(0x6E7781, 0x8B949E),
+                // Its overlays: white, a step up by night, bordered.
+                menu: .hex(0xFFFFFF, 0x1C2128)),
+            text: Text(
+                primary: .hex(0x1F2328, 0xE6EDF3),
+                body: .hex(0x1F2328, 0xE6EDF3),
+                strong: .hex(0x1F2328, 0xF0F6FC),
+                secondary: .hex(0x59636E, 0x9198A1),
+                tertiary: .hex(0x656D76, 0x7D8590),
+                readingBody: .hex(0x1F2328, 0xE6EDF3),
+                readingStrong: .hex(0x1F2328, 0xF0F6FC)),
+            status: StatusColors(done: done, attention: attention, failed: failed),
+            accent: TintColors(accent: blue, caret: blue, textSelection: selection),
+            tints: Palette.paper.tints,
+            code: Code(
+                // Read, not edited: the subtle canvas, as GitHub sets code.
+                page: subtle,
+                text: .hex(0x1F2328, 0xE6EDF3),
+                lineNumber: .hex(0x6E7781, 0x7D8590),
+                lineHighlight: .hex(0xF6F8FA, 0x1C2128),
+                gutterText: .hex(0x6E7781, 0x7D8590),
+                use: alpha(0x0969DA, 0.1, 0x2F81F7, 0.15),
+                match: alpha(0xD4A72C, 0.3, 0xBB8009, 0.3),
+                link: blue,
+                linkHover: wash(0.12, 0.2),
+                added: added,
+                modified: modified,
+                deleted: removed,
+                pins: [
+                    alpha(0x9A6700, 0.22, 0xD29922, 0.3),
+                    alpha(0x8250DF, 0.2, 0xA371F7, 0.3),
+                    alpha(0x0969DA, 0.2, 0x2F81F7, 0.3),
+                    alpha(0x1A7F37, 0.2, 0x3FB950, 0.3),
+                ],
+                error: failed,
+                warning: attention,
+                hint: alpha(0x0969DA, 0.6, 0x2F81F7, 0.6),
+                // Its attention's subtle ground.
+                changedOnDisk: .hex(0xFFF8C5, 0x2F2A1E),
+                highlighter: alpha(0xD4A72C, 0.4, 0xBB8009, 0.4)),
+            diff: Diff(
+                // As GitHub draws a diff: #e6ffec and #ffebe9, hunks in
+                // its accent's subtle; by night its 15% and 10% over the canvas.
+                added: .hex(0xE6FFEC, 0x1A2F27),
+                removed: .hex(0xFFEBE9, 0x2D2026),
+                hunk: .hex(0xDDF4FF, 0x192638),
+                found: .hex(0xFFF8C5, 0x2F2A1E),
+                current: .hex(0xEEDCAB, 0x584318)),
+            found: Found(
+                current: alpha(0xD4A72C, 0.5, 0xBB8009, 0.55),
+                currentRing: modified,
+                pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
+                pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.5, blue: 0.97, alpha: 0.7))),
+            chart: Chart(
+                one: blue,
+                two: purple,
+                three: done,
+                track: wash(0.15, 0.25),
+                surface: wash(0.05, 0.08),
+                grid: wash(0.15, 0.2)),
+            kinds: Kinds(
+                git: severe, swift: severe, shell: done, pdf: failed,
+                image: purple, data: attention, patch: done, archive: .hex(0x59636E, 0x9198A1), media: pink, code: blue,
+                linked: purple, embeds: cyan),
+            terminal: (
+                light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#0969da", cursorText: "#b6d8ff",
+                                       selectionBackground: light.fg, selectionForeground: light.bg, ansi: light.ansi,
+                                       extended: TerminalPalette.generated(background: light.bg, foreground: light.fg, ansi: light.ansi)),
+                dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#2f81f7", cursorText: "#eff8ff",
+                                      selectionBackground: dark.fg, selectionForeground: dark.bg, ansi: dark.ansi,
+                                      extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
+            // As GitHub sets a README, on the subtle canvas (it's read).
+            page: Page(
+                background: subtle,
+                text: .hex(0x1F2328, 0xE6EDF3),
+                strong: .hex(0x1F2328, 0xF0F6FC),
+                link: blue,
+                code: .hex(0xEAEEF2, 0x262C36),
+                codeText: .hex(0x1F2328, 0xE6EDF3),
+                copy: .hex(0xFFFFFF, 0x262C36),
+                copyEdge: border,
+                copyText: .hex(0x59636E, 0x9198A1),
+                copyHoverEdge: .hex(0xAFB8C1, 0x6E7681),
+                copyHoverText: .hex(0x1F2328, 0xE6EDF3),
+                copyDone: done,
+                quote: .hex(0x59636E, 0x9198A1),
+                quoteRule: border,
+                rule: border,
+                tableHead: .hex(0xEAEEF2, 0x262C36),
+                tableStripe: .hex(0xEFF2F5, 0x21262E),
+                struck: .hex(0x6E7781, 0x7D8590),
+                missing: failed,
+                diagramError: failed,
+                selection: selection,
+                failed: failed,
+                running: blue,
+                attention: attention),
+            // GitHub's own washes: its blue into violet into a little of
+            // its pink; by night its navy into indigo.
+            backdrop: Backdrop(
+                light: .init(stops: [(0.58, 0.14, 0.97), (0.64, 0.12, 0.97), (0.74, 0.10, 0.98), (0.56, 0.07, 0.99)],
+                             pool: (0.14, 1), tintPool: (0.28, 1)),
+                dark: .init(stops: [(0.60, 0.48, 0.22), (0.64, 0.42, 0.21), (0.73, 0.38, 0.21), (0.60, 0.32, 0.13)],
+                            pool: (0.45, 0.3), tintPool: (0.6, 0.34)),
+                tileShadow: (Theme.hex(0x1F2328), 0.08),
+                // Rex's panes' hairline: #dfdfe1, #2a3038.
+                tileEdge: muted))
     }()
 }
