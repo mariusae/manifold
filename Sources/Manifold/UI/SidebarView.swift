@@ -369,7 +369,9 @@ final class SidebarView: NSView {
     /// set again as the pin changes.
     private var chromeThemed = false
     private func applyCard(_ v: NSView) {
-        v.layer?.backgroundColor = pinned ? NSColor.clear.cgColor : Theme.panel.withAlphaComponent(0.94).cgColor
+        // Pinned, on the backdrop: the theme's veil over it, if it has one.
+        let veil = Palette.current.backdrop.sidebarVeil.map { $0.color(dark: v.effectiveAppearance.isDark).cgColor } ?? NSColor.clear.cgColor
+        v.layer?.backgroundColor = pinned ? veil : Theme.panel.withAlphaComponent(0.94).cgColor
         v.layer?.borderWidth = pinned ? 0 : 0.5
         v.layer?.borderColor = Theme.cardBorder.cgColor
     }

@@ -301,7 +301,7 @@ final class ThreadChatView: NSView {
     }
 
     private func rule(_ words: String) -> NSView {
-        let label = NSTextField.label(words, font: UIType.caption, color: Theme.accent)
+        let label = NSTextField.label(words, font: UIType.caption, color: Tints.accentText)
         let left = HairlineView(), right = HairlineView()
         let line = NSStackView(views: [left, label, right])
         line.spacing = 6
@@ -615,7 +615,7 @@ final class CommentText: NSView, NSTextViewDelegate {
         text.textContainer?.lineFragmentPadding = 0
         text.textStorage?.setAttributedString(attributed)
         text.delegate = self
-        text.linkTextAttributes = [.foregroundColor: Theme.accent, .cursor: NSCursor.pointingHand]
+        text.linkTextAttributes = [.foregroundColor: Tints.accentText, .cursor: NSCursor.pointingHand]
         addSubview(text)
         translatesAutoresizingMaskIntoConstraints = false
     }

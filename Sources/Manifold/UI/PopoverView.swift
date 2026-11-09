@@ -10,6 +10,8 @@ class PopoverView: NSView {
     static let radius: CGFloat = 12
 
     private let ground = Ground()
+    /// The theme's own ground over the frost, where it has one.
+    private let wash = Canvas()
     private let canvas = Canvas()
 
     override init(frame: NSRect) {
@@ -31,9 +33,19 @@ class PopoverView: NSView {
         ground.layer?.masksToBounds = true
         ground.layer?.borderWidth = 0.5
         canvas.owner = self
+        wash.wantsLayer = true
+        wash.layer?.cornerRadius = Self.radius
+        wash.layer?.cornerCurve = .continuous
+        wash.layer?.masksToBounds = true
         addSubview(ground)
+        addSubview(wash)
         addSubview(canvas)
-        themed { $0.ground.layer?.borderColor = Flat.line.cgColor }
+        themed {
+            $0.ground.layer?.borderColor = Flat.line.cgColor
+            $0.wash.layer?.backgroundColor = Theme.menuGround.cgColor
+            $0.wash.layer?.borderColor = Flat.line.cgColor
+            $0.wash.layer?.borderWidth = Palette.current.chrome.menu == nil ? 0 : 0.5
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -63,6 +75,7 @@ class PopoverView: NSView {
     override func layout() {
         super.layout()
         ground.frame = bounds
+        wash.frame = bounds
         canvas.frame = bounds
     }
 

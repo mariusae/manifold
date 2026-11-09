@@ -73,7 +73,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         self.theme = theme
         super.init(frame: .zero)
         wantsLayer = true
-        themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
+        themed { $0.layer?.backgroundColor = Theme.diffPage.cgColor }
         addSubview(note)
         waiting.host = block.host
         addSubview(waiting)
@@ -1489,7 +1489,7 @@ final class StickyFileHeading: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let name, let rows else { return }
-        Theme.windowBackground.withAlphaComponent(1).setFill()
+        Theme.diffPage.withAlphaComponent(1).setFill()
         bounds.fill()
         rows.drawFileHeading(name, in: bounds, textY: (bounds.height - rows.font.pointSize * 1.2) / 2 - 1)
         Theme.divider.setFill()

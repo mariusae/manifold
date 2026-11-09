@@ -105,6 +105,9 @@ struct Palette {
         /// A tile's bar, where it isn't the panel's ground (Claude Warm's,
         /// a step off its pages, not white over them).
         var bar: Shade? = nil
+        /// Popovers' and menus' ground, where it isn't the system's frosted
+        /// grey (Claude Warm's: its cards').
+        var menu: Shade? = nil
     }
 
     struct Text {
@@ -133,11 +136,16 @@ struct Palette {
         var caret: Shade
         /// Selected text, behind it.
         var textSelection: Shade
+        /// A chosen row's band, where it isn't the tint thin over the row
+        /// (Claude Warm's: a warm neutral step, the tint kept for what's
+        /// acted on).
+        var band: Shade?
 
-        init(accent: Shade, caret: Shade? = nil, textSelection: Shade) {
+        init(accent: Shade, caret: Shade? = nil, textSelection: Shade, band: Shade? = nil) {
             self.accent = accent
             self.caret = caret ?? accent
             self.textSelection = textSelection
+            self.band = band
         }
     }
 
@@ -176,6 +184,9 @@ struct Palette {
         var hunk: Shade
         var found: Shade
         var current: Shade
+        /// A diff's ground, where it isn't the window's: read, not edited,
+        /// as code in view mode is.
+        var page: Shade? = nil
     }
 
     /// What a search found, where it's shown.
@@ -234,6 +245,9 @@ struct Palette {
         /// band round each tile on a warm or tinted ground, so a theme's is
         /// a deeper shade of its own.
         var tileShadow: (color: NSColor, opacity: CGFloat) = (.black, 0.10)
+        /// Over the backdrop under the sidebar (pinned), where a colourful
+        /// wash would take its words' contrast and hide its chosen row.
+        var sidebarVeil: Shade? = nil
 
         func wash(dark isDark: Bool) -> Wash { isDark ? dark : light }
     }
@@ -1141,18 +1155,29 @@ extension Palette {
     /// ivory. By night the danger is its lighter one (#fe8181), #dd5353
     /// reading at 3.9:1.
     static let claudeWarm: Palette = {
+        // The terminal's sixteen in Claude's own inks, made for the ivory
+        // (each ≥ 4.5:1 by day, brights ≥ 3.8; by night on #262624, black
+        // a step under it and bright black ≥ 4.2) — Claude Code's own were
+        // made for #191919 and white, and faded or vanished here.
         let light = (bg: "#faf9f5", fg: "#141413", ansi: [
-            "#141413", "#ff3a30", "#1e9e3c", "#98801f", "#0073e6", "#cd2054", "#8e6bd9", "#9c9a92",
-            "#73726c", "#ff5047", "#1e9e3c", "#98801f", "#0078f0", "#cd2054", "#8e6bd9", "#dedcd1"])
+            "#141413", "#b53333", "#2f7613", "#8a5a00", "#1b67b2", "#a3416b", "#3d7a6a", "#6b6a64",
+            "#73726c", "#c6613f", "#3b8a1d", "#a86d00", "#2c78c4", "#b4527e", "#4a8a79", "#9c9a92"])
         let dark = (bg: "#262624", fg: "#faf9f5", ansi: [
-            "#141413", "#ff3a30", "#32d74b", "#ffd014", "#0099ff", "#ff2c56", "#b796ff", "#c2c0b6",
-            "#73726c", "#ff5047", "#32d74b", "#ffd014", "#0087ee", "#ff2c56", "#b796ff", "#faf9f5"])
+            "#3d3d3a", "#fe8181", "#65bb30", "#db9300", "#74abe2", "#e08fb3", "#7dbfa9", "#c2c0b6",
+            "#8a8880", "#ff9d8f", "#86d45a", "#f2b84a", "#9cc4ec", "#f0aecb", "#a3d6c4", "#faf9f5"])
         let clay = Shade.hex(0xC6613F, 0xD97757)
         let blue = Shade.hex(0x2C84DB, 0x2C84DB), link = Shade.hex(0x1B67B2, 0x74ABE2)
         let selection = Shade.hex(0xD3E5F8, 0x1C3F62)
+        // One green, one amber, one red: claude.ai's success and danger and
+        // an amber — for status, git's marks, kinds and the terminal alike
+        // (marks a shade lighter, where they aren't read as words).
         let done = Shade.hex(0x2F7613, 0x65BB30), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xB53333, 0xFE8181)
-        let added = Shade.hex(0x1E9E3C, 0x32D74B), modified = Shade.hex(0x98801F, 0xFFD014), removed = Shade.hex(0xCD2054, 0xFF2C56)
-        let violet = Shade.hex(0x8E6BD9, 0xB796FF), aqua = Shade.hex(0x0F7E5C, 0x3BBD8C)
+        let added = Shade.hex(0x3B8A1D, 0x65BB30), modified = Shade.hex(0xB07A0A, 0xDB9300), removed = Shade.hex(0xB53333, 0xFE8181)
+        // Claude's illustration colours (the desktop's pictograms): plum and
+        // mineral by day, heather and cactus by night; and a fig.
+        let plum = Shade.hex(0x827DBD, 0xCBCADB), mineral = Shade.hex(0x629987, 0xBCD1CA), fig = Shade.hex(0xA3416B, 0xE08FB3)
+        // A honey for what's found and marked, not neon.
+        let honey = 0xF2C14E
         // Its borders' ink (#1f1e1d, #dedcd1) at an alpha: a warm wash.
         func wash(_ light: CGFloat, _ dark: CGFloat) -> Shade {
             Shade(Theme.hex(0x1F1E1D).withAlphaComponent(light), Theme.hex(0xDEDCD1).withAlphaComponent(dark))
@@ -1191,7 +1216,9 @@ extension Palette {
                 // A tile's bar a step off its pages, as claude.ai's sidebar
                 // is (bg-200): #f5f4ed on #faf9f5, #1f1e1d on #262624 — not
                 // its cards' white over the ivory.
-                bar: .hex(0xF5F4ED, 0x1F1E1D)),
+                bar: .hex(0xF5F4ED, 0x1F1E1D),
+                // Menus and popovers on its cards' ground, not the system's grey frost.
+                menu: .hex(0xFFFFFF, 0x30302E)),
             text: Text(
                 primary: .hex(0x141413, 0xFAF9F5),
                 body: .hex(0x141413, 0xFAF9F5),
@@ -1201,20 +1228,33 @@ extension Palette {
                 readingBody: .hex(0x141413, 0xFAF9F5),
                 readingStrong: .hex(0x000000, 0xFFFFFF)),
             status: StatusColors(done: done, attention: attention, failed: failed),
-            accent: TintColors(accent: clay, caret: blue, textSelection: selection),
-            tints: Palette.paper.tints,
+            // Clay for what's acted on (focus, primary, running) and the
+            // caret; a chosen row a warm neutral step, as claude.ai's sidebar
+            // marks the chat you're in; text selection its pale blue.
+            accent: TintColors(accent: clay, caret: clay, textSelection: selection, band: wash(0.08, 0.12)),
+            // Its own other tints, from its colours: link blue, an amber,
+            // plum, fig, mineral, its graphite.
+            tints: [
+                .blue: TintColors(accent: link, textSelection: .hex(0xCDDCE8, 0x3D4E5D)),
+                .orange: TintColors(accent: .hex(0xA86D00, 0xDB9300), textSelection: .hex(0xEADDC4, 0x5C4719)),
+                .purple: TintColors(accent: .hex(0x6F69AD, 0xA9A4DC), textSelection: .hex(0xDEDCE7, 0x4D4C5B)),
+                .pink: TintColors(accent: fig, textSelection: .hex(0xE9D4D9, 0x5E464F)),
+                .green: TintColors(accent: .hex(0x3D7A6A, 0x7DBFA9), textSelection: .hex(0xD4E0D9, 0x40544C)),
+                .graphite: TintColors(accent: .hex(0x73726C, 0x9C9A92), caret: .hex(0x3D3D3A, 0xC2C0B6), textSelection: .hex(0xDFDEDA, 0x494945)),
+            ],
             code: Code(
                 // Read, not edited: as claude.ai sets code, a step deeper
                 // than its page — its oat (bg-300, #f0eee6) under the
                 // ivory; by night its cards' #30302e over #262624.
                 page: .hex(0xF0EEE6, 0x30302E),
                 text: .hex(0x141413, 0xFAF9F5),
-                lineNumber: .hex(0x9C9A92, 0x73726C),
+                // Quiet, but read: 3.6 on the ivory, 4.0 by night.
+                lineNumber: .hex(0x85837C, 0x85837C),
                 // The caret's line, seen on the ivory and the oat both.
                 lineHighlight: .hex(0xEBE9E1, 0x363634),
-                gutterText: .hex(0x9C9A92, 0x73726C),
+                gutterText: .hex(0x85837C, 0x85837C),
                 use: alpha(0x2C84DB, 0.1, 0x2C84DB, 0.18),
-                match: alpha(0xFFD500, 0.25, 0xFFD500, 0.18),
+                match: alpha(honey, 0.32, honey, 0.22),
                 link: link,
                 linkHover: wash(0.08, 0.13),
                 added: added,
@@ -1226,34 +1266,40 @@ extension Palette {
                     alpha(0x256ABF, 0.22, 0x3BBD8C, 0.3),
                     alpha(0x8E6BD9, 0.22, 0xB796FF, 0.3),
                 ],
-                error: .hex(0xB53333, 0xDD5353),
-                warning: .hex(0xB77700, 0xFFD014),
+                error: failed,
+                warning: modified,
                 hint: alpha(0x2C84DB, 0.6, 0x74ABE2, 0.6),
                 changedOnDisk: .hex(0xFBF2CC, 0x403A22),
-                highlighter: alpha(0xFFD014, 0.4, 0xFFD014, 0.3)),
+                highlighter: alpha(honey, 0.45, honey, 0.32)),
             diff: Diff(
-                // Its success and danger, faint on the ivory; its pale blue.
+                // Its success and danger, faint; a hunk in heather (plum by
+                // night), not a cool grey; what's found in honey. On the
+                // oat, as what's read is.
                 added: .hex(0xE2E9DA, 0x303E26),
                 removed: .hex(0xF3E5E2, 0x472E2C),
-                hunk: .hex(0xEAF0F3, 0x27333E),
-                found: .hex(0xFBF0B8, 0x4D461E),
-                current: .hex(0xFDE56E, 0x7D6C16)),
+                hunk: .hex(0xEAE9EC, 0x373640),
+                found: .hex(0xF1E0B5, 0x5B5035),
+                current: .hex(0xF1D38B, 0x87713C),
+                page: .hex(0xF0EEE6, 0x30302E)),
             found: Found(
-                current: alpha(0xFFD500, 0.55, 0xFFD500, 0.55),
-                currentRing: .hex(0xB77700, 0xFFD014),
+                current: alpha(honey, 0.55, honey, 0.5),
+                currentRing: modified,
                 pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
                 pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
+            // Clay, mineral, plum (by night clay, cactus, heather): apart in
+            // hue and lightness, all Claude's.
             chart: Chart(
-                one: blue,
-                two: .hex(0xD97757, 0xD97757),
-                three: done,
+                one: .hex(0xD97757, 0xD97757),
+                two: mineral,
+                three: plum,
                 track: wash(0.07, 0.09),
                 surface: wash(0.025, 0.035),
                 grid: wash(0.07, 0.08)),
+            // Kinds in Claude's colours, not the terminal's brights.
             kinds: Kinds(
-                git: .hex(0xC5621B, 0xFA832E), swift: .hex(0xD95926, 0xEC835A), shell: added, pdf: failed,
-                image: violet, data: modified, patch: added, archive: .hex(0x73726C, 0x9C9A92), media: removed, code: link,
-                linked: violet, embeds: aqua),
+                git: clay, swift: clay, shell: done, pdf: failed,
+                image: plum, data: attention, patch: done, archive: .hex(0x73726C, 0x9C9A92), media: fig, code: link,
+                linked: plum, embeds: mineral),
             terminal: (
                 light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#2c84db", cursorText: light.bg,
                                        selectionBackground: "#d3e5f8", selectionForeground: light.fg, ansi: light.ansi,
@@ -1298,7 +1344,11 @@ extension Palette {
                              pool: (0.24, 1), tintPool: (0.42, 1)),
                 dark: .init(stops: [(0.03, 0.5, 0.2), (0.065, 0.45, 0.18), (0.11, 0.38, 0.16), (0.08, 0.25, 0.1)],
                             pool: (0.5, 0.28), tintPool: (0.6, 0.32)),
-                tileShadow: (Theme.hex(0x3D3D3A), 0.1)))
+                tileShadow: (Theme.hex(0x3D3D3A), 0.1),
+                // The sidebar on a veil of its ivory (its #1f1e1d by night),
+                // the wash under it a breath: its words ≥ 4.5:1 again, its
+                // chosen row seen.
+                sidebarVeil: Shade(Theme.hex(0xFAF9F5).withAlphaComponent(0.8), Theme.hex(0x1F1E1D).withAlphaComponent(0.6))))
     }()
 }
 

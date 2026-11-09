@@ -852,7 +852,7 @@ final class NoteOutlineStyler: NSObject, NSTextStorageDelegate {
         // A block's reference written bare: a link to it.
         for m in TextLinks.bareReference.matches(in: storage.string, range: body) {
             guard let url = URL(string: text.substring(with: m.range)) else { continue }
-            storage.addAttributes([.link: url, .foregroundColor: Theme.accent], range: m.range)
+            storage.addAttributes([.link: url, .foregroundColor: Tints.accentText], range: m.range)
         }
     }
 
@@ -1327,7 +1327,7 @@ final class NoteOutlineTextView: NSTextView {
         // The caret and the selection as the editor's.
         insertionPointColor = Tints.caret
         selectedTextAttributes = [.backgroundColor: Tints.textSelection]
-        linkTextAttributes = [.cursor: NSCursor.pointingHand, .foregroundColor: Theme.accent]
+        linkTextAttributes = [.cursor: NSCursor.pointingHand, .foregroundColor: Tints.accentText]
         textSelectionAttributes = selectedTextAttributes
         dropLine.wantsLayer = true
         dropLine.layer?.backgroundColor = Theme.accent.cgColor

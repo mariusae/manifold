@@ -327,7 +327,7 @@ final class ThreadTimelineView: NSView {
     }
 
     private func rule() -> NSView {
-        let label = NSTextField.label("New", font: UIType.caption, color: Theme.accent)
+        let label = NSTextField.label("New", font: UIType.caption, color: Tints.accentText)
         let left = HairlineView(), right = HairlineView()
         let line = NSStackView(views: [left, label, right])
         line.spacing = 6

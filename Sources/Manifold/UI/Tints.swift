@@ -39,6 +39,13 @@ extension Tint {
     /// A chosen row: the tint, thin, over the row — its own colors show
     /// through. `active`: the list has the keyboard.
     func band(active: Bool) -> NSColor {
+        // The theme's own band (its accent's, or this tint's), if it has one.
+        if let own = themed?.band {
+            return NSColor(name: nil) { appearance in
+                let c = own.color(dark: appearance.isDark)
+                return active ? c : c.withAlphaComponent(c.alphaComponent * 0.6)
+            }
+        }
         let tint = accent
         return NSColor(name: nil) { appearance in
             var c = tint

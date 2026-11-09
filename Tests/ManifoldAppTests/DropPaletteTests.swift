@@ -23,7 +23,11 @@ private func setUp() -> (NSWindow, Target, NSPasteboard) {
     return (window, target, pb)
 }
 
+// One palette, shared: these mustn't run beside each other (the first's
+// palette, open while it waits, would be the second's).
 @MainActor
+@Suite(.serialized) struct DropPaletteTests {
+
 @Test func thePaletteGoesWhenItsDragEndsHoweverItEnded() async throws {
     let (window, target, pb) = setUp()
     _ = window
@@ -38,7 +42,6 @@ private func setUp() -> (NSWindow, Target, NSPasteboard) {
     #expect(!DropPalette.isOpen, "the palette stayed after its drag was over")
 }
 
-@MainActor
 @Test func thePaletteDoesntOpenOnceTheDragIsOver() {
     let (window, target, pb) = setUp()
     _ = window
@@ -50,4 +53,5 @@ private func setUp() -> (NSWindow, Target, NSPasteboard) {
     // Debugging opens it with no drag at all, and it stays for its look.
     DropPalette.open(over: target, pb, at: NSPoint(x: 300, y: 200), watching: false)
     #expect(DropPalette.isOpen)
+}
 }
