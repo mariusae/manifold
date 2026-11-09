@@ -1658,8 +1658,6 @@ final class ManiDesk {
 
     // MARK: JSON
 
-    /// A share, to three places, as JSON writes it exactly (a Double's
-    /// 0.227 comes out 0.22700000000000001).
     /// A share as JSON says it: three places, no more (0.6, not
     /// 0.59999999999999998) — and not rounded to a whole number, as a
     /// decimal's default rounding does.

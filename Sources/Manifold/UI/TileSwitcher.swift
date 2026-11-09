@@ -15,7 +15,7 @@ extension MainWindowController {
     /// letting go of control goes to the one chosen — its card becoming
     /// its tile (a docked one going back where it was). Those passed on the
     /// way aren't settled on; Escape leaves things be. From the menu it's
-    /// one step. (⌥⇥ is left unbound.)
+    /// one step.
     @objc func walkSpaceTiles(_ sender: Any?) { walkTiles(back: false) }
     @objc func walkSpaceTilesBack(_ sender: Any?) { walkTiles(back: true) }
 
@@ -89,7 +89,7 @@ extension MainWindowController {
                                 escaped: { [weak self] in self?.endTileWalk(settling: false) })
     }
 
-    /// Option let go (`settling`), or Escape: let go before the cards
+    /// Control let go (`settling`), or Escape: let go before the cards
     /// showed, gone to the tile stepped to with nothing shown; after, the
     /// card chosen becomes its tile, and the rest go back to theirs.
     private func endTileWalk(settling: Bool, to chosen: Int? = nil) {
@@ -332,7 +332,7 @@ extension MainWindowController {
 
 
     /// "tilewalk step|back|end|escape|order|pick <n>": ⌃⇥ pressed with
-    /// option held, option let go, Escape, a card clicked; or the walk and
+    /// control held, control let go, Escape, a card clicked; or the walk and
     /// ⌃⇥'s order.
     func debugTileWalk(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
@@ -401,9 +401,6 @@ extension MainWindowController {
         next.makeKeyAndOrderFront(nil)
     }
 
-    /// Which way a space comes in: as the sidebar has them, one below the
-    /// space left comes up from below (1), one above down from above (-1);
-    /// by the desk's order where either row doesn't show.
     /// Which way one space is from another: as the strip has them, left to
     /// right (1, the other's to the right).
     func slideDirection(from a: BlockID, to b: BlockID) -> CGFloat {

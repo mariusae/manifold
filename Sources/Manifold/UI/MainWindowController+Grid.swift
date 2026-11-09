@@ -347,9 +347,6 @@ extension MainWindowController: GridDelegate {
         appendToSelected([.full(a.full == placement ? nil : placement)])
     }
 
-    /// ⌘M: the focused tile into the stack behind its nearest tile — the
-    /// shown one above it in the column, else the column's first — as
-    /// Stash in a pill's menu does; the focus goes to that tile.
     /// ⌘M: the focused tile docked (§3.1) — out of the grid, its room
     /// back where it came from, listed under its space in the sidebar;
     /// gone to again (⌃⇥, its row, a link), it goes back where it was.
@@ -468,8 +465,7 @@ extension MainWindowController: GridDelegate {
         if !sidebarShown { showSidebar(animated: true) }
     }
 
-    /// A tile's pill clicked: its menu.
-    /// ⌥-click on a pill: where the block is, as a path — the file or
+    /// ⇧-click on a pill: where the block is, as a path — the file or
     /// folder, then each folder up to the root (a terminal's working
     /// directory likewise); choosing one browses that folder here, as
     /// ⌘-clicking a document's title does in the Finder.
@@ -502,6 +498,7 @@ extension MainWindowController: GridDelegate {
         return menu
     }
 
+    /// A tile's pill ⌃- or right-clicked, or its symbol clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu? {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
         let block = p.block
@@ -796,9 +793,6 @@ extension MainWindowController: GridDelegate {
         "manifold:\(id)" + (anchor.map { "#" + $0 } ?? "")
     }
 
-    /// An anchor gone to: where it is now (put right in its block if it
-    /// was found elsewhere), or why not — the place gone. A text not read
-    /// yet is waited for a moment.
     /// An anchor a reference names that its block hasn't got — made while
     /// a server from before anchors (protocol 61) dropped it — found again
     /// by the words of a link to it in the text it's followed from (the
@@ -820,6 +814,9 @@ extension MainWindowController: GridDelegate {
         return false
     }
 
+    /// An anchor gone to: where it is now (put right in its block if it
+    /// was found elsewhere), or why not — the place gone. A text not read
+    /// yet is waited for a moment.
     func goToAnchor(_ anchor: String, in id: BlockID, tries: Int = 20) {
         // An anchor just minted (a reference made and followed at once) is
         // waited for a moment, as a text not read yet is.

@@ -162,7 +162,6 @@ extension MainWindowController {
         return "ok"
     }
 
-    /// A pointer move, handed to the surface as its tracking area would.
     /// A synthesized move: to the grid, and to whatever view
     /// is under the point that takes moves of its own (a scrubber, a
     /// command's dot).
@@ -177,8 +176,6 @@ extension MainWindowController {
         }
     }
 
-    /// Debugging: the output tiles, as shown; "raw", what each holds,
-    /// escaped; "copy" and "back", the focused one's buttons pressed.
     /// Debugging: the focused search's preview; "searchpreview <n>", the nth hit chosen.
     func debugSearchPreview(_ arg: String) -> String {
         guard let s = arrangement?.focused.flatMap({ views[$0] as? SearchView }) else { return "no search focused" }
@@ -191,9 +188,6 @@ extension MainWindowController {
         return n.debug(arg)
     }
 
-    /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
-    /// Debugging: the focused tile's own sidebar — "toggle", "pick N",
-    /// or nothing: what it lists. "pdf …": the focused PDF's controls.
     /// Debugging: the focused tile's address bar — "begin" (its pill a
     /// field), "type <text>", "key <down|up|tab|return|escape|delete|shiftdelete>",
     /// or nothing: the field and its completions.
@@ -236,6 +230,8 @@ extension MainWindowController {
         return "frame \(NSStringFromRect(t.frame))\n" + t.debugState
     }
 
+    /// Debugging: the focused tile's own sidebar — "toggle", "pick N",
+    /// or nothing: what it lists. "pdf …": the focused PDF's controls.
     func debugTileSidebar(_ arg: String) -> String {
         guard let f = arrangement?.focused, let v = views[f] else { return "nothing focused" }
         if arg.hasPrefix("pdf") { return (v as? MediaView)?.debugPDF(String(arg.dropFirst(3)).trimmingCharacters(in: .whitespaces)) ?? "no PDF focused" }
@@ -273,6 +269,7 @@ extension MainWindowController {
         return g.debug(arg)
     }
 
+    /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     func debugDirectory(_ arg: String) -> String {
         // "dir show <host>:<path>": a folder tile of that host's, made here.
         if arg.hasPrefix("show ") {
@@ -285,6 +282,8 @@ extension MainWindowController {
         return d.debug(arg)
     }
 
+    /// Debugging: the output tiles, as shown; "raw", what each holds,
+    /// escaped; "copy" and "back", the focused one's buttons pressed.
     func debugOutputs(_ verb: String) -> String {
         let focused = (focusedView as? OutputView)
         if verb == "copy" { return focused?.debugCopy() ?? "no output focused" }
@@ -296,7 +295,6 @@ extension MainWindowController {
             return hosts.block(o.block)?.output.map { $0.line + ": " + $0.output.debugDescription } ?? "?"
         }.joined(separator: "\n---\n")
     }
-    /// The outline lens made last (placement ids sort by time).
     var debugFocusedTerminal: TerminalView? { (focusedView as? TerminalView) }
     var debugFocusedEditor: EditorView? { (focusedView as? EditorView) }
 
@@ -306,11 +304,11 @@ extension MainWindowController {
 
     var debugPills: String { content.debugPills }
     var debugTiles: String { content.debugTiles }
-    /// Debugging: a shown tile, by its title, given this much content
-    /// height — taken from or given to the biggest other in its column.
     func debugLanguages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) { host.languages(path, done: done) }
 
 
+    /// Debugging: a shown tile, by its title, given this much content
+    /// height — taken from or given to the biggest other in its column.
     func debugTileHeight(_ title: String, _ points: CGFloat) -> String {
         guard let a = arrangement else { return "no workspace" }
         for (c, column) in a.columns.enumerated() {

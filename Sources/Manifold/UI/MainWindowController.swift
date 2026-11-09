@@ -266,7 +266,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Rendering
 
-    /// What's known of a placement on the desk.
     /// The tiles showing a block (in any space), as a kind of view.
     func views<T>(of block: BlockID, as: T.Type = PaneContent.self) -> [T] {
         views.values.compactMap { $0.block == block ? $0 as? T : nil }
@@ -551,7 +550,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// An arrangement's title: its name, else what's focused in it.
     /// A workspace's name: the one given; else, by what it holds — the
     /// folder most of its blocks are at (with its repository's branch,
     /// when a git block is there), else the focused block's name.
@@ -938,7 +936,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// The dock as a shelf at the grid's foot (View ▸ Show Dock Shelf).
     /// The column the last tile to fill one left, and as it was before.
     var columnFill: ColumnFill?
     /// The space whose dock was last seen, and what was docked: what
@@ -1382,7 +1379,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Seen, and collection
 
-    /// Tells the host what's on screen, so it knows what's unseen.
     /// Every file placed in an arrangement on the desk is open with its
     /// host's language server.
     private func noteEditing() {
@@ -1396,6 +1392,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.setEditing(ids)
     }
 
+    /// Tells the host what's on screen, so it knows what's unseen.
     private func noteSeen(force: Bool) {
         // A workspace seen is a step of the trail (⌘`'s order, back and
         // forward).
@@ -1653,11 +1650,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         appendToSelected([.moveColumn(from: from, to: to)])
     }
 
-    /// ⌥⌘N: a new note beside the focused block.
-    /// ⌥⌘N: a note on the focused block's host, at home in its folder.
-    /// ⌥⌘N: a note — about the focused block (§3.5): the block linked to
-    /// the note, as if ⇧-dragged into it, so the block wears it and the
-    /// note knows its subject.
     /// A shell notebook (§7.7) on the focused block's host, its shell
     /// started where that block is, placed here.
     @objc func newShellNotebook(_ sender: Any?) {
@@ -1904,7 +1896,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Kept for Back and forward, by focus — its code in MainWindowController+Navigation.swift
 
-    /// A place focus was, in this client's history: a tile in a workspace.
     /// Where focus is: the workspace and the tile, so a change is noticed.
     var lastFocusPlace: (BlockID?, PlacementID?)?
 

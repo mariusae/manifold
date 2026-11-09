@@ -138,9 +138,6 @@ extension MainWindowController {
         }.map { items[$0] }
     }
 
-    /// ⌘↩: the focused text between being edited and viewed — Markdown
-    /// rendered (a note's too), anything else as it is on the grey of a
-    /// page of code — in the same tile.
     /// ⌘↩, the tile's own thing to do: a text from editing to viewing or
     /// back; a notebook's cell run; an outline's row a checkbox, checked,
     /// a bullet again. (Those two take the key themselves; this is the
@@ -244,11 +241,11 @@ extension MainWindowController {
         return e.modifierFlags
     }
 
-    /// `over`: ⌥ was held (else read off the click): what opens goes over
-    /// the tile, not beside it.
     /// Schemes an address has without "//" after them.
     static let schemesWithoutSlashes: Set<String> = ["mailto", "tel", "sms", "facetime", "maps", "news", "data", "about"]
 
+    /// `over`: ⌥ was held (else read off the click): what opens goes over
+    /// the tile, not beside it.
     func open(_ target: String, from placement: PlacementID?, here: Bool? = nil, over: Bool? = nil, as given: Disposition? = nil) {
         // As the click (or ↩) says, by the one rule; plain goes to it.
         var d = given ?? (over == true ? .over : Self.disposition ?? .goTo)

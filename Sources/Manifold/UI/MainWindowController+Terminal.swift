@@ -31,8 +31,6 @@ extension MainWindowController: TerminalViewDelegate {
         open(word, from: view.placement, as: Self.commandClick(over: over))
     }
 
-    /// A command from a terminal's scrubber (§3.8): a note of it and its
-    /// output, as the screen showed it, opened from the terminal.
     /// A command's output as a block of its own (§3.8): the host captures
     /// what the terminal received for it — colours and all — into an
     /// output block, linked from the terminal; shown read-only, with Copy

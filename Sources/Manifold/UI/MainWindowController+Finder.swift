@@ -30,9 +30,6 @@ extension MainWindowController {
         if !finder.isShowing { searchOutline(of: f) }
         return finder.debugQuery(query).joined(separator: "\n")
     }
-    /// ⌘P's list: opened afresh with no query (shown once a preview
-    /// focused says where it's at, a moment later); else, the list as it's
-    /// filtered by one.
     /// "wsoutline [query]": ⌘P typed in; "wsoutline tab": its other scope;
     /// "wsoutline time <query>": how long the query took, and how many rows.
     func debugWorkspaceOutline(_ query: String) -> String {
@@ -325,7 +322,6 @@ extension MainWindowController {
         b.id.host == project.0 && (b.place.map(project.1.holds) ?? false)
     }
 
-    /// ⇧⌘O, Find in Blocks: the same finder, by the words in the blocks.
     /// ⇧⌘O: lines in blocks' texts and outlines — this space's; ⇧⌘O
     /// again, every space's.
     @objc func findInBlocks(_ sender: Any?) {
@@ -335,18 +331,18 @@ extension MainWindowController {
                     placeholder: "Find in blocks…", over: window)
     }
 
-    /// What the finder finds by name (§3.5), taken once as it opens: every
-    /// block and workspace, each with what it's called (and words as good:
-    /// its kind, the agent at work in it), what's around it, how far it is
-    /// from the focused block and how lately seen. Ranked off the main
-    /// thread as you type (FinderRanking).
-    /// What nothing keeps (§4) comes last, marked recent.
     /// What `@` in a thread's composer can name: ⌘O's blocks (not agents' turns).
     func finderCorpusForMentions() -> ([FinderCandidate], [() -> Void]) {
         let (corpus, actions) = finderCorpus()
         return (corpus.filter { $0.block != nil && !$0.kinds.contains("turn") }, actions)
     }
 
+    /// What the finder finds by name (§3.5), taken once as it opens: every
+    /// block and workspace, each with what it's called (and words as good:
+    /// its kind, the agent at work in it), what's around it, how far it is
+    /// from the focused block and how lately seen. Ranked off the main
+    /// thread as you type (FinderRanking).
+    /// What nothing keeps (§4) comes last, marked recent.
     private func finderCorpus() -> ([FinderCandidate], [() -> Void]) {
         var corpus: [FinderCandidate] = []
         var actions: [() -> Void] = []
@@ -520,8 +516,6 @@ extension MainWindowController {
         return (corpus, actions)
     }
 
-    /// Recall, from the finder: an arrangement onto the desk and selected;
-    /// any other block gone to.
     /// Chosen in the finder: gone to; with ⌘ held on ⏎, beside the focused
     /// tile; with ⌥, over it (the rule, §3.1).
     func recall(_ id: BlockID) {

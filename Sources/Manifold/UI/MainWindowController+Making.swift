@@ -338,7 +338,6 @@ extension MainWindowController {
         }
     }
 
-    /// Resets a host's graph, once asked: every link and the trail gone.
     /// Delete Session (issue #1), once asked — what goes counted, and for
     /// This Mac its name typed: the host's session gone for good, every file
     /// Manifold keeps there (logs, notes, terminals' history, indexes, the
@@ -416,6 +415,7 @@ extension MainWindowController {
         }
     }
 
+    /// Resets a host's graph, once asked: every link and the trail gone.
     private func resetGraph(_ host: HostID) {
         confirm("Reset the graph on \(hosts.label(of: host))?",
                 "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each space stays. This can't be undone.",

@@ -38,7 +38,7 @@ extension MainWindowController {
         show(block, lens: b.defaultLens, .here, context: "pinned")
     }
 
-    /// Pin in Workspace: a tile's block (the menu's, from a block's own
+    /// Pin in Space: a tile's block (the menu's, from a block's own
     /// menu; else the focused one's) pinned in the workspace shown, or let go of.
     @objc func togglePinInWorkspace(_ sender: Any?) {
         guard let id = selected, let block = pinTarget(sender) else { return NSSound.beep() }
@@ -84,7 +84,6 @@ extension MainWindowController {
         }
     }
 
-    /// `besideOpener` when there is an opener, else `here`.
     /// Where what a click opens goes: beside the tile clicked in — or,
     /// with ⌥ held (`over`, else read off the click), over it.
     func opener(_ placement: PlacementID?, over: Bool? = nil) -> Where {
@@ -153,10 +152,6 @@ extension MainWindowController {
         }
     }
 
-    /// A terminal scrolled to one of its commands, once its tile is up and
-    /// it has found the command's row (a moment, for a tile just made).
-    /// A place in a block, once its tile is up: a line (in a preview, the
-    /// line's place on the page), a PDF's page.
     /// `attempt` until it says it's done — every `every` seconds, at most
     /// `tries` times more: for what comes a moment after it's asked for (a
     /// tile just made, a PDF's document, a terminal's command).
@@ -461,8 +456,6 @@ extension MainWindowController {
         show(block, lens: .diff, .besideOpener(f.id), context: "Compare with Last Commit")
     }
 
-    /// Opens a file at a place (line and column from 1) beside the
-    /// placement that opened it, on the host the placement's block is on.
     /// Opens a file at a place (line and column from 1), as the click or
     /// ↩ says (`as`, else read off the event; plain goes to it), from the
     /// placement that opened it, on the host the placement's block is on.
@@ -508,13 +501,6 @@ extension MainWindowController {
         return size < 32 << 20 && TextFile.isText(path)
     }
 
-    /// ⌥⌘P: the focused text block the other way round, in place — its
-    /// preview as an editor, its editor as a preview (Markdown only).
-    /// Editor and preview share the block, so an edit shows live.
-    /// ⌘P: the workspace as a hierarchy, as Prism's Move to Heading is —
-    /// its tiles by column, and the headings of the text in them, set in
-    /// under their tile; those whose words have every word of the query.
-    /// ↩ goes to a tile, or to a heading in its editor or preview.
     /// ⇧⌘P: the focused tile's outline — a text's headings or symbols, a
     /// terminal's commands, a PDF's contents, a diff's files — filtered
     /// in its sidebar; again, the sidebar's filter left.
@@ -597,7 +583,6 @@ extension MainWindowController {
         (view as? TileSidebar) ?? view.subviews.lazy.compactMap { tileSidebar(in: $0) }.first
     }
 
-    /// Debugging: the first process tile.
     /// Debugging: a process tile, the one in view if there is one.
     var debugProcessView: ProcessView? {
         let all = views.values.compactMap { $0 as? ProcessView }
@@ -611,6 +596,11 @@ extension MainWindowController {
         return (v.sidebarView ?? Self.tileSidebar(in: v))?.debugSearch(what) ?? "no sidebar"
     }
 
+    /// ⌘P: the workspace as a hierarchy, as Prism's Move to Heading is —
+    /// its tiles by column, and the items of their outlines, set in under
+    /// their tile; those whose words have every word of the query. The
+    /// focused tile's own outline first, if it has one (⇥ widens it).
+    /// ↩ goes to a tile, or to a place in it.
     @objc func goToTile(_ sender: Any?) {
         // Open already (the tile's or the space's): the other.
         if finder.opener == .outline, finder.widens { return finder.widen() }
@@ -640,10 +630,6 @@ extension MainWindowController {
         if let tile { finder.showOutline(tile, wider: space, over: window) } else { finder.showOutline(space, over: window) }
     }
 
-    /// The outline, and the row to begin at: the focused tile's, or under
-    /// it the heading at `currentLine` (a line from 1 in its editor; or,
-    /// negative, minus one more than the index of the heading at the top
-    /// of its preview).
     /// What runs in each terminal (the process trees under the shells,
     /// §7.5), so a terminal is found by its program — "claude" — too.
     func runningPrograms() -> [BlockID: [String]] {

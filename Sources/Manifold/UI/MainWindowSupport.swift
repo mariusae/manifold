@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 import PDFKit
 
 /// A menu of something on a host — a terminal's, an editor's — ends with
-/// the host's own (Reset Server, Reset Graph): the window controller says
+/// the host's own (Forward a Port, Reset Server): the window controller says
 /// what that is.
 @MainActor
 enum HostMenu {
@@ -64,7 +64,7 @@ final class SearchText {
     }
 }
 
-/// A block's own menu's Pin in Workspace (a terminal's, an editor's): for
+/// A block's own menu's Pin in Space (a terminal's, an editor's): for
 /// its tile, named Unpin when it's pinned (`validateMenuItem`).
 enum PinMenu {
     static func item(for placement: PlacementID) -> NSMenuItem {

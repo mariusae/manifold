@@ -85,9 +85,6 @@ extension MainWindowController {
         if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + (follows ? 0.05 : 0.25), execute: work) }
     }
 
-    /// The sidebar's heading for the space shown: its name; how many of
-    /// its tiles are on screen and docked, and its host's name when
-    /// there's more than one.
     /// The space's heading: its name, and the host it's on — a remote's
     /// ping times by it, and what's wrong with its link if anything; the
     /// pointer on the host, its card.
@@ -140,10 +137,6 @@ extension MainWindowController {
         return n
     }
 
-    /// Status (§3.7): blocks by what they are doing — needs you, done,
-    /// failed, working, inactive — the unread first in each, each row
-    /// with how long ago at the right. Nothing idle, there being nothing
-    /// to say of it.
     /// Every block with something to say, by status group, the unread
     /// first and the newest next.
     func statusGroups() -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {

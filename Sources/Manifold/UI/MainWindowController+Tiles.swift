@@ -186,9 +186,6 @@ extension MainWindowController: GitViewDelegate {
         hosts.propose(.refreshGit(block: view.block))
     }
 
-    /// The pane's diff: its block made (or found) on the repository's
-    /// host, shown in the git tile's place — what it opens goes beside it.
-    /// Never placed, it isn't Recently Closed's (`closedItems`).
     func gitView(_ view: GitView, indexStatus done: @escaping (SCIPStatus?) -> Void) {
         guard let b = hosts.block(view.block), let repo = b.path else { return done(nil) }
         // A project's (§2.6): its own folder's index.
@@ -198,6 +195,9 @@ extension MainWindowController: GitViewDelegate {
         }
     }
 
+    /// The pane's diff: its block made (or found) on the repository's
+    /// host, shown in the git tile's place — what it opens goes beside it.
+    /// Never placed, it isn't Recently Closed's (`closedItems`).
     func gitView(_ view: GitView, previewFor subject: DiffSubject) -> DiffView? {
         guard let client = hosts.client(of: view.block) else { return nil }
         let id = client.diffBlock(subject)

@@ -9,7 +9,6 @@ extension MainWindowController {
     // MARK: State views (§3.6)
 
 
-    /// The surface shows a status group's blocks themselves, live.
     /// ⌘': every block in the workspace at once, as Mission Control shows
     /// windows; again, or ⎋, back to the workspace.
     @objc func showWorkspaceOverview(_ sender: Any?) {
@@ -22,6 +21,7 @@ extension MainWindowController {
     }
 
 
+    /// The surface shows a status group's blocks themselves, live.
     func showStateView(_ group: StatusGroup) {
         stateShown = .group(group)
         presentStateView()
@@ -312,12 +312,9 @@ extension MainWindowController {
         }
         return (roots, open)
     }
-
-    /// Recently Closed (§4), the list: what exists and nothing reaches,
-    /// dimmed, each brought back by a click, until collected.
 }
 
-/// The groups of the Status organization and the state views (§3.6).
+/// The status groups of the state views (§3.6).
 enum StatusGroup: Int, CaseIterable {
     case needsYou, done, failed, working, inactive
 

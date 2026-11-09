@@ -18,10 +18,7 @@ extension MainWindowController: EditorViewDelegate {
         hosts.block(view.block)?.text
     }
 
-    /// An outline's entry clicked: the block's tile goes there — its
-    /// terminal to the command's row, its editor or preview to the
-    /// heading; with no tile of it shown, one is opened beside the outline.
-    /// ⌘P: the focused tile on paper (or a PDF), as it best prints: a
+    /// File ▸ Print…: the focused tile on paper (or a PDF), as it best prints: a
     /// text as text, a page as rendered, a PDF's pages, an image.
     @objc func printTile(_ sender: Any?) {
         guard let f = arrangement?.focused, let p = views[f] as? Printable, let op = p.printOperation(), let window else { return NSSound.beep() }
@@ -262,8 +259,6 @@ extension MainWindowController: EditorViewDelegate {
         hosts.append(.edit([TextEdit(TextRange(end, end), lead + "\n" + markdown + "\n")]), to: .block(block))
     }
 
-    /// An image kept for a text, on its host: written as an image block,
-    /// then `insert` given the Markdown that shows it.
     /// A picture's name, kept: when, and a count when several come within
     /// the same second (pasted or dropped together).
     func newImageName(kind: String) -> String {
@@ -273,6 +268,8 @@ extension MainWindowController: EditorViewDelegate {
         return "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
     }
 
+    /// An image kept for a text, on its host: written as an image block,
+    /// then `insert` given the Markdown that shows it.
     func keepImage(_ data: Data, kind: String, for text: BlockID, insert: @escaping (String) -> Void) {
         guard let b = hosts.block(text), let c = hosts.client(of: text) else { return NSSound.beep() }
         let name = newImageName(kind: kind)

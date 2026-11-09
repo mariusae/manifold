@@ -10,7 +10,6 @@ extension MainWindowController {
 
 
 
-    /// ⌥⌘Y: the focused file's history: its text at every change.
     /// History of This File (⌥⌘Y) where no editor took it (an editor
     /// shows its file's version control history itself, `EditorHistory`):
     /// the text's history in Manifold, over the window.

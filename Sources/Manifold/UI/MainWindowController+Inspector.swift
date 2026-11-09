@@ -736,6 +736,8 @@ extension MainWindowController {
         return (sections, Set(sections.map(\.id)))
     }
 
+    /// Recently Closed (§4), the list: what exists and nothing reaches,
+    /// dimmed, each brought back by a click, until collected.
     func closedTree() -> ([OrgNode], Set<String>) {
         let reachable = hosts.reachable()
         return hostedRows({ c in

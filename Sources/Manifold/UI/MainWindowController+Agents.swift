@@ -98,6 +98,10 @@ extension MainWindowController {
         }
     }
 
+    /// ⌥⌘N: a note — about the focused block (§3.5): the block linked to
+    /// the note, as if ⇧-dragged into it, so the block wears it and the
+    /// note knows its subject. On the focused block's host, at home in its
+    /// folder.
     @objc func newNote(_ sender: Any?) {
         let client = hosts.client(focusedHost) ?? host
         let note = client.newNote(home: focusedCwd)
@@ -283,8 +287,6 @@ extension MainWindowController {
         return b.text.flatMap { Block.noteTitle(from: $0.text) } ?? b.displayTitle
     }
 
-    /// A linked block from a tile's badge: gone to where it is; placed
-    /// nowhere, opened beside the tile.
     /// A tile's link clicked, as every link goes: to it (or, if it's
     /// nowhere, beside); ⌘ beside; ⌥ over; ⇧⌘ to the system's app.
     func gridOpenLink(_ block: BlockID, from placement: PlacementID, modifiers: NSEvent.ModifierFlags) {
@@ -331,9 +333,6 @@ extension MainWindowController {
         }
     }
 
-    /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
-    /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
-    /// collected said, with Restore, if it had edits or a job running.
     /// ⇧⌘S: the focused editor (or a menu's) saved, then its tile closed —
     /// once the file is written, not before: an `$EDITOR`'s command, which
     /// reads it, ends as the tile goes. A file with nothing unsaved just
@@ -374,6 +373,9 @@ extension MainWindowController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.closeOnceSaved() }
     }
 
+    /// A tile closed, however it's asked for (⌘W, its ×, its menu, the
+    /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
+    /// collected said, with Undo, if it had edits or a job running.
     func closeTile(_ placement: PlacementID, in id: BlockID) {
         guard let a = hosts.arrangement(id), a.placement(placement) != nil else { return }
         let before = hosts.reachable()

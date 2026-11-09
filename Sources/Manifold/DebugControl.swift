@@ -8,7 +8,7 @@ import ManifoldCore
 /// driving and inspecting the app from scripts.
 ///
 ///   snapshot <path>      write a PNG of the window, terminals included
-///   action <selector>    send an action (e.g. "newTab:") to the responder chain
+///   action <selector>    send an action (e.g. "newTerminal:") to the responder chain
 ///   text <string>        type into the focused terminal
 ///   sidebar show|hide    reveal or hide the floating sidebar
 ///   sidebar width <n>    resize the sidebar, as its handle would
