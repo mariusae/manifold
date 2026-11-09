@@ -3009,7 +3009,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc func renameTab(_ sender: Any?) {
-        if let id = selected { rename(id) }
+        if let id = selected { renameSpace(id) }
     }
 
     /// File ▸ Name Note…: the focused note's name, in its pill.
@@ -5070,7 +5070,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if f != nil { actions.append(row("Copy Contents", "⇧⌘C", "doc.on.doc") { [weak self] in self?.copyContents(nil) }) }
         if space != nil {
             if b.id != selected { actions.append(row("Go to Space", "", Theme.spaceSymbol) { [weak self] in self?.hosts.select(b.id) }) }
-            actions.append(row("Rename Space…", "", "pencil") { [weak self] in self?.rename(b.id) })
+            actions.append(row("Rename Space…", "", "pencil") { [weak self] in self?.renameSpace(b.id) })
             actions.append(row("Remove Space", "", "xmark") { [weak self] in self?.removeFromDesk(b.id) })
         }
         for item in copyItems(for: b.id) {
@@ -7866,7 +7866,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Names an arrangement (§3.3): what it's called, in place of what it holds.
-    private func rename(_ id: BlockID) {
+    func renameSpace(_ id: BlockID) {
         guard let window, let a = hosts.arrangement(id) else { return }
         let alert = NSAlert()
         alert.messageText = "Name This Space"
@@ -8004,11 +8004,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 extension MainWindowController: SidebarDelegate {
 
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
-    func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
-    func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
-    /// The sidebar's +: a new workspace with a terminal in it (⌘T).
-
-    func sidebarMove(_ arrangement: BlockID, to index: Int) {
+    /// A space moved to `index` in its host's order (dragged in the strip).
+    func moveSpace(_ arrangement: BlockID, to index: Int) {
         guard let client = hosts.client(of: arrangement) else { return }
         var order = client.desk.order
         guard let from = order.firstIndex(of: arrangement) else { return }
@@ -8054,7 +8051,8 @@ extension MainWindowController: SidebarDelegate {
         }
     }
 
-    func sidebarDragChanged(_ dragging: Bool) {
+    /// Something's being dragged (a tile, a row), or no longer.
+    func dragChanged(_ dragging: Bool) {
         draggingTab = dragging
         // While anything is dragged, the grid catches it over every tile,
         // web views included.
@@ -8420,7 +8418,7 @@ extension MainWindowController: GridDelegate {
         let gone = heights.filter { $0.value == 0 }.map(\.key).sorted()
         appendToSelected(gone.map { Event.dock($0, heir: nil) } + [.heights(heights.filter { $0.value > 0 })])
     }
-    func gridDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+    func gridDragChanged(_ dragging: Bool) { dragChanged(dragging) }
 
     /// Things dropped on the grid (§3.11), each a tile of its own where they
     /// landed, in order: a block brought (gone to the place in it); a file
@@ -10722,7 +10720,7 @@ extension MainWindowController: OrganizationViewDelegate {
     /// Double-clicking an arrangement names it.
     func organizationActivate(_ node: OrgNode) -> Bool {
         guard let arr = node.arrangement, node.column == nil else { return false }
-        rename(arr)
+        renameSpace(arr)
         return true
     }
 
@@ -10888,7 +10886,7 @@ extension MainWindowController: OrganizationViewDelegate {
             return menu
         }
         if let arr = node.arrangement, node.column == nil {
-            menu.addItem(ClosureMenuItem("Rename Space…", symbol: "pencil") { [weak self] in self?.rename(arr) })
+            menu.addItem(ClosureMenuItem("Rename Space…", symbol: "pencil") { [weak self] in self?.renameSpace(arr) })
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.space(arr), open: true) })
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Remove Space", symbol: "xmark") { [weak self] in self?.removeFromDesk(arr) })
@@ -10985,12 +10983,12 @@ extension MainWindowController: OrganizationViewDelegate {
                 guard node.id == "host:\(a.host.raw)", let client = hosts.client(of: a),
                       let from = client.desk.order.firstIndex(of: a) else { return false }
                 let to = min(from < index ? index - 1 : index, client.desk.order.count - 1)
-                if to != from { sidebarMove(a, to: to) }
+                if to != from { moveSpace(a, to: to) }
                 return true
             }
             guard let from = allWorkspaces.firstIndex(of: a) else { return false }
             let to = from < index ? index - 1 : index
-            if to != from { sidebarMove(a, to: to) }
+            if to != from { moveSpace(a, to: to) }
             return true
         }
         guard let (block, from) = dragged(item), let b = hosts.block(block), b.kind != .arrangement else { return false }
@@ -11008,18 +11006,18 @@ extension MainWindowController: OrganizationViewDelegate {
         guard node == nil else { return false }
         // Between arrangements: one of its own there.
         if !copy, let from, hosts.arrangement(from.arrangement)?.placements.count == 1 {
-            sidebarMove(from.arrangement, to: index)
+            moveSpace(from.arrangement, to: index)
             return true
         }
         if let from, !copy { takeOut(from.placement.id, of: from.arrangement) }
         let n = host.newArrangement()
         show(block, lens: lens, .here, in: n)
-        sidebarMove(n, to: index)
+        moveSpace(n, to: index)
         hosts.select(n)
         return true
     }
 
-    func organizationDragChanged(_ dragging: Bool) { sidebarDragChanged(dragging) }
+    func organizationDragChanged(_ dragging: Bool) { dragChanged(dragging) }
 
     func organizationOpen(files: [String], in workspace: BlockID) {
         if selected != workspace { hosts.select(workspace) }

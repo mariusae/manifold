@@ -1,19 +1,14 @@
 import AppKit
 import ManifoldCore
 
+/// What the sidebar asks of its window.
 protocol SidebarDelegate: AnyObject {
-    /// Takes an arrangement off the desk (it stays, to be found again).
-    func sidebarRemove(_ arrangement: BlockID)
-    func sidebarRename(_ arrangement: BlockID)
-    func sidebarMove(_ arrangement: BlockID, to index: Int)
     func sidebarTogglePinned()
-    func sidebarDragChanged(_ dragging: Bool)
     /// The resize handle was dragged to make the sidebar this wide.
     func sidebarResize(to width: CGFloat)
     func sidebarResizeEnded()
-    /// Another organization was chosen, or the filter typed in.
+    /// Another organization was chosen.
     func sidebarOrganizationChanged(_ organization: Organization)
-    /// Threads (§3.12) as a list by title, or as the timeline.
     /// Threads' filter: which (all, open, unread) and where (the space,
     /// its project), as a menu.
     func sidebarThreadsFilterMenu() -> NSMenu

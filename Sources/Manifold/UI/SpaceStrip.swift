@@ -538,11 +538,11 @@ extension MainWindowController {
     }
 
     @objc func renameSpaceFromStrip(_ sender: NSMenuItem) {
-        if let id = sender.representedObject as? BlockID { sidebarRename(id) }
+        if let id = sender.representedObject as? BlockID { renameSpace(id) }
     }
 
     @objc func removeSpaceFromStrip(_ sender: NSMenuItem) {
-        if let id = sender.representedObject as? BlockID { sidebarRemove(id) }
+        if let id = sender.representedObject as? BlockID { removeFromDesk(id) }
     }
 
     /// Debugging the strip: `spaces` its squares; `spaces hover <i>|off`;

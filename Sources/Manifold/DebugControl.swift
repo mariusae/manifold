@@ -70,15 +70,6 @@ enum DebugControl {
             // from the one that has it; give it back.
             let responder = window.firstResponder
             defer { window.makeFirstResponder(responder) }
-            // "snapshot <path> settings": the Settings window, as it is.
-            if arg.hasSuffix(" settings") {
-                guard let v = NSApp.windows.first(where: { $0 !== window && $0.isVisible && $0.styleMask.contains(.titled) })?.contentView,
-                      let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return "no settings window" }
-                v.cacheDisplay(in: v.bounds, to: rep)
-                let path = String(arg.dropLast(9))
-                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-                return "wrote \(path)"
-            }
             // "snapshot <path> backdrop": the window's backdrop alone.
             if arg.hasSuffix(" backdrop") {
                 func find(_ v: NSView) -> BackdropView? { (v as? BackdropView) ?? v.subviews.lazy.compactMap(find).first }
@@ -88,7 +79,7 @@ enum DebugControl {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 return "wrote \(path)"
             }
-            // "snapshot <path> settings": the Settings window instead.
+            // "snapshot <path> settings": the Settings window, as it is.
             if arg.hasSuffix(" settings") {
                 guard let w = NSApp.windows.first(where: { $0.windowController is SettingsWindow && $0.isVisible }) else { return "no settings window" }
                 w.contentView?.layoutSubtreeIfNeeded()
@@ -876,10 +867,6 @@ enum DebugControl {
                     wc.hosts.propose(.undoTurn(agent: id, turn: n)) { e in NSLog("undo turn: %@", e ?? "ok") }
                     return "undoing"
                 }
-                if a[1] == "todo" {
-                    let note = wc.hosts.links.first { $0.from == id && $0.context == "to-do list" }?.to
-                    return note.flatMap { n in wc.hosts.block(n).map { "\($0.displayTitle)\n" + ($0.text?.text.string ?? "") } } ?? "no to-do note"
-                }
                 if a[1] == "count" {
                     return "\(wc.hosts.blocks.filter { $0.output?.source == id && $0.output?.command == n }.count) blocks"
                 }
@@ -1418,18 +1405,6 @@ enum DebugControl {
             let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: arg))
             return "wrote \(arg)"
-        case "type":
-            // Types into whatever text view has the keyboard (an editor, say).
-            let typed = arg.replacingOccurrences(of: "\\n", with: "\n")
-            if let tv = wc?.window?.firstResponder as? TextView {
-                for ch in typed {
-                    if ch == "\n" { tv.doCommand(by: #selector(NSResponder.insertNewline(_:))) } else { tv.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
-                }
-                return "ok"
-            }
-            guard let tv = wc?.window?.firstResponder as? NSTextView else { return "no text view focused" }
-            tv.insertText(typed, replacementRange: tv.selectedRange())
-            return "ok"
         case "rename":
             // "rename <name>": the symbol at the focused editor's caret, through its language server.
             guard let tv = wc?.window?.firstResponder as? TextView else { return "no text view focused" }
