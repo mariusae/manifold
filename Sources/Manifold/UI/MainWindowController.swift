@@ -1285,6 +1285,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         refreshOrganization()
     }
 
+    /// Asked first, as a sheet on the window: `then` once the first button
+    /// is chosen (the second, Cancel, leaves things be).
+    func confirm(_ title: String, _ info: String, button: String, cancel: String = "Cancel", destructive: Bool = false,
+                 then: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = info
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: cancel)
+        alert.buttons[0].hasDestructiveAction = destructive
+        guard let window else { if alert.runModal() == .alertFirstButtonReturn { then() }; return }
+        alert.beginSheetModal(for: window) { if $0 == .alertFirstButtonReturn { then() } }
+    }
+
+    /// Said, as a sheet on the window: nothing to choose.
+    func notify(_ title: String, _ info: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = info
+        if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
+    }
+
     /// A word at the window's foot, with a button.
     func notice(_ text: String, action: String, _ act: @escaping () -> Void) {
         toast.show(text, action: action, for: 12, act)

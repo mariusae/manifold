@@ -417,15 +417,13 @@ extension MainWindowController {
     }
 
     private func resetGraph(_ host: HostID) {
-        let alert = NSAlert()
-        alert.messageText = "Reset the graph on \(hosts.label(of: host))?"
-        alert.informativeText = "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each space stays. This can't be undone."
-        alert.addButton(withTitle: "Reset")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        hosts.resetGraph(on: host) { [weak self] error in
-            if let error { NSLog("reset graph on %@: %@", host.raw, error) }
-            self?.refreshOrganization(now: true)
+        confirm("Reset the graph on \(hosts.label(of: host))?",
+                "Every link between the host's blocks is forgotten — opened from, found by, mentions, compared, made by hand — and the trail of where you went, before and after. What's on each space stays. This can't be undone.",
+                button: "Reset", destructive: true) { [weak self] in
+            self?.hosts.resetGraph(on: host) { [weak self] error in
+                if let error { NSLog("reset graph on %@: %@", host.raw, error) }
+                self?.refreshOrganization(now: true)
+            }
         }
     }
 
@@ -435,42 +433,35 @@ extension MainWindowController {
     func clearWebsiteData(_ host: HostID) {
         let label = hosts.label(of: host)
         let through = hosts.client(host)?.isRemote == true ? host : nil
-        let alert = NSAlert()
-        alert.messageText = "Clear website data for \(label)?"
-        alert.informativeText = (through == nil
+        let info = (through == nil
             ? "Pages loaded from This Mac forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded through other hosts keep theirs."
             : "Pages loaded through \(label) forget their cookies and sign-ins, what sites keep, and their caches. Pages loaded from This Mac keep theirs.")
             + " This can't be undone."
-        alert.addButton(withTitle: "Clear")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        WebStores.clear(through: through) { [weak self] in
-            guard let self else { return }
-            for case let w as WebView in self.views.values where w.through == through { w.reloadPage(nil) }
-            self.toast.say("Website data cleared for \(label)", .brief)
+        confirm("Clear website data for \(label)?", info, button: "Clear", destructive: true) {
+            WebStores.clear(through: through) { [weak self] in
+                guard let self else { return }
+                for case let w as WebView in self.views.values where w.through == through { w.reloadPage(nil) }
+                self.toast.say("Website data cleared for \(label)", .brief)
+            }
         }
     }
 
     /// Resets a host's server, once asked: put there afresh and restarted.
     private func resetServer(_ host: HostID) {
-        let alert = NSAlert()
-        alert.messageText = "Reset the server on \(hosts.label(of: host))?"
-        alert.informativeText = "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and spaces stay."
-        alert.addButton(withTitle: "Reset")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        hosts.resetServer(host)
+        confirm("Reset the server on \(hosts.label(of: host))?",
+                "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and spaces stay.",
+                button: "Reset") { [weak self] in self?.hosts.resetServer(host) }
     }
 
     /// Detaches from a host, once asked: it's forgotten here, and a
     /// workspace of its shown gives way to one elsewhere.
     func detach(_ host: HostID) {
-        let alert = NSAlert()
-        alert.messageText = "Detach from \(hosts.label(of: host))?"
-        alert.informativeText = "Manifold forgets the host and won't attach to it again at start. Its server, shells and blocks stay there; attach to it again to have them back."
-        alert.addButton(withTitle: "Detach")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        confirm("Detach from \(hosts.label(of: host))?",
+                "Manifold forgets the host and won't attach to it again at start. Its server, shells and blocks stay there; attach to it again to have them back.",
+                button: "Detach") { [weak self] in self?.detachNow(host) }
+    }
+
+    private func detachNow(_ host: HostID) {
         if let id = selected, id.host == host {
             let all = allWorkspaces
             let rest = all.filter { $0.host != host }

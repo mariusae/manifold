@@ -801,24 +801,18 @@ extension MainWindowController {
     }
 
     @objc func restartServer(_ sender: Any?) {
-        let alert = NSAlert()
-        alert.messageText = "Restart Manifold's server?"
-        alert.informativeText = "Everything is kept. Each shell starts again in the same directory, under its recent output; programs running in them are ended."
-        alert.addButton(withTitle: "Restart Server")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        HostClient.stopServer()
+        confirm("Restart Manifold's server?",
+                "Everything is kept. Each shell starts again in the same directory, under its recent output; programs running in them are ended.",
+                button: "Restart Server") { HostClient.stopServer() }
     }
 
     @objc func stopServer(_ sender: Any?) {
-        let alert = NSAlert()
-        alert.messageText = "Quit and end all sessions?"
-        alert.informativeText = "Every shell in Manifold will be closed. Everything is kept, and terminals start fresh shells next time."
-        alert.addButton(withTitle: "End Sessions and Quit")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        HostClient.stopServer()
-        NSApp.terminate(nil)
+        confirm("Quit and end all sessions?",
+                "Every shell in Manifold will be closed. Everything is kept, and terminals start fresh shells next time.",
+                button: "End Sessions and Quit") {
+            HostClient.stopServer()
+            NSApp.terminate(nil)
+        }
     }
 
     /// Names an arrangement (§3.3): what it's called, in place of what it holds.

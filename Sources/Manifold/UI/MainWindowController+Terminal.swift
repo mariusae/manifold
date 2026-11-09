@@ -100,16 +100,11 @@ extension MainWindowController: TerminalViewDelegate {
     /// Undo This Turn: asked first; then the turn's changes taken back.
     func undoTurn(_ turn: AgentTurn, of agent: BlockID) {
         guard turn.before != nil, turn.after != nil else { return NSSound.beep() }
-        let alert = NSAlert()
         let first = turn.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "the turn"
-        alert.messageText = "Undo “\(first.prefix(80))”?"
         let n = turn.files?.count ?? 0
-        alert.informativeText = "What the turn changed in \(turn.repo?.lastPathComponent ?? "the repository") (\(n) file\(n == 1 ? "" : "s")) is taken back, as the working tree was before it — later changes kept. If later work changed the same lines, nothing is touched and Manifold says so."
-        alert.addButton(withTitle: "Undo Turn")
-        alert.addButton(withTitle: "Cancel")
-        guard let window else { return }
-        alert.beginSheetModal(for: window) { [weak self] r in
-            guard r == .alertFirstButtonReturn else { return }
+        confirm("Undo “\(first.prefix(80))”?",
+                "What the turn changed in \(turn.repo?.lastPathComponent ?? "the repository") (\(n) file\(n == 1 ? "" : "s")) is taken back, as the working tree was before it — later changes kept. If later work changed the same lines, nothing is touched and Manifold says so.",
+                button: "Undo Turn") { [weak self] in
             self?.hosts.propose(.undoTurn(agent: agent, turn: turn.id)) { error in
                 DispatchQueue.main.async {
                     self?.toast.say(error.map { "Couldn't undo the turn: \($0)" } ?? "Turn undone", error == nil ? .brief : .long)

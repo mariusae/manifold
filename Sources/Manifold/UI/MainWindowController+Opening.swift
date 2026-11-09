@@ -436,11 +436,7 @@ extension MainWindowController {
             // waiting for a block that won't come, goes, and says why.
             guard let self, let error, let block = shown else { return }
             if let a = self.arrangement, let t = a.tile(of: block, lens: .git) { self.appendToSelected([.remove(t.id)]) }
-            guard let window = self.window else { return }
-            let alert = NSAlert()
-            alert.messageText = "No source control here"
-            alert.informativeText = error
-            alert.beginSheetModal(for: window)
+            self.notify("No source control here", error)
         }
         shown = block
         show(block, lens: .git, .here)

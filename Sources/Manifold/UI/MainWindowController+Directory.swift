@@ -327,14 +327,10 @@ extension MainWindowController: DirectoryViewDelegate {
             self.hosts.propose(.listDirectory(self.hosts.directoryBlock(for: folder, on: target)))
             let existing = zip(items, results).filter { $0.1 == "exists" }.map(\.0)
             guard !existing.isEmpty else { return }
-            let alert = NSAlert()
-            alert.messageText = existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)"
-            alert.informativeText = "Replace what's there with what was dropped?"
-            alert.addButton(withTitle: "Replace")
-            alert.addButton(withTitle: "Leave Them")
-            if let window = self.window { alert.beginSheetModal(for: window) { [weak self] r in
-                if r == .alertFirstButtonReturn { self?.copy(existing, into: folder, on: target, replacing: true, moving: moving) }
-            } }
+            self.confirm(existing.count == 1 ? "“\(Self.name(of: existing[0]))” is already in \(folder.lastPathComponent)" : "\(existing.count) items are already in \(folder.lastPathComponent)",
+                         "Replace what's there with what was dropped?", button: "Replace", cancel: "Leave Them") { [weak self] in
+                self?.copy(existing, into: folder, on: target, replacing: true, moving: moving)
+            }
         }
     }
 
