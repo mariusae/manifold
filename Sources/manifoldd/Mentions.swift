@@ -5,46 +5,40 @@ import ManifoldCore
 /// changes: `[[titles]]` and paths found in it are resolved to blocks —
 /// made for files that have none yet — and the block's `mention` links
 /// are brought to match, a moment after the last change.
-final class Mentions {
-    private let queue: DispatchQueue
-    private let pending: KeyedDebouncer<BlockID>
-    /// The blocks on this host, to resolve against.
-    var blocks: () -> [Block] = { [] }
-    var mentions: (BlockID) -> [Edge] = { _ in [] }
-    /// A block to make for a file, giving its id.
-    var makeBlock: ((_ kind: BlockKind, _ path: String) -> BlockID)?
-    var link: ((Link) -> Void)?
-    var unlink: ((String) -> Void)?
-
-    init(queue: DispatchQueue) {
-        self.queue = queue
-        pending = KeyedDebouncer(queue: queue)
+extension Server {
+    func mentionsChanged(_ block: BlockID) {
+        mentionsDue.schedule(block, after: 1) { [weak self] in self?.refreshMentions(block) }
     }
 
-    func textChanged(_ block: BlockID) {
-        pending.schedule(block, after: 1) { [weak self] in self?.refresh(block) }
-    }
-
-    private func refresh(_ block: BlockID) {
-        let all = blocks()
+    private func refreshMentions(_ block: BlockID) {
+        let all = node.blocks
         guard let b = all.first(where: { $0.id == block }), let text = b.text?.text.string else { return }
         // Each block the text names: an image it shows (`![…](…)`) is
         // embedded, kept by the text; the rest mentioned.
         // By the block and the place in it (§2.5): one link to each.
-        struct Target: Hashable { var block: BlockID; var anchor: String? }
-        var wanted: [Target: (context: String, kind: LinkKind)] = [:]
+        var wanted: [LinkTarget: (context: String, kind: LinkKind)] = [:]
         for m in Mention.find(in: text) {
             guard let to = resolve(m.target, from: b, among: all), to != block else { continue }
-            let target = Target(block: to, anchor: m.anchor)
+            let target = LinkTarget(block: to, anchor: m.anchor)
             let words = String(m.text.prefix(118))
             let embeds = m.embeds && all.first(where: { $0.id == to })?.kind == .image
             if embeds || wanted[target] == nil { wanted[target] = embeds ? ("![" + words + "]", .embeds) : ("[[" + words + "]]", .opened) }
         }
-        let have = mentions(block)
-        for e in have where wanted[Target(block: e.to, anchor: e.toAnchor)].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true { unlink?(e.id) }
-        for (target, w) in wanted where !have.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor && $0.context == w.context && $0.kind == .link(w.kind) }) {
-            link?(Link(from: block, to: target.block, kind: w.kind, at: Stamp(wall: Int64(Date().timeIntervalSince1970 * 1000), logical: 0, host: block.host),
-                       context: w.context, toAnchor: target.anchor))
+        let have = node.graph.edges(from: block, kind: .link(.opened)).filter { $0.context?.hasPrefix("[[") == true }
+            + node.graph.edges(from: block, kind: .link(.embeds)).filter { $0.context?.hasPrefix("![") == true }
+        reconcileLinks(from: block, wanted: wanted, existing: have)
+    }
+
+    /// A block's links brought to match what it says: each target wanted
+    /// linked, with its words and kind, and each link there that isn't
+    /// wanted (or is, said otherwise) gone.
+    func reconcileLinks(from block: BlockID, wanted: [LinkTarget: (context: String, kind: LinkKind)], existing: [Edge], relation: String? = nil) {
+        for e in existing where wanted[LinkTarget(block: e.to, anchor: e.toAnchor)].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true {
+            append(.unlink(e.id), to: .links(host))
+        }
+        for (target, w) in wanted where !existing.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor && $0.context == w.context && $0.kind == .link(w.kind) }) {
+            append(.link(Link(from: block, to: target.block, kind: w.kind, at: clock.now(), context: w.context,
+                              toAnchor: target.anchor, relation: relation)), to: .links(host))
         }
     }
 
@@ -60,7 +54,7 @@ final class Mentions {
             if let path = b.path {
                 for name in [title + ".md", title] {
                     let candidate = path.deletingLastPathComponent.appendingPathComponent(name)
-                    if FileManager.default.fileExists(atPath: candidate) { return block(for: candidate, among: all) }
+                    if FileManager.default.fileExists(atPath: candidate) { return mentionedBlock(for: candidate, among: all) }
                 }
             }
             return nil
@@ -70,16 +64,26 @@ final class Mentions {
             guard let path = Mention.resolve(p, from: b.path) else { return nil }
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue else { return nil }
-            return block(for: path, among: all)
+            return mentionedBlock(for: path, among: all)
         }
     }
 
-    private func block(for path: String, among all: [Block]) -> BlockID? {
+    private func mentionedBlock(for path: String, among all: [Block]) -> BlockID? {
         let kind = BlockKind.forFile(path)
         let real = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         if let b = all.first(where: { $0.kind == kind && ($0.path == path || $0.path.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path == real } ?? false) }) {
             return b.id
         }
-        return makeBlock?(kind, path)
+        // A block for a file the text names, before anyone opens it: the
+        // app finds it by path when they do.
+        let id = BlockID(host: host)
+        append(.create(kind: kind, title: nil, path: path), to: .block(id))
+        return id
     }
+}
+
+/// What a link goes to: a block, and a place in it (§2.5).
+struct LinkTarget: Hashable {
+    var block: BlockID
+    var anchor: String?
 }

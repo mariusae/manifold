@@ -129,7 +129,9 @@ final class Server {
     private let languageServers: LanguageServers
     private let scip: SCIPService
     private let searches: Searches
-    private let mentions: Mentions
+    /// Texts' mentions to bring their links to match, a moment after the
+    /// last change (Mentions.swift).
+    lazy var mentionsDue = KeyedDebouncer<BlockID>(queue: queue)
     /// Threads' places watched for edits (§3.12).
     let placeWatch: PlaceWatch
     let git: Git
@@ -226,27 +228,10 @@ final class Server {
         git = Git(queue: queue)
         placeWatch = PlaceWatch(queue: queue)
         searches = Searches(queue: queue)
-        mentions = Mentions(queue: queue)
         languageServers = LanguageServers(queue: queue)
         scip = SCIPService(queue: queue)
         scip.projects = { [weak self] in self.map { $0.node.desk($0.host).projects } ?? [] }
         scip.preferredShell = { [weak self] in self.flatMap { $0.node.desk($0.host).preferences.shell } }
-        mentions.blocks = { [weak self] in self?.node.blocks ?? [] }
-        mentions.mentions = { [weak self] block in
-            guard let g = self?.node.graph else { return [] }
-            return g.edges(from: block, kind: .link(.opened)).filter { $0.context?.hasPrefix("[[") == true }
-                + g.edges(from: block, kind: .link(.embeds)).filter { $0.context?.hasPrefix("![") == true }
-        }
-        mentions.makeBlock = { [weak self] kind, path in
-            guard let self else { return BlockID(host: HostID("none")) }
-            let id = BlockID(host: self.host)
-            // A block for a file the text names, before anyone opens it: the
-            // app finds it by path when they do.
-            self.append(.create(kind: kind, title: nil, path: path), to: .block(id))
-            return id
-        }
-        mentions.link = { [weak self] link in self?.append(.link(link), to: .links(self!.host)) }
-        mentions.unlink = { [weak self] id in self?.append(.unlink(id), to: .links(self!.host)) }
         languageServers.textOf = { [weak self] block in
             guard let b = self?.node.block(block), let t = b.text else { return nil }
             return (t.text, b.path)
@@ -975,7 +960,7 @@ final class Server {
             } else {
                 titleFromFirstLine(block)
             }
-            mentions.textChanged(id)
+            mentionsChanged(id)
         } else if block.isNote, block.title == nil, entries.contains(where: { if case .title(nil) = $0.event { true } else { false } }) {
             // Its name emptied: called by its first line again, now.
             titleFromFirstLine(block)

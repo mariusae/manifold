@@ -94,21 +94,16 @@ extension Server {
     /// `mentions`, brought to match what the comments say.
     func threadMentions(_ block: BlockID) {
         guard let t = node.block(block)?.thread else { return }
-        struct Target: Hashable { var block: BlockID; var anchor: String? }
-        var wanted: [Target: String] = [:]
+        var wanted: [LinkTarget: (context: String, kind: LinkKind)] = [:]
         for c in t.comments {
             for m in Mention.find(in: c.comment ?? "") {
                 guard case .block(let to) = m.target, to != block, to != t.about?.block else { continue }
-                let target = Target(block: to, anchor: m.anchor)
-                if wanted[target] == nil { wanted[target] = "[[" + String(m.text.prefix(118)) + "]]" }
+                let target = LinkTarget(block: to, anchor: m.anchor)
+                if wanted[target] == nil { wanted[target] = ("[[" + String(m.text.prefix(118)) + "]]", .opened) }
             }
         }
         let have = node.graph.edges(from: block, kind: .link(.opened)).filter { $0.relation == ThreadText.mentions }
-        for e in have where wanted[Target(block: e.to, anchor: e.toAnchor)] == nil { append(.unlink(e.id), to: .links(host)) }
-        for (target, context) in wanted where !have.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor }) {
-            append(.link(Link(from: block, to: target.block, kind: .opened, at: clock.now(), context: context,
-                              toAnchor: target.anchor, relation: ThreadText.mentions)), to: .links(host))
-        }
+        reconcileLinks(from: block, wanted: wanted, existing: have, relation: ThreadText.mentions)
     }
 }
 
