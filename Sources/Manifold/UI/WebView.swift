@@ -74,10 +74,18 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
 
     /// The host the page is loaded through, or nil: from here.
     private(set) var through: HostID?
-    /// The host's store asked for (the web view to be made in it): what
-    /// was to be loaded meanwhile.
-    private var awaitingStore = false
-    private var loadWhenReady: String?
+    /// The data store of the way pages go (§ M29 in STATE-MACHINES.md):
+    /// none (from here, or not yet asked); asked for, and what was to be
+    /// loaded meanwhile; in use; or not to be had — why, and the address
+    /// it was wanted for. Another address wanted asks for it again.
+    enum Store: Equatable {
+        case none
+        case asked(pending: String?)
+        case ready
+        case unavailable(String, for: String?)
+    }
+    private(set) var store: Store = .none
+    private var awaitingStore: Bool { if case .asked = store { true } else { false } }
     /// A page that failed for the host being away, as the block keeps
     /// its address: loaded again once the host is back.
     private var retryWhenBack: String?
@@ -255,6 +263,12 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         guard let b = source(), let url = b.web?.url else { return }
         let wanted = b.web?.viaHost == true && delegate?.webView(self, remoteHost: block.host) != nil ? block.host : nil
         if wanted != through { return reroute(to: wanted) }
+        // Its host's store not to be had: asked for again once another
+        // address is wanted, not left at that for good.
+        if case let .unavailable(_, failedFor) = store {
+            if url != failedFor { reroute(to: through) }
+            return
+        }
         if let again = retryWhenBack, let h = through, delegate?.webView(self, remoteHost: h)?.connected == true {
             retryWhenBack = nil
             load(again)
@@ -284,29 +298,31 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         generation += 1
         shownURL = nil
         retryWhenBack = nil
-        loadWhenReady = nil
+        store = .none
         failure.set(.idle)
         // The page loaded the other way goes now, not once this way's ready.
         if host == nil || web.url != nil || web.isLoading { install(nil) }
-        guard let host else {
-            awaitingStore = false
-            return documentChanged()
-        }
-        awaitingStore = true
+        guard let host else { return documentChanged() }
+        store = .asked(pending: nil)
         let label = delegate?.webView(self, remoteHost: host)?.label ?? "its host"
         failure.set(.busy("Loading through \(label)…"))
         let gen = generation
         delegate?.webView(self, storeThrough: host) { [weak self] store in
             guard let self, self.generation == gen else { return }
             guard let store else {
-                // Nothing goes from here instead: said, and left at that.
-                return self.showFailure("Can't load pages through \(label): its proxy here couldn't start")
+                // Nothing goes from here instead: said, and asked for
+                // again once another address is wanted.
+                let why = "Can't load pages through \(label): its proxy here couldn't start"
+                let wanted: String?
+                if case let .asked(pending) = self.store { wanted = pending ?? self.source()?.web?.url } else { wanted = self.source()?.web?.url }
+                self.store = .unavailable(why, for: wanted)
+                return self.showFailure(why)
             }
-            self.awaitingStore = false
+            var typed: String?
+            if case let .asked(pending) = self.store { typed = pending }
+            self.store = .ready
             self.failure.set(.idle)
             self.install(store)
-            let typed = self.loadWhenReady
-            self.loadWhenReady = nil
             self.documentChanged()
             if let typed { self.load(typed) }
         }
@@ -332,9 +348,19 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     /// read from there, with its folder; a page of the host's own
     /// localhost, loaded through it, at the port it's forwarded to here.
     private func load(_ url: String) {
-        if awaitingStore {
-            loadWhenReady = url
+        switch store {
+        case .asked:
+            store = .asked(pending: url)
             return
+        case let .unavailable(_, failedFor) where url != failedFor:
+            // Another address: the host's store asked for again, for it.
+            reroute(to: through)
+            if case .asked = store { store = .asked(pending: url) }
+            return
+        case .unavailable:
+            return
+        default:
+            break
         }
         retryWhenBack = nil
         guard let u = URL(string: url) else { return }
@@ -466,7 +492,12 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     /// one WebKit has, and the store it's in.
     var debugRoute: String {
         let store = web.configuration.websiteDataStore
-        return [through.map { "through \($0.raw)" } ?? "from here", awaitingStore ? "waiting for its store" : nil,
+        let way: String? = switch self.store {
+        case .none, .ready: nil
+        case let .asked(pending): "waiting for its store" + (pending.map { " (then \($0))" } ?? "")
+        case let .unavailable(_, failedFor): "its store not to be had" + (failedFor.map { " (for \($0))" } ?? "")
+        }
+        return [through.map { "through \($0.raw)" } ?? "from here", way,
                 "block \(source()?.web?.url ?? "none")", "shown \(web.url?.absoluteString ?? "none")",
                 "store \(store.identifier?.uuidString ?? (store.isPersistent ? "default" : "ephemeral"))",
                 { if case let .message(m) = failure.state { "says \(m)" } else { nil } }()].compactMap { $0 }.joined(separator: "\n")

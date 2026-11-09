@@ -126,10 +126,14 @@ revision)`).
 Tests: `ManifoldAppTests/EditorAccessTests`; the scenario passes.
 Machine: M15.
 
-### I-5 One failure, stuck for good (or retried blindly) · **confirmed on reading** · medium
+### I-5 One failure, stuck for good (or retried blindly) · **fixed** · medium
 - **Web page through a host**: the host's proxy failing to start leaves
   `awaitingStore` true: every address typed after is parked, the error
-  stays up, until the route itself changes. (M29)
+  stays up, until the route itself changes. (M29) — **fixed**: the store is
+  one state (`WebView.Store`: none / asked(pending) / ready /
+  unavailable(why, for)); unavailable, another address wanted (typed, a
+  link) asks for it again, the same one doesn't. Test:
+  `ManifoldAppTests/WebRouteTests` (fails without the ask-again).
 - **Language server**: one that failed to start, timed out initializing, or
   crashed is `failed` for good: `server(for:)` returns nil and never makes
   another, so diagnostics, completion and hovers are gone until the host's
@@ -435,12 +439,24 @@ I-8 (suspected leak off screen).
 
 ### Other views
 
-#### M29 Web page route · implicit
-WebView `through`, `awaitingStore`, `loadWhenReady`, `retryWhenBack`,
-`generation`, `failure`.
-States: direct · connecting(host, pending) · through(host, retry?) ·
-unavailable(host, why). Invariant: from every state an address typed leads
-somewhere (loads, or tries the way again). Findings: I-5.
+#### M29 Web page route · explicit store (`WebView.Store`)
+WebView `through` (the way: nil, from here; or a host), `store`,
+`retryWhenBack`, `generation` (answers from an earlier way let go),
+`failure`.
+
+| From | Event | To |
+|---|---|---|
+| none | through a host wanted | asked(pending: nil) |
+| asked | an address loaded | asked(pending: it) |
+| asked | the store comes | ready; the block's page loaded, then the pending one |
+| asked | none to be had | unavailable(why, for: the address wanted) |
+| unavailable | another address wanted | asked (again) |
+| unavailable | the same address | unavailable |
+| any | the way changes | none, then as above |
+
+Invariant: from every state an address wanted leads somewhere — loaded,
+waited for, or the way asked for again. `debugRoute` names the state.
+Findings: I-5 — fixed.
 
 #### M30 Toast · implicit
 ToastView `isHidden`/`alphaValue` (the real phase), `hideWork`, `then`,
