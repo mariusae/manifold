@@ -376,10 +376,11 @@ enum DebugControl {
             // "press esc": Escape, by its key code.
             // "press opt-esc": with ⌥ held, as during ⌥⇥.
             // "press ctrl-g": with ⌃ held.
-            let opt = arg.hasPrefix("opt-"), ctrl = arg.hasPrefix("ctrl-")
-            let key = opt ? String(arg.dropFirst(4)) : ctrl ? String(arg.dropFirst(5)) : arg
-            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : key == "tab" ? ("\t", 48) : key == "g" ? ("g", 5) : key == "up" ? ("\u{F700}", 126) : key == "down" ? ("\u{F701}", 125) : (key, 0)
-            let flags: NSEvent.ModifierFlags = opt ? [.option] : ctrl ? [.control] : []
+            // "press cmd-z": with ⌘ held.
+            let opt = arg.hasPrefix("opt-"), ctrl = arg.hasPrefix("ctrl-"), cmd = arg.hasPrefix("cmd-")
+            let key = opt || cmd ? String(arg.dropFirst(4)) : ctrl ? String(arg.dropFirst(5)) : arg
+            let (chars, code): (String, UInt16) = key == "esc" ? ("\u{1B}", 53) : key == "tab" ? ("\t", 48) : key == "g" ? ("g", 5) : key == "z" ? ("z", 6) : key == "up" ? ("\u{F700}", 126) : key == "down" ? ("\u{F701}", 125) : (key, 0)
+            let flags: NSEvent.ModifierFlags = opt ? [.option] : ctrl ? [.control] : cmd ? [.command] : []
             if !arg.isEmpty, let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: window.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
                                                     isARepeat: false, keyCode: code) {

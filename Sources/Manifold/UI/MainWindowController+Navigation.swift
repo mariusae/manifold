@@ -220,6 +220,8 @@ extension MainWindowController {
         // workspace's row clicked, its tile not taking it, where AppKit's
         // own going round the views took ⌃⇥ before the menu).
         navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // ⌘Z while a deletion counts down: the deletion undone.
+            if let self, event.window === self.window, event.keyCode == 6, event.keyMods == .command, self.toast.undoLatest() { return nil }
             guard let self, event.window === self.window, [27, 48, 50].contains(event.keyCode) else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if event.keyCode == 50 {

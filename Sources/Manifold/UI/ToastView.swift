@@ -213,8 +213,11 @@ final class ToastView: NSView {
         })
     }
 
+    /// Whether its button undoes what it says was done (a deletion's).
+    var undoes: Bool { isPending && !isHidden && button.title == "Undo" }
+
     /// Its action taken (Undo): what waited on its time isn't done.
-    @objc private func act() {
+    @objc func act() {
         let a = action
         then = nil
         hide()
@@ -336,6 +339,15 @@ final class Toasts {
     }
 
     var isHidden: Bool { latest == nil }
+
+    /// ⌘Z while a deletion's toast counts down: that deletion undone, as
+    /// its Undo would (whatever has the keyboard — the next tile's editor —
+    /// would otherwise undo its own text). False if none's up.
+    func undoLatest() -> Bool {
+        guard let t = (sidebarToasts + [window]).last(where: \.undoes) else { return false }
+        t.act()
+        return true
+    }
     func hide() { latest?.hide() }
     func nudge() { latest?.nudge() }
     func finishPending() {
