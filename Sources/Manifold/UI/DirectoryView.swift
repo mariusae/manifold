@@ -742,7 +742,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         return Dropping.perform(self, sender)
     }
 
-    /// An entry right-clicked, by its path.
     /// An entry right-clicked: its menu; one of several chosen, theirs.
     func menu(for node: BrowserNode) -> NSMenu? {
         let chosen = content?.selectedPaths ?? []
@@ -751,6 +750,14 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             return delegate?.directoryView(self, menuFor: entries)
         }
         return delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory)
+    }
+
+    /// A mode's menu made for the entry right-clicked (nothing, if none):
+    /// `menu(for:)`'s items handed over to it.
+    func fill(_ menu: NSMenu, for node: BrowserNode?) {
+        menu.removeAllItems()
+        guard let node, let m = self.menu(for: node) else { return }
+        for item in m.items { m.removeItem(item); menu.addItem(item) }
     }
 
     // MARK: Going places

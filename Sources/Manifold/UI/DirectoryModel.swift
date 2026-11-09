@@ -434,3 +434,74 @@ final class DirectoryModel {
     /// The tree's entries by name, made once per listing of it.
     private var treeByName: (at: Date?, entries: [String: DirectoryEntry])?
 }
+
+extension BrowserNode {
+    /// Its type at a glance: a symbol, and a colour — a folder's, grey.
+    var glyph: (symbol: String, color: NSColor) { isDirectory ? ("folder", Theme.secondaryText) : Self.glyph(name) }
+
+    /// A file's type at a glance, by its name: a symbol, and a colour.
+    static func glyph(_ name: String) -> (symbol: String, color: NSColor) {
+        let lower = name.lowercased()
+        let ext = lower.pathExtension
+        let kinds = Palette.current.kinds
+        if lower.hasPrefix(".git") { return ("arrow.triangle.branch", kinds.git.color) }
+        switch ext {
+        case "swift", "swiftinterface": return ("swift", kinds.swift.color)
+        case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", kinds.shell.color)
+        case "md", "markdown", "txt", "rst", "org", "tex": return ("doc.text", Theme.secondaryText)
+        case "pdf": return ("doc.richtext", kinds.pdf.color)
+        case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "ico", "tiff", "bmp": return ("photo", kinds.image.color)
+        case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", kinds.data.color)
+        case "patch", "diff": return ("plus.forwardslash.minus", kinds.patch.color)
+        case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", kinds.archive.color)
+        case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", kinds.media.color)
+        case "mp4", "mov", "m4v", "webm": return ("film", kinds.media.color)
+        default:
+            // Code: whatever the one table (`CodeLanguage`) has as a language.
+            if CodeLanguage.forPath(lower)?.kind == .language { return ("chevron.left.forwardslash.chevron.right", kinds.code.color) }
+            if ["makefile", "dockerfile", "package.swift", "license", "readme"].contains(lower) { return ("doc.text", Theme.secondaryText) }
+            return ("doc", Theme.secondaryText)
+        }
+    }
+}
+
+extension DirectoryModel {
+    /// The letters a filter matched in a file's name (offsets into it);
+    /// none for a folder, or with no filter.
+    func matchedLetters(in n: BrowserNode) -> [Int] {
+        guard filtering, !n.isDirectory else { return [] }
+        let rel = relative(n.path)
+        let start = rel.count - n.name.count
+        return (matchedAt[rel] ?? []).filter { $0 >= start }.map { $0 - start }
+    }
+
+    /// The folders `path` is in, the root's first child (or, `root`, the
+    /// root itself) down to its own folder.
+    func ancestors(of path: String, root withRoot: Bool = false) -> [String] {
+        var chain: [String] = []
+        var f = path.deletingLastPathComponent
+        while f.count > root.count, f.hasPrefix(root) {
+            chain.insert(f, at: 0)
+            f = f.deletingLastPathComponent
+        }
+        if withRoot, f == root { chain.insert(root, at: 0) }
+        return chain
+    }
+}
+
+extension NSMutableAttributedString {
+    /// A row's name with the letters a filter matched (`offsets`, in
+    /// characters into `name`, which starts the string) in the row's font
+    /// made bold.
+    func embolden(_ offsets: [Int], of name: String) {
+        let length = (name as NSString).length
+        for i in offsets {
+            // Offsets in characters; the string's in UTF-16.
+            guard let r = name.index(name.startIndex, offsetBy: i, limitedBy: name.endIndex), r < name.endIndex else { continue }
+            let range = NSRange(r...r, in: name)
+            if range.location + range.length <= length { addAttribute(.font, value: Self.boldRow, range: range) }
+        }
+    }
+
+    private static let boldRow = NSFontManager.shared.convert(UIType.row, toHaveTrait: .boldFontMask)
+}

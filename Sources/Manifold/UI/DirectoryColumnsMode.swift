@@ -232,14 +232,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
             return cell
         }
         let cell = tableView.makeView(withIdentifier: ColumnCell.id, owner: nil) as? ColumnCell ?? ColumnCell()
-        // The letters a filter matched, in a file's name.
-        var bold: [Int] = []
-        if model.filtering, !n.isDirectory {
-            let rel = model.relative(n.path)
-            let start = rel.count - n.name.count
-            bold = (model.matchedAt[rel] ?? []).filter { $0 >= start }.map { $0 - start }
-        }
-        cell.show(n, bold: bold)
+        cell.show(n, bold: model.matchedLetters(in: n))
         return cell
     }
 
@@ -252,10 +245,8 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        guard let c = columns.first(where: { $0.table.menu === menu }), let n = c.node(c.table.clickedRow),
-              let m = owner.menu(for: n) else { return }
-        for item in m.items { m.removeItem(item); menu.addItem(item) }
+        let c = columns.first { $0.table.menu === menu }
+        owner.fill(menu, for: c?.node(c?.table.clickedRow ?? -1))
     }
 
     func folder(at point: NSPoint) -> String? {
@@ -411,13 +402,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         // Each folder on the way listed, for its column; one not yet: the
         // choice waits for it (`folderChanged`), as far as it can go meanwhile.
         var ready = true
-        var f = path.deletingLastPathComponent
-        var chain: [String] = []
-        while f.count >= model.root.count, f.hasPrefix(model.root) {
-            chain.insert(f, at: 0)
-            if f == model.root { break }
-            f = f.deletingLastPathComponent
-        }
+        let chain = model.ancestors(of: path, root: true)
         model.prefetch(chain)
         for d in chain where model.children(of: d) == nil { ready = false }
         if ready, model.existingNode(path) != nil {
@@ -547,7 +532,7 @@ final class ColumnCell: NSTableCellView {
 
     func show(_ n: BrowserNode, bold: [Int]) {
         let fade: CGFloat = n.isMuted ? 0.5 : 1
-        let g = n.isDirectory ? (symbol: "folder", color: Theme.secondaryText) : TreeCell.glyph(n.name)
+        let g = n.glyph
         icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
         chevron.image = n.isDirectory ? Theme.symbol("chevron.right", size: 10, weight: .semibold)?.tinted(Theme.tertiaryText) : nil
         let p = NSMutableParagraphStyle()
@@ -555,12 +540,7 @@ final class ColumnCell: NSTableCellView {
         let text = NSMutableAttributedString(string: n.name, attributes: [
             .font: UIType.row, .foregroundColor: n.isMuted ? Theme.tertiaryText : Theme.text, .paragraphStyle: p,
         ])
-        let length = (n.name as NSString).length
-        for i in bold {
-            guard let r = n.name.index(n.name.startIndex, offsetBy: i, limitedBy: n.name.endIndex), r < n.name.endIndex else { continue }
-            let range = NSRange(r...r, in: n.name)
-            if range.location + range.length <= length { text.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .bold), range: range) }
-        }
+        text.embolden(bold, of: n.name)
         label.attributedStringValue = text
         needsLayout = true
     }

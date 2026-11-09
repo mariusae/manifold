@@ -155,11 +155,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         guard let n = item as? BrowserNode else { return nil }
         let cell = outlineView.makeView(withIdentifier: TreeCell.id, owner: nil) as? TreeCell ?? TreeCell()
         if model.filtering {
-            let rel = model.relative(n.path)
-            // Where its letters fell: those in its name, its name's own.
-            let nameStart = rel.count - n.name.count
-            let inName = (model.matchedAt[rel] ?? []).filter { $0 >= nameStart }.map { $0 - nameStart }
-            cell.show(n, bold: inName, folder: rel.deletingLastPathComponent, chevron: outline.chevronWidth)
+            cell.show(n, bold: model.matchedLetters(in: n), folder: model.relative(n.path).deletingLastPathComponent, chevron: outline.chevronWidth)
         } else {
             cell.show(n, bold: [], folder: nil, chevron: outline.chevronWidth)
         }
@@ -173,9 +169,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        guard outline.clickedRow >= 0, let node = outline.item(atRow: outline.clickedRow) as? BrowserNode, let m = owner.menu(for: node) else { return }
-        for item in m.items { m.removeItem(item); menu.addItem(item) }
+        owner.fill(menu, for: outline.clickedRow >= 0 ? outline.item(atRow: outline.clickedRow) as? BrowserNode : nil)
     }
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
@@ -268,14 +262,8 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         }
         if !model.filtering {
             // The folders on the way opened, as far as they're listed.
-            var chain: [String] = []
-            var dir = path.deletingLastPathComponent
-            while dir.count > model.root.count, dir.hasPrefix(model.root) {
-                chain.insert(dir, at: 0)
-                dir = dir.deletingLastPathComponent
-            }
             restoring = true
-            for d in chain {
+            for d in model.ancestors(of: path) {
                 guard let n = model.existingNode(d), outline.row(forItem: n) >= 0 else { break }
                 if !outline.isItemExpanded(n) {
                     outline.expandItem(n)
@@ -414,20 +402,14 @@ final class TreeCell: NSTableCellView {
         if n.isDirectory {
             icon.image = nil
         } else {
-            let g = Self.glyph(n.name)
+            let g = n.glyph
             icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
         }
         let text = NSMutableAttributedString(string: n.name, attributes: [
             // Muted (ignored, hidden): the tertiary grey, which still reads.
             .font: UIType.row, .foregroundColor: n.isMuted ? Theme.tertiaryText : Theme.text,
         ])
-        let length = (n.name as NSString).length
-        for i in bold {
-            // Offsets in characters; the string's in UTF-16.
-            guard let r = n.name.index(n.name.startIndex, offsetBy: i, limitedBy: n.name.endIndex), r < n.name.endIndex else { continue }
-            let range = NSRange(r...r, in: n.name)
-            if range.location + range.length <= length { text.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .bold), range: range) }
-        }
+        text.embolden(bold, of: n.name)
         if let folder, !folder.isEmpty {
             text.append(NSAttributedString(string: "  " + folder, attributes: [
                 .font: UIType.body, .foregroundColor: Theme.secondaryText,
@@ -445,30 +427,5 @@ final class TreeCell: NSTableCellView {
         icon.frame = NSRect(x: ((chevron - 14) / 2).rounded(), y: (h - 14) / 2, width: 14, height: 14)
         let x: CGFloat = isFolder ? 2 : chevron + 2
         label.frame = NSRect(x: x, y: (h - 17) / 2, width: max(0, bounds.width - x - 8), height: 17)
-    }
-
-    /// A file's type at a glance: a symbol, and a colour.
-    static func glyph(_ name: String) -> (symbol: String, color: NSColor) {
-        let lower = name.lowercased()
-        let ext = lower.pathExtension
-        let kinds = Palette.current.kinds
-        if lower.hasPrefix(".git") { return ("arrow.triangle.branch", kinds.git.color) }
-        switch ext {
-        case "swift", "swiftinterface": return ("swift", kinds.swift.color)
-        case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", kinds.shell.color)
-        case "md", "markdown", "txt", "rst", "org", "tex": return ("doc.text", Theme.secondaryText)
-        case "pdf": return ("doc.richtext", kinds.pdf.color)
-        case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "ico", "tiff", "bmp": return ("photo", kinds.image.color)
-        case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", kinds.data.color)
-        case "patch", "diff": return ("plus.forwardslash.minus", kinds.patch.color)
-        case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", kinds.archive.color)
-        case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", kinds.media.color)
-        case "mp4", "mov", "m4v", "webm": return ("film", kinds.media.color)
-        default:
-            // Code: whatever the one table (`CodeLanguage`) has as a language.
-            if CodeLanguage.forPath(lower)?.kind == .language { return ("chevron.left.forwardslash.chevron.right", kinds.code.color) }
-            if ["makefile", "dockerfile", "package.swift", "license", "readme"].contains(lower) { return ("doc.text", Theme.secondaryText) }
-            return ("doc", Theme.secondaryText)
-        }
     }
 }

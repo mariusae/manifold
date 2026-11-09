@@ -35,7 +35,7 @@ import ManifoldCore
         for level in 0..<4 { named.append(("sheet\(level)", Theme.sheet(level: level))) }
         for (i, c) in TextView.pinColors.enumerated() { named.append(("pin\(i)", c)) }
         for name in [".gitignore", "a.swift", "a.sh", "a.pdf", "a.png", "a.json", "a.diff", "a.zip", "a.mp3", "a.rs", "a.md"] {
-            named.append(("glyph " + name, TreeCell.glyph(name).color))
+            named.append(("glyph " + name, BrowserNode.glyph(name).color))
         }
         for t in Tint.allCases {
             named += [("tint \(t) accent", t.accent), ("tint \(t) caret", t.caret), ("tint \(t) selection", t.textSelection),
