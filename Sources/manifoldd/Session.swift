@@ -56,7 +56,7 @@ final class Session {
     /// The program is reading a password, or has stopped.
     var onPasswordInput: ((Bool) -> Void)?
     private(set) var readingPassword = false
-    private var passwordCheck: DispatchWorkItem?
+    private lazy var passwordCheck = Debouncer(queue: queue)
 
     /// Echo off with lines still edited: a password being read (a full-
     /// screen program turns both off).
@@ -495,10 +495,7 @@ final class Session {
         // set the terminal, then write the prompt), and again a moment after
         // (a script that writes its prompt first).
         checkPassword()
-        passwordCheck?.cancel()
-        let again = DispatchWorkItem { [weak self] in self?.checkPassword() }
-        passwordCheck = again
-        queue.asyncAfter(deadline: .now() + 0.2, execute: again)
+        passwordCheck.schedule(after: 0.2) { [weak self] in self?.checkPassword() }
         passOn(data)
     }
 

@@ -36,7 +36,7 @@ final class TypographyPane: SettingsPane {
     private var shownRole: FontRole?
     /// What's shown, as edited: set to the settings when idle.
     private var style = Typography.humanist.editing
-    private var commit: DispatchWorkItem?
+    private let commit = Debouncer()
 
     init(_ source: SettingsSource) { super.init(source, title: "Typography") }
     required init?(coder: NSCoder) { fatalError() }
@@ -300,16 +300,17 @@ final class TypographyPane: SettingsPane {
     /// The edited role kept, and Manifold set in it, once edits pause.
     private func changed(now: Bool = false) {
         show()
-        commit?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.flush() }
-        commit = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (now ? 0 : 0.2), execute: work)
+        commit.schedule(after: now ? 0 : 0.2) { [weak self] in self?.keep() }
     }
 
+    /// An edit still waiting, kept now.
     private func flush() {
-        guard let work = commit else { return }
-        work.cancel()
-        commit = nil
+        guard commit.isPending else { return }
+        commit.cancel()
+        keep()
+    }
+
+    private func keep() {
         let role = self.role, style = self.style
         source.change { (a: inout Appearance) in
             a.typography[role] = style
@@ -318,8 +319,7 @@ final class TypographyPane: SettingsPane {
     }
 
     fileprivate func startFrom(_ preset: Typography, all: Bool) {
-        commit?.cancel()
-        commit = nil
+        commit.cancel()
         let role = self.role
         source.change { (a: inout Appearance) in
             if all { a.typography = preset } else { a.typography[role] = preset[role] }

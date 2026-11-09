@@ -618,7 +618,7 @@ final class Hosts {
 
     private var pathMonitor: NWPathMonitor?
     private var lastPath: String?
-    private var nudgeWork: DispatchWorkItem?
+    private let nudge = Debouncer()
 
     /// After sleep, or when the network comes back or changes (another
     /// Wi-Fi, a VPN up or down), the hosts are tried at once rather than
@@ -643,12 +643,9 @@ final class Hosts {
 
     /// Each host asked to try (or check) now, once things have settled.
     func nudgeHosts(after delay: TimeInterval) {
-        nudgeWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        nudge.schedule(after: delay) { [weak self] in
             for c in self?.all ?? [] { c.networkMayHaveChanged() }
         }
-        nudgeWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// Attaches again to every host remembered.
