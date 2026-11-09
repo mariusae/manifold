@@ -6,6 +6,8 @@ import Foundation
 public final class Debouncer {
     private let queue: DispatchQueue
     private var work: DispatchWorkItem?
+    /// What's waiting, to be run now by `flush`.
+    private var waiting: (() -> Void)?
 
     public init(queue: DispatchQueue = .main) { self.queue = queue }
 
@@ -16,11 +18,23 @@ public final class Debouncer {
         work?.cancel()
         var item: DispatchWorkItem?
         item = DispatchWorkItem { [weak self] in
-            if let self, self.work === item { self.work = nil }
+            if let self, self.work === item {
+                self.work = nil
+                self.waiting = nil
+            }
             f()
         }
         work = item
+        waiting = f
         queue.asyncAfter(deadline: .now() + delay, execute: item!)
+    }
+
+    /// What's waiting, run now in its place (once: not again at its
+    /// time); nothing if nothing waits, or it was cancelled.
+    public func flush() {
+        guard let f = waiting else { return }
+        cancel()
+        f()
     }
 
     /// `f` now, in place of whatever was waiting.
@@ -33,6 +47,7 @@ public final class Debouncer {
     public func cancel() {
         work?.cancel()
         work = nil
+        waiting = nil
     }
 }
 

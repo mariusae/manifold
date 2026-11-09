@@ -197,7 +197,12 @@ no show came after it began. Machine: M30.
   `Tests/scenarios/thread-card-closed.sh` (the reply went through on the
   old code). (M36)
 - Project search: `searchWork` cancelled but not cleared, so a search isn't
-  started after type-clear-type with Home toggled. **confirmed on reading** (M31)
+  started after type-clear-type with Home toggled; and ⏎ (`perform()`) ran
+  that stale item: a search for what was typed before. **fixed**: a
+  `Debouncer` (`searchSoon`) — typing cancels what waits, ⏎ `flush()`es it
+  (once; nothing if cancelled). Test: `ManifoldCoreTests/DebouncerTests`
+  (the mechanism; the timing isn't reachable through the debug socket,
+  whose `dir search` runs at once). (M31)
 - SCIP: a re-index asked for while the root is indexing is dropped; the
   index stays stale until the next save. **fixed**: it's kept
   (`wantedAgain`) and run once the current run's done. Test:
@@ -491,7 +496,7 @@ Invariant: a fade's end hides only the toast it began to hide (`shows`).
 Findings: I-7 — fixed.
 
 #### M31–M37 Smaller
-Project search work (M31), project facts' git/index load (M32, "Not in a
+Project search work (M31, fixed: `searchSoon`), project facts' git/index load (M32, "Not in a
 repository" for three different states), PathInserter's status kept in its
 words (M33), footer menu `(view?, which)` (M34), Finder's mode (M35), the
 thread card popover (M36), copy-check timers, LinkBadge's gap preview,

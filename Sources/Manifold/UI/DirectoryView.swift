@@ -179,7 +179,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// in the field (§2.6), and the block they're in.
     private let results = ProjectSearchView()
     private var projectSearch: BlockID?
-    private var searchWork: DispatchWorkItem?
+    /// The project search, a moment after the last key (§ M31): typing
+    /// over it cancels it, ⏎ runs it now.
+    private let searchSoon = Debouncer()
     /// Something typed in a project's homepage's field: it's searched,
     /// not filtered.
     private var searchingProject: Bool { home && !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -480,7 +482,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if !home, !search.stringValue.isEmpty, model?.filter != search.stringValue, !searchingContents { model?.setFilter(search.stringValue) }
         // Something in the field already (kept with the tile, or typed
         // before Home was on): searched.
-        if searchingProject, projectSearch == nil, searchWork == nil { projectQueryTyped() }
+        if searchingProject, projectSearch == nil, !searchSoon.isPending { projectQueryTyped() }
         updateResults()
         needsLayout = true
         guard home else { return }
@@ -555,13 +557,13 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// `text:` for one alone; `?` the text, as the filter has it).
     private func projectQueryTyped() {
         keeper.note(["filter": search.stringValue])
-        searchWork?.cancel()
+        // What was typed before, not searched (nor kept to be, by ⏎).
+        searchSoon.cancel()
         updateResults()
         guard searchingProject, let project else { return }
         let typed = search.stringValue
-        let work = DispatchWorkItem { [weak self] in
+        searchSoon.schedule(after: 0.15) { [weak self] in
             guard let self else { return }
-            self.searchWork = nil
             var pq = ProjectQuery(typed.hasPrefix("?") ? "text:" + typed.dropFirst() : typed)
             if pq.text.count < 2 { pq.kinds.removeAll { $0 == "text" } }
             guard !pq.text.isEmpty, !pq.kinds.isEmpty else { return }
@@ -574,8 +576,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             }
             self.updateResults()
         }
-        searchWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 
     /// The results shown, in the files' place, while something's typed.
@@ -884,7 +884,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
                 results.selectFirst()
                 return true
             case #selector(NSResponder.insertNewline(_:)):
-                searchWork?.perform()
+                searchSoon.flush()
                 results.openChosen()
                 return true
             default: break
@@ -1149,7 +1149,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if words.count > 1 {
                 searchBox.stringValue = words[1] == "-" ? "" : words[1]
                 filterTyped()
-                searchWork?.perform()
+                searchSoon.flush()
             }
             return results.isHidden ? "no search shown" : results.debugState
         case "searchenter": results.openChosen()
