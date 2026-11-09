@@ -37,7 +37,7 @@ final class Hosts {
 
     init() {
         local = HostClient(transport: .local)
-        wire(local)
+        local.delegate = self
         if let data = try? Data(contentsOf: Self.stateURL), let s = try? JSONDecoder().decode(ClientState.self, from: data) {
             state = s
         } else {
@@ -193,68 +193,6 @@ final class Hosts {
                 self.watchers[id]?.removeAll { $0.owner == nil }
                 for w in self.watchers[id] ?? [] { w.changed() }
             }
-        }
-    }
-
-    private func wire(_ client: HostClient) {
-        client.onChange = { [weak self] in self?.scheduleChange() }
-        client.onErased = { [weak self, weak client] by in
-            guard let self, let client else { return }
-            self.noteDeleted(client.host)
-            self.onErased?(client, by)
-        }
-        client.onReplaced = { [weak self, weak client] old in
-            guard let self, let client else { return }
-            self.noteDeleted(old)
-            // Known by its new id from now on.
-            if self.remotes[old] === client {
-                self.remotes.removeValue(forKey: old)
-                self.remotes[client.host] = client
-                var file = HostsFile.load()
-                if let entry = file.hosts.removeValue(forKey: old.raw) { file.hosts[client.host.raw] = entry }
-                file.save()
-            }
-            self.onReplaced?(client, old)
-            self.onChange?()
-        }
-        client.onBlockChanged = { [weak self] id in self?.blockChanged(id) }
-        client.onTerminalEnded = { [weak self] block in self?.onTerminalEnded?(block) }
-        client.onHistory = { [weak self] shard, base, entries in self?.onHistory?(shard, base, entries) }
-        client.onShow = { [weak self, weak client] id, who, block, beside in
-            guard let self, let client else { return }
-            self.onShow?(client.host, id, who, block, beside)
-        }
-        client.onCommand = { [weak self, weak client] id, who, request in
-            guard let self, let client else { return }
-            self.onCommand?(client.host, id, who, request)
-        }
-        client.onCommandEnded = { [weak self, weak client] id, who in
-            guard let self, let client else { return }
-            self.onCommandEnded?(client.host, id, who)
-        }
-        client.onConnected = { [weak self, weak client] in
-            guard let self, let client else { return }
-            if !client.isRemote { self.follow(.local, to: client.host) }
-            self.pushedLanguageServers.removeValue(forKey: client.host)
-            self.pushLanguageServers()
-            client.propose(.editing(self.editing.filter { $0.host == client.host }))
-            // Links and tiles of sessions deleted meanwhile, taken off.
-            self.sweepDeleted(on: client)
-        }
-        client.onDiagnostics = { [weak self] block in self?.onDiagnostics?(block) }
-        client.onGutter = { [weak self] block in self?.onGutter?(block) }
-        client.onNotebookLive = { [weak self] block, cell, output in self?.onNotebookLive?(block, cell, output) }
-        client.onFenced = { [weak self, weak client] _ in
-            guard let self, let client else { return }
-            self.onFenced?(client)
-        }
-        client.onRefused = { [weak self, weak client] _ in
-            guard let self, let client else { return }
-            self.onRefused?(client)
-        }
-        client.onLanguageServer = { [weak self, weak client] language, root, state in
-            guard let self, let client else { return }
-            self.onLanguageServer?(client.host, language, root, state)
         }
     }
 
@@ -583,7 +521,7 @@ final class Hosts {
         let standingID = known ?? HostID(name)
         let standing: HostClient = remotes[standingID] ?? {
             let c = HostClient(transport: .remote(dest, name: name), known: standingID)
-            wire(c)
+            c.delegate = self
             remotes[standingID] = c
             return c
         }()
@@ -815,4 +753,51 @@ final class Hosts {
         }
         return name
     }
+}
+
+// MARK: What the hosts' clients say
+
+extension Hosts: HostClientDelegate {
+    func clientChanged(_ client: HostClient) { scheduleChange() }
+    func client(_ client: HostClient, blockChanged block: BlockID) { blockChanged(block) }
+
+    func clientConnected(_ client: HostClient) {
+        if !client.isRemote { follow(.local, to: client.host) }
+        pushedLanguageServers.removeValue(forKey: client.host)
+        pushLanguageServers()
+        client.propose(.editing(editing.filter { $0.host == client.host }))
+        // Links and tiles of sessions deleted meanwhile, taken off.
+        sweepDeleted(on: client)
+    }
+
+    func client(_ client: HostClient, erasedBy machine: String?) {
+        noteDeleted(client.host)
+        onErased?(client, machine)
+    }
+
+    func client(_ client: HostClient, replaced old: HostID) {
+        noteDeleted(old)
+        // Known by its new id from now on.
+        if remotes[old] === client {
+            remotes.removeValue(forKey: old)
+            remotes[client.host] = client
+            var file = HostsFile.load()
+            if let entry = file.hosts.removeValue(forKey: old.raw) { file.hosts[client.host.raw] = entry }
+            file.save()
+        }
+        onReplaced?(client, old)
+        onChange?()
+    }
+
+    func client(_ client: HostClient, fenced shard: ShardID?) { onFenced?(client) }
+    func client(_ client: HostClient, refused shard: ShardID) { onRefused?(client) }
+    func client(_ client: HostClient, terminalEnded block: BlockID) { onTerminalEnded?(block) }
+    func client(_ client: HostClient, history shard: ShardID, base: ShardSnapshot?, entries: [Entry]) { onHistory?(shard, base, entries) }
+    func client(_ client: HostClient, command id: Int, asker: Int, _ request: ManiRequest) { onCommand?(client.host, id, asker, request) }
+    func client(_ client: HostClient, commandEnded id: Int, asker: Int) { onCommandEnded?(client.host, id, asker) }
+    func client(_ client: HostClient, show id: Int, asker: Int, block: BlockID, beside: BlockID?) { onShow?(client.host, id, asker, block, beside) }
+    func client(_ client: HostClient, diagnostics block: BlockID) { onDiagnostics?(block) }
+    func client(_ client: HostClient, gutter block: BlockID) { onGutter?(block) }
+    func client(_ client: HostClient, notebookLive block: BlockID, cell: String, output: String) { onNotebookLive?(block, cell, output) }
+    func client(_ client: HostClient, languageServer language: String, root: String, state: String) { onLanguageServer?(client.host, language, root, state) }
 }

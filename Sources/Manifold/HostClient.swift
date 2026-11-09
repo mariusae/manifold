@@ -3,6 +3,42 @@ import SystemConfiguration
 import CPTY
 import ManifoldCore
 
+/// What a host's client tells the app (`Hosts`), on the main queue: each
+/// call says which client.
+protocol HostClientDelegate: AnyObject {
+    /// Something changed: once per turn in which anything did.
+    func clientChanged(_ client: HostClient)
+    /// A block's shard changed (its state, as the replica has it).
+    func client(_ client: HostClient, blockChanged block: BlockID)
+    /// The host welcomed us (each time: a reconnection too).
+    func clientConnected(_ client: HostClient)
+    /// The host's session was deleted for good (issue #1), by that machine
+    /// (nil: on the host itself, or here): it isn't reached again.
+    func client(_ client: HostClient, erasedBy machine: String?)
+    /// The destination answered as another session than the one it was:
+    /// that one's gone (deleted, its folder cleared), this one is new.
+    func client(_ client: HostClient, replaced old: HostID)
+    /// Another attachment took a shard's pen, or the whole host (nil):
+    /// newly watching, or one more.
+    func client(_ client: HostClient, fenced shard: ShardID?)
+    /// Something here was to be appended to a shard this client is fenced
+    /// from, and wasn't: the user did something that didn't take.
+    func client(_ client: HostClient, refused shard: ShardID)
+    /// A terminal's shell ended (not for dormancy), while we were attached.
+    func client(_ client: HostClient, terminalEnded block: BlockID)
+    func client(_ client: HostClient, history shard: ShardID, base: ShardSnapshot?, entries: [Entry])
+    /// A `mani` command on this host, for the app to do; its asker gone;
+    /// a block made for one, to show.
+    func client(_ client: HostClient, command id: Int, asker: Int, _ request: ManiRequest)
+    func client(_ client: HostClient, commandEnded id: Int, asker: Int)
+    func client(_ client: HostClient, show id: Int, asker: Int, block: BlockID, beside: BlockID?)
+    func client(_ client: HostClient, diagnostics block: BlockID)
+    func client(_ client: HostClient, gutter block: BlockID)
+    /// A notebook's running cell printed (§7.7).
+    func client(_ client: HostClient, notebookLive block: BlockID, cell: String, output: String)
+    func client(_ client: HostClient, languageServer language: String, root: String, state: String)
+}
+
 /// The app's attachment to a host's `manifoldd`: a replica of its shards,
 /// led here for the ones the app edits (arrangements, text, the desk) and
 /// followed for the rest. It starts the local server when there isn't one,
@@ -233,8 +269,8 @@ final class HostClient {
     private(set) var languageServerStates: [String: String] = [:]
     private var changeScheduled = false
 
-    /// Called on the main queue once per turn in which something changed.
-    var onChange: (() -> Void)?
+    /// Who's told what happens on the host (`Hosts`).
+    weak var delegate: HostClientDelegate?
     var onDisconnect: (() -> Void)?
     /// The server speaks another version of the protocol (it's from an older
     /// or newer build, still running).
@@ -278,12 +314,7 @@ final class HostClient {
     /// for what it asks written, too; or no one does, and then every Mac
     /// with it open, so nothing goes unheard.
     var speaksHere: Bool { actsHere || actor == nil }
-    /// Another attachment took a shard's pen, or the whole host (nil):
-    /// newly watching, or one more.
-    var onFenced: ((ShardID?) -> Void)?
-    /// Something here was to be appended to a shard this client is fenced
-    /// from, and wasn't: the user did something that didn't take.
-    var onRefused: ((ShardID) -> Void)?
+
     /// This launch of the app, the same through every reconnection: the
     /// host gives a connection made again the pens the old one held.
     static let instance = ULID.make()
@@ -305,13 +336,10 @@ final class HostClient {
             clock = Clock(host: host)
         }
         node.onChange = { [weak self] shard in
-            if case let .block(id) = shard { self?.onBlockChanged?(id) }
+            if let self, case let .block(id) = shard { self.delegate?.client(self, blockChanged: id) }
             self?.scheduleChange()
         }
     }
-
-    /// A block's shard changed (its state, as the replica has it).
-    var onBlockChanged: ((BlockID) -> Void)?
 
     var isRemote: Bool {
         if case .remote = transport { return true }
@@ -415,7 +443,7 @@ final class HostClient {
     /// sent to the host to keep and pass on.
     func append(_ events: [Event], to shard: ShardID) {
         guard !events.isEmpty else { return }
-        guard !fenced.contains(shard), !superseded || unread(shard) else { return onRefused?(shard) ?? () }
+        guard !fenced.contains(shard), !superseded || unread(shard) else { return delegate?.client(self, refused: shard) ?? () }
         // A workspace's focus moved here: its pen taken first (§8.2), so
         // what's appended isn't refused for another holding it — taken
         // after, at the render, the move was refused and this client
@@ -440,12 +468,6 @@ final class HostClient {
 
     /// Who the host is attached to changed (or was said).
     var onAttachment: (() -> Void)?
-    /// The host's session was deleted for good (issue #1), by that machine
-    /// (nil: on the host itself, or here): it isn't reached again.
-    var onErased: ((String?) -> Void)?
-    /// The destination answered as another session than the one it was:
-    /// that one's gone (deleted, its folder cleared), this one is new.
-    var onReplaced: ((HostID) -> Void)?
     private(set) var erased = false
 
     /// A session's id (`h` and ten characters), not a name from before sessions.
@@ -1187,7 +1209,10 @@ final class HostClient {
             // Another session where this one was: it's gone.
             let before = self.host
             if hasState || isRemote, before != host, Self.isSession(before), Self.isSession(host) {
-                DispatchQueue.main.async { [weak self] in self?.onReplaced?(before) }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.client(self, replaced: before)
+                }
             }
             // When its server started, by this Mac's clock.
             serverStarted = up.map { Date().addingTimeInterval(-$0) }
@@ -1239,7 +1264,7 @@ final class HostClient {
             retryReads()
             hasState = true
             if first { onWelcome?() }
-            onConnected?()
+            delegate?.clientConnected(self)
             proxy.linkOpened()
             // What the desk's order was to be, while the link was down.
             reconcileOrder(now: true)
@@ -1274,7 +1299,7 @@ final class HostClient {
             }
             if let block = shard.block {
                 for e in entries {
-                    if case .shell(.ended) = e.event { onTerminalEnded?(block) }
+                    if case .shell(.ended) = e.event { delegate?.client(self, terminalEnded: block) }
                 }
             }
         case let .snapshot(snap):
@@ -1289,7 +1314,7 @@ final class HostClient {
             NSLog("fenced on %@: %@ took the pen", shard.description, by ?? "another attachment")
             fenced.insert(shard)
             if let by { fencedBy = by }
-            onFenced?(shard)
+            delegate?.client(self, fenced: shard)
         case let .erased(by):
             // Deleted for good: not reached again (a server would start
             // afresh there, a new session, unasked). Said once.
@@ -1297,7 +1322,7 @@ final class HostClient {
             NSLog("host %@: its session was deleted%@", host.raw, by.map { " by \($0)" } ?? "")
             erased = true
             disconnected = true
-            onErased?(by)
+            delegate?.client(self, erasedBy: by)
         case let .attachment(epoch, by, yours, present, behind, acts, actor):
             attachedHere = yours
             attachedPresent = present
@@ -1308,7 +1333,7 @@ final class HostClient {
                 let was = superseded
                 superseded = true
                 if let by { fencedBy = by }
-                if !was { onFenced?(nil) }
+                if !was { delegate?.client(self, fenced: nil) }
             } else {
                 // Attached here, or no one else since: known, said again on
                 // reconnecting. (Behind, it stays as it was: still behind.)
@@ -1321,23 +1346,23 @@ final class HostClient {
             if let error { NSLog("proposal %d: %@", id, error) }
             answer(id, error)
         case let .history(shard, base, entries):
-            onHistory?(shard, base, entries)
+            delegate?.client(self, history: shard, base: base, entries: entries)
         case let .removed(shard):
             node.remove(shard)
         case let .command(id, client, request):
-            onCommand?(id, client, request)
+            delegate?.client(self, command: id, asker: client, request)
         case let .commandEnded(id, client):
-            onCommandEnded?(id, client)
+            delegate?.client(self, commandEnded: id, asker: client)
         case .commandReply:
             break
         case let .show(id, client, block, beside):
-            onShow?(id, client, block, beside)
+            delegate?.client(self, show: id, asker: client, block: block, beside: beside)
         case let .diagnostics(block, items):
             diagnostics[block] = items
-            onDiagnostics?(block)
+            delegate?.client(self, diagnostics: block)
         case let .gutter(block, marks):
             gutters[block] = marks
-            onGutter?(block)
+            delegate?.client(self, gutter: block)
         case let .lspResult(id, result):
             answer(id, result)
         case let .scipResult(id, result):
@@ -1345,7 +1370,7 @@ final class HostClient {
         case .end:
             break // only on a file's stream
         case let .notebookLive(block, cell, output):
-            onNotebookLive?(block, cell, output)
+            delegate?.client(self, notebookLive: block, cell: cell, output: output)
         case let .passwordInput(block, on):
             SecureInput.shared.set(block, readingPassword: on)
         case let .listing(id, entries, complete):
@@ -1370,28 +1395,12 @@ final class HostClient {
             answer(id, sample)
         case let .agentLink(status):
             agentLink = status
-            onChange?()
+            delegate?.clientChanged(self)
         case let .languageServer(language, root, state):
             languageServerStates[language + "|" + root] = state
-            onLanguageServer?(language, root, state)
+            delegate?.client(self, languageServer: language, root: root, state: state)
         }
     }
-
-    /// The host welcomed us (each time: a reconnection too).
-    var onConnected: (() -> Void)?
-    var onDiagnostics: ((BlockID) -> Void)?
-    var onGutter: ((BlockID) -> Void)?
-    /// A notebook's running cell printed (§7.7).
-    var onNotebookLive: ((BlockID, String, String) -> Void)?
-    var onLanguageServer: ((String, String, String) -> Void)?
-
-    var onHistory: ((ShardID, ShardSnapshot?, [Entry]) -> Void)?
-    /// A terminal's shell ended (not for dormancy), while we were attached.
-    var onTerminalEnded: ((BlockID) -> Void)?
-    /// A `mani` command on this host, for the app to do; its asker gone.
-    var onCommand: ((Int, Int, ManiRequest) -> Void)?
-    var onCommandEnded: ((Int, Int) -> Void)?
-    var onShow: ((Int, Int, BlockID, BlockID?) -> Void)?
 
     /// The host asked us, as the leader, to append something.
     private func lower(_ proposal: HostProposal, into shard: ShardID) {
@@ -1420,7 +1429,7 @@ final class HostClient {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.changeScheduled = false
-            self.onChange?()
+            self.delegate?.clientChanged(self)
         }
     }
 }
