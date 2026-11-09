@@ -156,6 +156,12 @@ extension MainWindowController {
     /// place's name, why a reference finds nothing.
     func installGlobalHooks() {
         NavJumps.willJump = { [weak self] view in self?.noteJump(view) }
+        // A terminal's program reading a password: its terminals say so.
+        SecureInput.shared.onChange = { [weak self] block in
+            for v in self?.views(of: block, as: TerminalView.self) ?? [] {
+                v.readingPassword = SecureInput.shared.reading.contains(block)
+            }
+        }
         // A line of a text, referred to: its anchor (§2.5) — the declaration
         // or heading there, kept as the text moves — not the line's number.
         Drags.copyLink = { [weak self] place in self?.copyLink(to: place) }

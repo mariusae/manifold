@@ -278,6 +278,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         arrangement?.placements(of: block).lazy.compactMap { self.views[$0.id] as? T }.first ?? views(of: block, as: type).first
     }
 
+    /// The font code's shown in outside the editor (output, notebooks,
+    /// search results), in the theme's monospaced face.
+    var codeFont: NSFont { hosts.state.appearance.theme.font(.monospaced, size: 12.5) }
+
     /// The focused tile's view.
     var focusedView: PaneContent? { focusedView }
 
@@ -490,20 +494,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
             lastFocused = a.focused
-            for case let t as TerminalView in views.values { t.syncFocus(); t.processesChanged() }
-            for case let m as MarkdownView in views.values { m.textChanged(); m.refreshCards(); m.refreshPlaces() }
-            for case let e as EditorView in views.values { e.documentChanged(); e.refreshPills() }
-            for case let o as OutlineNoteView in views.values { o.theme = hosts.state.appearance.theme; o.documentChanged(); o.threadPlaces = places(of: o.block) }
-            let codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
-            for case let o as OutputView in views.values { o.font = codeFont; o.refresh() }
-            for case let n as NotebookView in views.values { n.codeFont = codeFont; n.documentChanged() }
-            for case let d as DirectoryView in views.values { d.documentChanged() }
-            for case let w as WebView in views.values { w.documentChanged() }
-            for case let s as SearchView in views.values { s.codeFont = codeFont; s.documentChanged() }
-            for case let g as GitView in views.values { g.documentChanged() }
-            for case let pv as ProcessView in views.values { pv.documentChanged() }
-            for case let d as DiffView in views.values { d.documentChanged() }
-            for case let panel as PanelView in views.values { panel.documentChanged() }
+            let context = RenderContext(theme: hosts.state.appearance.theme, codeFont: codeFont, places: { [weak self] in self?.places(of: $0) ?? [] })
+            for case let v as FollowsModel in views.values { v.modelChanged(context) }
         } else {
             content.clear()
             window.title = "Manifold"
@@ -681,27 +673,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 m.theme = hosts.state.appearance.theme
                 m.show(block: p.block, path: shown.path ?? "")
             }
-            if let e = v as? EditorView {
-                e.offline = shown.offline
-            e.richMarkdown = viewState(of: p)["markdown"] != "raw"
-                e.home = hosts.block(p.block)?.place
-                e.noteName = hosts.block(p.block).flatMap { $0.isNote ? $0.title : nil }
-                e.isRemote = p.block.host != host.host
-                e.font = editorFont(for: p, path: shown.path)
-                e.theme = hosts.state.appearance.theme
-                e.undoLimit = desk.settings.undoDepth
-                e.viewing = p.lens == .preview
-            }
+            if let e = v as? EditorView { configure(e, for: shown) }
             if let d = v as? DiffView {
                 d.theme = hosts.state.appearance.theme
                 // Its rows may have come again (reloaded): the marks put on them again.
                 markThreads(in: d)
             }
             if let t = v as? TerminalView {
-                t.commands = hosts.block(p.block)?.terminal?.commands ?? []
-                t.isAgent = isAgent(p)
-            t.turns = Set(hosts.block(p.block)?.terminal?.turns?.map(\.id) ?? [])
-                t.turns = Set(hosts.block(p.block)?.terminal?.turns?.map(\.id) ?? [])
+                configure(t, for: p)
                 t.resumeIfLinkBack()
             }
             (v as? SmartlogView)?.refresh()
@@ -724,16 +703,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .terminal, .agent:
             let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(p.block.host))
             t.delegate = self
-            t.commands = hosts.block(p.block)?.terminal?.commands ?? []
-            t.isAgent = isAgent(p)
+            configure(t, for: p)
             t.readingPassword = SecureInput.shared.reading.contains(p.block)
             t.setSidebar(viewState(of: p)["outline"] == "1")
             t.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
-            SecureInput.shared.onChange = { [weak self] block in
-                for v in self?.views(of: block, as: TerminalView.self) ?? [] {
-                    v.readingPassword = SecureInput.shared.reading.contains(block)
-                }
-            }
             t.directory = { [weak self] in self?.hosts.block(p.block)?.terminal?.cwd }
             t.pathSource = { [weak self] in
                 guard let self, let cwd = self.hosts.block(p.block)?.terminal?.cwd, let client = self.hosts.client(p.block.host) else { return nil }
@@ -767,10 +740,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // (Shown as the block's own view, above.)
             v = PlaceholderView(placement: p.id, block: p.block, label: hosts.label(of: p.block.host))
         case .preview where Lens.viewRendering(for: shown.path) == .markdown:
-            let m = MarkdownView(placement: p.id, block: p.block, path: shown.path ?? "", theme: hosts.state.appearance.theme)
-            m.imageSource = { [weak self] id in self?.imageSource(id) }
-            m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
-            m.delegate = self
+            let m = markdownView(p, path: shown.path ?? "")
             m.takesDrops = shown.block?.kind == .text
             m.placesFor = { [weak self] in self?.places(of: p.block) ?? [] }
             m.source = { [weak self] in
@@ -820,15 +790,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let n = NotebookView(placement: p.id, block: p.block)
             n.delegate = self
             n.source = { [weak self] in self?.hosts.block(p.block) }
-            n.codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            n.codeFont = codeFont
             n.documentChanged()
             v = n
         case .output where shown.block?.output?.markdown != nil:
             // An agent's turn: its Markdown, rendered (links to what it changed live).
-            let m = MarkdownView(placement: p.id, block: p.block, path: "", theme: hosts.state.appearance.theme)
-            m.delegate = self
-            m.imageSource = { [weak self] id in self?.imageSource(id) }
-            m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
+            let m = markdownView(p, path: "")
             m.source = { [weak self] in
                 guard let md = self?.hosts.block(p.block)?.output?.markdown else { return nil }
                 return (md, md.hashValue)
@@ -838,7 +805,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let o = OutputView(placement: p.id, block: p.block)
             o.delegate = self
             o.source = { [weak self] in self?.hosts.block(p.block) }
-            o.font = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            o.font = codeFont
             o.refresh()
             v = o
         case .diff:
@@ -854,7 +821,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .search:
             let s = SearchView(placement: p.id, block: p.block)
             s.delegate = self
-            s.codeFont = hosts.state.appearance.theme.font(.monospaced, size: 12.5)
+            s.codeFont = codeFont
             s.source = { [weak self] in self?.hosts.block(p.block) }
             v = s
         case .web:
@@ -885,6 +852,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                                font: editorFont(for: p, path: shown.path),
                                theme: hosts.state.appearance.theme)
             e.delegate = self
+            configure(e, for: shown)
             e.textView.onThreads = { [weak self, weak e] line, rect in
                 guard let self, let e else { return }
                 self.editorThreadsClicked(e, line: line, rect: rect)
@@ -899,12 +867,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b), status: StatusGlyph.look(of: b))
             }
             e.blockCard = { [weak self] id, place in self?.cardContent(for: id, at: place) }
-            e.richMarkdown = viewState(of: p)["markdown"] != "raw"
             e.onToggleMarkdown = { [weak self] rich in self?.keepViewState(["markdown": rich ? "rich" : "raw"], of: p) }
             e.setSidebar(viewState(of: p)["outline"] == "1")
             e.onToggleSidebar = { [weak self] shown in self?.keepViewState(["outline": shown ? "1" : "0"], of: p) }
-            // Viewed, not edited: a file that isn't Markdown, on its grey.
-            e.viewing = p.lens == .preview
             v = e
         }
         // The other mode's top line, when ⌘↩ made this tile.
@@ -920,6 +885,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         views[p.id] = v
         return v
+    }
+
+    /// What a terminal's view shows of its block, said again at each render.
+    private func configure(_ t: TerminalView, for p: Placement) {
+        let terminal = hosts.block(p.block)?.terminal
+        t.commands = terminal?.commands ?? []
+        t.isAgent = isAgent(p)
+        t.turns = Set(terminal?.turns?.map(\.id) ?? [])
+    }
+
+    /// What an editor shows of its block and the settings, said again at
+    /// each render.
+    private func configure(_ e: EditorView, for shown: Shown) {
+        let p = shown.placement, b = hosts.block(p.block)
+        e.offline = shown.offline
+        e.richMarkdown = viewState(of: p)["markdown"] != "raw"
+        e.home = b?.place
+        e.noteName = b.flatMap { $0.isNote ? $0.title : nil }
+        e.isRemote = p.block.host != host.host
+        e.font = editorFont(for: p, path: shown.path)
+        e.theme = hosts.state.appearance.theme
+        e.undoLimit = desk.settings.undoDepth
+        e.viewing = p.lens == .preview
+    }
+
+    /// A rendered page of Markdown (a note's preview, an agent's turn): its
+    /// pictures and block cards from here.
+    private func markdownView(_ p: Placement, path: String) -> MarkdownView {
+        let m = MarkdownView(placement: p.id, block: p.block, path: path, theme: hosts.state.appearance.theme)
+        m.delegate = self
+        m.imageSource = { [weak self] id in self?.imageSource(id) }
+        m.cardFor = { [weak self] id, place in self?.hosts.block(id)?.kind == .image ? nil : self?.cardContent(for: id, at: place) }
+        return m
     }
 
     /// A click in a placement focuses it. Terminals say so themselves; the
