@@ -255,8 +255,8 @@ extension MainWindowController {
     /// shown a moment after (a quick ⌘` flashes nothing, and goes back to
     /// the space before); letting go of ⌘ goes to the one chosen. With one
     /// space, the app's next window, as macOS has it.
-    @objc func walkTabs(_ sender: Any?) { stepSpaces(1) }
-    @objc func walkTabsBack(_ sender: Any?) { stepSpaces(-1) }
+    @objc func switchSpace(_ sender: Any?) { stepSpaces(1) }
+    @objc func switchSpaceBack(_ sender: Any?) { stepSpaces(-1) }
 
     private func stepSpaces(_ step: Int) {
         if let s = spaceSwitch {
@@ -273,7 +273,7 @@ extension MainWindowController {
         // From the menu, ⌘ not held: one step, gone.
         guard NSEvent.modifierFlags.contains(.command) || debugHeld else { return hosts.select(order[index]) }
         spaceSwitch = (order, index)
-        // Shown in a moment, if ⌥'s still held.
+        // Shown in a moment, if ⌘'s still held.
         let work = DispatchWorkItem { [weak self] in self?.showSpaceSwitcher() }
         spaceSwitchShow = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)

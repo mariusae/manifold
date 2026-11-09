@@ -54,12 +54,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The arrangement `content` shows.
     private var shownArrangement: BlockID?
     private var sliding = false
-    /// ⌘`'s walk, while ⌘ is held: the arrangements in the order it
-    /// began with, and how far along it is.
-    private var walk: (ids: [BlockID], index: Int)?
-    private var walkMonitors: [Any] = []
-    /// The app left mid-walk: ⌘'s letting go won't be heard.
-    private var walkLeaving: NSObjectProtocol?
     /// A place settled on: a tile in its space (none, a space with
     /// nothing focused).
     struct Settled: Equatable {
@@ -163,7 +157,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
         ChatBox.chipFor = { [weak self] id in self?.mentionChip(id) }
         watchCommandKey()
-        root.addSubview(spaceHUD)
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
         transfersBadge.isHidden = true
@@ -426,7 +419,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // wanted sooner pictures its tile itself.
             picture(leaving)
             shownArrangement = selected
-            if walk == nil, tileWalk == nil { settleHere() }
+            if tileWalk == nil { settleHere() }
         }
 
         if let a = arrangement {
@@ -1053,11 +1046,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     private var closedStack: [Closed] = []
     let toast = Toasts()
-    /// The space a ⌘` walk is at, named while ⌘ is held and the sidebar's away.
-    private let spaceHUD = SpaceHUD()
     /// A walk through code under way (§2.5): ⌃⌘] and ⌃⌘[ step along it.
     private var codeWalk: CodeWalk?
-    private var spaceHUDWork: DispatchWorkItem?
     /// Each tile's own trail, as a browser window's: the blocks it showed
     /// before in its place (a listing's folders, a preview's pages), and
     /// those gone back from.
@@ -1364,8 +1354,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private func noteSeen(force: Bool) {
         // A workspace seen is a step of the trail (⌘`'s order, back and
-        // forward): not one only passed on ⌘`'s walk.
-        guard walk == nil, window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
+        // forward).
+        guard window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
         var seen = Set(a.visible.map(\.block))
         seen.insert(id)
         if seen != lastSeenSet || force || Date().timeIntervalSince(lastSeenSent) > 14 {
@@ -3222,123 +3212,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.select(id)
     }
 
-    // MARK: ⌘`
-
-    /// ⌘` (⇧⌘` back): with ⌘ held, a walk through the arrangements most
-    /// recently settled on first, each shown at once sliding in from the
-    /// right (from the left, going back); letting go of ⌘ settles on the
-    /// one come to. The ones passed on the way aren't settled on; Escape
-    /// goes back to where the walk began. With one workspace, ⌘` goes to
-    /// the app's next window, as macOS has it.
-
-    private func walkTabs(back: Bool) {
-        let live = Set(allWorkspaces)
-        // A walk whose ⌘ was let go unheard (the app left meanwhile) is over.
-        if walk != nil, !walkMonitors.isEmpty, !NSEvent.modifierFlags.contains(.command), !debugHeld { endWalk(settling: true) }
-        if walk == nil {
-            guard let current = selected, allWorkspaces.count > 1 else { return cycleWindows(back: back) }
-            var order = [current]
-            for id in settled.map(\.space) + hosts.recentWorkspaces() + allWorkspaces where live.contains(id) && !order.contains(id) { order.append(id) }
-            walk = (order, 0)
-            if NSEvent.modifierFlags.contains(.command) || debugHeld { watchWalk() }
-        }
-        guard var w = walk else { return }
-        w.ids = w.ids.filter { live.contains($0) }
-        guard w.ids.count > 1 else { return endWalk(settling: true) }
-        let n = w.ids.count
-        w.index = ((back ? w.index - 1 : w.index + 1) % n + n) % n
-        walk = w
-        show(arrangement: w.ids[w.index])
-        // From the menu, without ⌘ held, it's one step and settled.
-        if walkMonitors.isEmpty { return endWalk(settling: true) }
-        walkShown()
-    }
-
-    /// Where the walk is, said: with the sidebar out, its space's row
-    /// scrolled into view; away, the space named over the window — once ⌘
-    /// stays held a moment after the first step (a quick ⌘` flashes
-    /// nothing), at once on the steps after.
-    private func walkShown() {
-        guard let w = walk else { return }
-        if sidebarShown || pinned {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.revealWalkRow() }
-            return
-        }
-        let id = w.ids[w.index]
-        let name = hosts.arrangement(id).map { title(of: $0) } ?? "Untitled"
-        let position = "\(w.index + 1) of \(w.ids.count)"
-        let say = { [weak self] in
-            guard let self, self.walk != nil else { return }
-            self.spaceHUD.show(name, position: position, in: self.stage.frame)
-        }
-        if !spaceHUD.isHidden { return say() }
-        spaceHUDWork?.cancel()
-        let work = DispatchWorkItem(block: say)
-        spaceHUDWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
-    }
-
-    /// The walk's space in the sidebar: its row, and the focused tile's
-    /// under it, in view.
-    private func revealWalkRow() {
-        guard walk != nil, let id = selected else { return }
-        sidebar.organizationView.reveal(deskSelectedRow, "arr/\(id)")
-    }
-
-    private func watchWalk() {
-        walkLeaving = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.unchecked { self?.endWalk(settling: true) }
-        }
-        walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            if !event.modifierFlags.contains(.command) { self?.endWalk(settling: true) }
-            return event
-        } as Any)
-        walkMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53 else { return event }
-            self?.endWalk(settling: false)
-            return nil
-        } as Any)
-    }
-
-    private func endWalk(settling: Bool) {
-        spaceHUDWork?.cancel()
-        spaceHUD.hide()
-        walkMonitors.forEach(NSEvent.removeMonitor)
-        walkMonitors = []
-        if let o = walkLeaving { NotificationCenter.default.removeObserver(o) }
-        walkLeaving = nil
-        guard let w = walk else { return }
-        walk = nil
-        if !settling, let home = w.ids.first {
-            show(arrangement: home)
-        } else {
-            settleHere()
-        }
-        // Seen now, settled on: what was passed on the way wasn't.
-        noteSeen(force: true)
-    }
-
     var debugFlights: String { GridView.describe(tileFlights) }
 
-    /// Debugging: ⌘ taken as held, for "walk".
+    /// Debugging: the walk's key taken as held (⌘`'s, ⌃⇥'s).
     var debugHeld = false
-
-    /// "walk step|back|end|escape|unheard|order": ⌘` pressed with ⌘ held,
-    /// ⌘ let go, Escape, ⌘ let go unheard; or the walk and ⌘`'s order.
-    func debugWalk(_ arg: String) -> String {
-        switch arg {
-        case "step", "back":
-            debugHeld = true
-            walkTabs(back: arg == "back")
-        case "end": endWalk(settling: true)
-        case "escape": endWalk(settling: false)
-        case "unheard": debugHeld = false
-        default: break
-        }
-        if walk == nil { debugHeld = false }
-        func name(_ id: BlockID) -> String { hosts.block(id)?.title ?? id.ulid.description }
-        return "hud=\(spaceHUD.isHidden ? "-" : "shown") cmd=\(NSEvent.modifierFlags.contains(.command)) selected=\(selected.map(name) ?? "-") walk=\(walk.map { "\($0.index):" + $0.ids.map(name).joined(separator: ",") } ?? "-") settled=\(settled.prefix(6).map(\.space).map(name).joined(separator: ",")) trail=\(hosts.recentWorkspaces().prefix(6).map(name).joined(separator: ","))"
-    }
 
     /// Where the window is now, settled on: the latest place on its trail.
     private func settleHere() {
@@ -5719,7 +5596,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         guard place.0 != lastFocusPlace?.0 || place.1 != lastFocusPlace?.1 else { return }
         lastFocusPlace = place
         noteNavFocus()
-        if walk == nil, tileWalk == nil { settleHere() }
+        if tileWalk == nil { settleHere() }
         // Only a move made here: another attachment's, come in from the
         // host (it's the workspace's focus too), took the pens back from it
         // — two clients on one workspace trading them at every move.
@@ -5930,7 +5807,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if event.keyCode == 50 {
                 guard mods == .command || mods == [.command, .shift] else { return event }
-                if mods.contains(.shift) { self.walkTabsBack(nil) } else { self.walkTabs(nil) }
+                if mods.contains(.shift) { self.switchSpaceBack(nil) } else { self.switchSpace(nil) }
                 return nil
             }
             guard mods == .control || mods == [.control, .shift] else { return event }

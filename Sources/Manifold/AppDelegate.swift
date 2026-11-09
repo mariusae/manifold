@@ -531,8 +531,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
         // ⌘`, as macOS cycles an app's windows: here, its spaces, as cards
         // of their grids while ⌘ is held (and, with one, the windows).
-        item(go, "Switch to Recent Space", #selector(MainWindowController.walkTabs(_:)), "`", [.command])
-        item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.walkTabsBack(_:)), "`", [.command, .shift])
+        item(go, "Switch to Recent Space", #selector(MainWindowController.switchSpace(_:)), "`", [.command])
+        item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.switchSpaceBack(_:)), "`", [.command, .shift])
         // ⌃⇥, as ⌃⇥ goes round a browser's tabs: this space's tiles, those
         // docked too (§3.1).
         item(go, "Switch to Recent Tile in Space", #selector(MainWindowController.walkSpaceTiles(_:)), "\t", [.control])
