@@ -273,7 +273,7 @@ final class InspectorList: NSView {
 
     func debugClick(_ i: Int) -> String {
         guard stack.subviews.indices.contains(i) else { return "no row \(i)" }
-        if let h = stack.subviews[i] as? InspectorHeading { h.onClick(); return "toggled" }
+        if let h = stack.subviews[i] as? InspectorHeading { h.clicked(); return "toggled" }
         if let r = stack.subviews[i] as? InspectorRow { return r.click() ? "clicked" : "nothing to do" }
         return "?"
     }
@@ -288,11 +288,7 @@ final class InspectorList: NSView {
 
 /// A section's heading: its triangle, its name, how many rows it holds
 /// when it's folded.
-private final class InspectorHeading: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    let onClick: () -> Void
+private final class InspectorHeading: ClickView {
     private let title: String
     private let open: Bool
     private let count: Int
@@ -301,8 +297,8 @@ private final class InspectorHeading: NSView {
         self.title = title
         self.open = open
         self.count = count
-        self.onClick = onClick
         super.init(frame: .zero)
+        self.onClick = onClick
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -322,10 +318,6 @@ private final class InspectorHeading: NSView {
         }
         Theme.divider.setFill()
         NSRect(x: 8, y: 0, width: bounds.width - 16, height: 0.5).fill()
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick() }
     }
 
     var debugState: String { (open ? "▾ " : "▸ ") + title + (open ? "" : " (\(count))") }

@@ -200,14 +200,9 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
 
 /// A chip, as Dia's: a small grey capsule, its word in grey — on, a
 /// little deeper and its word in the text's colour; never loud.
-final class ChipButton: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    var onClick: (() -> Void)?
+final class ChipButton: ClickView {
     var isOn = false { didSet { needsDisplay = true } }
     var title: String { didSet { needsDisplay = true } }
-    private var hovering = false { didSet { needsDisplay = true } }
     static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
     static let height: CGFloat = 24
 
@@ -229,17 +224,6 @@ final class ChipButton: NSView {
         let z = s.size()
         s.draw(at: NSPoint(x: (bounds.width - z.width) / 2, y: (bounds.height - z.height) / 2))
     }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
 
 /// One of a few, as chips (in place of a segmented control): the one
