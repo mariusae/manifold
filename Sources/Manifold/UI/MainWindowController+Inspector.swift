@@ -119,7 +119,7 @@ extension MainWindowController {
     private func hostInspectorTree(_ c: HostClient) -> [OrgNode] {
         let name = hosts.label(of: c.host)
         let machine = c.machineLatest
-        inspectorHeader = (name, c.isRemote ? "Remote host" : "The host on this Mac", c.isRemote ? "server.rack" : "desktopcomputer", [])
+        inspectorHeader = (name, c.isRemote ? "Remote host" : "The host on this Mac", Theme.hostSymbol(remote: c.isRemote), [])
         var sections: [OrgNode] = []
         func row(_ value: String, _ label: String, _ symbol: String, copies: String? = nil) -> OrgNode {
             let n = OrgNode(id: "insp/\(sections.count)/\(label)/\(value)", title: value, symbol: symbol, detail: label)
@@ -936,7 +936,7 @@ extension MainWindowController {
             if clients.count > 1 {
                 let id = "host:\(c.host.raw)"
                 open.insert(id)
-                let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "desktopcomputer",
+                let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: Theme.hostSymbol(remote: c.isRemote),
                                 count: tree.reduce(0) { $0 + ($1.count ?? 0) }, isGroup: true, children: tree)
                 hostStanding(n, c)
                 roots.append(n)

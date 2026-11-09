@@ -306,7 +306,7 @@ extension MainWindowController {
         let roots = byHost.map { c, rows -> OrgNode in
             let id = "\(prefix):host:\(c.host.raw)"
             open.insert(id)
-            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: c.isRemote ? "server.rack" : "laptopcomputer", isGroup: true, children: rows)
+            let n = OrgNode(id: id, title: hosts.label(of: c.host), symbol: Theme.hostSymbol(remote: c.isRemote), isGroup: true, children: rows)
             n.style = .host
             return n
         }

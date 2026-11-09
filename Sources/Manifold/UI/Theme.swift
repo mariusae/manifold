@@ -304,6 +304,11 @@ extension NSPasteboard.PasteboardType {
 }
 
 /// A small borderless button showing a symbol, with a hover background.
+extension Theme {
+    /// A host's symbol: this Mac's, or a remote's server.
+    static func hostSymbol(remote: Bool) -> String { remote ? "server.rack" : "desktopcomputer" }
+}
+
 final class IconButton: NSButton {
     private var hovering = false { didSet { needsDisplay = true } }
     /// The pointer come over it (true) or gone (false).

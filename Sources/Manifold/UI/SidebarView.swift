@@ -596,7 +596,7 @@ final class SpaceHostLine: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.image = Theme.symbol("desktopcomputer", size: 11, weight: .regular)
+        icon.image = Theme.symbol(Theme.hostSymbol(remote: false), size: 11, weight: .regular)
         icon.contentTintColor = Theme.secondaryText
         label.font = .systemFont(ofSize: 13, weight: .regular)
         label.textColor = Theme.secondaryText
@@ -607,7 +607,7 @@ final class SpaceHostLine: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false) {
-        icon.image = Theme.symbol(remote ? "server.rack" : "desktopcomputer", size: 11, weight: .regular)
+        icon.image = Theme.symbol(Theme.hostSymbol(remote: remote), size: 11, weight: .regular)
         label.stringValue = host + (standing.map { " · " + $0 } ?? "")
         label.textColor = standing == nil ? Theme.secondaryText : Status.attention
         sparkline.pings = pings
