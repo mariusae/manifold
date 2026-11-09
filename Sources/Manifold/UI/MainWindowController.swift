@@ -282,7 +282,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var codeFont: NSFont { hosts.state.appearance.theme.font(.monospaced, size: 12.5) }
 
     /// The focused tile's view.
-    var focusedView: PaneContent? { focusedView }
+    var focusedView: PaneContent? { arrangement?.focused.flatMap { views[$0] } }
 
     /// The focused tile, and its view as a kind of view (nil when it's another).
     func focused<T>(_ type: T.Type) -> (shown: Shown, view: T)? {
