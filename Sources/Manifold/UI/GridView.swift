@@ -2223,7 +2223,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var downOnIcon = false
     private var focused = false
     private var maximized = false
-    private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, cut: .byTruncatingMiddle)
+    private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.barInk, cut: .byTruncatingMiddle)
     private let close = IconButton.close(tip: "Close (⌘W)")
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
@@ -2231,7 +2231,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var sidebar: Bool? {
         didSet {
             guard sidebar != oldValue else { return }
-            sidebarButton.contentTintColor = sidebar == true ? Theme.accent : Theme.secondaryText
+            sidebarButton.contentTintColor = sidebar == true ? Theme.accent : buttonInk
             sidebarButton.toolTip = sidebar == true ? "Hide Outline (⌘/)" : "Show Outline (⌘/)"
             needsLayout = true
             // Its button come or gone (a view's outline arrived): the links'
@@ -2258,7 +2258,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 b.image = Theme.symbol(spec.symbol, size: 11, weight: .medium)
                 b.toolTip = spec.tooltip
                 b.isEnabled = spec.enabled
-                b.contentTintColor = spec.enabled ? Theme.secondaryText : Theme.secondaryText.withAlphaComponent(0.35)
+                b.contentTintColor = spec.enabled ? buttonInk : buttonInk.withAlphaComponent(0.35)
             }
             needsLayout = true
             if viewButtons.count != oldValue.count { superview?.needsLayout = true }
@@ -2295,7 +2295,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.cornerCurve = .continuous
         glass.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         glass.layer?.borderWidth = 0
-        glass.themed { $0.layer?.backgroundColor = Theme.tileBar.cgColor }
+        glass.themed { [weak self] _ in self?.paintGlass() }
         addSubview(glass)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
@@ -2319,6 +2319,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.isHidden = true
         handle.onIn = { [weak self] in self?.icon.isHidden = false }
         for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
+        inkButtons()
         hostPill.isHidden = true
         themed { $0.updateColors() }
     }
@@ -2666,7 +2667,26 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// with the accent around it.
     var hovered = false { didSet { if hovered != oldValue { updateColors() } } }
 
+    /// The buttons' ink: quiet (`Theme.barInk`) till the pointer's on the bar.
+    private var buttonInk: NSColor { pointerIn ? Theme.secondaryText : Theme.barInk }
+
+    /// The bar's ground: lit when its tile's focused, where the theme says so.
+    private func paintGlass() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            glass.layer?.backgroundColor = (focused ? Theme.tileBarFocused : Theme.tileBar).cgColor
+        }
+    }
+
+    private func inkButtons() {
+        for b in [close, corner] { b.contentTintColor = buttonInk }
+        if sidebar != true { sidebarButton.contentTintColor = buttonInk }
+        for (i, b) in ownButtons.enumerated() where i < viewButtons.count {
+            b.contentTintColor = viewButtons[i].enabled ? buttonInk : buttonInk.withAlphaComponent(0.35)
+        }
+    }
+
     private func updateColors() {
+        paintGlass()
         effectiveAppearance.performAsCurrentDrawingAppearance {
             glass.layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : EdgeColor.subtle).cgColor
         }
@@ -2860,7 +2880,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// The pointer on the bar: its buttons shown; else only its icon,
     /// name and status. Their room is kept, so nothing moves as they come.
-    var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true) } } }
+    var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true); inkButtons() } } }
     /// Buttons always shown: a tile's controls stay visible (hidden till
     /// hovered, they moved the links' pill and hid what could be done).
     static var buttonsAlways = true

@@ -105,6 +105,13 @@ struct Palette {
         /// A tile's bar, where it isn't the panel's ground (Claude Warm's,
         /// a step off its pages, not white over them).
         var bar: Shade? = nil
+        /// The focused tile's bar, lit where the others are quiet (Claude
+        /// Warm's: its cards', as its message box is); nil, as the rest.
+        var barFocused: Shade? = nil
+        /// A bar's details (the place after the name) and its buttons till
+        /// the pointer's on it, where they aren't the secondary ink (Claude
+        /// Warm's: its tertiary, as claude.ai's are).
+        var barInk: Shade? = nil
         /// Popovers' and menus' ground, where it isn't the system's frosted
         /// grey (Claude Warm's: its cards').
         var menu: Shade? = nil
@@ -1217,6 +1224,12 @@ extension Palette {
                 // is (bg-200): #f5f4ed on #faf9f5, #1f1e1d on #262624 — not
                 // its cards' white over the ivory.
                 bar: .hex(0xF5F4ED, 0x1F1E1D),
+                // The focused tile's lit: its cards' white, #30302e by night
+                // (the others quiet, the clay ring around it).
+                barFocused: .hex(0xFFFFFF, 0x30302E),
+                // The place and the buttons in its tertiary till hovered: the
+                // name first, then where, then what can be done.
+                barInk: .hex(0x73726C, 0x9C9A92),
                 // Menus and popovers on its cards' ground, not the system's grey frost.
                 menu: .hex(0xFFFFFF, 0x30302E)),
             text: Text(

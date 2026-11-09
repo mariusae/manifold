@@ -45,6 +45,9 @@ enum Theme {
     static let panel = NSColor.themed { $0.chrome.panel }
     /// A tile's bar: the panel's ground, unless the theme has one of its own.
     static let tileBar = NSColor.themed { $0.chrome.bar ?? $0.chrome.panel }
+    static let tileBarFocused = NSColor.themed { $0.chrome.barFocused ?? $0.chrome.bar ?? $0.chrome.panel }
+    /// A bar's place and its buttons, the pointer elsewhere.
+    static let barInk = NSColor.themed { $0.chrome.barInk ?? $0.text.secondary }
     /// Popovers' ground, if the theme has one of its own (else the frost).
     static let menuGround = NSColor.themed { $0.chrome.menu ?? Shade(.clear) }
     /// A diff's ground: the theme's for what's read, else the window's.
