@@ -1,5 +1,37 @@
 import Foundation
 
+/// Files' modification times, sizes and inodes, as last looked at: what
+/// tells a change from a touch — a read, or `git status` writing the index
+/// back as it was, which a watch hears as a change all the same.
+public final class FileStamps {
+    private let paths: [String]
+    private var last: [Stamp?]
+    private struct Stamp: Equatable { var modified: Double, size: Double, inode: Double }
+
+    public init(_ paths: [String]) {
+        self.paths = paths
+        last = []
+        last = now()
+    }
+
+    private func now() -> [Stamp?] {
+        paths.map { p in
+            guard let a = try? FileManager.default.attributesOfItem(atPath: p) else { return nil }
+            return Stamp(modified: (a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0, size: (a[.size] as? NSNumber)?.doubleValue ?? 0,
+                         inode: (a[.systemFileNumber] as? NSNumber)?.doubleValue ?? 0)
+        }
+    }
+
+    /// Whether any moved since the last look (or since they were first
+    /// looked at).
+    public func moved() -> Bool {
+        let now = now()
+        guard now != last else { return false }
+        last = now
+        return true
+    }
+}
+
 /// Watches a file, calling back when it changes. Editors often save by
 /// writing a new file and renaming it over the old one, so on a rename or
 /// delete the path is watched afresh. Where there are no file system
@@ -16,10 +48,12 @@ public final class FileWatcher {
     #endif
     private var pending: DispatchWorkItem?
 
-    public init(path: String, queue: DispatchQueue = .main, onChange: @escaping () -> Void) {
+    /// `ignoringTouches`: called back only when one of those files has
+    /// moved (`FileStamps`), not for every event the watch hears.
+    public init(path: String, queue: DispatchQueue = .main, ignoringTouches stamps: FileStamps? = nil, onChange: @escaping () -> Void) {
         self.path = path
         self.queue = queue
-        self.onChange = onChange
+        self.onChange = stamps.map { stamps in { if stamps.moved() { onChange() } } } ?? onChange
         start(retries: 0)
     }
 

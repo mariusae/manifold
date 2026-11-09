@@ -1708,16 +1708,7 @@ final class Server {
         // Changed, not only read: each `git status` reads the index, and the
         // time it was read changing came as a change — a refresh a second,
         // each reading it again.
-        func stamp() -> [Double] {
-            guard let a = try? FileManager.default.attributesOfItem(atPath: index) else { return [] }
-            return [(a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0, (a[.size] as? NSNumber)?.doubleValue ?? 0,
-                    (a[.systemFileNumber] as? NSNumber)?.doubleValue ?? 0]
-        }
-        var last = stamp()
-        repoWatchers[root] = FileWatcher(path: index, queue: queue) { [weak self] in
-            let now = stamp()
-            guard now != last else { return }
-            last = now
+        repoWatchers[root] = FileWatcher(path: index, queue: queue, ignoringTouches: FileStamps([index])) { [weak self] in
             self?.gitChanged(under: index)
         }
         if vcs == .git { watchUpstream(root, branch: nil) }
@@ -1745,25 +1736,13 @@ final class Server {
             let remote = upstream.hasPrefix("refs/remotes/") ? upstream : ""
             let files = [common.appendingPathComponent("packed-refs"), common.appendingPathComponent("FETCH_HEAD")]
                 + (remote.isEmpty ? [] : [common.appendingPathComponent(remote), common.appendingPathComponent("logs/" + remote)])
-            func stamp() -> [Double] {
-                files.flatMap { f -> [Double] in
-                    guard let a = try? FileManager.default.attributesOfItem(atPath: f) else { return [0, 0, 0] }
-                    return [(a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0, (a[.size] as? NSNumber)?.doubleValue ?? 0,
-                            (a[.systemFileNumber] as? NSNumber)?.doubleValue ?? 0]
-                }
-            }
-            var last = stamp()
             // The folders things are renamed into, and the reflog appended to:
             // each event looked at, only a change to what's listed taken.
+            let stamps = FileStamps(files)
             let watched = [common] + (remote.isEmpty ? [] : [common.appendingPathComponent(remote.deletingLastPathComponent),
                                                             common.appendingPathComponent("logs/" + remote)])
             let watchers = watched.filter { FileManager.default.fileExists(atPath: $0) }.map { path in
-                FileWatcher(path: path, queue: self.queue) { [weak self] in
-                    let now = stamp()
-                    guard now != last else { return }
-                    last = now
-                    self?.gitChanged(under: root)
-                }
+                FileWatcher(path: path, queue: self.queue, ignoringTouches: stamps) { [weak self] in self?.gitChanged(under: root) }
             }
             self.upstreamWatches[root] = (branch, upstream, watchers)
         }

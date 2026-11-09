@@ -16,6 +16,19 @@ import Testing
     #expect(fm.isDirectory(atPath: "/no/such/place/here") == nil)
 }
 
+@Test func aFilesStampsMoveWhenItChangesNotWhenItsRead() throws {
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("stamps-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: file) }
+    let stamps = FileStamps([file.path])
+    #expect(!stamps.moved())
+    try Data("one".utf8).write(to: file)
+    #expect(stamps.moved())
+    _ = try Data(contentsOf: file)
+    #expect(!stamps.moved())
+    try Data("three".utf8).write(to: file, options: .atomic)
+    #expect(stamps.moved())
+}
+
 @Test func aPathsProjectIsTheNearestRootAboveIt() {
     let mono = Project(root: "/src/mono", made: Stamp(wall: 1))
     var app = Project(root: "/tmp/mono/app", made: Stamp(wall: 2))
