@@ -132,7 +132,7 @@ final class LinkBadge: NSView {
         chips = cards.prefix(Self.mostShown).map { card in
             let c = Chip()
             dress(c, card)
-            c.onClick = { [weak self] mods in self?.onOpen?(card.block, mods) }
+            c.onClick = { [weak self] mods in self?.open(card.block, mods) }
             c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
             c.onDragStart = { [weak self, weak c] event in if let self, let c { self.drag(card.block, from: c, event) } }
             return c
@@ -277,7 +277,17 @@ final class LinkBadge: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     private var scrubbedCard: LinkCard? { overflow && singles + scrubbed < cards.count ? cards[singles + scrubbed] : nil }
-    private func openScrubbed(_ mods: NSEvent.ModifierFlags) { if let c = scrubbedCard { onOpen?(c.block, mods) } }
+    private func openScrubbed(_ mods: NSEvent.ModifierFlags) { if let c = scrubbedCard { open(c.block, mods) } }
+
+    /// A link followed: the stack folded and its card put away first — the
+    /// pointer's about to be moved to where it goes, and no exit would
+    /// come to take the card down.
+    private func open(_ block: BlockID, _ mods: NSEvent.ModifierFlags) {
+        previewWork.cancel()
+        fanned = false
+        for c in chips + [stackFront] { c.hovered = false }
+        onOpen?(block, mods)
+    }
     private func menuScrubbed() { if let c = scrubbedCard { showMenu(for: c, from: stackFront) } }
 
     /// A face under the pointer: its card, once it has rested a moment —
@@ -354,9 +364,9 @@ final class LinkBadge: NSView {
     private func showMenu(for card: LinkCard, from chip: NSView) {
         hidePreview()
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.onOpen?(card.block, []) })
-        menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.1x2") { [weak self] in self?.onOpen?(card.block, .command) })
-        menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.onOpen?(card.block, .option) })
+        menu.addItem(ClosureMenuItem("Go To", symbol: "arrow.right.circle") { [weak self] in self?.open(card.block, []) })
+        menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.1x2") { [weak self] in self?.open(card.block, .command) })
+        menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.open(card.block, .option) })
         menu.addItem(.separator())
         if card.breakable {
             menu.addItem(ClosureMenuItem("Remove Link", symbol: "link.badge.plus") { [weak self] in self?.onBreak?(card.link) })
