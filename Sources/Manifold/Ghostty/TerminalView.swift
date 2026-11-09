@@ -535,10 +535,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// past the last, to the bottom. A full-screen program's (the
     /// alternate screen) keys are its own, so false there.
     func goToCommand(_ direction: Int) -> Bool {
-        guard let surface else { return false }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
-        guard info.flags & 1 == 0 else { return false }
+        guard let info = cellInfo, info.flags & 1 == 0 else { return false }
         locate()
         let top = scrollbar.offset
         let rows = Set(located.values).sorted()
@@ -639,24 +636,21 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func screenLines() -> [(row: Int, text: String)]? {
         guard let surface else { return nil }
         let cols = max(Int(ghostty_surface_size(surface).columns), 1)
-        var sel = ghostty_selection_s()
-        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0)
-        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0)
-        sel.rectangle = false
-        var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, sel, &out) else { return nil }
-        defer { ghostty_surface_free_text(surface, &out) }
-        guard let p = out.text else { return [] }
-        // Split over the bytes, a line's cells its length when it's ASCII
-        // (as most are): a scrollback's worth, after every command, took
-        // the main thread ~0.1 s by characters.
-        let bytes = UnsafeBufferPointer(start: UnsafeRawPointer(p).assumingMemoryBound(to: UInt8.self), count: Int(out.text_len))
+        return withText(Self.span(GHOSTTY_POINT_SCREEN)) { raw in
+            // Split over the bytes, a line's cells its length when it's
+            // ASCII (as most are): a scrollback's worth, after every
+            // command, took the main thread ~0.1 s by characters.
+            Self.lines(raw.bindMemory(to: UInt8.self), cols: cols)
+        }
+    }
+
+    private static func lines(_ bytes: UnsafeBufferPointer<UInt8>, cols: Int) -> [(row: Int, text: String)] {
         var lines: [(row: Int, text: String)] = []
         var row = 0, start = 0, ascii = true
         func line(to end: Int) {
             let text = String(decoding: UnsafeBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self)
             lines.append((row, text))
-            let cells = ascii ? end - start : Self.cells(Substring(text))
+            let cells = ascii ? end - start : cells(Substring(text))
             row += max(1, (cells + cols - 1) / cols)
         }
         for i in 0..<bytes.count {
@@ -726,16 +720,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// at the end left off (for a card of the terminal).
     var visibleText: String {
         // The viewport alone read (not the whole scrollback, to keep 14 lines).
-        guard let surface else { return "" }
-        var sel = ghostty_selection_s()
-        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0)
-        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0)
-        sel.rectangle = false
-        var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, sel, &out) else { return "" }
-        defer { ghostty_surface_free_text(surface, &out) }
-        guard let p = out.text else { return "" }
-        let rows = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
+        guard let rows = readText(Self.span(GHOSTTY_POINT_VIEWPORT)) else { return "" }
         var lines = rows.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
         return lines.suffix(14).joined(separator: "\n")
@@ -780,20 +765,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         case "click":
             // "scrub click <row> <col>": a ⌘-click on that cell, as far as a link there.
             let n = arg.split(separator: " ").compactMap { Int($0) }
-            guard n.count == 2, let surface else { return "usage: scrub click <row> <col>" }
-            var info = ghostty_manifold_info_s()
-            ghostty_surface_manifold_info(surface, &info)
-            let p = NSPoint(x: info.pad_left + (Double(n[1]) + 0.5) * info.cell_width, y: Double(bounds.height) - info.pad_top - (Double(n[0]) + 0.5) * info.cell_height)
-            guard let hit = link(at: p) else { return "no link there" }
+            guard n.count == 2, let grid else { return "usage: scrub click <row> <col>" }
+            guard let hit = link(at: grid.point(col: Double(n[1]) + 0.5, row: Double(n[0]) + 0.5)) else { return "no link there" }
             open(hit, over: false)
             return "opened \(hit.target) (\(hit.standing))"
         case "pulse":
             // "scrub pulse <row> <from> <to> [<to row>]": cells of the viewport
             // selected (through ghostty, nothing copied) and pulsed as a copy is.
             let n = arg.split(separator: " ").compactMap { Int($0) }
-            guard n.count >= 3, let surface else { return "usage: scrub pulse <row> <from col> <to col> [<to row>]" }
-            var info = ghostty_manifold_info_s()
-            ghostty_surface_manifold_info(surface, &info)
+            guard n.count >= 3, let surface, let info = cellInfo else { return "usage: scrub pulse <row> <from col> <to col> [<to row>]" }
             let y = info.pad_top + (Double(n[0]) + 0.5) * info.cell_height
             let y2 = info.pad_top + (Double(n.count > 3 ? n[3] : n[0]) + 0.5) * info.cell_height
             ghostty_surface_mouse_pos(surface, info.pad_left + (Double(n[1]) + 0.2) * info.cell_width, y, GHOSTTY_MODS_NONE)
@@ -1143,9 +1123,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// while the links wait to be marked: answered by then (on the usual
     /// connection), none is shown unsure.
     private func lookUpAhead() {
-        guard lookUp != nil, let surface else { return }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        guard lookUp != nil, let info = cellInfo else { return }
         unknown = []
         _ = screenLinks(cols: Int(info.cols), rows: Int(info.rows))
         if !unknown.isEmpty { ask(unknown) }
@@ -1154,17 +1132,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// A row of the viewport as text, and the column each character
     /// begins at (wide ones take two; marks, none).
     private func viewportRow(_ r: Int, cols: Int) -> (text: String, columns: [Int])? {
-        guard let surface else { return nil }
-        var sel = ghostty_selection_s()
-        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(r))
-        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(r))
-        sel.rectangle = false
-        var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, sel, &out) else { return nil }
-        defer { ghostty_surface_free_text(surface, &out) }
-        guard let p = out.text else { return ("", []) }
-        let text = String(decoding: UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)), as: UTF8.self)
-            .replacingOccurrences(of: "\n", with: "")
+        guard let read = readText(Self.cells(from: (0, r), to: (cols - 1, r))) else { return nil }
+        let text = read.replacingOccurrences(of: "\n", with: "")
         var columns: [Int] = []
         var col = 0
         for u in text.unicodeScalars {
@@ -1199,16 +1168,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// line: ghostty marks such a row, and its text read across the end
     /// of it has no newline.
     private func wraps(_ r: Int, cols: Int) -> Bool {
-        guard let surface else { return false }
-        var sel = ghostty_selection_s()
-        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(r))
-        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(r + 1))
-        sel.rectangle = false
-        var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, sel, &out) else { return false }
-        defer { ghostty_surface_free_text(surface, &out) }
-        guard let p = out.text, out.text_len > 0 else { return false }
-        return !UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)).contains(0x0A)
+        withText(Self.cells(from: (cols - 1, r), to: (0, r + 1))) { !$0.isEmpty && !$0.contains(0x0A) } ?? false
     }
 
     /// The viewport's lines, top to bottom (`ScreenLine`). A row is read
@@ -1300,23 +1260,49 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                           runs: Self.runs(a, (tail + l.range.lowerBound)..<at.count) + Self.runs(b, head..<(head + l.range.upperBound - split)))
     }
 
-    /// The cell under a point of the view: its column and viewport row.
-    private func cell(at p: NSPoint, _ info: ghostty_manifold_info_s) -> (col: Int, row: Int)? {
-        guard info.cell_width > 0, info.cell_height > 0 else { return nil }
-        let x = Double(p.x) - info.pad_left, y = Double(bounds.height - p.y) - info.pad_top
-        guard x >= 0, y >= 0 else { return nil }
-        let col = Int(x / info.cell_width), row = Int(y / info.cell_height)
-        guard col < Int(info.cols), row < Int(info.rows) else { return nil }
-        return (col, row)
+    /// What ghostty says of the grid now; nil with no surface.
+    private var cellInfo: ghostty_manifold_info_s? { surface.map(Manifold.cellInfo(of:)) }
+
+    /// The grid's cells in this view now.
+    private var grid: CellGrid? { cellInfo.map { CellGrid($0, height: bounds.height) } }
+
+    /// A stretch of the screen read as text, to `body` (UTF-8, as ghostty
+    /// gives it); nil if it can't be read.
+    private func withText<T>(_ sel: ghostty_selection_s, _ body: (UnsafeRawBufferPointer) -> T) -> T? {
+        guard let surface else { return nil }
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, sel, &out) else { return nil }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let p = out.text else { return body(UnsafeRawBufferPointer(start: nil, count: 0)) }
+        return body(UnsafeRawBufferPointer(start: UnsafeRawPointer(p), count: Int(out.text_len)))
+    }
+
+    /// A stretch of the screen as text; nil if it can't be read.
+    private func readText(_ sel: ghostty_selection_s) -> String? { withText(sel) { String(decoding: $0, as: UTF8.self) } }
+
+    /// All of the screen (`GHOSTTY_POINT_SCREEN`, its history too) or the
+    /// viewport, top left to bottom right.
+    private static func span(_ tag: ghostty_point_tag_e) -> ghostty_selection_s {
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0)
+        sel.bottom_right = ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0)
+        sel.rectangle = false
+        return sel
+    }
+
+    /// The viewport's cells from one (column, row) to another.
+    private static func cells(from a: (Int, Int), to b: (Int, Int)) -> ghostty_selection_s {
+        var sel = ghostty_selection_s()
+        sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(a.0), y: UInt32(a.1))
+        sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(b.0), y: UInt32(b.1))
+        sel.rectangle = false
+        return sel
     }
 
     /// The link under a point of the view, if there's one.
     private func link(at p: NSPoint) -> TerminalLinks.Link? {
-        guard let surface else { return nil }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
-        guard let (col, row) = cell(at: p, info) else { return nil }
-        return screenLinks(cols: Int(info.cols), rows: Int(info.rows), possible: true).first { $0.contains(row: row, col: col) }?.link
+        guard let grid, let (col, row) = grid.cell(at: p) else { return nil }
+        return screenLinks(cols: Int(grid.info.cols), rows: Int(grid.info.rows), possible: true).first { $0.contains(row: row, col: col) }?.link
     }
 
     /// ⌘ held with the pointer over the terminal marks the links on its
@@ -1340,27 +1326,27 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// under the pointer underlined. Those sure of glow; a file on another
     /// host not looked for yet, though it looks like one, is in the link
     /// color without the glow until it's found — and gone if it isn't.
-    private func markLinks(reading: Bool = true) {
-        guard let surface, let window else { return }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
-        let cols = Int(info.cols)
-        guard cols > 0 else { return }
+    /// `under`: the cell taken to be under the pointer (debugging's), in
+    /// place of the pointer's.
+    @discardableResult
+    private func markLinks(reading: Bool = true, under given: ((col: Int, row: Int)?)? = nil) -> [ScreenLink] {
+        guard let grid, grid.info.cols > 0 else { return [] }
         var links = reading ? [] : markedLinks ?? []
         if reading {
             unknown = []
-            links = screenLinks(cols: cols, rows: Int(info.rows))
+            links = screenLinks(cols: Int(grid.info.cols), rows: Int(grid.info.rows))
             markedLinks = links
-            glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
+            glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), grid), color: TextView.linkColor, cellHeight: grid.cellHeight)
             if !unknown.isEmpty { ask(unknown) }
         }
-        let under = cell(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), info)
+        let under = given ?? window.flatMap { grid.cell(at: convert($0.mouseLocationOutsideOfEventStream, from: nil)) }
         let hovered = under.flatMap { u in links.firstIndex { $0.contains(row: u.row, col: u.col) } }
         showLinks(links, hovered: hovered)
         // A reference under it that leads nowhere says so.
         ReferenceTip.hover(hovered.map { links[$0].link.target }, in: self)
         overCommandLink = hovered != nil
         shownCursor.set()
+        return links
     }
 
     /// A program's own link (OSC 8) under the pointer, as ghostty says, or
@@ -1404,9 +1390,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// The links' letters as one outline, in this view's coordinates: each
     /// character's glyph in the terminal's font (sized to its cells) on its
     /// cell, at the baseline — what the glow is shaped as.
-    private func linkGlyphs(_ runs: [(row: Int, from: Int, to: Int)], _ info: ghostty_manifold_info_s) -> CGPath? {
-        guard !runs.isEmpty, info.cell_width > 0 else { return nil }
-        let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height), cols = Int(info.cols)
+    private func linkGlyphs(_ runs: [(row: Int, from: Int, to: Int)], _ grid: CellGrid) -> CGPath? {
+        guard !runs.isEmpty, grid.cellWidth > 0 else { return nil }
+        let cw = grid.cellWidth, ch = grid.cellHeight, cols = Int(grid.info.cols)
         // The theme's code face, at the size whose advance is a cell.
         let base = FontTheme.current.font(.monospaced, size: 13)
         var zero: UniChar = 0x30, g: CGGlyph = 0
@@ -1420,14 +1406,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         for row in Set(runs.map(\.row)) {
             guard let (text, columns) = viewportRow(row, cols: cols) else { continue }
             let spans = runs.filter { $0.row == row }
-            let cellBottom = bounds.height - CGFloat(info.pad_top) - CGFloat(row + 1) * ch
+            let cellBottom = grid.rect(col: 0, row: row).minY
             let baseline = cellBottom + descent + max(0, ch - ascent - descent) / 2
             for (u, col) in zip(text.unicodeScalars, columns) where spans.contains(where: { $0.from <= col && col < $0.to }) {
                 guard u.value <= 0xFFFF, u.value > 0x20 else { continue }
                 var c = UniChar(u.value), glyph: CGGlyph = 0
                 guard CTFontGetGlyphsForCharacters(font, &c, &glyph, 1),
                       let outline = CTFontCreatePathForGlyph(font, glyph, nil) else { continue }
-                path.addPath(outline, transform: CGAffineTransform(translationX: CGFloat(info.pad_left) + CGFloat(col) * cw, y: baseline))
+                path.addPath(outline, transform: CGAffineTransform(translationX: grid.rect(col: col, row: row).minX, y: baseline))
             }
         }
         return path.isEmpty ? nil : path
@@ -1453,35 +1439,22 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// Debugging: the links marked as with ⌘ held (the pointer at a cell,
     /// if given), and what they open.
     func debugLinks(hoverRow: Int?, col: Int?) -> String {
-        guard let surface else { return "no surface" }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
-        let cols = Int(info.cols)
-        var targets: [String] = []
-        unknown = []
-        let links = screenLinks(cols: cols, rows: Int(info.rows))
-        for l in links {
+        guard let grid else { return "no surface" }
+        let links = markLinks(under: .some(hoverRow.map { (col ?? 0, $0) }))
+        let targets = links.map { l in
             // Each run, and its middle in the window's coordinates from the
             // top left (as `cmdclick` takes them).
             let at = l.runs.map { r -> String in
-                let p = convert(NSPoint(x: info.pad_left + (Double(r.from + r.to) / 2) * info.cell_width,
-                                        y: Double(bounds.height) - info.pad_top - (Double(r.row) + 0.5) * info.cell_height), to: nil)
+                let p = convert(grid.point(col: Double(r.from + r.to) / 2, row: Double(r.row) + 0.5), to: nil)
                 let top = (window?.contentView?.bounds.height ?? 0) - p.y
                 return "\(r.row):\(r.from)-\(r.to) at \(Int(p.x)) \(Int(top))"
             }
-            targets.append(at.joined(separator: " + ") + " \(l.link.target) \(l.link.standing)")
+            return at.joined(separator: " + ") + " \(l.link.target) \(l.link.standing)"
         }
-        if !unknown.isEmpty { ask(unknown) }
-        let hovered = hoverRow.flatMap { hr in links.firstIndex { $0.contains(row: hr, col: col ?? 0) } }
-        showLinks(links, hovered: hovered)
-        glow.showLinks(linkGlyphs(links.filter { $0.link.standing == .sure }.flatMap(\.runs), info), color: TextView.linkColor, cellHeight: CGFloat(info.cell_height))
         return (targets + [glow.debugLinkGlow]).joined(separator: "\n")
     }
 
-    func debugUnmarkLinks() {
-        markedLinks = nil
-        clearLinks()
-    }
+    func debugUnmarkLinks() { unmarkLinks() }
 
     /// The selection just copied, pulsed with the glow typing ahead has
     /// (§3.8): around it, the highlight lit from behind for a moment and
@@ -1492,8 +1465,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard ghostty_surface_read_selection(surface, &t) else { return }
         let start = Int(t.offset_start), len = Int(t.offset_len)
         ghostty_surface_free_text(surface, &t)
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        let info = Manifold.cellInfo(of: surface)
         let cols = Int(info.cols)
         guard cols > 0, info.cell_width > 0 else { return }
         // The offsets count cells of the viewport; the length is from the
@@ -1903,10 +1875,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     @objc func insertPath(_ sender: Any?) {
         guard var source = pathSource?(), let window, let caret = caretRectInWindow else { return NSSound.beep() }
         source.type = { [weak self] text in
-            guard let self, let surface = self.surface else { return }
+            guard let self else { return }
             self.window?.makeKey()
             self.window?.makeFirstResponder(self)
-            text.withCString { ghostty_surface_text(surface, $0, UInt(text.utf8.count)) }
+            self.type(text)
         }
         PathInserter.shared.show(source, over: caret, in: window)
     }

@@ -35,13 +35,10 @@ final class PredictionGlow: NSView {
         }
         guard glow, let root = layer else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height)
+        let grid = CellGrid(info, height: bounds.height)
         for c in cells {
             let key = c.y << 16 | c.x
-            // The terminal view isn't flipped: rows counted from the top.
-            let rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(c.x) * cw,
-                              y: bounds.height - CGFloat(info.pad_top) - CGFloat(c.y + 1) * ch,
-                              width: cw, height: ch)
+            let rect = grid.rect(col: c.x, row: c.y)
             if let l = glows[key] {
                 l.frame = rect
                 continue
@@ -99,12 +96,10 @@ final class PredictionGlow: NSView {
     func pulse(around runs: [(y: Int, from: Int, to: Int)], info: ghostty_manifold_info_s) {
         guard !runs.isEmpty, let root = layer else { return }
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let cw = CGFloat(info.cell_width), ch = CGFloat(info.cell_height)
+        let grid = CellGrid(info, height: bounds.height), ch = grid.cellHeight
         var shape = CGPath(rect: .null, transform: nil)
         for r in runs {
-            var rect = CGRect(x: CGFloat(info.pad_left) + CGFloat(r.from) * cw,
-                              y: bounds.height - CGFloat(info.pad_top) - CGFloat(r.y + 1) * ch,
-                              width: CGFloat(r.to - r.from) * cw, height: ch)
+            var rect = grid.rect(col: r.from, row: r.y, width: r.to - r.from)
             // The padding takes its edge cells' color (padding-color =
             // extend), the highlight's too: so out to the view's edges where
             // the selection reaches the grid's, or the glow lights it there.

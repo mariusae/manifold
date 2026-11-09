@@ -131,8 +131,7 @@ final class EchoPrediction {
             return stop(pause: true)
         }
         guard !paused else { return }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        let info = cellInfo(of: surface)
         // Scrolled up, or about to wrap: where it goes can't be told.
         guard info.flags & 2 != 0, info.flags & 8 == 0 else { return stop(pause: true) }
         let cols = Int(info.cols)
@@ -176,8 +175,7 @@ final class EchoPrediction {
 
     private func judge(echoTime: TimeInterval?) {
         guard guesses.count > 1 else { return }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        let info = cellInfo(of: surface)
         guard Int(info.cursor_y) == row, info.flags & 2 != 0 else {
             // The row moved (output scrolled it, a return was echoed).
             return stop(missed: true)
@@ -234,8 +232,7 @@ final class EchoPrediction {
 
     private func show(echoTime: TimeInterval?) {
         guard confirmed, let g = guesses.last, guesses.count > 1 else { return withdraw() }
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        let info = cellInfo(of: surface)
         let real = line(row, Int(info.cols))
         var cells: [ghostty_manifold_cell_s] = []
         for x in start..<g.line.count where !Self.same(real[x], g.line[x]) {
@@ -255,8 +252,7 @@ final class EchoPrediction {
         guard shown else { return }
         shown = false
         ghostty_surface_manifold_predict(surface, nil, 0, -1, -1)
-        var info = ghostty_manifold_info_s()
-        ghostty_surface_manifold_info(surface, &info)
+        let info = cellInfo(of: surface)
         let onShown = onShown
         DispatchQueue.main.async { onShown?([], false, info) }
     }
