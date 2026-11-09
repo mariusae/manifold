@@ -209,7 +209,7 @@ extension MainWindowController: ThreadChatDelegate {
         threadUI.timelines.removeAll { $0.value == nil }
         for w in threadUI.timelines { if let t = w.value { refresh(t) } }
         // The sidebar's list (its rows), or its count.
-        if organization == .threads, !threadsTimelineMode { refreshOrganization() } else { refreshSidebarThreads() }
+        refreshSidebarThreads()
         for v in views.values {
             (v as? EditorView)?.refreshPills()
             if let d = v as? DiffView { markThreads(in: d) }

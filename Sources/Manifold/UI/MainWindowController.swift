@@ -4312,7 +4312,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .files: return filesTree()
         case .closed: return closedTree()
         case .inspector: return inspectorTree()
-        case .threads: return threadsTree()
+        case .threads: return ([], []) // the timeline, not a tree
         }
     }
 
@@ -8095,7 +8095,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 extension MainWindowController: SidebarDelegate {
 
     func sidebarOrganizationChanged(_ organization: Organization) { setOrganization(organization, show: false) }
-    func sidebarThreadsMode(timeline: Bool) { setThreadsMode(timeline: timeline) }
     func sidebarRemove(_ arrangement: BlockID) { removeFromDesk(arrangement) }
     func sidebarRename(_ arrangement: BlockID) { rename(arrangement) }
     /// The sidebar's +: a new workspace with a terminal in it (⌘T).

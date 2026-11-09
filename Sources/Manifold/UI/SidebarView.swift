@@ -14,7 +14,6 @@ protocol SidebarDelegate: AnyObject {
     /// Another organization was chosen, or the filter typed in.
     func sidebarOrganizationChanged(_ organization: Organization)
     /// Threads (§3.12) as a list by title, or as the timeline.
-    func sidebarThreadsMode(timeline: Bool)
     /// Threads' filter: which (all, open, unread) and where (the space,
     /// its project), as a menu.
     func sidebarThreadsFilterMenu() -> NSMenu
@@ -54,24 +53,14 @@ final class SidebarView: NSView {
     /// collected; it opens its list in place of the tree, and again puts
     /// the tree back.
     private let closedRow = FootRowView(title: "Recently Closed", symbol: "clock.arrow.circlepath")
-    /// The space's threads (§3.12): listed by title, or the timeline, in
-    /// place of the tree; at the right of their header, the two ways to
-    /// show them, the filter (which, and where) and Mark All Read.
+    /// The space's threads (§3.12): the timeline, in place of the tree; at
+    /// the right of their header, the filter (which, and where) and Mark
+    /// All Read.
     let timeline = ThreadTimelineView()
-    private let threadsMode = IconButton(symbol: "list.bullet", size: 12, weight: .medium, target: nil, action: nil)
     private let threadsFilter = IconButton(symbol: "line.3.horizontal.decrease.circle", size: 13, weight: .medium, target: nil, action: nil)
     private let threadsRead = IconButton(symbol: "checkmark.circle", size: 13, weight: .medium, target: nil, action: nil)
-    /// The timeline's buttons in the header (the mode's gone: the list is the footer's menu).
+    /// The timeline's buttons in the header.
     private var threadsControls: [NSView] { [threadsFilter, threadsRead] }
-    /// Threads shown as the timeline, not the list.
-    var threadsTimeline = false {
-        didSet {
-            // Its button shows the other way, a click away.
-            threadsMode.image = Theme.symbol(threadsTimeline ? "list.bullet" : "text.bubble", size: 12, weight: .medium)
-            threadsMode.toolTip = threadsTimeline ? "List by Title" : "Show as Timeline"
-            needsLayout = true
-        }
-    }
     /// The threads' filter narrows them (not all, or not only the space's): its button filled, in the accent.
     func setThreadsFilter(narrowed: Bool, unseen: Int) {
         threadsFilter.image = Theme.symbol(narrowed ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", size: 13, weight: .medium)
@@ -149,18 +138,14 @@ final class SidebarView: NSView {
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         closedRow.onClick = { [weak self] in self?.chooseOrganization(self?.organization == .closed ? .desk : .closed) }
-        threadsMode.target = self
-        threadsMode.action = #selector(threadsModeChosen)
         threadsFilter.target = self
         threadsFilter.action = #selector(threadsFilterClicked)
         threadsFilter.toolTip = "Filter Threads"
         threadsRead.target = self
         threadsRead.action = #selector(threadsReadClicked)
-        threadsTimeline = false
         setThreadsFilter(narrowed: false, unseen: 0)
         timeline.compact = true
         timeline.isHidden = true
-        threadsMode.isHidden = true
         for v in threadsControls + [timeline] { v.isHidden = true; card.addSubview(v) }
         card.addSubview(organizationView)
 
@@ -252,7 +237,7 @@ final class SidebarView: NSView {
         } else {
             closedRow.frame = .zero
         }
-        let timelineShown = organization == .threads && threadsTimeline
+        let timelineShown = organization == .threads
         timeline.isHidden = !timelineShown
         organizationView.isHidden = timelineShown
         timeline.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: max(0, top - bottom))
@@ -385,11 +370,6 @@ final class SidebarView: NSView {
             pushedSubtitle.stringValue = n == 0 ? "None in this space yet" : words.joined(separator: " · ")
         }
         needsLayout = true
-    }
-
-    @objc private func threadsModeChosen() {
-        threadsTimeline.toggle()
-        delegate?.sidebarThreadsMode(timeline: threadsTimeline)
     }
 
     @objc private func threadsFilterClicked() {

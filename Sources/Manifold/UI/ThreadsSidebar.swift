@@ -1,24 +1,11 @@
 import AppKit
 import ManifoldCore
 
-/// The sidebar's Threads (§3.12, ⌥⌘3, the foot row): the space's threads
-/// listed by title — the open ones by what was said last, newest first;
-/// then the resolved, closed — or the space's timeline, as Quip keeps a
-/// document's conversation: every entry interleaved, newest last, a New
-/// rule above what you haven't seen.
+/// The sidebar's Threads (§3.12, ⌥⌘3): the space's timeline, as Quip
+/// keeps a document's conversation — every entry interleaved, newest
+/// last, a New rule above what you haven't seen. (The list by title is
+/// the footer's menu: one way to each thing, as Dia's.)
 extension MainWindowController {
-    private static let threadsTimelineKey = "ThreadsSidebarTimeline"
-
-    /// The sidebar's Threads are the timeline: the list by title is the
-    /// footer's menu (one way to each thing, as Dia's).
-    var threadsTimelineMode: Bool { true }
-
-    func setThreadsMode(timeline: Bool) {
-        _ = timeline
-        sidebar.threadsTimeline = true
-        sidebar.timeline.marksWhenOpened = nil
-        refreshOrganization(now: true)
-    }
 
     /// The threads the sidebar shows, by its filter: the space's or its
     /// project's; all, the open, or the unread.
@@ -70,62 +57,6 @@ extension MainWindowController {
         refreshOrganization(now: true)
     }
 
-    /// The list: a row a thread, by its first words, where it's about and
-    /// how long since it was written in; a count of what's not seen.
-    func threadsTree() -> ([OrgNode], Set<String>) {
-        guard selected != nil else { return ([OrgNode(id: "threads:none", title: "No space", symbol: "circle.dashed")], []) }
-        let all = sidebarThreads()
-        let new = OrgNode(id: "threads:new", title: "New Thread About This Space…", symbol: "plus.bubble")
-        new.action = { [weak self] in self?.newThreadAboutSpace() }
-        new.tooltip = "Or select something and press ⌥⌘M to comment on it"
-        guard !all.isEmpty else { return ([new], []) }
-        func latest(_ t: Block) -> Stamp { t.thread?.lastActivity ?? t.created }
-        let open = all.filter { $0.thread?.resolved != true }.sorted { latest($0) > latest($1) }
-        let resolved = all.filter { $0.thread?.resolved == true }.sorted { latest($0) > latest($1) }
-        var nodes: [OrgNode] = [new]
-        var expanded: Set<String> = []
-        for (id, title, threads) in [("threads:open", "Open", open), ("threads:resolved", "Resolved", resolved)] where !threads.isEmpty {
-            let s = OrgNode(id: id, title: title, symbol: "", count: threads.count, isGroup: true, children: threads.map(threadRow))
-            s.style = .section
-            nodes.append(s)
-            if id == "threads:open" { expanded.insert(id) }
-        }
-        return (nodes, expanded)
-    }
-
-    private func threadRow(_ t: Block) -> OrgNode {
-        let th = t.thread
-        let resolved = th?.resolved == true
-        let unseen = hosts.unseen(t).count
-        let place = th?.about.map { describe($0) }
-        var detail = place?.title ?? ""
-        if let drift = place?.drift { detail += " — " + drift }
-        let n = OrgNode(id: "thread/\(t.id)", block: t.id, title: th?.title ?? "Thread", symbol: resolved ? "checkmark.bubble" : "text.bubble",
-                        detail: detail, count: unseen > 0 ? unseen : nil, age: Self.age(th?.lastActivity))
-        n.emphasis = unseen > 0
-        n.dimmed = resolved
-        n.trailing = th?.lastActivity.map(Age.short)
-        if let last = th?.lastComment, let text = last.comment {
-            let who = last.author.isYou ? "You" : last.author.name
-            n.tooltip = who + ": " + String(text.prefix(200)) + "\n\(th?.comments.count ?? 0) comments"
-        }
-        let id = t.id
-        // Clicked, read in the overlay (its place a click from there); ⌘,
-        // a tile of its own; ⌥, the place itself.
-        n.action = { [weak self] in
-            guard let self else { return }
-            let mods = NSApp.currentEvent?.modifierFlags ?? []
-            if mods.contains(.command) {
-                self.popOutThread(id)
-            } else if mods.contains(.option) {
-                self.goToPlace(ofThread: id)
-            } else {
-                self.showThreadOverlay(nil, thread: id)
-            }
-        }
-        return n
-    }
-
     /// The composer for a thread about the space, in the overlay.
     func newThreadAboutSpace() {
         guard let space = selected else { return NSSound.beep() }
@@ -139,10 +70,9 @@ extension MainWindowController {
         let all = space.map { hosts.threads(inSpace: $0) } ?? []
         sidebar.setFoot(threads: all.count, open: all.filter { $0.thread?.resolved != true }.count,
                         unseen: all.filter { !hosts.unseen($0).isEmpty }.count)
-        sidebar.threadsTimeline = threadsTimelineMode
         sidebar.setThreadsFilter(narrowed: sidebar.timeline.filter != .all || sidebar.timeline.model.scope != 0,
                                  unseen: sidebarThreads().reduce(0) { $0 + hosts.unseen($1).count })
-        guard organization == .threads, threadsTimelineMode else { return }
+        guard organization == .threads else { return }
         let v = sidebar.timeline
         if v.space != space {
             v.space = space
@@ -152,12 +82,11 @@ extension MainWindowController {
         watch(v)
     }
 
-    /// Debugging the sidebar's threads: `sidebarthreads [list|timeline|close]`
+    /// Debugging the sidebar's threads: `sidebarthreads [timeline|close]`
     /// and what it shows.
     func debugSidebarThreads(_ arg: String) -> String {
         switch arg {
-        case "list": setOrganization(.threads); setThreadsMode(timeline: false)
-        case "timeline": setOrganization(.threads); setThreadsMode(timeline: true)
+        case "timeline", "list": setOrganization(.threads)
         case "close": setOrganization(.desk)
         default:
             // "sidebarthreads head <i>|popout <i>": run i's heading clicked, or its pop-out.
@@ -169,12 +98,8 @@ extension MainWindowController {
             }
         }
         guard organization == .threads else { return "not shown" }
-        if threadsTimelineMode {
-            let m = sidebar.timeline.model
-            return sidebar.timeline.box.debugState + "\ntimeline · \(m.title) · \(m.runs.count) runs · \(m.unseen) unseen · " + m.runs.map { $0.placeTitle + ($0.firstUnseen != nil ? " NEW" : "") }.joined(separator: " | ")
-        }
-        let (nodes, _) = threadsTree()
-        return "list · " + nodes.map { n in n.title + (n.children.isEmpty ? "" : ": " + n.children.map { c in c.title + " [" + c.detail + "]" + (c.count.map { " (\($0))" } ?? "") + " " + (c.trailing ?? "") }.joined(separator: "; ")) }.joined(separator: "\n")
+        let m = sidebar.timeline.model
+        return sidebar.timeline.box.debugState + "\ntimeline · \(m.title) · \(m.runs.count) runs · \(m.unseen) unseen · " + m.runs.map { $0.placeTitle + ($0.firstUnseen != nil ? " NEW" : "") }.joined(separator: " | ")
     }
 }
 
