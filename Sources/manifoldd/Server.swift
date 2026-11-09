@@ -230,12 +230,6 @@ final class Server {
         searches.onHits = { [weak self] block, hits, done, truncated, error in
             guard let self, self.node.block(block)?.kind == .search else { return }
             self.append(.hits(hits, done: done, truncated: truncated, error: error), to: .block(block))
-            if let error {
-                self.report(block, .error, msg: error)
-            } else if done {
-                let n = self.node.block(block)?.search?.hits.count ?? 0
-                self.report(block, .done, msg: "\(n) hit\(n == 1 ? "" : "s")" + (truncated ? ", stopped" : ""))
-            }
         }
         languageServers.onDiagnostics = { [weak self] block, items in
             let frame = Frame.message(ServerMessage.diagnostics(block, items))
@@ -1360,12 +1354,10 @@ final class Server {
                 append(.smartlog(url: nil, error: "Not in a repository", at: clock.now()), to: .block(block))
                 return done()
             }
-            report(block, .working, msg: "Starting Interactive Smartlog")
             Smartlog.start(in: repo.root) { [weak self] url, error in
                 self?.queue.async {
                     guard let self, self.node.block(block) != nil else { return }
                     self.append(.smartlog(url: url, error: error, at: self.clock.now()), to: .block(block))
-                    self.report(block, error == nil ? .done : .error, msg: error ?? "Interactive Smartlog")
                     done()
                 }
             }
@@ -1401,7 +1393,6 @@ final class Server {
             append(.search(q, at: clock.now()), to: .block(block))
             let kinds = Set(q.kinds ?? ["text"])
             if kinds.contains("text") {
-                report(block, .working, msg: "Looking for “\(q.text)”")
                 searches.run(block, q)
             } else {
                 searches.cancel(block)
@@ -1590,7 +1581,6 @@ final class Server {
         // Watched, whenever it's looked at: a tile already made asks only
         // for refreshes, so a server started since watched nothing for it.
         watchRepo(root, vcs)
-        report(block, .working, msg: "Refreshing")
         // The repository's changes in one diff, if open, looked at with it.
         for d in node.blocks where d.kind == .diff {
             switch d.diff?.subject {
@@ -1625,7 +1615,6 @@ final class Server {
             if !same {
                 self.append(.gitRefreshed(branch: branch, status: status, log: log, ahead: ahead, behind: behind, error: error, at: self.clock.now()), to: .block(block))
             }
-            if let error { self.report(block, .error, msg: error) } else { self.report(block, .done, msg: "\(status.count) change\(status.count == 1 ? "" : "s")") }
         }
     }
 
@@ -1777,7 +1766,6 @@ final class Server {
 
     private func loadDiff(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .diff, let subject = b.diff?.subject else { return }
-        report(block, .working, msg: "Comparing")
         switch subject {
         case let .sides(old, new):
             func side(_ s: DiffSide, _ done: @escaping (String?) -> Void) {
@@ -1787,7 +1775,6 @@ final class Server {
                 side(new) { newText in
                     guard let self, self.node.block(block) != nil else { return }
                     self.append(.diffLoaded(oldText: oldText ?? "", newText: newText ?? "", patch: nil, error: nil, at: self.clock.now()), to: .block(block))
-                    self.report(block, .done, msg: "Compared")
                 }
             }
         case .patch:
@@ -1797,7 +1784,6 @@ final class Server {
             let old = Block.replaying(entries, id: id, upTo: from)?.text?.text.string ?? ""
             let new = to.map { Block.replaying(entries, id: id, upTo: $0)?.text?.text.string ?? "" } ?? (node.block(id)?.text?.text.string ?? "")
             append(.diffLoaded(oldText: old, newText: new, patch: nil, error: nil, at: clock.now()), to: .block(block))
-            report(block, .done, msg: "Compared")
         case let .uncommitted(repo):
             let vcs = git.repository(of: repo)?.vcs ?? .git
             watchRepo(repo, vcs)
@@ -1807,15 +1793,12 @@ final class Server {
                 case .success(let patch):
                     // Unchanged since it was last read: nothing to append.
                     if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
-                        self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                         return
                     }
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
                     self.linkChangedFiles(of: block, repo: repo, patch: patch)
-                    self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
-                    self.report(block, .error, msg: e.message)
                 }
             }
         case let .trees(repo, from, to?, _):
@@ -1828,21 +1811,19 @@ final class Server {
                 guard let self, self.node.block(block) != nil else { return }
                 guard let now else {
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: "couldn't read the working tree", at: self.clock.now()), to: .block(block))
-                    return self.report(block, .error, msg: "couldn't read the working tree")
+                    return
                 }
                 self.git.run(.git, ["diff", "--no-color", tree, now], in: repo) { [weak self] result in
                     guard let self, self.node.block(block) != nil else { return }
                     switch result {
                     case .success(let patch):
                         if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
-                            return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                            return
                         }
                         self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
                         self.linkChangedFiles(of: block, repo: repo, patch: patch)
-                        self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
                     case .failure(let e):
                         self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
-                        self.report(block, .error, msg: e.message)
                     }
                 }
             }
@@ -1854,10 +1835,8 @@ final class Server {
                 case .success(let patch):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
                     self.linkChangedFiles(of: block, repo: repo, patch: patch)
-                    self.report(block, .done, msg: "Compared")
                 case .failure(let e):
                     self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
-                    self.report(block, .error, msg: e.message)
                 }
             }
         }
@@ -2169,9 +2148,9 @@ final class Server {
         return k == .terminal || k == .agent || k == .notebook
     }
 
-    private func report(_ block: BlockID, _ state: StatusState, msg: String? = nil) {
+    private func report(_ block: BlockID, _ state: StatusState, progress: Int? = nil, msg: String? = nil) {
         guard reportsStatus(block) else { return }
-        append(.status(id: rootStatusID, StatusRecord(state: state, msg: msg, at: clock.now())), to: .block(block))
+        append(.status(id: rootStatusID, StatusRecord(state: state, progress: progress, msg: msg, at: clock.now())), to: .block(block))
     }
 
     /// What a terminal's program said, applied to its block's records.
@@ -2323,14 +2302,12 @@ final class Server {
             switch result {
             case .success(let patch):
                 if let d = self.node.block(block)?.diff, d.patch == patch, d.error == nil {
-                    return self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
+                    return
                 }
                 self.append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: self.clock.now()), to: .block(block))
                 self.linkChangedFiles(of: block, repo: repo, patch: patch)
-                self.report(block, .done, msg: patch.isEmpty ? "No changes" : "Compared")
             case .failure(let e):
                 self.append(.diffLoaded(oldText: nil, newText: nil, patch: nil, error: e.message, at: self.clock.now()), to: .block(block))
-                self.report(block, .error, msg: e.message)
             }
         }
     }
@@ -2490,11 +2467,6 @@ final class Server {
                 done(nil)
             }
         }
-    }
-
-    private func report(_ block: BlockID, _ state: StatusState, progress: Int?, msg: String? = nil) {
-        guard reportsStatus(block) else { return }
-        append(.status(id: rootStatusID, StatusRecord(state: state, progress: progress, msg: msg, at: clock.now())), to: .block(block))
     }
 
     private func sessionExited(_ id: BlockID, status: Int32) {
