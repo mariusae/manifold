@@ -133,7 +133,16 @@ Machine: M15.
 - **Language server**: one that failed to start, timed out initializing, or
   crashed is `failed` for good: `server(for:)` returns nil and never makes
   another, so diagnostics, completion and hovers are gone until the host's
-  server restarts; a timed-out one's process is never killed. (M3)
+  server restarts; a timed-out one's process is never killed. (M3) Found
+  on the way: no language server's process was ever reaped (a zombie for
+  each one that exited or was stopped), and its pipes were never closed.
+  — **fixed**: `LanguageServer.phase` (starting / ready / failed(why));
+  failing ends its process and closes its input, its reader closes its
+  output and reaps it; a failed server is started afresh when next wanted,
+  `retryAfter` (30 s) on, doubling with each failure since it last came up
+  (to 16 min), its files opened with the new one. Test:
+  `ManifolddTests/LanguageServerLifecycleTests` (fails with a failed server
+  given up on).
 - **A remote file opened here** (`LocalCopies`, as changed 2026-11-09):
   while its host is away, a send is tried every 10 s, each one a failed
   transfer row and a notice that pile up. (M18) — **fixed**: while its
@@ -223,19 +232,23 @@ Invariants: as M1 (reaped, master closed, lives until exited); `capturing`
 ⇒ `busy`. Findings: I-1 (discard, restart; never reaped at all) — fixed. `capturing` left true after
 exit (harmless).
 
-#### M3 LanguageServer · implicit
-`LanguageServer` (LanguageServers.swift); `LanguageServers.servers[lang|root]`.
-`child`, `ready`, `failed`, `queued`; `onState` strings on the wire.
+#### M3 LanguageServer · explicit (`LanguageServer.Phase`)
+`LanguageServer` (LanguageServers.swift); `LanguageServers.servers[lang|root]`,
+`failures[lang|root]`. `phase`, `failedAt`, `child`, `queued`; `onState`
+strings on the wire ("starting", "ready", "failed: …", "exited",
+"couldn't start"), unchanged.
 
-| State | Held as |
-|---|---|
-| starting | `child != nil`, `!ready`, `!failed` |
-| ready | `ready` |
-| failed(why) | `failed` (spawn, initialize error or timeout, exit) |
+| From | Event | To |
+|---|---|---|
+| — | wanted (a file of its language opened or changed) | starting |
+| starting | initialize answered | ready (failures forgotten) |
+| starting | spawn fails · initialize refused or unanswered (15 s) | failed |
+| starting · ready | its output closes (exited, killed) | failed ("exited") |
+| failed | wanted again, `retryAfter · 2^failures` on | a new one, starting |
 
-Invariants: a failed server's process is gone; a failed server is replaced
-when next wanted. Findings: I-5 (failed is final; a timed-out one keeps
-running). `showMessage` text goes out through the same `onState`.
+Invariants: a failed server's process is ended, reaped, its pipes closed;
+a failed server is replaced when next wanted, after its wait. Findings:
+I-5 — fixed. `showMessage` text still goes out through `onState`.
 
 #### M4 FileWatcher · implicit
 `FileWatcher` (ManifoldCore/FileWatcher.swift). `source`, a retry count in

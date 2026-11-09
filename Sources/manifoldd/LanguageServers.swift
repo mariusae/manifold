@@ -17,6 +17,11 @@ final class LanguageServers {
     private let queue: DispatchQueue
     private var configs = LanguageServerConfig.defaults
     private var servers: [String: LanguageServer] = [:]
+    /// How many times running each server has failed since it last came
+    /// up: the wait before starting it again doubles with each.
+    private var failures: [String: Int] = [:]
+    /// The first wait before a failed server is started again.
+    nonisolated(unsafe) static var retryAfter: TimeInterval = 30
     /// Which server has which block open, and the version it has.
     private var opened: [BlockID: (server: String, version: Int)] = [:]
     /// Text to give a block's server, a moment after the last change; and
@@ -60,10 +65,26 @@ final class LanguageServers {
         guard let (_, path) = textOf(block), let path, let lang = LanguageServerConfig.language(for: path, in: configs) else { return nil }
         let root = Self.canonical(lang.root(of: path))
         let key = lang.id + "|" + root
-        if let s = servers[key] { return s.failed ? nil : s }
+        if let s = servers[key] {
+            guard s.failed else { return s }
+            // Failed (couldn't start, didn't come up, exited): started
+            // afresh once a while has passed, longer each time it fails
+            // again — not given up on for good (§ M3).
+            let tries = failures[key, default: 0]
+            guard let at = s.failedAt, Date().timeIntervalSince(at) >= Self.retryAfter * pow(2, Double(min(tries, 5))) else { return nil }
+            failures[key] = tries + 1
+            servers.removeValue(forKey: key)
+            // Its files open with the new one: each opened afresh.
+            let reopen = opened.filter { $0.value.server == key }.map(\.key)
+            opened = opened.filter { $0.value.server != key }
+            for b in reopen where b != block { textChanged(b) }
+        }
         let s = LanguageServer(language: lang.id, command: lang.command, root: root, queue: queue)
         s.onDiagnostics = { [weak self] path, items in self?.diagnostics(path: path, items) }
-        s.onState = { [weak self] state in self?.onState?(lang.id, root, state) }
+        s.onState = { [weak self] state in
+            if state == "ready" { self?.failures[key] = nil }
+            self?.onState?(lang.id, root, state)
+        }
         servers[key] = s
         s.start()
         return s
@@ -427,10 +448,22 @@ final class LanguageServer {
     private var child: Child?
     private var nextID = 1
     private var waiting: [Int: (Result<Any, RPCError>) -> Void] = [:]
-    private(set) var ready = false
+    /// Where it is in its life (§ M3 in STATE-MACHINES.md): started and
+    /// asked to initialize; ready; or failed — it couldn't start, its
+    /// initialize was refused or unanswered, or it exited. A failed one's
+    /// process is ended; its manager starts another when it's next wanted.
+    enum Phase: Equatable {
+        case starting
+        case ready
+        case failed(String)
+    }
+    private(set) var phase: Phase = .starting
+    var ready: Bool { phase == .ready }
+    var failed: Bool { if case .failed = phase { true } else { false } }
+    /// When it failed.
+    private(set) var failedAt: Date?
     /// The server's semantic token types, by index, if it has them.
     private(set) var tokenTypes: [String]?
-    private(set) var failed = false
     private var queued: [(String, [String: Any])] = []
     var onDiagnostics: ((String, [[String: Any]]) -> Void)?
     var onState: ((String) -> Void)?
@@ -445,13 +478,11 @@ final class LanguageServer {
     func start() {
         let argv = ["/bin/sh", "-c", "cd '\(root)' && exec \(command)"]
         guard let child = try? Child.spawn(argv, stderrToNull: true) else {
-            failed = true
-            onState?("couldn't start")
-            return
+            return fail("couldn't start")
         }
         self.child = child
         onState?("starting")
-        let reader = Thread { [weak self] in self?.read(child.output) }
+        let reader = Thread { [weak self] in self?.read(child.output, pid: child.pid) }
         reader.start()
         request("initialize", [
             "processId": Int(getpid()),
@@ -486,16 +517,35 @@ final class LanguageServer {
             case .success(let value):
                 let provider = ((value as? [String: Any])?["capabilities"] as? [String: Any])?["semanticTokensProvider"] as? [String: Any]
                 self.tokenTypes = (provider?["legend"] as? [String: Any])?["tokenTypes"] as? [String]
+                guard !self.failed else { return }
                 self.notify("initialized", [:])
-                self.ready = true
+                self.phase = .ready
                 self.onState?("ready")
                 for (method, params) in self.queued { self.send(["method": method, "params": params]) }
                 self.queued = []
             case .failure(let e):
-                self.failed = true
-                self.onState?("failed: \(e.message)")
+                self.fail("failed: \(e.message)")
             }
         }
+    }
+
+    /// Failed, said once (`said`, as the state clients are told): what
+    /// waits on it answered, nothing more queued, and its process ended —
+    /// one that didn't answer its initialize was left running.
+    private func fail(_ said: String) {
+        guard !failed else { return }
+        phase = .failed(said)
+        failedAt = Date()
+        queued = []
+        onState?(said)
+        let left = waiting.values
+        waiting = [:]
+        for w in left { w(.failure(RPCError("the language server " + (said == "exited" ? "exited" : "failed")))) }
+        if let child {
+            kill(child.pid, SIGTERM)
+            close(child.input)
+        }
+        child = nil
     }
 
     func stop() {
@@ -505,6 +555,8 @@ final class LanguageServer {
     }
 
     func notify(_ method: String, _ params: [String: Any]) {
+        // A failed one hears nothing more (its successor is told afresh).
+        guard !failed else { return }
         guard ready || method == "initialized" else {
             queued.append((method, params))
             return
@@ -542,7 +594,7 @@ final class LanguageServer {
 
     /// Reads messages off the server's stdout (on its own thread) and hands
     /// them to the queue.
-    private func read(_ fd: Int32) {
+    private func read(_ fd: Int32, pid: pid_t) {
         var buffer = Data()
         var buf = [UInt8](repeating: 0, count: 1 << 16)
         while true {
@@ -554,14 +606,12 @@ final class LanguageServer {
                 queue.async { [weak self] in self?.handle(message) }
             }
         }
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.failed = true
-            self.ready = false
-            self.onState?("exited")
-            for w in self.waiting.values { w(.failure(RPCError("the language server exited"))) }
-            self.waiting = [:]
-        }
+        // Its output closed: it's ending, or gone. Reaped (here, on its own
+        // thread), not left a zombie.
+        close(fd)
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+        queue.async { [weak self] in self?.fail("exited") }
     }
 
     private static func nextMessage(_ buffer: inout Data) -> [String: Any]? {
