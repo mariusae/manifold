@@ -136,7 +136,10 @@ Machine: M15.
   server restarts; a timed-out one's process is never killed. (M3)
 - **A remote file opened here** (`LocalCopies`, as changed 2026-11-09):
   while its host is away, a send is tried every 10 s, each one a failed
-  transfer row and a notice that pile up. (M18)
+  transfer row and a notice that pile up. (M18) — **fixed**: while its
+  host's link isn't up it looks again quietly (`awayRetry`), and sends
+  once it is. Test: `ManifoldAppTests/LocalCopiesTests` (fails without
+  the guard: a failed transfer and a notice).
 Machines: M3, M18, M29.
 
 ### I-6 Connection lifecycles misread · **confirmed on reading** · medium
@@ -363,8 +366,9 @@ resume. Findings: I-6.
 
 #### M18 LocalCopies — a remote file opened here · implicit
 `Copy.sending`, `modified`, the `settle` debouncer. States: watching →
-settling → sending → watching; let go (deleted, host gone). Invariant: a
-send is tried only while its host is connected. Findings: I-5.
+settling → (host away: waiting, quietly) → sending → watching; let go
+(deleted, host gone). Invariant: a send is tried only while its host is
+connected. Findings: I-5 — fixed.
 
 #### Fine as they are (app)
 `ProxyConnection.step` (explicit), StreamPipe, Transfer, EchoPrediction

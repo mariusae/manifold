@@ -22,6 +22,8 @@ final class LocalCopies {
     /// A copy's send put off while it's still being written, and tried
     /// again a while after one didn't go.
     private let settle = KeyedDebouncer<URL>()
+    /// How long a copy whose host is away waits to look again.
+    static var awayRetry: TimeInterval = 10
     /// Sent back (or not): the file's name, the host's, and why not.
     var onSentBack: ((String, String, String?) -> Void)?
 
@@ -45,10 +47,15 @@ final class LocalCopies {
             Transfer.download(path, on: c, to: url, progress: progress, done: finished)
         } then: { [weak self] error in
             guard let self, error == nil else { return done(nil, error) }
-            self.copies[url] = Copy(url: url, path: path, client: c, label: label, modified: Self.modified(url))
-            self.copies[url]?.watcher = FileWatcher(path: url.path) { [weak self] in self?.changed(url) }
+            self.adopt(url, of: path, on: c, label: label)
             done(url, nil)
         }
+    }
+
+    /// A copy here of `path` on `c`'s host, as it's fetched: watched from now.
+    func adopt(_ url: URL, of path: String, on c: HostClient, label: String) {
+        copies[url] = Copy(url: url, path: path, client: c, label: label, modified: Self.modified(url))
+        copies[url]?.watcher = FileWatcher(path: url.path) { [weak self] in self?.changed(url) }
     }
 
     private static func modified(_ url: URL) -> Date? {
@@ -75,6 +82,9 @@ final class LocalCopies {
             onSentBack?(url.lastPathComponent, copy.label, "\(copy.label) isn't connected any more")
             return
         }
+        // Its host away: looked at again in a while, quietly — not a
+        // failed transfer and a notice every time (§ M18).
+        guard c.link == .connected else { return settle.schedule(url, after: Self.awayRetry) { [weak self] in self?.sendBack(url) } }
         copies[url]?.sending = true
         Transfers.shared.run(url.lastPathComponent, detail: "saved, back to \(copy.label)", symbol: "arrow.up") { progress, finished in
             Transfer.upload(url, to: copy.path, on: c, replace: true, progress: progress, done: finished)
