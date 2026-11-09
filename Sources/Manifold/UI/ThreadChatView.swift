@@ -589,8 +589,8 @@ final class ComposerTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let returnKey = event.keyCode == 36 || event.keyCode == 76
-        let plain = event.modifierFlags.intersection([.shift, .option, .control, .command]).isEmpty
+        let returnKey = event.isReturn
+        let plain = event.keyMods.isEmpty
         if mentions.isShown, plain {
             switch event.keyCode {
             case 125: return mentions.move(1)

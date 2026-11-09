@@ -106,7 +106,7 @@ final class NotebookShell {
         let mark = #"printf '\033]7503;E;%d;%s\007' $? "$PWD""#
         let env = "export TERM=dumb PAGER=cat GIT_PAGER=cat MANPAGER=cat"
         if shell == "bash" {
-            return "stty -echo; trap - DEBUG; PS1=''; PS2=''; PS0=''; PROMPT_COMMAND='\(mark.replacingOccurrences(of: "'", with: "'\\''"))'; \(env)"
+            return "stty -echo; trap - DEBUG; PS1=''; PS2=''; PS0=''; PROMPT_COMMAND=\(mark.shellQuoted); \(env)"
         }
         return "unsetopt zle prompt_cr prompt_sp 2>/dev/null; stty -echo; PROMPT=''; RPROMPT=''; PS2=''; PROMPT_EOL_MARK=''; "
             + "precmd_functions=(); preexec_functions=(); chpwd_functions=(); precmd() { \(mark); }; \(env)"
@@ -125,7 +125,7 @@ final class NotebookShell {
         capturing = false
         interrupted = false
         output = Data()
-        let quoted = "'" + file.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let quoted = file.path.shellQuoted
         // Evaluated, not sourced: an error reads as it would at a prompt,
         // not prefixed with the file's name.
         send("printf '\\033]7503;B\\007'; eval \"$(<\(quoted))\"\n")

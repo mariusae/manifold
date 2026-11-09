@@ -1,5 +1,11 @@
 import Foundation
 
+public extension String {
+    /// A word for sh: in single quotes, a quote in it closed, escaped and
+    /// opened again.
+    var shellQuoted: String { "'" + replacingOccurrences(of: "'", with: "'\\''") + "'" }
+}
+
 /// Path pieces, as NSString has them, for every platform.
 public extension String {
     var lastPathComponent: String {

@@ -468,14 +468,14 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard let r = window?.firstResponder as? NSView, r.isDescendant(of: self) else { return super.performKeyEquivalent(with: event) }
-        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let mods = event.keyMods
         if mods == .command, event.charactersIgnoringModifiers == "." {
             interrupt()
             return true
         }
         // The cell's keys with ⌘ go before the menus' (⌘↩ is Edit or View there).
         if let editor = r as? CellEditor, let cell = editor.cellView {
-            let isReturn = event.keyCode == 36 || event.keyCode == 76
+            let isReturn = event.isReturn
             if isReturn, mods == .command {
                 run(cell.id, then: .stay)
                 return true
@@ -903,8 +903,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Copy Output", symbol: "doc.on.doc") { [weak self] in
             guard let self else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(self.output.string, forType: .string)
+            NSPasteboard.copy(self.output.string)
         })
         menu.addItem(ClosureMenuItem("Open as Block", symbol: "rectangle.portrait.on.rectangle.portrait") { owner.openOutput(self.id) })
         menu.addItem(ClosureMenuItem("Clear Output", symbol: "eraser") { owner.clearOutput(self.id) })
@@ -990,9 +989,9 @@ final class CellEditor: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let mods = event.keyMods
         guard let cellView, let owner = cellView.owner else { return super.keyDown(with: event) }
-        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        let isReturn = event.isReturn
         if isReturn, mods == .shift { return owner.run(cellView.id, then: .next) }
         if isReturn, mods == .option { return owner.run(cellView.id, then: .insert) }
         super.keyDown(with: event)

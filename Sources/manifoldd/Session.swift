@@ -938,7 +938,7 @@ final class Session {
         let fm = FileManager.default
         // Quoted only when it must be: a shell expands `$EDITOR` without
         // parsing quotes, and most paths have no spaces.
-        func quote(_ s: String) -> String { s.contains(" ") ? "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" : s }
+        func quote(_ s: String) -> String { s.contains(" ") ? s.shellQuoted : s }
         for dir in [helpers, own] {
             let wrapper = dir.appendingPathComponent("mani-edit")
             if fm.isExecutableFile(atPath: wrapper.path) { return quote(wrapper.path) }

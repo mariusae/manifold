@@ -1797,7 +1797,7 @@ final class TextView: NSView, NSTextInputClient {
     /// Comment, Move Line, Add Caret… are the Edit menu's key equivalents,
     /// and only those: ⌘D is Delete Block, ⌘/ the tile's outline.)
     private func handleShortcut(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let flags = event.keyMods
         let chars = event.charactersIgnoringModifiers ?? ""
         switch (flags, chars) {
         // ⌃⇧K, as other editors have it, beside the menu's ⇧⌘K.
@@ -3083,8 +3083,7 @@ final class TextView: NSView, NSTextInputClient {
     @objc func copy(_ sender: Any?) {
         let s = selectedText
         guard !s.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s, forType: .string)
+        NSPasteboard.copy(s)
     }
 
     @objc func cut(_ sender: Any?) {

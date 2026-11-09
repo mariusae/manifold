@@ -141,7 +141,7 @@ extension MainWindowController {
             return b.place
         }
         let base = kind.command == AgentCatalog.agent(inCommand: desk.settings.agentCommand)?.command ? desk.settings.agentCommand : kind.command
-        let command = base + " '" + prompt.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let command = base + " " + prompt.shellQuoted
         let agent = client.newAgent(cwd: cwd, command: command)
         show(agent, lens: .agent, .here, context: "asked in a thread")
         hosts.addToThread(t.id, .asked(agent: agent, name: kind.name), author: .manifold)

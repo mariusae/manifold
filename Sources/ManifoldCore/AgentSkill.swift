@@ -32,7 +32,7 @@ public enum AgentSkill {
     /// whichever one comes first on the agent's PATH — which always
     /// succeeds.
     static func command(_ event: String, agent: String, tool: String = maniTool) -> String {
-        "[ -z \"$MANIFOLD_BLOCK\" ] || \(shellQuoted(tool)) agent \(event) --agent \(agent)"
+        "[ -z \"$MANIFOLD_BLOCK\" ] || \(tool.shellQuoted) agent \(event) --agent \(agent)"
     }
 
     /// Whether a hook's command is one of ours (bare, as they were once
@@ -69,10 +69,6 @@ public enum AgentSkill {
         return Bundle.main.executablePath.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath() }
     }
 
-    /// A word for sh, in single quotes.
-    static func shellQuoted(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
 
     static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
 

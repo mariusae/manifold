@@ -402,14 +402,12 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         }
         if !paths.isEmpty {
             items.append(ClosureMenuItem("Copy " + count(paths.count, "Path", "Paths"), symbol: "doc.on.clipboard") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+                NSPasteboard.copy(paths.joined(separator: "\n"))
             })
         }
         if !commits.isEmpty {
             items.append(ClosureMenuItem("Copy " + count(commits.count, "SHA", "SHAs"), symbol: "number") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(commits.map(\.sha).joined(separator: "\n"), forType: .string)
+                NSPasteboard.copy(commits.map(\.sha).joined(separator: "\n"))
             })
         }
         return items
@@ -434,7 +432,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     }
 
     override func keyDown(with event: NSEvent) {
-        if window?.firstResponder === table, event.keyCode == 36 || event.keyCode == 76 { return rowChosen() }
+        if window?.firstResponder === table, event.isReturn { return rowChosen() }
         super.keyDown(with: event)
     }
 

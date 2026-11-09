@@ -1300,7 +1300,7 @@ final class ManiDesk {
         switch kind.name {
         case "note": what = what ?? r.flags["text"] ?? r.input ?? ""
         case "terminal": what = r.flags["run"] ?? what
-        case "agent": if let prompt = r.flags["run"] { what = (what ?? wc.host.desk.settings.agentCommand) + " " + Self.quoted(prompt) }
+        case "agent": if let prompt = r.flags["run"] { what = (what ?? wc.host.desk.settings.agentCommand) + " " + prompt.shellQuoted }
         default: break
         }
         let made: (block: BlockID, lens: Lens, later: Bool)
@@ -1343,7 +1343,6 @@ final class ManiDesk {
     }
 
     /// A word for a shell, quoted as it must be.
-    private static func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 
     private func write(_ r: ManiRequest, _ scope: Scope) throws -> String {
         let t = try resolve(r.args[0], scope)

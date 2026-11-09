@@ -1353,7 +1353,7 @@ private final class Seen: @unchecked Sendable {
     let tool = "/Users/me/My Apps/Manifold.app/Contents/Helpers/mani"
     let command = AgentSkill.command("stop", agent: "codex", tool: tool)
     #expect(command == #"[ -z "$MANIFOLD_BLOCK" ] || '/Users/me/My Apps/Manifold.app/Contents/Helpers/mani' agent stop --agent codex"#)
-    #expect(AgentSkill.shellQuoted("it's") == #"'it'\''s'"#)
+    #expect("it's".shellQuoted == #"'it'\''s'"#)
     // Ours whether by path or bare, as they were once put in; not another's.
     #expect(AgentSkill.isOurs(command))
     #expect(AgentSkill.isOurs(#"[ -z "$MANIFOLD_BLOCK" ] || manifold agent stop --agent claude"#))

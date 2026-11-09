@@ -227,8 +227,7 @@ extension MainWindowController: TerminalViewDelegate {
             menu.addItem(.separator())
             menu.addItem(ClosureMenuItem("Open as Block", symbol: "text.alignleft") { [weak view] in _ = view?.showOutput(ofCommand: command.id, beside: view?.placement) })
             menu.addItem(ClosureMenuItem("Copy Command", symbol: "doc.on.clipboard") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(command.text, forType: .string)
+                NSPasteboard.copy(command.text)
             })
         }
         return menu

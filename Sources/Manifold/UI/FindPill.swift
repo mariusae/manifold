@@ -182,7 +182,7 @@ final class FindPill: NSView, NSTextFieldDelegate {
     /// ⌘G and ⇧⌘G while typing in the pill: the field's editor would take
     /// Find Next for itself, so the pill steps through its matches first.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let flags = event.keyMods
         guard event.charactersIgnoringModifiers?.lowercased() == "g", flags == [.command] || flags == [.command, .shift],
               let editor = window?.firstResponder as? NSText, [field, replaceField].contains(where: { $0.currentEditor() === editor })
         else { return super.performKeyEquivalent(with: event) }

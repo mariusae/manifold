@@ -619,8 +619,7 @@ extension MainWindowController: GridDelegate {
         var items: [NSMenuItem] = [ClosureMenuItem("Copy Link", symbol: "link") { [weak self] in self?.copyLink(to: block) }]
         if let path = b.path ?? b.terminal?.cwd ?? b.place {
             items.append(ClosureMenuItem("Copy Path", symbol: "doc.on.clipboard") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(path, forType: .string)
+                NSPasteboard.copy(path)
             })
             if block.host == host.host, FileManager.default.fileExists(atPath: path) {
                 items.append(ClosureMenuItem("Reveal in Finder", symbol: "folder") {

@@ -585,8 +585,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func copyTranscript(command id: Int) {
         FloatingList.shared.hideNow()
         guard let (c, output) = transcript(ofCommand: id) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("$ " + c.text + "\n" + output + "\n", forType: .string)
+        NSPasteboard.copy("$ " + c.text + "\n" + output + "\n")
     }
 
     /// A dot's actions, beside it: the command's output copied, or as a
@@ -1036,8 +1035,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
         commandClickAt = nil
         if Self.copyOnSelect, !(window?.styleMask.contains(.fullScreen) ?? false), let text = selectedText, !text.isEmpty {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
+            NSPasteboard.copy(text)
             pulseSelection(text)
         }
     }
@@ -1785,7 +1783,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // (the latter with a beep); they belong to the terminal — and
         // control-minus (with shift or not), undo to readline, zsh and
         // Emacs, before the menu's Navigate Back takes it.
-        let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        let flags = event.keyMods
         // Command-return is Edit or View for a text; here it's the terminal's, as it was.
         if flags == [.command], event.charactersIgnoringModifiers == "\r" {
             keyDown(with: event)
@@ -1938,7 +1936,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     static func shellQuoted(_ path: String) -> String {
         let plain = path.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || "/._-+:@%,=~".unicodeScalars.contains($0) }
-        return plain ? path : "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return plain ? path : path.shellQuoted
     }
 
     // MARK: Actions

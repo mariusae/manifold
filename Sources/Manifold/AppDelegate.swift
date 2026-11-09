@@ -197,10 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Install")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        var shell = "mkdir -p /usr/local/bin && ln -sf \(quote(target)) \(quote(link))"
+        var shell = "mkdir -p /usr/local/bin && ln -sf \(target.shellQuoted) \(link.shellQuoted)"
         if let old = try? FileManager.default.destinationOfSymbolicLink(atPath: Self.oldCLILink), old.contains(".app/Contents/Helpers/") {
-            shell += " && rm -f \(quote(Self.oldCLILink))"
+            shell += " && rm -f \(Self.oldCLILink.shellQuoted)"
         }
         let script = "do shell script \"\(shell.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\" with administrator privileges"
         var error: NSDictionary?

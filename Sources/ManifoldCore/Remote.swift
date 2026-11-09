@@ -362,7 +362,7 @@ public enum Bootstrap {
     /// A POSIX shell script as one command for a provider: whatever shell
     /// the destination logs in with, sh runs it.
     static func posix(_ script: String) -> String {
-        "sh -c '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "sh -c " + script.shellQuoted
     }
 
     /// The command that stops the destination's server, its sessions

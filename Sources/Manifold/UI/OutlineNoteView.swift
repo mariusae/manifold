@@ -1705,7 +1705,7 @@ final class NoteOutlineTextView: NSTextView {
     // MARK: Keys
 
     override func keyDown(with event: NSEvent) {
-        let mods = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        let mods = event.keyMods
         // ⇧Return: the row goes on, on a line of its own.
         if [36, 76].contains(event.keyCode), mods == .shift { return insertLineBreak(nil) }
         // ⌃⌘↑ ⌃⌘↓ (an editor's line moves): the row among its siblings.
@@ -1717,7 +1717,7 @@ final class NoteOutlineTextView: NSTextView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // ⌘Return, as Prism has it: a checkbox — open, checked, then a bullet again.
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
-        let mods = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        let mods = event.keyMods
         if [36, 76].contains(event.keyCode), mods == .command { cycleChecklist(nil); return true }
         // Folds (⌘9 and ⌘0 are spaces' here): ⌃⌘ the rows', ⌥⌘ all.
         switch (mods, event.charactersIgnoringModifiers) {

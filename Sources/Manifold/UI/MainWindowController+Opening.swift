@@ -98,7 +98,7 @@ extension MainWindowController {
     /// beside, ⌥↩ over); nil for anything else — a menu's key.
     static var disposition: Disposition? {
         if let flags = clickModifiers { return Disposition(flags) }
-        guard let e = NSApp.currentEvent, e.type == .keyDown, e.keyCode == 36 || e.keyCode == 76 else { return nil }
+        guard let e = NSApp.currentEvent, e.type == .keyDown, e.isReturn else { return nil }
         return Disposition(e.modifierFlags)
     }
 

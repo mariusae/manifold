@@ -20,7 +20,7 @@ enum OptionKeysPage {
     static func start() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.modifierFlags.intersection([.command, .shift, .option, .control]) == .option,
+            guard event.keyMods == .option,
                   event.keyCode == 125 || event.keyCode == 126,
                   let window = event.window, let responder = window.firstResponder else { return event }
             let down = event.keyCode == 125

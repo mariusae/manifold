@@ -323,8 +323,7 @@ public struct SCIPIndexer: Codable, Equatable, Sendable {
 
     /// Its command for a root, writing to `out`.
     public func command(root: String, out: String) -> String {
-        func quoted(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        return command.replacingOccurrences(of: "{out}", with: quoted(out)).replacingOccurrences(of: "{name}", with: quoted(root.lastPathComponent))
+        return command.replacingOccurrences(of: "{out}", with: out.shellQuoted).replacingOccurrences(of: "{name}", with: root.lastPathComponent.shellQuoted)
     }
 }
 

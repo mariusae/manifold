@@ -836,8 +836,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
             }.joined(separator: "\n")
         }
         guard let text, !text.isEmpty else { return NSSound.beep() }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.copy(text)
     }
 
     @objc override func selectAll(_ sender: Any?) {

@@ -537,8 +537,7 @@ final class WebView: NSView, PaneContent, KeepsViewState, Snapshotting, WKNaviga
         }
         if let url = web.url.map(kept) {
             items.append(ClosureMenuItem("Copy Address", symbol: "doc.on.doc") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(url, forType: .string)
+                NSPasteboard.copy(url)
             })
         }
         return items

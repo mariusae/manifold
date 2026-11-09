@@ -275,7 +275,7 @@ final class SCIPService {
         failures.removeValue(forKey: root)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let out = file(root), partial = out.appendingPathExtension("part")
-        let command = "cd '\(root.replacingOccurrences(of: "'", with: "'\\''"))' && " + indexer.command(root: root, out: partial.path)
+        let command = "cd " + root.shellQuoted + " && " + indexer.command(root: root, out: partial.path)
         let shell = Session.chosenShell(preferred: preferredShell())
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let p = Process()

@@ -54,7 +54,7 @@ public struct EnvironmentVariable: Codable, Equatable, Sendable {
 
     /// As a line a shell (sh, bash, zsh, fish) reads: `export NAME='value'`.
     public var exportLine: String {
-        "export \(name)='\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+        "export \(name)=" + value.shellQuoted
     }
 }
 

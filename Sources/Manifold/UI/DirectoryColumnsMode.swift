@@ -519,7 +519,7 @@ final class ColumnTable: NSTableView {
     var onArrow: ((Bool) -> Void)?
 
     override func keyDown(with event: NSEvent) {
-        let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        let mods = event.keyMods
         if mods.isEmpty, event.charactersIgnoringModifiers == "/" || event.keyCode == 48, let onSlash { return onSlash() }
         if mods.isEmpty, event.keyCode == 124 { return onArrow?(true) ?? () }
         if mods.isEmpty, event.keyCode == 123 { return onArrow?(false) ?? () }

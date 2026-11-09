@@ -229,8 +229,7 @@ extension MainWindowController: DirectoryViewDelegate {
             menu.addItem(ClosureMenuItem("Download", symbol: "arrow.down.circle") { [weak self] in self?.download(path, on: on) })
         }
         menu.addItem(ClosureMenuItem("Copy Path", symbol: "doc.on.clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(path, forType: .string)
+            NSPasteboard.copy(path)
         })
         return menu
     }
@@ -253,8 +252,7 @@ extension MainWindowController: DirectoryViewDelegate {
             })
         }
         menu.addItem(ClosureMenuItem("Copy \(n) Paths", symbol: "doc.on.clipboard") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(entries.map(\.path).joined(separator: "\n"), forType: .string)
+            NSPasteboard.copy(entries.map(\.path).joined(separator: "\n"))
         })
         return menu
     }

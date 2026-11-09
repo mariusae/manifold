@@ -418,8 +418,7 @@ private final class InspectorRow: NSView {
     /// The row's text on the clipboard, its button saying so a moment.
     func copyText() {
         guard let text = node.copies else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.copy(text)
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.copied = false }
     }

@@ -696,8 +696,7 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
         guard let dict = message.body as? [String: Any] else { return }
         // A code block's copy button.
         if let text = dict["copy"] as? String {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
+            NSPasteboard.copy(text)
             return
         }
         if let h = dict["hover"] as? String { onHover?(h.isEmpty ? nil : h); return }

@@ -686,8 +686,7 @@ extension MediaView: Printable {
     /// ⌘C: the image, or the PDF's selected text, on the clipboard.
     @objc func copy(_ sender: Any?) {
         if let pdf = pdfDocument, let s = pdfSelectionText {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(s, forType: .string)
+            NSPasteboard.copy(s)
             _ = pdf
         } else if let image = shownImage {
             NSPasteboard.general.clearContents()
