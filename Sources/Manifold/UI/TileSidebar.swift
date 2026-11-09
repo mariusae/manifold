@@ -105,6 +105,9 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             addSubview(tabs)
         }
         if let pagesView { addSubview(pagesView) }
+        search.cell = CapsuleSearchCell(textCell: "")
+        search.isEditable = true
+        search.isSelectable = true
         search.placeholderString = "Filter"
         search.controlSize = .small
         search.font = UIType.body
@@ -370,5 +373,19 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             refilter()
         }
         return debugEntries + "\nfirst responder in field: \(search.currentEditor() != nil && window?.firstResponder === search.currentEditor())"
+    }
+}
+
+/// A search field's cell for a field without its bezel: what's typed kept
+/// between the magnifying glass and the ⓧ (unbezeled, AppKit lays the
+/// text over the glass), and in the middle of its height.
+private final class CapsuleSearchCell: NSSearchFieldCell {
+    override func drawingRect(forBounds r: NSRect) -> NSRect {
+        let glass = searchButtonRect(forBounds: r), clear = cancelButtonRect(forBounds: r)
+        let left = glass.maxX + 2, right = clear.isEmpty ? r.maxX - 6 : clear.minX - 2
+        let h = cellSize(forBounds: r).height
+        let text = super.drawingRect(forBounds: r)
+        let height = min(text.height, max(h, 16))
+        return NSRect(x: left, y: r.midY - height / 2, width: max(0, right - left), height: height)
     }
 }
