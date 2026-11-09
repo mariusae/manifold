@@ -104,7 +104,6 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     }
 
     var focusView: NSView { web }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID, path: String, theme: FontTheme) {
         self.placement = placement

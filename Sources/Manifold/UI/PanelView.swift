@@ -34,8 +34,6 @@ final class PanelView: NSView, PaneContent {
     private var tables: [TableSource] = []
 
     var focusView: NSView { self }
-    var isDead: Bool { false }
-    func destroy() {}
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement

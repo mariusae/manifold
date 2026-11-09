@@ -83,7 +83,6 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private var shownHits = 0
 
     var focusView: NSView { field }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
@@ -148,8 +147,6 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    func destroy() { keeper.flush() }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         let row = table.selectedRow

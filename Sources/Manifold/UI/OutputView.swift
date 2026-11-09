@@ -45,7 +45,6 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     private lazy var textSearch = TextViewSearch(text)
 
     var focusView: NSView { text }
-    var isDead: Bool { false }
     static let headerHeight: CGFloat = 44
     private var copied = false
     /// The buttons, under the pointer on the header (the copy's check
@@ -99,8 +98,6 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    func destroy() { keeper.flush() }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

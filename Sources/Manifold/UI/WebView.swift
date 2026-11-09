@@ -83,7 +83,6 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     private var retryWhenBack: String?
 
     var focusView: NSView { web }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement
@@ -154,8 +153,6 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         if hadKeyboard { window?.makeFirstResponder(web) }
         needsLayout = true
     }
-
-    func destroy() { keeper.flush() }
 
     /// WebKit's whole account of the page — its history, its scroll — kept
     /// by the placement, to be the same page again.

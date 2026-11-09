@@ -92,7 +92,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate var foundAt = 0
 
     var focusView: NSView { pdfView ?? scroll }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID, kind: Lens) {
         self.placement = placement
@@ -159,8 +158,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func destroy() { keeper.flush() }
-
     /// Back as it was: the zoom and place in an image, the page of a PDF.
     private func restoreState() {
         guard !keeper.restored else { return }
@@ -211,7 +208,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         super.viewDidMoveToWindow()
         if window != nil { load() }
     }
-
 
     private func load() {
         guard let b = source(), b.path != nil else { return }

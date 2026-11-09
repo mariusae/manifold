@@ -39,7 +39,6 @@ final class SmartlogView: NSView, PaneContent, WKNavigationDelegate, WKUIDelegat
     private var retried = false
 
     var focusView: NSView { web }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement

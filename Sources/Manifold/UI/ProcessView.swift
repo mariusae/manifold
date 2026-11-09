@@ -67,7 +67,6 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private var cardLines = 3
 
     var focusView: NSView { table }
-    var isDead: Bool { false }
 
     static let rowHeight: CGFloat = 17
     /// The blocks' rows, roomier; the air over each block's panel (less

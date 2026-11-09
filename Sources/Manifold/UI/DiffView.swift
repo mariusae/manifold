@@ -58,7 +58,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     private let sticky = StickyFileHeading()
 
     var focusView: NSView { rowsView }
-    var isDead: Bool { false }
 
     // MARK: Find
 
@@ -143,8 +142,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }
 
     required init?(coder: NSCoder) { fatalError() }
-
-    func destroy() { keeper.flush() }
 
     private func restoreState() {
         guard !keeper.restored, !rowsView.rows.isEmpty else { return }
@@ -1486,7 +1483,6 @@ final class CommitHeaderView: NSView {
         rule.frame = NSRect(x: 0, y: 0, width: w, height: 1)
     }
 }
-
 
 /// The heading of the file the top of a diff is in, over its rows while
 /// the file's own heading row has scrolled past: drawn as that row is;

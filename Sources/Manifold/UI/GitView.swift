@@ -64,7 +64,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     static let paneFrom: CGFloat = 320
 
     var focusView: NSView { table }
-    var isDead: Bool { false }
 
     init(placement: PlacementID, block: BlockID) {
         self.placement = placement

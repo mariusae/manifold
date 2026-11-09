@@ -63,7 +63,6 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
     private lazy var reveal = HoverReveal(in: self) { [unowned self] in [tools] }
 
     var focusView: NSView { focusedCell.flatMap { cells[$0]?.editor } ?? order.first.flatMap { cells[$0]?.editor } ?? self }
-    var isDead: Bool { false }
     static let headerHeight: CGFloat = 32
 
     init(placement: PlacementID, block: BlockID) {

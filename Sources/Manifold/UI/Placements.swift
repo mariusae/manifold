@@ -192,6 +192,9 @@ struct BarButton: Equatable {
 }
 
 extension PaneContent {
+    var isDead: Bool { false }
+    /// Let go of: what its keeper (if it keeps state) has yet to write, written.
+    func destroy() { (self as? KeepsViewState)?.keeper.flush() }
     var here: Place? { nil }
     func maniSelection() async -> ManiSelected? { nil }
     func maniText(_ options: ManiReadOptions) async -> String? { nil }

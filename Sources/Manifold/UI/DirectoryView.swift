@@ -194,7 +194,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     static let sidebarFrom: CGFloat = 600
 
     var focusView: NSView { content?.focusView ?? self }
-    var isDead: Bool { false }
     static let headerHeight: CGFloat = 44
 
     init(placement: PlacementID, block: BlockID) {
