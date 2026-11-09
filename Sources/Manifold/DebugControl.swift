@@ -640,6 +640,17 @@ enum DebugControl {
         case "tilewalk":
             // ⌃⇥: "tilewalk step|back|show|end|escape|pick <n>|order".
             return wc?.debugTileWalk(arg) ?? "no window"
+        case "drag":
+            // "drag begin|end": a drag over the window started or ended, as
+            // a tile's bar or a sidebar row starts one; then (and with no
+            // word) which grids catch it — only the one shown, during one.
+            guard let wc else { return "no window" }
+            if arg == "begin" { wc.dragChanged(true) } else if arg == "end" { wc.dragChanged(false) }
+            // Spaces by their ids' last letters: titles repeat ("Untitled").
+            func name(_ id: BlockID) -> String { String(id.description.suffix(6)) }
+            let catching = wc.grids.filter { $0.value.dragging }.map { name($0.key) }.sorted()
+            let shown = wc.selected.map(name) ?? "-"
+            return "dragging=\(wc.draggingTab) catching=\(catching.isEmpty ? "-" : catching.joined(separator: ",")) shown=\(shown)"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"

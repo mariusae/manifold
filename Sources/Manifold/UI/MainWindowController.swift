@@ -60,6 +60,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var space: BlockID
         var tile: PlacementID?
     }
+
+    /// ⌃⇥'s walk: the space it began in, its places in the order it began
+    /// with, and how far along it is. It belongs to its space — shown only
+    /// while that space is, and over once another is.
+    struct TileWalk: Equatable {
+        let space: BlockID
+        var places: [Settled]
+        var index: Int
+
+        var place: Settled { places[index] }
+
+        mutating func step(_ by: Int) {
+            let n = places.count
+            index = ((index + by) % n + n) % n
+        }
+
+        /// `space` (as `a`, as it is now) as the walk shows it: the tile
+        /// walked to focused — one docked or behind a maximized tile shown
+        /// where it would come back (`arriving`'s events). Nil for another
+        /// space, or once that tile is gone.
+        func preview(of space: BlockID, _ a: ArrangementState,
+                     arriving: (PlacementID, ArrangementState) -> [Event]) -> ArrangementState? {
+            guard space == self.space, let t = place.tile, a.placement(t) != nil else { return nil }
+            var shown = a
+            let hidden = a.isDocked(t) || (a.full != nil && a.full != t)
+            for e in hidden ? arriving(t, a) : [.focus(t)] { shown.apply(e) }
+            return shown
+        }
+    }
     /// The places settled on in this window, the latest first: the trail
     /// as this window has it, which every switcher walks at its own scale —
     /// ⌘` its spaces, ⌃⇥ the space's tiles (its docked ones too). Those
@@ -67,15 +96,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
     var settled: [Settled] = []
-    /// ⌃⇥'s walk, while control is held: the places in the order it began
-    /// with, and how far along it is.
-    var tileWalk: (places: [Settled], index: Int)?
+    /// ⌃⇥'s walk, while control is held (§ M21 in STATE-MACHINES.md).
+    var tileWalk: TileWalk?
     /// Control held for ⌃⇥'s walk, watched.
     var tileHold: ModifierHold?
     /// The space as ⌃⇥'s walk shows it in the grid and the sidebar — the
     /// tile walked to focused, a docked one in its column — while the
-    /// space itself stays as it is until the walk settles.
-    var walkPreview: ArrangementState?
+    /// space itself stays as it is until the walk settles: made from the
+    /// space as it is now, so never of another space or out of date.
+    var walkPreview: ArrangementState? {
+        guard let w = tileWalk, let space = selected, let a = hosts.arrangement(space) else { return nil }
+        return w.preview(of: space, a) { [unowned self] t, a in self.arriving(t, in: a) }
+    }
     let sidebar = SidebarView()
     /// What the window shows with no space at all.
     private var emptyState: EmptyStateView?
@@ -416,6 +448,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let leaving = old.views.filter { $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor }
             content = grid(for: selected)
             content.frame = stage.bounds
+            // A drag goes on over the grid shown (a spring-load switched
+            // spaces under it): its catcher there, not left over the tiles
+            // of the one left (§ M20).
+            if old !== content {
+                old.dragging = false
+                content.dragging = draggingTab
+            }
+            // A walk belongs to the space it began in: another shown (an
+            // agent's mani open, a host's space gone), it's over, nothing
+            // gone to (§ M21).
+            if let w = tileWalk, w.space != selected { dropTileWalk() }
             // The grid come into sight all at once: its scrollers not
             // flashing, every tile's together.
             ScrollerFlash.quietly { content.isHidden = stateView != nil }

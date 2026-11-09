@@ -48,24 +48,23 @@ extension MainWindowController {
 
     private func walkTiles(back: Bool) {
         let step = back ? -1 : 1
-        if var w = tileWalk {
+        if tileWalk != nil {
             // Its key let go unheard (the app left meanwhile): over.
             if tileHold == nil || (!NSEvent.modifierFlags.contains(tileWalkKey) && !debugHeld) { endTileWalk(settling: true) } else {
-                let n = w.places.count
-                w.index = ((w.index + step) % n + n) % n
-                tileWalk = w
+                tileWalk?.step(step)
                 previewWalk()
                 return
             }
         }
-        let places = tileTrail(space: selected)
+        guard let space = selected else { return NSSound.beep() }
+        let places = tileTrail(space: space)
         // Where the walk begins: the focused tile, or (none) before the first.
         let start = places.first.map { $0.tile == arrangement?.focused } == true ? 0 : -1
         guard places.count > (start == 0 ? 1 : 0) else { return NSSound.beep() }
         let n = places.count
         let index = ((start + step) % n + n) % n
         guard NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return go(to: places[index]) }
-        tileWalk = (places, index)
+        tileWalk = TileWalk(space: space, places: places, index: index)
         tileHold = ModifierHold(tileWalkKey, released: { [weak self] in self?.endTileWalk(settling: true) },
                                 escaped: { [weak self] in self?.endTileWalk(settling: false) })
         previewWalk()
@@ -76,28 +75,29 @@ extension MainWindowController {
     /// column where it would come back, the others parting for it — in the
     /// grid only: nothing's gone to yet (the space as it is, kept).
     private func previewWalk() {
-        guard let w = tileWalk, let space = selected, let a = hosts.arrangement(space),
-              let t = w.places[w.index].tile, a.placement(t) != nil else { return }
-        var preview = a
-        let hidden = a.isDocked(t) || (a.full != nil && a.full != t)
-        for e in hidden ? arriving(t, in: a) : [.focus(t)] { preview.apply(e) }
-        walkPreview = preview
+        guard let w = tileWalk, let preview = walkPreview else { return }
         // Shown in its column where it is, not flown out of the dock.
-        dockSeen = (space, Set(preview.docked.map(\.placement.id)))
+        dockSeen = (w.space, Set(preview.docked.map(\.placement.id)))
         render()
         refreshOrganization(now: true)
+    }
+
+    /// The walk over, nothing gone to and nothing drawn here: its space
+    /// no longer shown (the render that found so draws what is).
+    func dropTileWalk() {
+        tileHold?.stop()
+        tileHold = nil
+        debugHeld = false
+        tileWalk = nil
     }
 
     /// Control let go (`settling`): gone to the tile walked to, as the grid
     /// shows it already, the ring glowing on it. Escape: the space as it
     /// was, the others closing back over a docked one shown.
     private func endTileWalk(settling: Bool) {
-        tileHold?.stop()
-        tileHold = nil
-        debugHeld = false
-        guard let w = tileWalk else { return }
-        tileWalk = nil
-        walkPreview = nil
+        let walk = tileWalk
+        dropTileWalk()
+        guard let w = walk else { return }
         if settling, w.places.indices.contains(w.index) { return go(to: w.places[w.index]) }
         if let space = selected, let a = hosts.arrangement(space) { dockSeen = (space, Set(a.docked.map(\.placement.id))) }
         render()
@@ -140,7 +140,7 @@ extension MainWindowController {
         let here = selected.map { name(Settled(space: $0, tile: walkPreview?.focused ?? arrangement?.focused)) } ?? "-"
         let docked = Set(arrangement?.docked.map(\.placement.id) ?? [])
         func named(_ p: Settled) -> String { name(p) + (p.tile.map(docked.contains) == true ? "(docked)" : "") }
-        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") } ?? "-") previewing=\(walkPreview != nil) order=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
+        return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") + " in \(hosts.block($0.space)?.displayTitle ?? "?")" } ?? "-") previewing=\(walkPreview != nil) order=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
     }
 
     /// One workspace to walk: ⌘` as macOS has it, the app's next window

@@ -78,7 +78,7 @@ its shell ended; `mani info` marks it `shellEnded`.
 Tests: `ManifoldCoreTests/RunPhaseTests` (the command and turn tests fail
 with the closing taken out). Machines: M8, M9.
 
-### I-3 A space change leaves the old space's transient state behind · **confirmed on reading** · high
+### I-3 A space change leaves the old space's transient state behind · **fixed** · high
 The window notices a space change in one place (`renderNow`'s
 `selected != shownArrangement`); about 30 callers select a space (⌘1–9,
 ⌘\`, the strip, spring-loading, `mani`). State bound to the space shown
@@ -91,7 +91,20 @@ isn't told:
 - **⌃⇥ walk preview drawn in another space.** `walkPreview` holds no space;
   a space selected during the walk (an agent's `mani open`, a host
   dropping the space) renders the old space's preview into the new grid,
-  and letting go selects the old space again. (suspected path)
+  and letting go selects the old space again.
+
+Evidence: `Tests/scenarios/space-change.sh` against the test instance — on
+the old code the catcher stays on the space left (`catching=Z6KQ02
+shown=ZPYD0A`), still there after the drag ends, and the walk (with its
+preview, 24 tiles of the old space) outlives the switch.
+Fix: where the window notices a space change, the drag's catcher moves to
+the grid shown and comes off the one left; a walk begun in another space
+is dropped (as Escape, nothing gone to). The walk is a value bound to its
+space (`TileWalk`), and its preview is made at each render from the space
+as it is (`walkPreview`, computed), so it is never of another space or out
+of date (a tile closed during the walk). `debug drag` reports the drag and
+the grids catching it; `tilewalk` names the walk's space.
+Tests: `ManifoldAppTests/TileWalkTests`; the scenario passes.
 Machines: M20, M21.
 
 ### I-4 A past revision becomes editable · **confirmed on reading** · medium-high
@@ -353,13 +366,24 @@ MarkdownView's page (consistent; reset code repeated four times).
 #### M20 A drag over the window · implicit
 `draggingTab`, each `GridView.dragging` (its catcher), `dropped`, `drop`.
 Invariant: **only the grid shown has a catcher, and only during a drag.**
-Findings: I-3.
+Transitions: drag begins → catcher on the grid shown; space changes →
+catcher moves with it; drag ends → none. Findings: I-3 — fixed.
 
-#### M21 ⌃⇥ tile walk · implicit
-`tileWalk` (places, index), `tileHold`, `walkPreview`, `dockSeen` (borrowed).
-States: idle · walking(space, index, preview). Invariants: a walk belongs
-to the space it began in, and ends if that space stops being shown; the
-preview is of that space. Findings: I-3.
+#### M21 ⌃⇥ tile walk · explicit (`TileWalk`)
+`tileWalk: TileWalk?` (space, places, index), `tileHold`, `walkPreview`
+(computed), `dockSeen` (borrowed while walking).
+States: idle · walking(space, index).
+
+| From | Event | To |
+|---|---|---|
+| idle | ⌃⇥ with control held | walking (index ±1) |
+| walking | ⌃⇥ / ⌃⇧⇥ | walking (index stepped, wrapping) |
+| walking | control let go | idle; gone to the place (arrival glow) |
+| walking | Escape | idle; the space as it was |
+| walking | another space shown | idle; nothing gone to |
+
+Invariants: a walk belongs to the space it began in; its preview is that
+space as it is now, with the walked tile focused. Findings: I-3 — fixed.
 
 #### M22 Space slide · implicit
 `slidingAway`, `sliding` (always `slidingAway != nil`), `shownArrangement`.
