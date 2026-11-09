@@ -757,21 +757,6 @@ extension MainWindowController {
         maniDesk.ended(ManiDesk.Asker(host: on, id: id, client: client))
     }
 
-    /// A block the host made for a command (`mani diff`): shown beside
-    /// the block the command ran in, else here, and the command answered.
-    func showRequest(on: HostID, id: Int, client: Int, block: BlockID, beside: BlockID?) {
-        let besidePlacement = beside.flatMap { b in
-            allWorkspaces.lazy.compactMap { self.hosts.arrangement($0)?.placements.first { $0.block == b } }.first
-        }
-        if let besidePlacement, let aid = allWorkspaces.first(where: { hosts.arrangement($0)?.placement(besidePlacement.id) != nil }), aid != selected {
-            hosts.select(aid)
-        }
-        let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
-        show(block, lens: lens, .besideOrHere(besidePlacement?.id), context: "asked from the shell")
-        hosts.propose(.openDone(id: id, client: client), on: on)
-        NSApp.activate()
-    }
-
     /// Answers `open --wait` commands whose placements have all gone, and
     /// discards the blocks they made that nothing else took up.
     func checkOpenWaits() {
@@ -780,7 +765,7 @@ extension MainWindowController {
         let placedBlocks = Set(allWorkspaces.compactMap { hosts.arrangement($0) }.flatMap { $0.placements.map(\.block) })
         openWaits.removeAll { wait in
             if wait.placements.allSatisfy({ !present.contains($0) }) {
-                hosts.propose(.commandReply(id: wait.id, client: wait.client, ManiReply(status: 0)), on: wait.host)
+                hosts.commandReply(ManiReply(status: 0), id: wait.id, asker: wait.client, on: wait.host)
                 for b in wait.made where !placedBlocks.contains(b) && hosts.block(b)?.text?.isDirty != true {
                     hosts.propose(.discard(b))
                 }

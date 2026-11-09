@@ -628,43 +628,56 @@ final class Server {
         case let .propose(id, proposal)?:
             propose(id, proposal, from: conn)
         case let .command(id, request)?:
-            // `mani env`: the host's own, answered here, attached or not.
-            if request.verb == "env" || request.verb.hasPrefix("env ") {
-                environmentCommand(request) { conn.send(.message(ServerMessage.commandReply(id: id, $0))) }
-                return
+            // The host's own (`mani env`, `mani diff`), answered here;
+            // the rest passed on to the app acting for the host.
+            if Mani.verb(request.verb)?.answeredBy == .host { return hostCommand(id, request, from: me) }
+            guard let app = actingApp() else { return answer(id, .done(noneActs), to: conn) }
+            relay(id, request, from: me, to: app)
+        case let .commandReply(id, client, reply)?:
+            // The app's answer to a command, passed on to the client that
+            // asked; the last, with its status, ends it.
+            if reply.status != nil {
+                commandsOut[client]?.remove(id)
+                for p in peers.values { p.commandsAt.remove(CommandAsked(client: client, id: id)) }
             }
-            // `mani` asks; the app acting for the host does it and answers.
-            guard let app = actingApp() else {
-                answer(id, .done(noneActs), to: conn)
-                return
-            }
-            // Who asked, as this host finds it — not as the request says.
-            var request = request
-            request.author = author(ofCaller: me.pid)
-            commandsOut[me.id, default: []].insert(id)
-            app.commandsAt.insert(CommandAsked(client: me.id, id: id))
-            log("mani \(request.verb) to \(app.machine ?? "the app")")
-            app.conn.send(.message(ServerMessage.command(id: id, client: me.id, request)))
-        case let .openPatch(id, patch, root, title, beside)?:
-            // `mani diff`: the patch becomes a diff block here, and the
-            // app, if attached, places it and answers the command.
-            guard let app = actingApp() else {
-                answer(id, .done(noneActs), to: conn)
-                return
-            }
-            guard patch.utf8.count <= 64 << 20 else {
-                answer(id, .done("that patch is over 64 MB"), to: conn)
-                return
-            }
-            let block = BlockID(host: host)
-            append(.create(kind: .diff, title: nil, path: root), to: .block(block))
-            append(.diffSubject(.patch(root: root, title: title)), to: .block(block))
-            append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: clock.now()), to: .block(block))
-            app.conn.send(.message(ServerMessage.show(id: id, client: me.id, block: block, beside: beside)))
+            peer(numbered: client)?.conn.send(.message(ServerMessage.commandReply(id: id, reply)))
         case .shutdown?:
             exit(endSessions: true)
         default:
             break
+        }
+    }
+
+    /// A `mani` command passed on to the app acting for the host, which
+    /// answers it with `commandReply`s.
+    private func relay(_ id: Int, _ request: ManiRequest, from me: Peer, to app: Peer) {
+        // Who asked, as this host finds it — not as the request says.
+        var request = request
+        request.author = author(ofCaller: me.pid)
+        commandsOut[me.id, default: []].insert(id)
+        app.commandsAt.insert(CommandAsked(client: me.id, id: id))
+        log("mani \(request.verb) to \(app.machine ?? "the app")")
+        app.conn.send(.message(ServerMessage.command(id: id, client: me.id, request)))
+    }
+
+    /// A `mani` command the host does itself (`Mani.AnsweredBy.host`).
+    private func hostCommand(_ id: Int, _ request: ManiRequest, from me: Peer) {
+        let conn = me.conn
+        switch request.verb {
+        case "diff":
+            // The patch (its input) becomes a diff block here, against the
+            // directory it ran in; the app, if one acts, places it beside
+            // the terminal it ran in, by a command of its own, and answers.
+            guard let app = actingApp() else { return answer(id, .done(noneActs), to: conn) }
+            guard let patch = request.input, patch.utf8.count <= 64 << 20 else { return answer(id, .done("that patch is over 64 MB"), to: conn) }
+            let block = BlockID(host: host), root = request.cwd
+            append(.create(kind: .diff, title: nil, path: root), to: .block(block))
+            append(.diffSubject(.patch(root: root, title: request.flags["title"])), to: .block(block))
+            append(.diffLoaded(oldText: nil, newText: nil, patch: patch, error: nil, at: clock.now()), to: .block(block))
+            relay(id, ManiRequest(verb: "diff", flags: [:], args: [block.description], cwd: root, here: request.here), from: me, to: app)
+        default:
+            // `mani env`: the host's own, attached or not.
+            environmentCommand(request) { conn.send(.message(ServerMessage.commandReply(id: id, $0))) }
         }
     }
 
@@ -1282,16 +1295,6 @@ final class Server {
         case let .history(shard):
             let h = store.history(shard)
             conn.send(.message(ServerMessage.history(shard: shard, base: h.base, entries: h.entries)))
-            done()
-        case let .openDone(openID, client):
-            if let p = peer(numbered: client) { answer(openID, .done(nil), to: p.conn) }
-            done()
-        case let .commandReply(commandID, client, reply):
-            if reply.status != nil {
-                commandsOut[client]?.remove(commandID)
-                for p in peers.values { p.commandsAt.remove(CommandAsked(client: client, id: commandID)) }
-            }
-            peer(numbered: client)?.conn.send(.message(ServerMessage.commandReply(id: commandID, reply)))
             done()
         case let .runPanel(block, command, event):
             runPanel(block, command: command, event: event)

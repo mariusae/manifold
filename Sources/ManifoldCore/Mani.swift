@@ -28,6 +28,14 @@ public enum Mani {
         public var help: String
     }
 
+    /// Who does a command: the app acting for the host (`ManiDesk`), the
+    /// command passed on to it by the host; the host's server itself
+    /// (`env`, and `diff`, which makes its block there and passes the app
+    /// a command to place it); or `mani`, without asking anyone.
+    public enum AnsweredBy: Sendable {
+        case app, host, here
+    }
+
     public struct Verb: Sendable {
         /// "open", or "skill install": a command of a group.
         public var words: [String]
@@ -38,8 +46,9 @@ public enum Mani {
         public var flags: [Flag]
         public var summary: String
         public var details: String
-        /// Done by the app (passed on through the host), not here.
-        public var inApp = false
+        /// Who does it: the app (passed on through the host), the host
+        /// itself, or `mani` here.
+        public var answeredBy: AnsweredBy = .here
         /// Reads its input (piped, or a file), unless --text gives it.
         public var readsInput = false
 
@@ -83,14 +92,14 @@ public enum Mani {
                  the top left), the tiles sharing each of its edges (adjacent),
                  the names it answers to, its summary (title, place, lines, note,
                  tone); and the tiles docked, with where each was.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["info"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Describe a block, as JSON",
              details: """
                  A block: its id, kind, title, path, working directory, status,
                  where it's shown, its summary, its links, its outline. For @selection, where
                  the selection is (block, path, lines, page).
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["read"], args: "<name>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "lines", value: "a-b", help: "only these lines (from 1; a- to the end)"),
                      Flag(name: "pages", value: "a-b", help: "a PDF's pages (from 1)"),
@@ -103,7 +112,7 @@ public enum Mani {
                  now (saved or not), a terminal's screen, a page's text, a PDF's
                  text, a diff's patch, a folder's listing, search results, a
                  notebook's cells and output. @selection prints what's selected.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["context"], args: "", minArgs: 0, maxArgs: 0, flags: [json],
              summary: "Say where you are: space, focus, selection, commands",
              details: """
@@ -111,7 +120,7 @@ public enum Mani {
                  and the focused one, the last selection (and where), the last
                  commands of the terminals shown with their status, and unsaved
                  files.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["open"], args: "[path|url ...]", minArgs: 0, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "return once they've been put away again (what $EDITOR runs)"),
                      Flag(name: "line", value: "n", help: "at this line"), space] + placing,
@@ -122,7 +131,7 @@ public enum Mani {
                  Manifold's terminals, they go beside it; anywhere else, in the
                  shown space, with Manifold brought forward (and started if
                  need be). With no paths, brings Manifold forward.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["new"], args: "<kind> [what]", minArgs: 1, maxArgs: 2,
              flags: [Flag(name: "title", short: "t", value: "title", help: "its title"),
                      Flag(name: "text", value: "text", help: "a note's text (else its input, if piped)"),
@@ -146,7 +155,7 @@ public enum Mani {
                    mani new agent --right --size 0.6 --run "read the README"
                    mani new terminal --at @leftmost --below --run "make test"
                    mani new git --at @leftmost --over
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["write"], args: "<name>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "append", short: "a", help: "after what's there, not in its place"),
                      Flag(name: "text", value: "text", help: "the text (else the input)"),
@@ -155,20 +164,20 @@ public enum Mani {
              details: """
                  Puts text in a note, or in a file's text as Manifold has it (the
                  file left unsaved unless --save).
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["show"], args: "<name>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "line", value: "n", help: "at this line"), space] + placing,
              summary: "Bring a block to view and focus it",
              details: """
                  A tile on screen is focused (its space shown); a block that
                  isn't is placed, by the tile it's told, else beside this one.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["close"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Take a tile off its space (as ⌘W), or remove a space (as ⇧⌘W)",
              details: """
                  The tile goes, as ⌘W takes it. A block nothing else keeps (no other tile, pin or link by hand) is collected after half an hour; until then ⌘O or Recently Closed brings it back.
                  A space named (by its name or id, or @space for this one) is removed from the sidebar, as ⇧⌘W removes it: to Recently Closed, its tiles' blocks collected after the same half hour unless something else keeps them — this terminal too, if it's in that space.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["run"], args: "<terminal> <command ...>", minArgs: 2, maxArgs: nil,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to end: print its output, exit with its status"),
                      Flag(name: "timeout", value: "seconds", help: "with --wait, give up after this long (status 124)"), space],
@@ -177,12 +186,12 @@ public enum Mani {
                  Types the command into the terminal's shell, and return, as if
                  at its keyboard. With --wait, waits for it to end (the shell's
                  integration says when) and prints what it printed.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["pin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Pin a block in its space",
-             details: "Pinned, it heads its space in the sidebar and stays there when its tile is closed.", inApp: true),
+             details: "Pinned, it heads its space in the sidebar and stays there when its tile is closed.", answeredBy: .app),
         Verb(words: ["unpin"], args: "<name>", minArgs: 1, maxArgs: 1, flags: [],
-             summary: "Unpin a block", details: "Takes the pin `mani pin` (or the menus) put on it.", inApp: true),
+             summary: "Unpin a block", details: "Takes the pin `mani pin` (or the menus) put on it.", answeredBy: .app),
         Verb(words: ["link"], args: "<from> <to>", minArgs: 2, maxArgs: 2,
              flags: [Flag(name: "note", value: "text", help: "what the link is for"),
                      Flag(name: "as", value: "relation", help: "what it means: describes, annotates, explains, step, or any word")],
@@ -192,7 +201,7 @@ public enum Mani {
                  followed from either. Either end may be a place, as a reference names
                  one (`mani ref` prints them): a note that describes a function is
                    mani link @last "$(mani ref Sources/App.swift --symbol App.run)" --as describes
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["threads"], args: "", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "project", help: "the project this folder is in, not the space"),
                      Flag(name: "place", value: "reference", help: "only those about this place (or block)"),
@@ -204,7 +213,7 @@ public enum Mani {
                  about and where that is now (moved, or gone), the text it was
                  written against, and its comments, each with who wrote it. Reply
                  with `mani thread reply`, by the reference it prints.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["thread", "read"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [json],
              summary: "Print a thread: its place, what it was written against, its entries",
              details: """
@@ -212,7 +221,7 @@ public enum Mani {
                  "gone" if its lines were deleted — then the text it was written
                  against is all there is), then every entry: comments, with who
                  wrote each, and what happened (resolved, reopened, edited).
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["thread", "new"], args: "<place> [text]", minArgs: 1, maxArgs: 2, flags: [],
              summary: "Start a thread about a place: a reference, a file, a block, or @selection",
              details: """
@@ -220,7 +229,7 @@ public enum Mani {
                  line), its first comment the text (else the input). Written as you,
                  or, run by an agent in its terminal, as that agent. Prints the
                  thread's reference.
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["thread", "reply"], args: "<thread> [text]", minArgs: 1, maxArgs: 2,
              flags: [Flag(name: "resolve", help: "and resolve it (only what you did)")],
              summary: "Reply to a thread",
@@ -228,18 +237,18 @@ public enum Mani {
                  A comment on the thread (the text, else the input) — as the agent
                  whose terminal runs it, or as you. --resolve resolves it after:
                  only when you did what it asked.
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["thread", "resolve"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
-             summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", inApp: true),
+             summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", answeredBy: .app),
         Verb(words: ["thread", "reopen"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
-             summary: "Reopen a resolved thread", details: "As Reopen in its chat.", inApp: true),
+             summary: "Reopen a resolved thread", details: "As Reopen in its chat.", answeredBy: .app),
         Verb(words: ["symbols"], args: "<file>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "List a file's declarations (or a Markdown text's headings)",
              details: """
                  Each declaration its language's grammar finds — its path (`Type.method`)
                  and the line it starts on — or each heading of a Markdown text, indented
                  by its level. What `mani ref --symbol` and `--heading` take.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["project"], args: "[folder]", minArgs: 0, maxArgs: 1,
              flags: [Flag(name: "make", help: "make the folder a project"),
                      Flag(name: "remove", help: "the project it's in, no longer one")],
@@ -252,7 +261,7 @@ public enum Mani {
                  (indexed at once, if its language has an indexer); --remove makes the
                  one it's in a folder again. In the app, its folder's tile shows its
                  homepage, and searches it.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["index"], args: "[file or folder]", minArgs: 0, maxArgs: 1,
              flags: [Flag(name: "wait", short: "w", help: "wait for it to be made, and say how it went"),
                      Flag(name: "status", help: "only say how the index stands")],
@@ -265,7 +274,7 @@ public enum Mani {
                  scip-java where they're installed. Then `mani refs` finds where a symbol
                  is used across the project, and Find References does when no language
                  server answers. Run it again after big changes.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["refs"], args: "<file or reference>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "symbol", value: "path", help: "a declaration in the file, by its path (`Type.method`) or name"),
                      Flag(name: "line", value: "n", help: "the declaration at this line (from 1)"),
@@ -277,7 +286,7 @@ public enum Mani {
                  marked. The symbol by a reference to it (`mani ref` prints one), or a
                  file and --symbol or --line. --markdown prints each as a reference to
                  its place, for a walk through code.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["callers"], args: "<file or reference>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "symbol", value: "path", help: "a declaration in the file, by its path (`Type.method`) or name"),
                      Flag(name: "line", value: "n", help: "the declaration at this line (from 1)"),
@@ -288,7 +297,7 @@ public enum Mani {
                  grammar of the file it's in — with where it does, as Markdown: each a
                  reference, for a note or a walk (Code ▸ Show Callers makes the note).
                  --depth goes up the tree.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["ref"], args: "<file>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "symbol", value: "path", help: "a declaration, by its path (`Type.method`) or name"),
                      Flag(name: "heading", value: "title", help: "a Markdown heading, by its title"),
@@ -301,7 +310,7 @@ public enum Mani {
                  and the same reference again for the same place. Put it in a note, a
                  link (`mani link`), a walk through code: Manifold shows it as a pill,
                  a card, and goes there when it's followed.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["annotate"], args: "<name> [key=value…]", minArgs: 1, maxArgs: nil,
              flags: [json],
              summary: "Keep keys and values on a block or a space, for tools to know it by",
@@ -315,9 +324,9 @@ public enum Mani {
                    mani ls --space space=review
                  `'key=*'` (quoted, for the shell) names the one block with that key,
                  whatever its value. The inspector (⌥⌘I) shows them.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
-             summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", inApp: true),
+             summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", answeredBy: .app),
         Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "only", value: "events", help: "these events, by kind, comma-separated")],
              summary: "Print what happens, a JSON line each",
@@ -328,7 +337,7 @@ public enum Mani {
                  status), status (a block's status), open and close (a tile shown,
                  taken off), save (a file saved), space (another shown), panel
                  (something done in a panel, as `ui wait` prints it).
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["ui", "new"], args: "< widgets", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "title", short: "t", value: "title", help: "its title (else the widgets')"),
                      Flag(name: "text", value: "json", help: "the widgets (else the input)")] + placing,
@@ -353,7 +362,7 @@ public enum Mani {
                  command (sh, in the panel's folder) when used, with MANI_EVENT
                  (JSON) and MANI_VALUE set, and the panel as @here. Prints the
                  panel's id.
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["ui", "set"], args: "<panel> [id=value ...]", minArgs: 1, maxArgs: nil,
              flags: [Flag(name: "text", value: "json", help: "new widgets in place of the old (else the input, if piped)")],
              summary: "Set a panel's values, its widgets' properties, or its widgets",
@@ -362,10 +371,10 @@ public enum Mani {
                  true, [1,2]; else a string); id.property=value sets one of its
                  properties (label, text, rows, options, disabled, …). Widgets on
                  the input replace the panel's.
-                 """, inApp: true, readsInput: true),
+                 """, answeredBy: .app, readsInput: true),
         Verb(words: ["ui", "get"], args: "<panel> [id]", minArgs: 1, maxArgs: 2, flags: [],
              summary: "Print a panel's values",
-             details: "Every value, as a JSON object by widget id; or one, as itself (a string bare, anything else as JSON).", inApp: true),
+             details: "Every value, as a JSON object by widget id; or one, as itself (a string bare, anything else as JSON).", answeredBy: .app),
         Verb(words: ["ui", "wait"], args: "<panel>", minArgs: 1, maxArgs: 1,
              flags: [Flag(name: "id", value: "id", help: "only what's done to this widget"),
                      Flag(name: "timeout", value: "seconds", help: "give up after this long (status 124)")],
@@ -375,7 +384,7 @@ public enum Mani {
                  (click, change, emit), the widget's id, its value, and all the
                  panel's values. What's done while nothing waits is kept for the
                  next wait, so a loop of waits misses nothing.
-                 """, inApp: true),
+                 """, answeredBy: .app),
         Verb(words: ["diff"], args: "< patch", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "title", short: "t", value: "name", help: "the diff block's title")],
              summary: "Show a patch as a diff block",
@@ -383,7 +392,7 @@ public enum Mani {
                  Reads a patch from the input (git diff | mani diff) and shows it
                  beside this terminal as a diff block; double-click a line to open
                  the file there.
-                 """),
+                 """, answeredBy: .host),
         Verb(words: ["skill", "install"], args: "[agent ...]", minArgs: 0, maxArgs: nil, flags: [],
              summary: "Put Manifold's hooks in coding agents",
              details: """
@@ -416,7 +425,7 @@ public enum Mani {
                  Its shells' SSH_AUTH_SOCK is a link to the newest agent
                  forwarded to the host that answers, so they keep signing as
                  connections come and go (unless the host has its own agent).
-                 """, inApp: true),
+                 """, answeredBy: .host),
         Verb(words: ["env", "set"], args: "<NAME=value | NAME> ...", minArgs: 1, maxArgs: nil,
              flags: [Flag(name: "for", value: "scope", help: "all (the default for a new one), shells or tools")],
              summary: "Set variables this host gives what it starts",
@@ -425,23 +434,23 @@ public enum Mani {
                  again keeps its scope unless --for says another. A proxy for
                  the indexer's fetches only: mani env set --for tools
                  HTTPS_PROXY=http://proxy:3128 NO_PROXY=localhost.
-                 """, inApp: true),
+                 """, answeredBy: .host),
         Verb(words: ["env", "unset"], args: "<NAME> ...", minArgs: 1, maxArgs: nil, flags: [],
-             summary: "Stop giving variables to what this host starts", details: "", inApp: true),
+             summary: "Stop giving variables to what this host starts", details: "", answeredBy: .host),
         Verb(words: ["env", "export"], args: "", minArgs: 0, maxArgs: 0,
              flags: [Flag(name: "for", value: "scope", help: "the scope's (shells, unless said)")],
              summary: "Print the variables as export lines, for a shell already running",
              details: """
                  With the agent's link: eval "$(mani env export)" in sh, bash or
                  zsh; mani env export | source in fish.
-                 """, inApp: true),
+                 """, answeredBy: .host),
         Verb(words: ["env", "agent"], args: "[socket]", minArgs: 0, maxArgs: 1, flags: [],
              summary: "Say how this host's ssh agent stands, or give its shells another",
              details: """
                  Agents forwarded to Manifold's connections and to ssh logins are
                  found on their own. A socket named (this shell's SSH_AUTH_SOCK,
                  if none is) is linked at once, if it's the newest.
-                 """, inApp: true),
+                 """, answeredBy: .host),
         Verb(words: ["agent"], args: "<event> [json]", minArgs: 1, maxArgs: 2,
              flags: [Flag(name: "agent", value: "name", help: "the agent the hook is in (claude, codex, ...)"),
                      Flag(name: "no-input", help: "read nothing from the input")],
@@ -462,7 +471,7 @@ public enum Mani {
     /// install` writes): how to see and drive what's on the user's screen,
     /// the commands from the table, and what users say mapped to them.
     public static var guide: String {
-        let commands = verbs.filter { $0.inApp || ["diff"].contains($0.name) }.map { "- `\($0.usage)` — \($0.summary)" }
+        let commands = verbs.filter { $0.answeredBy != .here }.map { "- `\($0.usage)` — \($0.summary)" }
         return """
             # Manifold: the mani command
 
@@ -785,7 +794,7 @@ public enum Mani {
         if ways.count > 1 {
             usageError(UsageError(message: "one of \(ways.joined(separator: ", ")), not all", verb: invocation.verb))
         }
-        if verb(invocation.verb)?.inApp == true {
+        if let v = verb(invocation.verb), v.answeredBy != .here {
             var request = ManiRequest(verb: invocation.verb, flags: invocation.flags, args: invocation.args,
                                       cwd: FileManager.default.currentDirectoryPath, here: here)
             // A script's space, said once for all its commands.
@@ -824,26 +833,23 @@ public enum Mani {
             if invocation.verb == "env agent", request.args.isEmpty, let s = env["SSH_AUTH_SOCK"], !s.isEmpty {
                 request.args = [s]
             }
-            if verb(invocation.verb)?.readsInput == true, invocation.value("text") == nil {
+            if v.readsInput, invocation.value("text") == nil {
                 request.input = readInput()
             }
-            let shows = ["open", "new", "show", "ui new"].contains(invocation.verb)
+            if invocation.verb == "diff" {
+                // The patch, whole, for the host to make a diff block of
+                // against the directory it's run in (`cwd`).
+                switch OpenCommand.readPatch() {
+                case .success(let p): request.input = p
+                case .failure(let error): fail(error.message)
+                }
+            }
+            let shows = ["open", "new", "show", "ui new", "diff"].contains(invocation.verb)
             let status = platform.request(shows) { ManiClient.run(fd: $0, request: request) }
             if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
             exit(status)
         }
         switch invocation.verb {
-        case "diff":
-            let patch: String
-            switch OpenCommand.readPatch() {
-            case .success(let p): patch = p
-            case .failure(let error): fail(error.message)
-            }
-            let root = FileManager.default.currentDirectoryPath
-            let title = invocation.value("title")
-            let status = platform.request(true) { OpenCommand.runPatch(fd: $0, patch: patch, root: root, title: title, beside: here) }
-            if status == ManiClient.absent { fail("Manifold isn't attached to this host") }
-            exit(status)
         case "skill show":
             print(guide)
             exit(0)

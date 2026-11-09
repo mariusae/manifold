@@ -189,11 +189,6 @@ public enum Proposal: Codable, Sendable {
     case resetGraph
     /// The whole history of a shard, for scrubbing.
     case history(ShardID)
-    /// The command's `open --wait` is done: what it opened was put away.
-    case openDone(id: Int, client: Int)
-    /// The app's answer to a `mani` command (`ManiRequest`), passed on to
-    /// the client that asked: some of what it prints, and, last, its status.
-    case commandReply(id: Int, client: Int, ManiReply)
     /// Typed into a terminal's shell, as if at its keyboard (`mani run`).
     case input(block: BlockID, text: String)
     /// A panel widget's command (§7.8), run on the panel's host with what
@@ -337,7 +332,7 @@ public extension Proposal {
         case let .lsp(request):
             return request.block
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .seen, .hold, .release, .link, .unlink, .resetGraph,
-             .history, .openDone, .commandReply, .languageServers, .scip, .editFile, .editing, .project, .unproject, .signal, .machine,
+             .history, .languageServers, .scip, .editFile, .editing, .project, .unproject, .signal, .machine,
              .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath, .threadSeen:
             return nil
         }
@@ -366,7 +361,7 @@ public extension Proposal {
             return .everyHost { _ in self }
         // A project's said to its own host's client (`HostClient.propose`);
         // here, this Mac's.
-        case .workspaces, .settings, .preferences, .environment, .indexAgents, .openDone, .commandReply, .scip, .editFile, .project, .unproject,
+        case .workspaces, .settings, .preferences, .environment, .indexAgents, .scip, .editFile, .project, .unproject,
              .signal, .machine, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath:
             return .local
         // The rest, each for its block's host.
@@ -503,9 +498,10 @@ public enum ClientMessage: Codable, Sendable {
     /// `commandReply`s, the last with its status — or a `reply` (`.done`,
     /// with why not) when there's no app.
     case command(id: Int, ManiRequest)
-    /// `mani diff`: a patch read from its input, shown as a diff block
-    /// (its files opened against `root`, the command's directory).
-    case openPatch(id: Int, patch: String, root: String, title: String?, beside: BlockID?)
+    /// The app's answer to a `mani` command (`ServerMessage.command`),
+    /// passed on to the client that asked: some of what it prints, and,
+    /// last, its status.
+    case commandReply(id: Int, client: Int, ManiReply)
     /// An agent's hook (`mani agent`): what happened in the agent
     /// running in `block`. A connection's one message, with no hello.
     case agent(block: BlockID, AgentEvent)
@@ -736,16 +732,14 @@ public enum ServerMessage: Codable, Sendable {
     /// A shard's history: the state its (compacted) log starts from, if
     /// any, and the entries since.
     case history(shard: ShardID, base: ShardSnapshot?, entries: [Entry])
-    /// A `mani` command, for the app to do and answer (`commandReply`).
+    /// A `mani` command, for the app to do and answer (`commandReply`) —
+    /// `mani diff`'s a block the host made (`args`, its id), to place.
     case command(id: Int, client: Int, ManiRequest)
     /// Some of what a command prints; the last says its status.
     case commandReply(id: Int, ManiReply)
     /// The client that asked for a command has gone (a `watch` ended):
     /// nothing more to say to it.
     case commandEnded(id: Int, client: Int)
-    /// A block the host made at a command's asking (a patch): the app
-    /// places it and answers the command.
-    case show(id: Int, client: Int, block: BlockID, beside: BlockID?)
     /// A language server's diagnostics for a block, as they stand.
     case diagnostics(BlockID, [Diagnostic])
     /// A language server's state: starting, ready, or gone, with a word.

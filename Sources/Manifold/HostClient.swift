@@ -27,11 +27,9 @@ protocol HostClientDelegate: AnyObject {
     /// A terminal's shell ended (not for dormancy), while we were attached.
     func client(_ client: HostClient, terminalEnded block: BlockID)
     func client(_ client: HostClient, history shard: ShardID, base: ShardSnapshot?, entries: [Entry])
-    /// A `mani` command on this host, for the app to do; its asker gone;
-    /// a block made for one, to show.
+    /// A `mani` command on this host, for the app to do; its asker gone.
     func client(_ client: HostClient, command id: Int, asker: Int, _ request: ManiRequest)
     func client(_ client: HostClient, commandEnded id: Int, asker: Int)
-    func client(_ client: HostClient, show id: Int, asker: Int, block: BlockID, beside: BlockID?)
     func client(_ client: HostClient, diagnostics block: BlockID)
     func client(_ client: HostClient, gutter block: BlockID)
     /// A notebook's running cell printed (§7.7).
@@ -540,6 +538,12 @@ final class HostClient {
             guard case let .done(error) = r else { return .some(nil) }
             return .some(error)
         }, done)
+    }
+
+    /// The app's answer to a `mani` command the host passed on (`command`):
+    /// some of what it prints, and, last, its status.
+    func commandReply(id: Int, asker: Int, _ reply: ManiReply) {
+        conn?.send(.message(ClientMessage.commandReply(id: id, client: asker, reply)))
     }
 
     /// Asks the block's host's language server something.
@@ -1388,8 +1392,6 @@ final class HostClient {
             delegate?.client(self, commandEnded: id, asker: client)
         case .commandReply:
             break
-        case let .show(id, client, block, beside):
-            delegate?.client(self, show: id, asker: client, block: block, beside: beside)
         case let .diagnostics(block, items):
             diagnostics[block] = items
             delegate?.client(self, diagnostics: block)

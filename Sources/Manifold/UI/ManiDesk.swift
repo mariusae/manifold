@@ -3,8 +3,9 @@ import PDFKit
 import ManifoldCore
 import ManifoldSyntax
 
-/// `mani`'s commands that the app does (`Mani.verbs`, those `inApp`),
-/// asked through a host (`ManiRequest`) and answered to it (`ManiReply`):
+/// `mani`'s commands that the app does (`Mani.verbs`, those answered by
+/// the app; and `diff`'s block, made by the host, placed), asked through
+/// a host (`ManiRequest`) and answered to it (`ManiReply`):
 /// naming blocks (ids, paths, titles, `@` names and positions), listing the
 /// layout, reading what blocks hold, making and placing blocks, typing
 /// into terminals, and telling a `watch` what happens. Remembers what
@@ -54,7 +55,7 @@ final class ManiDesk {
     // MARK: Answering
 
     func reply(_ a: Asker, out: String = "", err: String = "", status: Int32?) {
-        hosts.propose(.commandReply(id: a.id, client: a.client, ManiReply(out: out, err: err, status: status)), on: a.host)
+        hosts.commandReply(ManiReply(out: out, err: err, status: status), id: a.id, asker: a.client, on: a.host)
     }
 
     /// A command, done, and answered: its output and status 0, or what
@@ -89,6 +90,7 @@ final class ManiDesk {
         case "read": return try await read(r, scope)
         case "context": return try await context(r, scope)
         case "open": return try open(r, scope, asker)
+        case "diff": return try diff(r)
         case "new": return try make(r, scope)
         case "write": return try write(r, scope)
         case "show": return try show(r, scope)
@@ -1276,6 +1278,22 @@ final class ManiDesk {
         guard wait, !placed.isEmpty else { return "" }
         wc.openWaits.append((asker.host, asker.id, asker.client, placed, made))
         return nil
+    }
+
+    /// `diff`: the diff block the host made of the patch (its id, the
+    /// argument), shown beside the terminal the command ran in, else here.
+    private func diff(_ r: ManiRequest) throws -> String {
+        guard let block = BlockID(string: r.args[0]) else { throw Failure(message: "no block \(r.args[0])") }
+        let besidePlacement = r.here.flatMap { b in
+            wc.allWorkspaces.lazy.compactMap { self.hosts.arrangement($0)?.placements.first { $0.block == b } }.first
+        }
+        if let besidePlacement, let aid = wc.allWorkspaces.first(where: { hosts.arrangement($0)?.placement(besidePlacement.id) != nil }), aid != wc.selected {
+            hosts.select(aid)
+        }
+        let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
+        wc.show(block, lens: lens, .besideOrHere(besidePlacement?.id), context: "asked from the shell")
+        NSApp.activate()
+        return ""
     }
 
     /// `new <kind> [what]`: a kind from `BlockKinds` (the table File ▸ New

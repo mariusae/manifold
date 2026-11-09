@@ -7,19 +7,9 @@ import Glibc
 import Musl
 #endif
 
-/// `mani diff`, on the app's host or a remote one (where `manifoldd mani`
-/// runs it): asks the host to make a diff block of a patch, for the app to
-/// show beside the block the shell is in; and the paths `mani open` is
-/// given, made whole.
+/// What `mani diff` and `mani open` read where they run: the patch on
+/// the input, and the paths given, made whole.
 public enum OpenCommand {
-    /// `mani diff`: a patch, read from the input, shown as a diff block,
-    /// over a connection already made to the host (a socket's fd). The
-    /// exit status: 0 when done, 1 when it couldn't be, `ManiClient.absent`
-    /// when the app wasn't there to ask.
-    public static func runPatch(fd: Int32, patch: String, root: String, title: String?, beside: BlockID?, name: String = "mani") -> Int32 {
-        run(fd: fd, name: name) { .openPatch(id: $0, patch: patch, root: root, title: title, beside: beside) }
-    }
-
     /// The patch on standard input, or why there is none.
     public static func readPatch() -> Result<String, ResolveError> {
         guard isatty(0) == 0 else { return .failure(ResolveError(message: "diff reads a patch from its input: git diff | mani diff")) }
@@ -27,31 +17,6 @@ public enum OpenCommand {
         guard let text = String(data: data, encoding: .utf8) else { return .failure(ResolveError(message: "the patch isn't UTF-8")) }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failure(ResolveError(message: "the patch is empty")) }
         return .success(text)
-    }
-
-    private static func run(fd: Int32, name: String, request: (Int) -> ClientMessage) -> Int32 {
-        var channel = BlockingChannel(fd: fd)
-        guard channel.hello(name) else { return ManiClient.fail("lost the connection to Manifold") }
-        var deadline = Date().addingTimeInterval(10)
-        while true {
-            switch channel.next(until: deadline) {
-            case .timedOut:
-                return ManiClient.fail("Manifold didn't answer")
-            case .closed:
-                return ManiClient.fail("lost the connection to Manifold")
-            case let .message(.welcome(version, _, _, _, _, _, _, _, _, _)):
-                if version != protocolVersion { return ManiClient.fail(ManiClient.otherVersion) }
-                guard channel.send(request(1)) else { return ManiClient.fail("lost the connection to Manifold") }
-                deadline = Date().addingTimeInterval(15)
-            case let .message(.reply(id, .done(error))):
-                guard id == 1 else { continue }
-                if let error, error.contains("isn't attached") { return ManiClient.absent }
-                if let error { return ManiClient.fail(error) }
-                return 0
-            case .message:
-                continue
-            }
-        }
     }
 
     /// Paths made absolute against the working directory, checked to exist.

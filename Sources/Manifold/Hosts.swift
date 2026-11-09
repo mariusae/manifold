@@ -23,7 +23,6 @@ final class Hosts {
     /// the client that asked one has gone.
     var onCommand: ((HostID, Int, Int, ManiRequest) -> Void)?
     var onCommandEnded: ((HostID, Int, Int) -> Void)?
-    var onShow: ((HostID, Int, Int, BlockID, BlockID?) -> Void)?
     var onDiagnostics: ((BlockID) -> Void)?
     var onGutter: ((BlockID) -> Void)?
     var onNotebookLive: ((BlockID, String, String) -> Void)?
@@ -466,6 +465,11 @@ final class Hosts {
         client(host)?.propose(proposal)
     }
 
+    /// The app's answer to a `mani` command, to the host that passed it on.
+    func commandReply(_ reply: ManiReply, id: Int, asker: Int, on host: HostID) {
+        client(host)?.commandReply(id: id, asker: asker, reply)
+    }
+
     /// Sets a host's own preferences; `done` says why not, if the host
     /// refused them.
     func setPreferences(_ preferences: HostPreferences, on host: HostID, done: @escaping (String?) -> Void) {
@@ -795,7 +799,6 @@ extension Hosts: HostClientDelegate {
     func client(_ client: HostClient, history shard: ShardID, base: ShardSnapshot?, entries: [Entry]) { onHistory?(shard, base, entries) }
     func client(_ client: HostClient, command id: Int, asker: Int, _ request: ManiRequest) { onCommand?(client.host, id, asker, request) }
     func client(_ client: HostClient, commandEnded id: Int, asker: Int) { onCommandEnded?(client.host, id, asker) }
-    func client(_ client: HostClient, show id: Int, asker: Int, block: BlockID, beside: BlockID?) { onShow?(client.host, id, asker, block, beside) }
     func client(_ client: HostClient, diagnostics block: BlockID) { onDiagnostics?(block) }
     func client(_ client: HostClient, gutter block: BlockID) { onGutter?(block) }
     func client(_ client: HostClient, notebookLive block: BlockID, cell: String, output: String) { onNotebookLive?(block, cell, output) }

@@ -212,9 +212,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.onCommandEnded = { [weak self] host, id, client in
             self?.maniCommandEnded(on: host, id: id, client: client)
         }
-        hosts.onShow = { [weak self] host, id, client, block, beside in
-            self?.showRequest(on: host, id: id, client: client, block: block, beside: beside)
-        }
         hosts.onLanguageServer = { [weak self] _, _, _, _ in self?.settingsWindow?.refresh() }
         hosts.onErased = { [weak self] client, by in self?.sessionErased(client, by: by) }
         hosts.onReplaced = { [weak self] client, _ in
