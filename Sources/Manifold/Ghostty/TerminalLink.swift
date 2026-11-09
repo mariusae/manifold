@@ -179,7 +179,10 @@ final class TerminalLink {
             size = (cols, rows)
             if !attached, !attaching {
                 attaching = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { self.attach() }
+                // Attached before: a resume, as any attach after the first
+                // is (§ M17) — what it shows kept, what was typed sent.
+                let again = everAttached
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { self.attach(resume: again) }
             }
             return attached && changed ? stream : nil
         }

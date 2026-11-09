@@ -165,7 +165,10 @@ Machines: M3, M18, M29.
 - **A terminal resized while its link is down attaches afresh**
   (`resized()` → `attach()`, not `attach(resume: everAttached)`): the
   resume that keeps the screen and resends what was typed meanwhile is
-  skipped. (M17)
+  skipped. (M17) — **fixed**: an attach after the first is a resume however
+  it comes about. Test: `ManifoldAppTests/TerminalLinkTests` (a pair of
+  muxes; `HostClient.debugUse`, debug builds only) — the second attach
+  wasn't a resume.
 Machines: M14, M17.
 
 ### I-7 A toast shown as the last one fades is lost · **confirmed on reading** · medium-low
@@ -379,7 +382,7 @@ mirror. Rule: `fileHistory` kept ⇔ strip shown ∨ blame on. No live bug.
 `stream`, `attaching`, `attached`, `everAttached`, `acceptInput` (under a
 lock). States: never attached → attaching → replaying → live → detached
 (ever attached) → stopped. Invariant: an attach after the first is a
-resume. Findings: I-6.
+resume — `resume()`'s and `resized()`'s alike. Findings: I-6 — fixed.
 
 #### M18 LocalCopies — a remote file opened here · implicit
 `Copy.sending`, `modified`, the `settle` debouncer. States: watching →

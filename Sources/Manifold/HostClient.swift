@@ -71,6 +71,14 @@ final class HostClient {
     /// The connection's streams (§8): its own frames are the control
     /// stream; terminals, forwarded ports and files have streams of their own.
     private(set) var mux: Mux?
+
+    #if DEBUG
+    /// Tests: a link made elsewhere (one end of a pair), taken as answered.
+    func debugUse(_ mux: Mux) {
+        self.mux = mux
+        link = .connected
+    }
+    #endif
     private var child: Child?
     private(set) var hasState = false
     private(set) var isConnected = false
