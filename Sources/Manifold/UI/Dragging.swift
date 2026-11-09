@@ -578,9 +578,20 @@ final class DropPalette: NSView {
 
     static var isOpen: Bool { shown != nil }
 
-    /// Opened over `view` at `point` (window terms), for what's dragged.
-    static func open(over view: DropTaking, _ pb: NSPasteboard, at point: NSPoint) {
-        guard shown == nil, let window = view.window, let content = window.contentView, let d = Dragged(pb) else { return }
+    /// Whether a drag is still going: the button's held. AppKit doesn't
+    /// tell a drop target reliably that a drag was given up (⎋, let go
+    /// where nothing takes it), so the palette asks this itself.
+    static var dragGoing: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
+    /// While it's open (for a drag): looking, a few times a second, for
+    /// the drag being over.
+    private static var watch: Timer?
+
+    /// Opened over `view` at `point` (window terms), for what's dragged —
+    /// only while it's being dragged (`watching`: a rest's timer can fire
+    /// just after the drag was given up, and a palette opened then was
+    /// never closed). Debugging opens it with no drag (`watching` false).
+    static func open(over view: DropTaking, _ pb: NSPasteboard, at point: NSPoint, watching: Bool = true) {
+        guard shown == nil, !watching || dragGoing(), let window = view.window, let content = window.contentView, let d = Dragged(pb) else { return }
         let local = view.convert(point, from: nil)
         let forms = view.dropForms(d, at: local)
         guard forms.count > 1 else { return }
@@ -594,9 +605,19 @@ final class DropPalette: NSView {
         shown = palette
         // The target lets go of it: it's the palette's now.
         Dropping.grid(of: view)?.draggingExited(nil)
+        // The drag over however it ended: closed (§ M40).
+        if watching {
+            let timer = Timer(timeInterval: 0.15, repeats: true) { _ in
+                MainActor.unchecked { if !dragGoing() { close() } }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            watch = timer
+        }
     }
 
     static func close() {
+        watch?.invalidate()
+        watch = nil
         shown?.removeFromSuperview()
         shown = nil
     }

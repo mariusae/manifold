@@ -256,7 +256,7 @@ extension MainWindowController {
         guard let target = debugDropTarget else { return "the focused tile takes no drops" }
         if palette {
             DropPalette.close()
-            DropPalette.open(over: target, pb, at: target.convert(NSPoint(x: target.visibleRect.midX, y: target.visibleRect.midY), to: nil))
+            DropPalette.open(over: target, pb, at: target.convert(NSPoint(x: target.visibleRect.midX, y: target.visibleRect.midY), to: nil), watching: false)
             return DropPalette.debugState
         }
         return Dropping.debugDrop(pb, on: target, at: nil)

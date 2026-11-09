@@ -546,6 +546,22 @@ welcomes this launch and its spaces take its place; the pointer on it,
 the host's card, its standing live (`HostDashboard.standing`: the step
 under way, its progress, how long).
 
+#### M40 The drop palette · implicit
+`DropPalette.shown`, `watch`; opened by a rest's timer (`Dropping.rest`)
+or ⌃. States: closed · open(target, anchor, forms).
+
+| From | Event | To |
+|---|---|---|
+| closed | the drag rests over a target with choices (or ⌃) | open — only while the drag's going |
+| open | dropped on a row · moved well past it · the drag's over (no button held) | closed |
+
+Invariant: **open only during a drag.** AppKit doesn't reliably tell a
+destination a drag was given up (⎋, let go where nothing takes it), and a
+rest's timer can fire just after: the palette stayed over the window,
+stuck. **Fixed**: it opens only while the button's held (`dragGoing`), and
+while open looks a few times a second for the drag being over. Tests:
+`ManifoldAppTests/DropPaletteTests`.
+
 #### Fine as they are (views)
 BusyNote (explicit), HoverCard (has `debugState`), the timeline's visit,
 notebook cells, ManiDesk's waits, PopMenu, ScrollerFlash, ScrubberView,
