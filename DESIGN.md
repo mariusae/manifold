@@ -1164,6 +1164,12 @@ does; the band then fades where it is, in place of the one that glides
 from space to space. The pointer leaving the row, the rows, or the drag
 ending takes it away. Not for spaces and hosts being reordered, nor the
 space shown; with less motion, the band lights at once and doesn't blink.
+A space's square in the strip springs the same way for anything dragged
+(`SpaceStripView`): held there over the delay, it flashes twice, as a
+Finder folder does, and its space opens under the drag. Dropped straight
+on a square, a tile or a row goes to that space (copied with ⌥); anything
+else — a file, a reference, a page, words — opens there, in a column of
+its own at its right, as dropped on its grid.
 
 While a thing is dragged, it's shown as a **pill** of its own (`DragPill`:
 its icon, its name, on a raised ground with an edge and a shadow — a

@@ -106,17 +106,42 @@ final class SpaceStripView: NSView {
     override var isFlipped: Bool { true }
 
     /// Something dragged onto a space's square (its rect in the window),
-    /// with ⌥ (copied) or not; true if it was taken.
+    /// with ⌥ (copied) or not; true if it was taken. A tile or a row moved
+    /// (or copied) there; anything else dragged (a file, a reference, a
+    /// page, words), opened there, as dropped on its grid.
     var onDrop: ((NSPasteboard, BlockID, Bool, NSRect) -> Bool)?
-    /// Held over a square a moment, mid-drag: that space gone to, for the
-    /// drop to land where it's wanted in it.
+    /// Held over a square a moment, mid-drag — anything dragged — as the
+    /// Finder springs a folder open: the square flashes, then its space is
+    /// gone to, for the drop to land where it's wanted in it.
     var onSpring: ((BlockID) -> Void)?
     private var dropTarget: Int? { didSet { if dropTarget != oldValue { needsDisplay = true } } }
     private let spring = Debouncer()
+    /// The square flashing before its space opens (the flash lit or not).
+    private var flashing: (index: Int, lit: Bool)? { didSet { needsDisplay = true } }
+    /// The flash: lit and dark twice, this long each.
+    static let flashStep: TimeInterval = 0.08
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        registerForDraggedTypes([.manifoldPlacement, .manifoldBlock])
+        registerForDraggedTypes([.manifoldPlacement, .manifoldBlock] + Dragged.types)
+    }
+
+    /// A tile, a row, or a thing dragged — what a square takes.
+    private static func takes(_ pb: NSPasteboard) -> Bool {
+        let types = pb.types ?? []
+        return types.contains(.manifoldPlacement) || types.contains(.manifoldBlock) || Dragged(pb) != nil
+    }
+
+    /// Flashed twice (lit, dark, lit, dark), then `done`, unless the
+    /// drag's moved off it meanwhile.
+    private func flash(_ i: Int, step: Int = 0, then done: @escaping () -> Void) {
+        guard dropTarget == i else { return flashing = nil }
+        guard step < 4 else {
+            flashing = nil
+            return done()
+        }
+        flashing = (i, step % 2 == 0)
+        spring.schedule(after: Self.flashStep) { [weak self] in self?.flash(i, step: step + 1, then: done) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -125,30 +150,41 @@ final class SpaceStripView: NSView {
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let p = convert(sender.draggingLocation, from: nil)
-        let i = chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) && !chips[$0].current }
+        let pb = sender.draggingPasteboard
+        let i = Self.takes(pb) ? chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) && !chips[$0].current } : nil
         if i != dropTarget {
             dropTarget = i
+            flashing = nil
             spring.cancel()
-            // As long as the system springs a folder open (none, if it's off).
+            // As long as the system springs a folder open (none, if it's
+            // off), then a flash, as the Finder's: its space gone to.
             if let i, let delay = OrganizationView.springDelay {
                 let id = chips[i].id
-                spring.schedule(after: delay + 0.3) { [weak self] in
-                    self?.dropTarget = nil
-                    self?.onSpring?(id)
+                spring.schedule(after: delay) { [weak self] in
+                    self?.flash(i) { [weak self] in
+                        self?.dropTarget = nil
+                        self?.onSpring?(id)
+                    }
                 }
             }
         }
         guard i != nil else { return [] }
-        return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+        // A tile or a row: moved, or copied with ⌥; a thing as its source allows.
+        if (pb.types ?? []).contains(where: { $0 == .manifoldPlacement || $0 == .manifoldBlock }) {
+            return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+        }
+        return Dropping.op(sender)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
         spring.cancel()
+        flashing = nil
         dropTarget = nil
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         spring.cancel()
+        flashing = nil
         defer { dropTarget = nil }
         guard let i = dropTarget else { return false }
         return onDrop?(sender.draggingPasteboard, chips[i].id, NSEvent.modifierFlags.contains(.option), convert(rect(i), to: nil)) ?? false
@@ -272,7 +308,8 @@ final class SpaceStripView: NSView {
                 Theme.divider.setFill()
                 NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
             }
-            SpaceSquare.fill(r, color: c.color, alpha: c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
+            let lit = flashing.map { $0.index == i && $0.lit } ?? false
+            SpaceSquare.fill(r, color: c.color, alpha: lit ? 0.6 : c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
             if dropTarget == i {
                 // Something held over it, to go there.
                 let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
@@ -353,6 +390,22 @@ final class SpaceStripView: NSView {
         }
         hover(event.flatMap(index(at:)))
     }
+
+    /// Debugging: a drag held over square `i`, as `draggingUpdated` does.
+    func debugSpring(_ i: Int) {
+        guard chips.indices.contains(i), !chips[i].current else { return }
+        dropTarget = i
+        spring.cancel()
+        let id = chips[i].id
+        spring.schedule(after: OrganizationView.springDelay ?? 0.5) { [weak self] in
+            self?.flash(i) { [weak self] in
+                self?.dropTarget = nil
+                self?.onSpring?(id)
+            }
+        }
+    }
+
+    var debugFlashing: String { flashing.map { "flashing \($0.index) \($0.lit ? "lit" : "dark")" } ?? "not flashing" }
 
     func debugHoverPill(_ j: Int?) {
         hoveredPill = j
@@ -511,8 +564,15 @@ extension MainWindowController {
             }
             sidebar.onSwipe = { [weak self] step in self?.switchSpace(by: step) }
             strip.onDrop = { [weak self] pb, id, copy, square in
-                guard let self, let item = OrgDragItem(pb) else { return false }
-                return self.dropOnSpace(item, space: id, copy: copy, square: self.root.convert(square, from: nil))
+                guard let self else { return false }
+                if let item = OrgDragItem(pb) { return self.dropOnSpace(item, space: id, copy: copy, square: self.root.convert(square, from: nil)) }
+                // A thing (a file, a reference, a page, words): opened in
+                // that space, in a column of its own at its right.
+                guard let d = Dragged(pb) else { return false }
+                if self.stateView != nil { self.hideStateView() }
+                self.hosts.select(id)
+                self.gridOpen(d, column: self.arrangement?.columns.count ?? 0, at: 0, newColumn: true)
+                return true
             }
             strip.onSpring = { [weak self] id in
                 guard let self, id != self.selected else { return }
@@ -702,6 +762,21 @@ extension MainWindowController {
                 showHostPicker(over: strip.convert(strip.plusRect, to: nil), always: true)
                 return sidebar.hostPicker.debugRows + " · picker \(sidebar.hostPicker.frame.integral)"
             }
+        case "dropfile":
+            // "dropfile <i> <path>": a file (this Mac's) dropped on square i,
+            // as from the Finder: opened in that space.
+            let a = arg.split(separator: " ", maxSplits: 2).map(String.init)
+            guard a.count == 3, let i = Int(a[1]), strip.chips.indices.contains(i) else { return "usage: spaces dropfile <i> <path>" }
+            let pb = NSPasteboard(name: NSPasteboard.Name("manifold.debug.drop"))
+            pb.clearContents()
+            pb.setString(URL(fileURLWithPath: a[2]).absoluteString, forType: .fileURL)
+            return strip.onDrop?(pb, strip.chips[i].id, false, .zero) == true ? "opened" : "refused"
+        case "spring":
+            // "spring <i>": a drag held over square i, as long as the system
+            // springs (then the flash, then its space): what's shown after.
+            guard let i = w.dropFirst().first.flatMap(Int.init) else { return "usage: spaces spring <i>" }
+            strip.debugSpring(i)
+            return "springing"
         case "drop":
             // "spaces drop <i> [copy]": the focused tile dropped on square i.
             guard let i = w.dropFirst().first.flatMap(Int.init), strip.chips.indices.contains(i), let f = arrangement?.focused else { return "no" }

@@ -305,7 +305,9 @@ parts from the Mac's conventions on purpose.
   another space's row — a tile, or anything else dragged: a file, words,
   a link, a picture, from here or another app — a band in the tint fills
   the row from the left, blinks twice, and the space comes in under the
-  drag, as a folder in the Finder springs open, to drop it exactly where
+  drag (held over its square in the strip of spaces, the square flashes
+  twice, the same way; dropped straight on a square, a file or a link
+  opens in that space), as a folder in the Finder springs open, to drop it exactly where
   it should go there (after the system's spring-loading delay,
   Accessibility ▸ Pointer Control, and not with it turned off); one left empty by a move stays,
   as every space does until it's removed. A docked tile's row dragged
