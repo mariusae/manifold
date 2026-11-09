@@ -19,7 +19,7 @@ final class ThreadOverlayView: NSView {
     var hereThreads: [BlockID] = []
     var hereTitle = "" { didSet { titleLabel.stringValue = hereTitle } }
     /// A thread to make a tile of (none yet: a new one's composer).
-    var canPopOut = false { didSet { popOut.isEnabled = canPopOut; popOut.alphaValue = canPopOut ? 1 : 0.35 } }
+    var canPopOut = false { didSet { popOut.isEnabled = canPopOut } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
