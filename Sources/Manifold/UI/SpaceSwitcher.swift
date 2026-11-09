@@ -274,9 +274,7 @@ extension MainWindowController {
         guard NSEvent.modifierFlags.contains(.command) || debugHeld else { return hosts.select(order[index]) }
         spaceSwitch = (order, index)
         // Shown in a moment, if ⌘'s still held.
-        let work = DispatchWorkItem { [weak self] in self?.showSpaceSwitcher() }
-        spaceSwitchShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+        spaceSwitchShow.schedule(after: 0.2) { [weak self] in self?.showSpaceSwitcher() }
         spaceSwitchMonitors.append(NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] e in
             if !e.modifierFlags.contains(.command) { self?.endSpaceSwitch(going: true) }
             return e
@@ -310,7 +308,7 @@ extension MainWindowController {
     }
 
     func endSpaceSwitch(going: Bool) {
-        spaceSwitchShow?.cancel()
+        spaceSwitchShow.cancel()
         spaceSwitchMonitors.forEach { NSEvent.removeMonitor($0) }
         spaceSwitchMonitors = []
         if let v = spaceSwitcher {

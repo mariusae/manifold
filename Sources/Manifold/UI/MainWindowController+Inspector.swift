@@ -330,22 +330,18 @@ extension MainWindowController {
     /// follows the focus).
     func refreshInspector(now: Bool = false) {
         guard inspector?.isVisible == true else { return }
-        inspectorWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        let show = { [weak self] in
             guard let self, let panel = self.inspector, panel.isVisible else { return }
             self.inspectorIsLive = false
             let nodes = self.inspectorTree().0
             panel.show(title: self.inspectorHeader.title, subtitle: self.inspectorHeader.subtitle, symbol: self.inspectorHeader.symbol,
                        tags: self.inspectorHeader.tags, nodes: nodes)
             // Live: again in a second (one tick waiting at a time).
-            self.inspectorTick?.cancel()
+            self.inspectorTick.cancel()
             guard self.inspectorIsLive else { return }
-            let tick = DispatchWorkItem { [weak self] in self?.refreshInspector(now: true) }
-            self.inspectorTick = tick
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: tick)
+            self.inspectorTick.schedule(after: 1) { [weak self] in self?.refreshInspector(now: true) }
         }
-        inspectorWork = work
-        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work) }
+        if now { inspectorWork.runNow(show) } else { inspectorWork.schedule(after: 0.1, show) }
     }
 
     /// The focused block's properties (⌥⌘I), Star's property sheet for any

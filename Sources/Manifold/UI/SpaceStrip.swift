@@ -63,7 +63,7 @@ final class SpaceStripView: NSView {
     /// drop to land where it's wanted in it.
     var onSpring: ((BlockID) -> Void)?
     private var dropTarget: Int? { didSet { if dropTarget != oldValue { needsDisplay = true } } }
-    private var spring: DispatchWorkItem?
+    private let spring = Debouncer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -79,16 +79,14 @@ final class SpaceStripView: NSView {
         let i = chips.indices.first { frames.indices.contains($0) && rect($0).insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) && !chips[$0].current }
         if i != dropTarget {
             dropTarget = i
-            spring?.cancel()
-            if let i {
+            spring.cancel()
+            // As long as the system springs a folder open (none, if it's off).
+            if let i, let delay = OrganizationView.springDelay {
                 let id = chips[i].id
-                let work = DispatchWorkItem { [weak self] in
+                spring.schedule(after: delay + 0.3) { [weak self] in
                     self?.dropTarget = nil
                     self?.onSpring?(id)
                 }
-                spring = work
-                // As long as the system springs a folder open (none, if it's off).
-                if let delay = OrganizationView.springDelay { DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3, execute: work) }
             }
         }
         guard i != nil else { return [] }
@@ -96,12 +94,12 @@ final class SpaceStripView: NSView {
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        spring?.cancel()
+        spring.cancel()
         dropTarget = nil
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        spring?.cancel()
+        spring.cancel()
         defer { dropTarget = nil }
         guard let i = dropTarget else { return false }
         return onDrop?(sender.draggingPasteboard, chips[i].id, NSEvent.modifierFlags.contains(.option), convert(rect(i), to: nil)) ?? false
@@ -423,7 +421,7 @@ extension MainWindowController {
     /// moving from one square to the next.
     private func peekSpace(_ id: BlockID, beside rect: NSRect, in window: NSWindow) {
         HoverCard.shared.hide()
-        spacePeekWork?.cancel()
+        spacePeekWork.cancel()
         let show = { [weak self] in
             guard let self, let card = self.spaceCard(id) else { return }
             let v = self.spacePeek ?? SpaceSwitcherView()
@@ -447,14 +445,12 @@ extension MainWindowController {
             self.spacePeek = v
         }
         if spacePeek != nil { return show() }
-        let work = DispatchWorkItem(block: show)
-        spacePeekWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        spacePeekWork.schedule(after: 0.3, show)
     }
 
     /// The square's card put away.
     func hideSpacePeek() {
-        spacePeekWork?.cancel()
+        spacePeekWork.cancel()
         guard let v = spacePeek else { return }
         spacePeek = nil
         NSAnimationContext.runAnimationGroup({ ctx in
@@ -902,7 +898,7 @@ extension MainWindowController {
     }
 
     func showHostPicker(over rect: NSRect, always: Bool = false) {
-        pickerHide?.cancel()
+        pickerHide.cancel()
         let rows = hostPickerRows()
         guard rows.count > 1 || always else { return }
         sidebar.showHostPicker(rows, over: rect)
@@ -911,12 +907,10 @@ extension MainWindowController {
     /// Put away a moment after the pointer leaves the + and the list, if
     /// it hasn't come back to either.
     func hideHostPicker(now: Bool = false) {
-        pickerHide?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        let hide = { [weak self] in
             guard let self, now || !self.sidebar.hostPicker.inside else { return }
             self.sidebar.hideHostPicker()
         }
-        pickerHide = work
-        if now { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work) }
+        if now { pickerHide.runNow(hide) } else { pickerHide.schedule(after: 0.35, hide) }
     }
 }

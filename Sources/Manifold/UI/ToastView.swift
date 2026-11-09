@@ -1,4 +1,5 @@
 import AppKit
+import ManifoldCore
 
 /// A word at the foot of the window about something just done that can
 /// be undone (§4): a block deleted, or closed with unsaved edits or a job
@@ -13,7 +14,7 @@ final class ToastView: NSView {
     private let button = FlatButton("Restore")
     /// Put away now, under the pointer (Dia's ×), for one with nothing to do.
     private let dismiss = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
-    private var hideWork: DispatchWorkItem?
+    private let hideWork = Debouncer()
     private var action: (() -> Void)?
     /// Done once its time is up and its action wasn't taken.
     private var then: (() -> Void)?
@@ -88,7 +89,7 @@ final class ToastView: NSView {
         button.isHidden = name.isEmpty
         self.action = action
         self.then = then
-        hideWork?.cancel()
+        hideWork.cancel()
         isHidden = false
         alphaValue = 1
         needsLayout = true
@@ -105,11 +106,8 @@ final class ToastView: NSView {
     /// The time left running down from here: its end to come, the bar
     /// shrinking to nothing by then.
     private func run() {
-        hideWork?.cancel()
         runningSince = Date()
-        let work = DispatchWorkItem { [weak self] in self?.expire() }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
+        hideWork.schedule(after: remaining) { [weak self] in self?.expire() }
         guard counting else { return }
         // As a share of its width (laid out at whatever width the toast
         // takes), from what's left to none.
@@ -127,8 +125,7 @@ final class ToastView: NSView {
 
     /// Held where it is (the pointer on the toast).
     private func freeze() {
-        hideWork?.cancel()
-        hideWork = nil
+        hideWork.cancel()
         if let since = runningSince { remaining = max(0.5, remaining - Date().timeIntervalSince(since)) }
         runningSince = nil
         guard counting else { return }
@@ -155,7 +152,7 @@ final class ToastView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         pointerOn = false
-        if !isHidden, hideWork == nil { run() }
+        if !isHidden, !hideWork.isPending { run() }
         dismiss.animator().alphaValue = 0
     }
 
@@ -201,8 +198,7 @@ final class ToastView: NSView {
 
     /// Put away: what waits on its time done now.
     func hide() {
-        hideWork?.cancel()
-        hideWork = nil
+        hideWork.cancel()
         runningSince = nil
         bar.removeAnimation(forKey: "countdown")
         finishPending()

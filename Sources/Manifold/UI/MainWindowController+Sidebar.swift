@@ -26,7 +26,7 @@ extension MainWindowController: SidebarDelegate {
             showSidebar(animated: false)
             setTrafficLights(visible: true, animated: true)
         } else {
-            hideWork?.cancel()
+            hideWork.cancel()
             hideSidebar(force: true)
         }
         NSAnimationContext.runAnimationGroup { ctx in
@@ -39,7 +39,7 @@ extension MainWindowController: SidebarDelegate {
 
     func sidebarResize(to width: CGFloat) {
         resizingWidth = min(max(width.rounded(), Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
-        hideWork?.cancel()
+        hideWork.cancel()
         layoutViews()
     }
 

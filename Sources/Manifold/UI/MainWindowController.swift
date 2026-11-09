@@ -102,8 +102,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         didSet { if sidebarShown != oldValue { transfersChanged() } }
     }
     var draggingTab = false
-    var hideWork: DispatchWorkItem?
-    private var saveFrameWork: DispatchWorkItem?
+    let hideWork = Debouncer()
+    private let saveFrameWork = Debouncer()
 
     /// The sidebar's width while its handle is being dragged.
     var resizingWidth: CGFloat?
@@ -931,7 +931,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// strip), not seen to go by the grid.
     var flownAway: Set<PlacementID> = []
     /// The +'s host list, to be put away.
-    var pickerHide: DispatchWorkItem?
+    let pickerHide = Debouncer()
     /// The sidebar's tree not made again before this (media time): a
     /// tile's row squeezing shut as it pours out of it.
     var sidebarHeldUntil: CFTimeInterval = 0
@@ -944,13 +944,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// cards, shown; what shows them, and what watches ⌘ and ⎋.
     var spaceSwitch: (order: [BlockID], index: Int)?
     var spaceSwitcher: SpaceSwitcherView?
-    var spaceSwitchShow: DispatchWorkItem?
+    let spaceSwitchShow = Debouncer()
     var spaceSwitchMonitors: [Any] = []
     /// A space's card under the pointer on its square in the strip.
     var spacePeek: SpaceSwitcherView?
-    var spacePeekWork: DispatchWorkItem?
+    let spacePeekWork = Debouncer()
     /// ⌘ held a moment: the strip's numbers shown, till it's let go.
-    var commandHeld: DispatchWorkItem?
+    let commandHeld = Debouncer()
     var commandMonitor: Any?
 
     /// Watches ⌘: held alone a quarter of a second, the spaces' numbers
@@ -960,11 +960,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         commandMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] e in
             guard let self else { return e }
             let alone = e.type == .flagsChanged && e.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .command
-            self.commandHeld?.cancel()
+            self.commandHeld.cancel()
             if alone {
-                let work = DispatchWorkItem { [weak self] in self?.sidebar.spaces.showsNumbers = true }
-                self.commandHeld = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+                self.commandHeld.schedule(after: 0.25) { [weak self] in self?.sidebar.spaces.showsNumbers = true }
             } else if e.type == .flagsChanged || !e.modifierFlags.contains(.command) {
                 self.sidebar.spaces.showsNumbers = false
             }
@@ -1026,15 +1024,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Closing and keeping (§4)
 
-    private var holdWork: DispatchWorkItem?
+    private let holdWork = Debouncer()
 
     /// Holds on other hosts (§4) brought in step with what this client's
     /// hosts refer to, a moment after things settle.
     private func scheduleHoldReconcile() {
-        holdWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.hosts.reconcileHolds() }
-        holdWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+        holdWork.schedule(after: 1.5) { [weak self] in self?.hosts.reconcileHolds() }
     }
 
     /// What was closed, latest last: a tile with where it was, or a
@@ -1398,12 +1393,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func mouseMoved(to p: NSPoint) {
         guard !pinned else { return }
         if p.x <= 6 && p.y >= 0 && p.y <= root.bounds.height {
-            hideWork?.cancel()
+            hideWork.cancel()
             showSidebar(animated: true)
         } else if sidebarShown && p.x > sidebar.frame.maxX + Self.sidebarSlack {
             scheduleHide()
         } else if sidebarShown && sidebar.frame.insetBy(dx: -Self.sidebarSlack, dy: -Self.sidebarSlack).contains(p) {
-            hideWork?.cancel()
+            hideWork.cancel()
         }
     }
 
@@ -1436,10 +1431,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     func scheduleHide() {
         guard sidebarShown, !pinned, !draggingTab, resizingWidth == nil, footerMenu.view == nil else { return }
-        hideWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.hideSidebar() }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.sidebarHideDelay, execute: work)
+        hideWork.schedule(after: Self.sidebarHideDelay) { [weak self] in self?.hideSidebar() }
     }
 
     /// Hides the floating sidebar, unless something's still using it; `force`
@@ -1856,10 +1848,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The inspector shows what changes by the second (a host's link): it's
     /// shown again each second while it does.
     var inspectorIsLive = false
-    var inspectorTick: DispatchWorkItem?
+    let inspectorTick = Debouncer()
     /// The inspected block's name, what and where it is, its symbol.
     var inspectorHeader: (title: String, subtitle: String, symbol: String?, tags: [String]) = ("", "", nil, [])
-    var inspectorWork: DispatchWorkItem?
+    let inspectorWork = Debouncer()
 
     // MARK: Kept for The neighborhood, in graph form — its code in MainWindowController+Neighborhood.swift
 
@@ -1964,15 +1956,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     func windowDidResize(_ notification: Notification) { saveFrame() }
 
     private func saveFrame() {
-        saveFrameWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
+        saveFrameWork.schedule(after: 0.5) { [weak self] in
             guard let self, let f = self.window?.frame else { return }
             var state = self.hosts.state.window
             state.frame = [f.minX, f.minY, f.width, f.height]
             if state != self.hosts.state.window { self.hosts.setWindow(state) }
         }
-        saveFrameWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

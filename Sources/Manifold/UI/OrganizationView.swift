@@ -1013,7 +1013,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     // MARK: Spring-loaded spaces
 
     private var springNode: String?
-    private var springWork: DispatchWorkItem?
+    private let springWork = Debouncer()
     private var springBand: SpringBand?
     /// Debugging: a drag held over the rows, whatever the mouse does.
     var debugHeld = false
@@ -1052,19 +1052,16 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         outline.addSubview(band)
         springBand = band
         band.charge(over: delay)
-        let work = DispatchWorkItem { [weak self] in
+        springWork.schedule(after: delay) { [weak self] in
             guard let self, self.springNode == node.id, self.stillOver(node) else { self?.stopSpring(); return }
             band.blink { [weak self] in
                 guard let self, self.springNode == node.id, self.stillOver(node) else { self?.stopSpring(); return }
                 self.springNode = nil
-                self.springWork = nil
                 self.springBand = nil
                 self.delegate?.organizationSpring(node)
                 band.fade(over: 0.6 * Motion.slowdown)
             }
         }
-        springWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     /// The drag still on, over that row.
@@ -1078,8 +1075,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// The drag gone from the row (or the rows, or let go): its band goes.
     private func stopSpring() {
         springNode = nil
-        springWork?.cancel()
-        springWork = nil
+        springWork.cancel()
         springBand?.fade(over: Motion.fast)
         springBand = nil
     }
@@ -1175,7 +1171,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     /// A Recent group (Files) opened by the pointer resting on it, closed
     /// again when the pointer moves off it and what it holds.
     private var hoverOpened: OrgNode?
-    private var hoverWork: DispatchWorkItem?
+    private let hoverWork = Debouncer()
 
     private func hoverReveal(row: Int) {
         let node = row >= 0 ? outline.item(atRow: row) as? OrgNode : nil
@@ -1188,15 +1184,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                 hoverOpened = nil
             }
         }
-        hoverWork?.cancel()
+        hoverWork.cancel()
         guard let node, node.id.hasPrefix("recent:"), !outline.isItemExpanded(node) else { return }
-        let work = DispatchWorkItem { [weak self, weak node] in
+        hoverWork.schedule(after: 0.3) { [weak self, weak node] in
             guard let self, let node, self.trackedRow == row else { return }
             self.outline.expandItem(node)
             self.hoverOpened = node
         }
-        hoverWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     /// What `trackedRow` is while the pointer's on the kept heading.
@@ -1229,7 +1223,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     override func mouseExited(with event: NSEvent) {
         trackedRow = -1
         stickyHost.hovered = false
-        hoverWork?.cancel()
+        hoverWork.cancel()
         if let opened = hoverOpened {
             outline.collapseItem(opened)
             hoverOpened = nil

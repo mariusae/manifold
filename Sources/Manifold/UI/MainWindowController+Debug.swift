@@ -301,7 +301,7 @@ extension MainWindowController {
     var debugFocusedEditor: EditorView? { arrangement?.focused.flatMap { views[$0] as? EditorView } }
 
     func debugSidebar(show: Bool) {
-        if show { showSidebar(animated: false) } else { hideWork?.cancel(); hideSidebar() }
+        if show { showSidebar(animated: false) } else { hideWork.cancel(); hideSidebar() }
     }
 
     var debugPills: String { content.debugPills }

@@ -20,7 +20,7 @@ final class HoverCard: NSObject {
     /// A block's summary card, under its picture, in place of the title,
     /// detail and text.
     private var summaryCard: SummaryCard?
-    private var pendingShow: DispatchWorkItem?
+    private let pendingShow = Debouncer()
     /// When a card was last put away: one asked for soon after — the
     /// pointer going down a list — comes at once and without fading in, as
     /// tooltips do; the first fades in after its wait.
@@ -143,7 +143,7 @@ final class HoverCard: NSObject {
     func show(key: String = "", title: String, detail: String, body: String, font: NSFont?, picture image: NSImage? = nil,
               summary: SummaryCardContent? = nil, lend: (() -> LiveLoan?)? = nil, beside rect: NSRect, in window: NSWindow,
               delay: TimeInterval = 0.45, above: Bool = false) {
-        pendingShow?.cancel()
+        pendingShow.cancel()
         // The same block's card, already up: left as it is.
         if card?.key == key, !key.isEmpty, !box.isHidden {
             card?.rect = rect
@@ -155,9 +155,7 @@ final class HoverCard: NSObject {
         // One up already stays up until the next takes its place.
         if box.isHidden { giveBack() }
         card = Card(key: key, title: title, detail: detail, body: body, font: font, picture: image, summary: summary, lend: lend, rect: rect, window: window, above: above)
-        let work = DispatchWorkItem { [weak self] in self?.present() }
-        pendingShow = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (quick ? min(delay, 0.08) : delay), execute: work)
+        pendingShow.schedule(after: quick ? min(delay, 0.08) : delay) { [weak self] in self?.present() }
     }
 
     /// A picture that arrived after the card was asked for: laid in, if
@@ -306,8 +304,7 @@ final class HoverCard: NSObject {
     }
 
     func hide() {
-        pendingShow?.cancel()
-        pendingShow = nil
+        pendingShow.cancel()
         card = nil
         if !box.isHidden { hiddenAt = Date() }
         box.isHidden = true
