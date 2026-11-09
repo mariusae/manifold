@@ -34,7 +34,9 @@ enum SpaceSquare {
 /// next's. Clicked, a space is gone to; the pointer on one peeks at it;
 /// right-clicked, its menu (its colour, its symbol, its name). After
 /// them a +: clicked, a new space, on the shown one's host; the pointer
-/// on it, with more than one host, a list of them to make it on.
+/// on it, with more than one host, a list of them to make it on. A host
+/// whose spaces aren't here yet (its first connection under way) is a
+/// pill in their place, turning; the pointer on it, the host's card.
 final class SpaceStripView: NSView {
     // Clickable: the pointing hand (not the window's arrow), as the rest are.
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
@@ -50,6 +52,19 @@ final class SpaceStripView: NSView {
         var status: StatusGlyph.Look?
         /// The first of another host's.
         var hostBreak: Bool
+    }
+
+    /// A host none of whose spaces are here yet — being reached for the
+    /// first time, or not reached before it ever answered: a pill where
+    /// its spaces will be, turning while it's being reached.
+    struct Pending: Equatable {
+        var host: HostID
+        var title: String
+        /// How many spaces come before it in the strip.
+        var at: Int
+        /// The first of another host's.
+        var hostBreak: Bool
+        var connecting: Bool
     }
 
     /// One row's height; more rows, each `side + gap` more.
@@ -78,6 +93,15 @@ final class SpaceStripView: NSView {
     private(set) var chips: [Chip] = []
     private var frames: [NSRect] = []
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
+    private(set) var pending: [Pending] = []
+    private var pills: [NSRect] = []
+    private var pillBreaks: Set<Int> = []
+    private var hoveredPill: Int? { didSet { if hoveredPill != oldValue { needsDisplay = true } } }
+    /// Each pill's turning ring (or a host unreachable's mark), by host.
+    private var glyphs: [HostID: StatusGlyph] = [:]
+    static let pillWidth: CGFloat = 40
+    /// The pointer on a host's pill (its rect in the window), or off it.
+    var onHostHover: ((HostID?, NSRect) -> Void)?
 
     override var isFlipped: Bool { true }
 
@@ -130,35 +154,48 @@ final class SpaceStripView: NSView {
         return onDrop?(sender.draggingPasteboard, chips[i].id, NSEvent.modifierFlags.contains(.option), convert(rect(i), to: nil)) ?? false
     }
 
-    func show(_ new: [Chip]) {
-        guard new != chips else { return }
+    func show(_ new: [Chip], pending newPending: [Pending] = []) {
+        guard new != chips || newPending != pending else { return }
         let rows = wantedHeight(width: bounds.width)
         chips = new
+        pending = newPending
         if wantedHeight(width: bounds.width) != rows { superview?.superview?.needsLayout = true }
         needsLayout = true
         needsDisplay = true
     }
 
-    /// Where each goes at a width, the + last: in rows from the left,
-    /// another row when one's full; between hosts a hairline's room (none
-    /// at a row's start). And which squares have a hairline before them.
-    private func place(width: CGFloat) -> (frames: [NSRect], breaks: Set<Int>) {
-        var out: [NSRect] = [], breaks: Set<Int> = []
+    /// Where each goes at a width, the + last, a host's pill among the
+    /// squares where its spaces will be: in rows from the left, another
+    /// row when one's full; between hosts a hairline's room (none at a
+    /// row's start). And which have a hairline before them.
+    private func place(width: CGFloat) -> (frames: [NSRect], breaks: Set<Int>, pills: [NSRect], pillBreaks: Set<Int>) {
+        var out: [NSRect] = [], breaks: Set<Int> = [], pills: [NSRect] = [], pillBreaks: Set<Int> = []
         var x = Self.inset, y = (Self.height - Self.side) / 2
-        for i in 0...chips.count {
-            let isPlus = i == chips.count
-            var lead: CGFloat = isPlus ? 2 : chips[i].hostBreak ? 7 : 0
-            if x > Self.inset, x + lead + Self.side > width - 8 {
+        func put(_ w: CGFloat, lead wanted: CGFloat) -> (NSRect, Bool) {
+            var lead = wanted
+            if x > Self.inset, x + lead + w > width - 8 {
                 x = Self.inset
                 y += Self.side + Self.gap
                 lead = 0
             }
-            if lead == 7 { breaks.insert(i) }
             x += lead
-            out.append(NSRect(x: x, y: y.rounded(), width: Self.side, height: Self.side))
-            x += Self.side + Self.gap
+            let r = NSRect(x: x, y: y.rounded(), width: w, height: Self.side)
+            x += w + Self.gap
+            return (r, lead == 7)
         }
-        return (out, breaks)
+        var p = 0
+        for i in 0...chips.count {
+            while p < pending.count, pending[p].at <= i {
+                let (r, broken) = put(Self.pillWidth, lead: pending[p].hostBreak ? 7 : 0)
+                if broken { pillBreaks.insert(p) }
+                pills.append(r)
+                p += 1
+            }
+            let (r, broken) = put(Self.side, lead: i == chips.count ? 2 : chips[i].hostBreak ? 7 : 0)
+            if broken { breaks.insert(i) }
+            out.append(r)
+        }
+        return (out, breaks, pills, pillBreaks)
     }
 
     /// Its height at a width: as many rows as it takes.
@@ -171,7 +208,23 @@ final class SpaceStripView: NSView {
 
     override func layout() {
         super.layout()
-        (frames, breaks) = place(width: bounds.width)
+        (frames, breaks, pills, pillBreaks) = place(width: bounds.width)
+        // Each pill's ring, at its middle; those of hosts no longer waited on, gone.
+        for (j, p) in pending.enumerated() where pills.indices.contains(j) {
+            let g = glyphs[p.host] ?? {
+                let g = StatusGlyph(frame: .zero)
+                addSubview(g)
+                glyphs[p.host] = g
+                return g
+            }()
+            g.look = p.connecting ? .connecting : .offline
+            let s = StatusGlyph.size
+            g.frame = NSRect(x: (pills[j].midX - s / 2).rounded(), y: (pills[j].midY - s / 2).rounded(), width: s, height: s)
+        }
+        for (host, g) in glyphs where !pending.contains(where: { $0.host == host }) {
+            g.removeFromSuperview()
+            glyphs.removeValue(forKey: host)
+        }
     }
 
     /// The +'s index among the frames.
@@ -198,6 +251,20 @@ final class SpaceStripView: NSView {
             if let image = Theme.symbol("plus", size: 11, weight: .semibold, color: hovered == plus ? Theme.text : Theme.secondaryText) {
                 image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
             }
+        }
+        // A host still being reached: a capsule, its ring turning in it.
+        for (j, _) in pending.enumerated() where pills.indices.contains(j) {
+            let r = pills[j]
+            if pillBreaks.contains(j) {
+                Theme.divider.setFill()
+                NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
+            }
+            let capsule = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: r.height / 2, yRadius: r.height / 2)
+            Theme.text.withAlphaComponent(hoveredPill == j ? 0.1 : 0.05).setFill()
+            capsule.fill()
+            Theme.text.withAlphaComponent(0.12).setStroke()
+            capsule.lineWidth = 1
+            capsule.stroke()
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
             let r = rect(i)
@@ -262,9 +329,35 @@ final class SpaceStripView: NSView {
         super.updateTrackingAreas()
     }
 
-    override func mouseMoved(with event: NSEvent) { hover(index(at: event)) }
-    override func mouseEntered(with event: NSEvent) { hover(index(at: event)) }
-    override func mouseExited(with event: NSEvent) { hover(nil) }
+    override func mouseMoved(with event: NSEvent) { track(event) }
+    override func mouseEntered(with event: NSEvent) { track(event) }
+    override func mouseExited(with event: NSEvent) { track(nil) }
+
+    /// The host pill under the pointer.
+    private func pill(at event: NSEvent) -> Int? {
+        let p = convert(event.locationInWindow, from: nil)
+        return pills.indices.first { pills[$0].insetBy(dx: -Self.gap / 2, dy: -Self.gap / 2).contains(p) }
+    }
+
+    /// The pointer moved (or left): on a host's pill, its card; else a
+    /// square's peek, or the +.
+    private func track(_ event: NSEvent?) {
+        let onPill = event.flatMap(pill(at:))
+        if onPill != hoveredPill {
+            hoveredPill = onPill
+            if let onPill { onHostHover?(pending[onPill].host, convert(pills[onPill], to: nil)) } else { onHostHover?(nil, .zero) }
+        }
+        if onPill != nil {
+            if hovered != nil { hover(nil) }
+            return
+        }
+        hover(event.flatMap(index(at:)))
+    }
+
+    func debugHoverPill(_ j: Int?) {
+        hoveredPill = j
+        if let j, pills.indices.contains(j) { onHostHover?(pending[j].host, convert(pills[j], to: nil)) } else { onHostHover?(nil, .zero) }
+    }
 
     private func hover(_ i: Int?) {
         let was = hovered
@@ -295,7 +388,12 @@ final class SpaceStripView: NSView {
 
     /// Debugging: each, in order — the one shown starred, its status after it.
     var debugChips: String {
-        chips.map { c in (c.current ? "*" : "") + (c.hostBreak ? "| " : "") + c.title + " [\(c.symbol ?? c.letter)]" + (c.status.map { " (\($0))" } ?? "") }.joined(separator: "  ")
+        var words = chips.map { c in (c.current ? "*" : "") + (c.hostBreak ? "| " : "") + c.title + " [\(c.symbol ?? c.letter)]" + (c.status.map { " (\($0))" } ?? "") }
+        // Each host's pill where it stands among them, last first so the places hold.
+        for p in pending.reversed() {
+            words.insert((p.hostBreak ? "| " : "") + "(\(p.title): \(p.connecting ? "connecting" : "unreachable"))", at: min(p.at, words.count))
+        }
+        return words.joined(separator: "  ")
     }
 
     func debugHover(_ i: Int?) {
@@ -350,20 +448,31 @@ enum SpaceLook {
 extension MainWindowController {
     /// The strip's chips: each host's spaces, in its desk's order, a host's
     /// first set apart from the one before.
-    func spaceChips() -> [SpaceStripView.Chip] {
-        var out: [SpaceStripView.Chip] = []
+    /// The strip's squares, host by host; and a pill for each remote host
+    /// that hasn't yet said what it has (its first connection), where its
+    /// spaces will be.
+    func spaceChips() -> (chips: [SpaceStripView.Chip], pending: [SpaceStripView.Pending]) {
+        var out: [SpaceStripView.Chip] = [], pending: [SpaceStripView.Pending] = []
         for c in hosts.ordered {
+            let before = !out.isEmpty || !pending.isEmpty
+            if c.isRemote, !c.hasState {
+                pending.append(.init(host: c.host, title: hosts.label(of: c.host), at: out.count, hostBreak: before,
+                                     connecting: c.link == .connecting))
+                continue
+            }
             var ids = c.desk.order.filter { $0.host == c.host && allWorkspaces.contains($0) }
             for id in allWorkspaces where id.host == c.host && !ids.contains(id) { ids.append(id) }
-            for (i, id) in ids.enumerated() {
+            var first = true
+            for id in ids {
                 guard let b = hosts.block(id), let a = hosts.arrangement(id) else { continue }
                 let name = title(of: a)
                 out.append(.init(id: id, title: name, symbol: SpaceLook.symbol(of: b), letter: SpaceLook.letter(of: name),
                                  color: SpaceLook.color(of: b), current: id == selected, status: spaceStatus(a),
-                                 hostBreak: i == 0 && !out.isEmpty))
+                                 hostBreak: first && before))
+                first = false
             }
         }
-        return out
+        return (out, pending)
     }
 
     /// What most wants you in a space: needs you, then failed, then done
@@ -395,6 +504,11 @@ extension MainWindowController {
                 self.peekSpace(id, beside: rect, in: window)
             }
             strip.onMenu = { [weak self] id in self?.spaceMenu(id) }
+            // A host still being reached: its card, how that stands, live.
+            strip.onHostHover = { [weak self] host, rect in
+                guard let self, let window = self.window, let host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }
+                self.showHostCard(c, beside: rect, in: window)
+            }
             sidebar.onSwipe = { [weak self] step in self?.switchSpace(by: step) }
             strip.onDrop = { [weak self] pb, id, copy, square in
                 guard let self, let item = OrgDragItem(pb) else { return false }
@@ -413,7 +527,8 @@ extension MainWindowController {
             let n = hosts.threads(inSpace: space).filter { !hosts.unseen($0).isEmpty }.count
             if sidebar.footer.threads.count != n { sidebar.footer.threads.count = n; sidebar.footer.needsLayout = true }
         }
-        strip.show(spaceChips())
+        let (chips, pending) = spaceChips()
+        strip.show(chips, pending: pending)
         refreshNeedsYou()
     }
 
@@ -562,6 +677,7 @@ extension MainWindowController {
         func chip(_ s: String?) -> BlockID? { s.flatMap(Int.init).flatMap { strip.chips.indices.contains($0) ? strip.chips[$0].id : nil } }
         switch w.first {
         case "hover": strip.debugHover(w.dropFirst().first.flatMap(Int.init))
+        case "hoverhost": strip.debugHoverPill(w.dropFirst().first.flatMap(Int.init))
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows

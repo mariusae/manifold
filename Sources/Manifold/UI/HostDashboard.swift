@@ -21,7 +21,15 @@ final class HostDashboard: NSView {
     static func size(for c: HostClient) -> NSSize {
         let panels = MachinePanels()
         panels.panels = [.cpu, .memory, .network, .disks, .top]
-        return NSSize(width: width, height: (c.isRemote ? linkHeight(c) : 14) + panels.height(for: width - 28) + 14)
+        let machine = showsMachine(c) ? panels.height(for: width - 28) + 14 : 0
+        return NSSize(width: width, height: (c.isRemote ? linkHeight(c) : 14) + machine)
+    }
+
+    /// Its machine shown: once there's anything to show of it, or a word
+    /// on why not from a host that's there — not a host never reached
+    /// yet, whose card is its link alone (how reaching it stands).
+    private static func showsMachine(_ c: HostClient) -> Bool {
+        !c.isRemote || c.hasState || c.machineLatest != nil
     }
     var size: NSSize { frame.size }
 
@@ -36,7 +44,7 @@ final class HostDashboard: NSView {
         if !client.readsMachine {
             panels.waiting = client.isConnected ? "This host's server is from before the machine view: restart it to see the machine." : "Not connected"
         }
-        addSubview(panels)
+        if Self.showsMachine(client) { addSubview(panels) }
         layoutPanels()
     }
 
@@ -117,7 +125,12 @@ final class HostDashboard: NSView {
             let last = c.pings.last?.rtt.map { " · \(ms($0))" } ?? ""
             return since + last
         case .connecting:
-            return "Connecting" + (c.silenceDescription.map { " · " + $0 } ?? "")
+            // What reaching it is at (copying its server, how much) and how
+            // long so far, as of now: the card's redrawn each second.
+            var parts = ["Connecting"]
+            if let step = c.stepDescription { parts += step.split(separator: "\n").map(String.init) }
+            if let quiet = c.silenceDescription { parts.append(quiet) }
+            return parts.joined(separator: " · ")
         case .unreachable(let why):
             let when = c.nextTry.map { " · trying again in \(max(Int($0.timeIntervalSinceNow.rounded()), 0)) s" } ?? ""
             return "Unreachable" + (why.map { ": \($0)" } ?? "") + when
