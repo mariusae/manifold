@@ -517,18 +517,13 @@ final class ClosureMenuItem: NSMenuItem {
 /// One of the bar's tabs: what the sidebar lists (spaces, files,
 /// threads), its icon — strong and on a band when it's the one shown — and
 /// a count of what's new in it, in a dot at its corner.
-final class SidebarTab: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
+final class SidebarTab: ClickView {
     static let size: CGFloat = 26
     let organization: Organization
-    var onClick: (() -> Void)?
     var chosen = false { didSet { if chosen != oldValue { update() } } }
     var count = 0 { didSet { if count != oldValue { update() } } }
     private let icon = NSImageView()
     private let badge = NSTextField(labelWithString: "")
-    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
 
     init(_ organization: Organization) {
         self.organization = organization
@@ -570,17 +565,6 @@ final class SidebarTab: NSView {
         (chosen ? Theme.selectionInactive : Theme.hover).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
     }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
 
 /// A space's host, under its name (§3.6): its name — This Mac, or the

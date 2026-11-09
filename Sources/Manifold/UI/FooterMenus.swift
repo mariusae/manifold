@@ -31,16 +31,11 @@ final class SidebarFooter: NSView {
 
 /// A button of the footer: a symbol, maybe a word, maybe a count; a band
 /// under the pointer, and while its menu's open.
-final class FooterButton: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    var onClick: (() -> Void)?
+final class FooterButton: ClickView {
     var open = false { didSet { needsDisplay = true } }
     var count: Int = 0 { didSet { if count != oldValue { needsDisplay = true } } }
     private let symbol: String
     private let title: String?
-    private var hovering = false { didSet { needsDisplay = true } }
     private let font = NSFont.systemFont(ofSize: 12.5, weight: .medium)
 
     init(symbol: String, title: String?) {
@@ -80,17 +75,6 @@ final class FooterButton: NSView {
             Pill.draw("\(count)", in: r)
         }
     }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
 }
 
 extension MainWindowController {

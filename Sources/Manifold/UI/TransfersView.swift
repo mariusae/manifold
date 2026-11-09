@@ -96,16 +96,12 @@ final class TransfersView: NSView {
     }
 }
 
-final class TransferRowView: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
+final class TransferRowView: ClickView {
     let item: Transfers.Item
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let close: IconButton
-    private var hovering = false { didSet { refresh() } }
 
     override var isFlipped: Bool { true }
 
@@ -172,17 +168,14 @@ final class TransferRowView: NSView {
 
     @objc private func closeClicked() { Transfers.shared.cancelOrDismiss(item) }
 
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
+    override func hoverChanged() {
+        super.hoverChanged()
+        refresh()
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) {
-        guard bounds.contains(convert(event.locationInWindow, from: nil)), !item.isRunning, let action = item.action else { return }
+    /// Clicked, done: what it offers (Show in Finder), and dismissed.
+    override func clicked() {
+        guard !item.isRunning, let action = item.action else { return }
         action.run()
         Transfers.shared.dismiss(item)
     }
@@ -191,8 +184,7 @@ final class TransferRowView: NSView {
 /// The copies, small, at the window's lower left while the sidebar is
 /// away: a ring filling as they go (red if one failed) and how many;
 /// clicked, the sidebar comes out to show them.
-final class TransfersBadge: NSView {
-    var onClick: (() -> Void)?
+final class TransfersBadge: ClickView {
     private let label = NSTextField(labelWithString: "")
     private var fraction: Double?
     private var failed = false
@@ -243,8 +235,4 @@ final class TransfersBadge: NSView {
         (failed ? Theme.statusError : Theme.accent).setStroke()
         ring.stroke()
     }
-
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) { onClick?() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }
