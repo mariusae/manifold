@@ -8754,9 +8754,7 @@ extension MainWindowController: GridDelegate {
     /// Manifold's folder), shown once it's there.
     private func keepDroppedImage(_ data: Data, kind: String, place: Where) {
         let id = BlockID(host: host.host)
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd-HHmmss"
-        let name = "image-\(f.string(from: Date())).\(kind == "jpeg" ? "jpg" : kind)"
+        let name = newImageName(kind: kind)
         Transfers.shared.run(name, detail: "to \(hosts.label(of: host.host))", symbol: "photo") { [host] _, done in
             host.saveImage(data, block: id, name: name, folder: nil) { error, _ in done(error) }
             return nil
@@ -9472,12 +9470,18 @@ extension MainWindowController: EditorViewDelegate {
 
     /// An image kept for a text, on its host: written as an image block,
     /// then `insert` given the Markdown that shows it.
-    func keepImage(_ data: Data, kind: String, for text: BlockID, insert: @escaping (String) -> Void) {
-        guard let b = hosts.block(text), let c = hosts.client(text.host) else { return NSSound.beep() }
+    /// A picture's name, kept: when, and a count when several come within
+    /// the same second (pasted or dropped together).
+    private func newImageName(kind: String) -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd-HHmmss"
         imageCount += 1
-        let name = "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
+        return "image-\(f.string(from: Date()))\(imageCount > 1 ? "-\(imageCount)" : "").\(kind == "jpeg" ? "jpg" : kind)"
+    }
+
+    func keepImage(_ data: Data, kind: String, for text: BlockID, insert: @escaping (String) -> Void) {
+        guard let b = hosts.block(text), let c = hosts.client(text.host) else { return NSSound.beep() }
+        let name = newImageName(kind: kind)
         let folder = b.path.map { $0.deletingLastPathComponent }
         let id = BlockID(host: text.host)
         var saved: String?
