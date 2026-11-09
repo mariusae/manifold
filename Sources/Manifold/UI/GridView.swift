@@ -2140,7 +2140,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         v.toolTip = "Editing: closing the editor brings the terminal back"
         return v
     }()
-    private let corner = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 9, weight: .semibold, target: nil, action: nil)
+    private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
     /// no room after it.
@@ -2224,10 +2224,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var focused = false
     private var maximized = false
     private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, cut: .byTruncatingMiddle)
-    private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
+    private let close = IconButton.close(tip: "Close (⌘W)")
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
-    private let sidebarButton = IconButton(symbol: "sidebar.left", size: 10, weight: .medium, target: nil, action: nil)
+    private let sidebarButton = IconButton("sidebar.left", size: 10, weight: .medium)
     var sidebar: Bool? {
         didSet {
             guard sidebar != oldValue else { return }
@@ -2304,10 +2304,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         name.alignment = .left
         close.target = self
         close.action = #selector(closeClicked)
-        close.toolTip = "Close (⌘W)"
         corner.target = self
         corner.action = #selector(cornerClicked)
-        corner.toolTip = "Maximize"
         sidebarButton.target = self
         sidebarButton.action = #selector(sidebarClicked)
         sidebarButton.isHidden = true

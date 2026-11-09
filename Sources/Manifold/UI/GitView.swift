@@ -26,7 +26,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     var source: () -> Block? = { nil }
 
     private let branchLabel = NSTextField(labelWithString: "")
-    private let refresh = IconButton(symbol: "arrow.clockwise", size: 11, weight: .medium, target: nil, action: nil)
+    private let refresh = IconButton("arrow.clockwise", weight: .medium, tip: "Refresh")
     private let scroll = ClippingScrollView()
     private let table = FlatTable(column: "row", rowHeight: TileMetrics.nameRow)
 
@@ -77,7 +77,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         branchLabel.lineBreakMode = .byTruncatingTail
         refresh.target = self
         refresh.action = #selector(refreshClicked)
-        refresh.toolTip = "Refresh"
         for v in [branchLabel, refresh] { addSubview(v) }
 
         table.dataSource = self

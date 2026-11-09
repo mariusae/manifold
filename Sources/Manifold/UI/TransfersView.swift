@@ -105,7 +105,7 @@ final class TransferRowView: ClickView {
 
     init(item: Transfers.Item) {
         self.item = item
-        close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
+        close = IconButton.close()
         super.init(frame: .zero)
         close.target = self
         close.action = #selector(closeClicked)

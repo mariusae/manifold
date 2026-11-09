@@ -47,8 +47,8 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
     private let glass = NSImageView()
     private let field = NSTextField()
     private let hintLabel = NSTextField.label(font: .systemFont(ofSize: 12, weight: .medium), color: Theme.tertiaryText)
-    private let clear = IconButton(symbol: "xmark.circle.fill", size: 12, weight: .regular, target: nil, action: nil)
-    private let filterButton = IconButton(symbol: "line.3.horizontal.decrease", size: 12, weight: .medium, target: nil, action: nil)
+    private let clear = IconButton.clear()
+    private let filterButton = IconButton("line.3.horizontal.decrease", size: 12, weight: .medium, tip: "Filters")
     private var chipButtons: [ChipButton] = []
     private var chipsShown = false
     private let scroll = NSScrollView()
@@ -75,7 +75,6 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
             self.refresh()
             self.window?.makeFirstResponder(self.field)
         }
-        filterButton.toolTip = "Filters"
         filterButton.onClick = { [weak self] in
             guard let self else { return }
             self.chipsShown.toggle()

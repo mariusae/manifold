@@ -21,8 +21,8 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
     private var configs: [LanguageServerConfig] = []
     private let table = NSTableView()
     private let status = NSTextField(wrappingLabelWithString: "")
-    private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
-    private let add = IconButton(symbol: "plus", size: 12, weight: .medium, target: nil, action: nil)
+    private let remove = IconButton("minus", size: 12, weight: .medium)
+    private let add = IconButton("plus", size: 12, weight: .medium)
     private let defaults = FlatButton("Restore Defaults")
     /// Which hosts it's set for: all (nil), or one.
     private(set) var scope: HostID?

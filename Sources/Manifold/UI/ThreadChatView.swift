@@ -73,7 +73,7 @@ final class ThreadChatView: NSView {
     private lazy var box = ChatBox(composer: composer)
     private var placeholder: NSTextField { box.placeholder }
     private let resolveButton = FlatButton("Resolve", symbol: "checkmark", font: UIType.detail)
-    private let tileButton = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
+    private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
     /// The most it grows to, where it's fitted (a card).
@@ -101,7 +101,6 @@ final class ThreadChatView: NSView {
         header.addArrangedSubview(contextView)
         placeRow.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         contextView.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
-        tileButton.toolTip = "Open as a Tile"
         tileButton.target = self
         tileButton.action = #selector(openTile)
 

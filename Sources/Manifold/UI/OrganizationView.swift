@@ -1406,9 +1406,7 @@ final class OrgRowView: NSTableCellView {
         name.isHidden = false
         accessoryButtons.forEach { $0.removeFromSuperview() }
         accessoryButtons = node.accessories.map { a in
-            let b = IconButton(symbol: a.symbol, size: 11, weight: .medium, target: nil, action: nil)
-            b.toolTip = a.tip
-            b.onClick = a.run
+            let b = IconButton(a.symbol, weight: .medium, tip: a.tip, a.run)
             b.isHidden = !hovering
             addSubview(b)
             return b

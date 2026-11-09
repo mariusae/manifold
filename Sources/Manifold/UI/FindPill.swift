@@ -27,7 +27,7 @@ class CapsulePill: NSView, NSTextFieldDelegate {
     static let rowHeight: CGFloat = 28
     let field = NSTextField()
     let count = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .right)
-    let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
+    let close = IconButton.close()
 
     init(width: CGFloat) {
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.rowHeight))
@@ -98,8 +98,8 @@ final class FindPill: CapsulePill {
     var height: CGFloat { showsReplace ? 2 * Self.rowHeight + 2 : Self.rowHeight }
 
     private let replaceField = NSTextField()
-    private let previous = IconButton(symbol: "chevron.up", size: 10, target: nil, action: nil)
-    private let next = IconButton(symbol: "chevron.down", size: 10, target: nil, action: nil)
+    private let previous = IconButton("chevron.up", size: 10, tip: "Previous (⇧↩, ⇧⌘G)")
+    private let next = IconButton("chevron.down", size: 10, tip: "Next (↩, ⌘G)")
     private let caseButton = FlatButton("Aa", toggles: true, font: .systemFont(ofSize: 10.5, weight: .medium))
     private let replaceButton = FlatButton("Replace", font: .systemFont(ofSize: 10.5, weight: .medium))
     private let replaceAllButton = FlatButton("All", font: .systemFont(ofSize: 10.5, weight: .medium))
@@ -128,10 +128,8 @@ final class FindPill: CapsulePill {
         replaceAllButton.action = #selector(replaceAllClicked)
         previous.target = self
         previous.action = #selector(previousClicked)
-        previous.toolTip = "Previous (⇧↩, ⇧⌘G)"
         next.target = self
         next.action = #selector(nextClicked)
-        next.toolTip = "Next (↩, ⌘G)"
         close.toolTip = "Done (⎋)"
         for v in [caseButton, previous, next, replaceField, replaceButton, replaceAllButton] { addSubview(v) }
     }

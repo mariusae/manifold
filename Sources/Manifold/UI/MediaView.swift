@@ -43,15 +43,15 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate var shownImage: NSImage? { pdfView == nil ? imageView.image : nil }
 
     // A PDF's controls, along the top (see the extension below).
-    fileprivate let previousButton = IconButton(symbol: "chevron.left", size: 11, target: nil, action: nil)
-    fileprivate let nextButton = IconButton(symbol: "chevron.right", size: 11, target: nil, action: nil)
+    fileprivate let previousButton = IconButton("chevron.left", tip: "Previous Page")
+    fileprivate let nextButton = IconButton("chevron.right", tip: "Next Page")
     fileprivate let pageBox = FlatFieldBox(symbol: nil, clears: false, fontSize: 11.5)
     fileprivate var pageField: FlatField { pageBox.field }
     fileprivate let pageCount = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular), color: Theme.secondaryText)
-    fileprivate let zoomOutButton = IconButton(symbol: "minus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
-    fileprivate let zoomInButton = IconButton(symbol: "plus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
+    fileprivate let zoomOutButton = IconButton("minus.magnifyingglass", size: 12, weight: .regular, tip: "Zoom Out (⌘−)")
+    fileprivate let zoomInButton = IconButton("plus.magnifyingglass", size: 12, weight: .regular, tip: "Zoom In (⌘+)")
     fileprivate let zoomLabel = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .center)
-    fileprivate let layoutButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
+    fileprivate let layoutButton = IconButton("doc.on.doc", weight: .regular, tip: "Page Layout")
     fileprivate var sidebar: TileSidebar?
     /// The pointer on the strip: its arrows, zoom and layout shown.
     fileprivate lazy var reveal = HoverReveal(in: self) { [unowned self] in stripControls }
@@ -314,11 +314,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
 
 extension MediaView: Searchable {
     fileprivate func makeControls() {
-        previousButton.toolTip = "Previous Page"
-        nextButton.toolTip = "Next Page"
-        zoomOutButton.toolTip = "Zoom Out (⌘−)"
-        zoomInButton.toolTip = "Zoom In (⌘+)"
-        layoutButton.toolTip = "Page Layout"
         for (b, sel) in [(previousButton, #selector(previousPage)), (nextButton, #selector(nextPage)), (zoomOutButton, #selector(zoomOutClicked)),
                          (zoomInButton, #selector(zoomInClicked)), (layoutButton, #selector(layoutClicked))] {
             b.target = self

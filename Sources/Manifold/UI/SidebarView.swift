@@ -48,8 +48,8 @@ final class SidebarView: NSView {
     /// the right of their header, the filter (which, and where) and Mark
     /// All Read.
     let timeline = ThreadTimelineView()
-    private let threadsFilter = IconButton(symbol: "line.3.horizontal.decrease.circle", size: 13, weight: .medium, target: nil, action: nil)
-    private let threadsRead = IconButton(symbol: "checkmark.circle", size: 13, weight: .medium, target: nil, action: nil)
+    private let threadsFilter = IconButton("line.3.horizontal.decrease.circle", size: 13, weight: .medium, tip: "Filter Threads")
+    private let threadsRead = IconButton("checkmark.circle", size: 13, weight: .medium)
     /// The timeline's buttons in the header.
     private var threadsControls: [NSView] { [threadsFilter, threadsRead] }
     /// The threads' filter narrows them (not all, or not only the space's): its button filled, in the accent.
@@ -80,7 +80,7 @@ final class SidebarView: NSView {
     /// A list pushed over the tree (Recently Closed, Search): the header
     /// grows to a back button, the list's name and what it holds.
     static let pushedHeight: CGFloat = 36
-    private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
+    private let backButton = IconButton("chevron.left", size: 12, tip: "Back to Spaces")
     private let pushedTitle = NSTextField(labelWithString: "")
     private let pushedSubtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     /// Under a space's name: the host it's on, a remote's ping times by it.
@@ -91,7 +91,7 @@ final class SidebarView: NSView {
     private var titled: Bool { pushed || organization == .threads || organization == .desk }
 
     override init(frame: NSRect) {
-        pinButton = IconButton(symbol: "sidebar.left", size: 13, weight: .regular, target: nil, action: nil)
+        pinButton = IconButton("sidebar.left", size: 13, weight: .regular, tip: "Keep Sidebar Shown (⇧⌘/)")
         super.init(frame: frame)
         wantsLayer = true
         if let layer { Elevation.float.apply(to: layer) }
@@ -105,11 +105,9 @@ final class SidebarView: NSView {
         card.addSubview(header)
         pinButton.target = self
         pinButton.action = #selector(togglePinned)
-        pinButton.toolTip = "Keep Sidebar Shown (⇧⌘/)"
         card.addSubview(pinButton)
         backButton.target = self
         backButton.action = #selector(backClicked)
-        backButton.toolTip = "Back to Spaces"
         pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
@@ -127,7 +125,6 @@ final class SidebarView: NSView {
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         threadsFilter.target = self
         threadsFilter.action = #selector(threadsFilterClicked)
-        threadsFilter.toolTip = "Filter Threads"
         threadsRead.target = self
         threadsRead.action = #selector(threadsReadClicked)
         setThreadsFilter(narrowed: false, unseen: 0)

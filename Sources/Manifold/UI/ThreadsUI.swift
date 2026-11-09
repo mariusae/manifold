@@ -59,8 +59,8 @@ final class ThreadCardView: NSView {
     let chat = ThreadChatView()
     private let nav = NSStackView()
     private let count = NSTextField.label(font: UIType.caption, color: Theme.secondaryText)
-    private let prev = IconButton(symbol: "chevron.left", size: 10, target: nil, action: nil)
-    private let next = IconButton(symbol: "chevron.right", size: 10, target: nil, action: nil)
+    private let prev = IconButton("chevron.left", size: 10)
+    private let next = IconButton("chevron.right", size: 10)
     var threads: [BlockID] = [] { didSet { index = min(index, max(0, threads.count - 1)); updateNav() } }
     var index = 0 { didSet { updateNav() } }
     var onStep: ((Int) -> Void)?

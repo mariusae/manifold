@@ -197,7 +197,7 @@ final class ChipView: NSView {
     private let square = NSView()
     /// Taken out (a reference's card), by its × under the pointer.
     var onRemove: (() -> Void)? { didSet { remove.isHidden = true } }
-    private let remove = IconButton(symbol: "xmark.circle.fill", size: 12, weight: .regular, target: nil, action: nil)
+    private let remove = IconButton.clear(tip: "Remove")
 
     init(_ chip: ChatBox.Chip) {
         super.init(frame: .zero)
@@ -216,7 +216,6 @@ final class ChipView: NSView {
         for v in [square, icon, title, detail, remove] as [NSView] { addSubview(v) }
         remove.isHidden = true
         remove.contentTintColor = Theme.secondaryText
-        remove.toolTip = "Remove"
         remove.onClick = { [weak self] in self?.onRemove?() }
         themed { v in
             v.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor

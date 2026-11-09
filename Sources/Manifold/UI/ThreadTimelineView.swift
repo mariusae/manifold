@@ -94,7 +94,7 @@ final class ThreadTimelineView: NSView {
     private let list = FlippedStack()
     private let empty = NSTextField(wrappingLabelWithString: "")
     private let replyingTo = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
-    private let clearReply = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
+    private let clearReply = IconButton.close()
     let composer = ComposerTextView()
     private(set) lazy var box = ChatBox(composer: composer)
     private var placeholder: NSTextField { box.placeholder }

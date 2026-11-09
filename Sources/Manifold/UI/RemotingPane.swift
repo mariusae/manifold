@@ -15,7 +15,7 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
     /// What the list says with nothing in it.
     private let empty = NSTextField(wrappingLabelWithString: "No providers. Add one with +: a name, and the command line that reaches a destination.")
     private let table = NSTableView()
-    private let remove = IconButton(symbol: "minus", size: 12, weight: .medium, target: nil, action: nil)
+    private let remove = IconButton("minus", size: 12, weight: .medium)
 
     init() {
         super.init(nibName: nil, bundle: nil)

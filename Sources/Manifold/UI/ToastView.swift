@@ -13,7 +13,7 @@ final class ToastView: NSView {
     private let label = NSTextField(labelWithString: "")
     private let button = FlatButton("Restore")
     /// Put away now, under the pointer (Dia's ×), for one with nothing to do.
-    private let dismiss = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
+    private let dismiss = IconButton.close(tip: "Dismiss")
     private let hideWork = Debouncer()
     private var action: (() -> Void)?
     /// Done once its time is up and its action wasn't taken.
@@ -55,7 +55,6 @@ final class ToastView: NSView {
         button.action = #selector(act)
         addSubview(label)
         addSubview(button)
-        dismiss.toolTip = "Dismiss"
         dismiss.onClick = { [weak self] in self?.hide() }
         dismiss.alphaValue = 0
         addSubview(dismiss)

@@ -1324,7 +1324,7 @@ final class ReadingTextView: NSTextView {
 final class CommitHeaderView: NSView {
     private let meta = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     /// The message folded to its subject, or whole.
-    private let fold = IconButton(symbol: "chevron.down", size: 9, weight: .semibold, target: nil, action: nil)
+    private let fold = IconButton("chevron.down", size: 9)
     private(set) var folded = CommitHeaderView.foldsMessages
     /// Folded or unfolded by its chevron (or a click on the line above the message).
     var onFold: ((Bool) -> Void)?

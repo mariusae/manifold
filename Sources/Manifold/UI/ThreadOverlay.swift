@@ -9,8 +9,8 @@ import ManifoldCore
 /// gone to, the overlay kept.
 final class ThreadOverlayView: PopoverView {
     let chat = ThreadChatView()
-    private let close = IconButton(symbol: "xmark", size: 10, target: nil, action: nil)
-    private let popOut = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
+    private let close = IconButton.close(tip: "Close (⎋)")
+    private let popOut = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     private let titleLabel = NSTextField.label(font: .systemFont(ofSize: 13, weight: .semibold), cut: .byTruncatingMiddle)
     var onClose: (() -> Void)?
     var onPopOut: (() -> Void)?
@@ -25,10 +25,8 @@ final class ThreadOverlayView: PopoverView {
         super.init(frame: frame)
         close.target = self
         close.action = #selector(closeClicked)
-        close.toolTip = "Close (⎋)"
         popOut.target = self
         popOut.action = #selector(popOutClicked)
-        popOut.toolTip = "Open as a Tile"
         chat.fits = false
         chat.showsTileButton = false
         for v in [titleLabel, popOut, close, chat] as [NSView] { addSubview(v) }

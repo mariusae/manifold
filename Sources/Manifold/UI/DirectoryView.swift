@@ -115,7 +115,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     private(set) var model: DirectoryModel?
     private let header = NSView()
-    private let up = IconButton(symbol: "arrow.turn.left.up", size: 13, weight: .medium, target: nil, action: nil)
+    private let up = IconButton("arrow.turn.left.up", size: 13, weight: .medium, tip: "Enclosing Folder (⌘↑)")
     /// Tree or columns, at the header's right.
     private let modes = FlatSegments(symbols: ["list.bullet.indent", "rectangle.split.3x1"])
     enum Mode: String { case tree, columns }
@@ -203,7 +203,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
 
-        up.toolTip = "Enclosing Folder (⌘↑)"
         up.target = self
         up.action = #selector(goUp)
         search.delegate = self

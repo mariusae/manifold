@@ -575,7 +575,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
     private let label = NSTextField(labelWithString: "")
     private let detail = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, align: .right)
     private let icon = NSImageView()
-    private let more = IconButton(symbol: "ellipsis", size: 11, weight: .semibold, target: nil, action: nil)
+    private let more = IconButton("ellipsis", tip: "Actions")
     private var row = FloatingList.Row(title: "")
     /// The pointer is on it (the list says, for one row at a time).
     var hovering = false { didSet { if hovering != oldValue { needsDisplay = true; more.isHidden = !hovering || row.menu == nil } } }
@@ -590,7 +590,6 @@ final class FloatingListRow: NSView, NSDraggingSource {
         more.isHidden = true
         more.target = self
         more.action = #selector(moreClicked)
-        more.toolTip = "Actions"
         for v in [label, detail, icon, more] { addSubview(v) }
     }
 

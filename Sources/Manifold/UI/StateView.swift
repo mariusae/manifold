@@ -33,7 +33,7 @@ final class StateView: NSView {
     private let modes = FlatSegments(symbols: ["list.bullet", "square.grid.2x2", "rectangle.grid.1x2"])
     private let filter = FlatSegments(titles: ["This Space", "Agents"], font: UIType.body)
     private var cards: [BlockID: SummaryCard] = [:]
-    private let leave = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
+    private let leave = IconButton.close(tip: "Back to the Space (⎋)")
     private let scroll = ClippingScrollView()
     private let document = FlippedView()
     private var items: [Item] = []
@@ -62,7 +62,6 @@ final class StateView: NSView {
         filter.onChange = { [weak self] i in self?.onFilterChanged?(i) }
         leave.target = self
         leave.action = #selector(leaveClicked)
-        leave.toolTip = "Back to the Space (⎋)"
         for v in [title, count, filter, modes, leave] { header.addSubview(v) }
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true

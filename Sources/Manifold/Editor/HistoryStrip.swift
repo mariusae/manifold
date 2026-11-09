@@ -22,10 +22,10 @@ final class HistoryStrip: NSView {
 
     static let height: CGFloat = 30
     private let label = NSTextField(labelWithString: "")
-    private let older = IconButton(symbol: "chevron.left", size: 11, target: nil, action: nil)
-    private let newer = IconButton(symbol: "chevron.right", size: 11, target: nil, action: nil)
+    private let older = IconButton("chevron.left", tip: "Older ([)")
+    private let newer = IconButton("chevron.right", tip: "Newer (])")
     private let now = FlatButton("Now", font: UIType.detail)
-    private let close = IconButton(symbol: "xmark", size: 10, target: nil, action: nil)
+    private let close = IconButton.close(tip: "Close History (⎋)")
     private var hovered: Int?
 
     override init(frame: NSRect) {
@@ -34,10 +34,7 @@ final class HistoryStrip: NSView {
         themed { $0.layer?.backgroundColor = Theme.windowBackground.blended(withFraction: 0.04, of: Theme.text)?.cgColor }
         label.font = UIType.detail
         label.lineBreakMode = .byTruncatingTail
-        older.toolTip = "Older ([)"
-        newer.toolTip = "Newer (])"
         now.toolTip = "The file as it is now"
-        close.toolTip = "Close History (⎋)"
         older.target = self; older.action = #selector(olderClicked)
         newer.target = self; newer.action = #selector(newerClicked)
         now.target = self; now.action = #selector(nowClicked)
