@@ -138,7 +138,7 @@ extension EditorView {
             doc.version = -asked
             self.pastDocument = doc
             self.textView.document = doc
-            self.textView.isEditable = false
+            self.updateEditable()
             self.textView.documentChanged()
             self.textView.diagnostics = []
             self.textView.gutterMarks = []
@@ -290,6 +290,6 @@ extension EditorView {
         let blame = textView.blame.map { b in
             b.lines.map { $0 < 0 ? "·" : String(b.commits[$0].sha.prefix(4)) }.joined(separator: " ")
         } ?? "none"
-        return "\(h.vcs) \(h.revisions.count)\(h.more ? "+" : "") commits · at \(at) · editable \(textView.isEditable) · tinted \(scrubbed) · strip \(h.shown) · top \(String(format: "%.1f", topLine)) · lines \(textView.text.lineCount) · top line “\(textView.text.lineText(min(Int(topLine), max(textView.text.lineCount - 1, 0))).trimmingCharacters(in: .whitespaces).prefix(50))”\nmarks \(textView.gutterMarks.map { "\($0.kind)@\($0.line)+\($0.count)" }.joined(separator: ","))\nblame \(blame)"
+        return "\(h.vcs) \(h.revisions.count)\(h.more ? "+" : "") commits · at \(at) · editable \(textView.isEditable)\(readOnly.isEmpty ? "" : " (" + readOnly.map(\.rawValue).joined(separator: ", ") + ")") · tinted \(scrubbed) · strip \(h.shown) · top \(String(format: "%.1f", topLine)) · lines \(textView.text.lineCount) · top line “\(textView.text.lineText(min(Int(topLine), max(textView.text.lineCount - 1, 0))).trimmingCharacters(in: .whitespaces).prefix(50))”\nmarks \(textView.gutterMarks.map { "\($0.kind)@\($0.line)+\($0.count)" }.joined(separator: ","))\nblame \(blame)"
     }
 }

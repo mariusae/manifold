@@ -582,7 +582,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             // Changed on disk (a checkout, a commit's rewrite): blame now asked again.
             blameStale()
         }
-        textView.isEditable = !doc.unreadable && !offline && !viewing && isLoaded
+        updateEditable()
         loadingMessage = isLoaded ? nil : "Reading the file…"
         note.set(isLoaded ? .idle : .busy("Reading…"))
         if doc.stale, banner == nil { showBanner() }
@@ -721,7 +721,34 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// The block's host can't be reached (§8): read, not written.
     var offline = false {
-        didSet { if offline != oldValue { textView.isEditable = !offline && document?.unreadable != true } }
+        didSet { if offline != oldValue { updateEditable() } }
+    }
+
+    /// Why the text can't be typed in now (§ M15 in STATE-MACHINES.md).
+    enum ReadOnly: String {
+        case reading = "reading the file"
+        case unreadable
+        case offline = "its host is away"
+        case past = "a past revision"
+        case viewing
+    }
+
+    /// Each reason the text is read-only, from all of them at once: one
+    /// rule, so no one change (its host back, say) makes a past revision
+    /// editable.
+    static func readOnly(loaded: Bool, unreadable: Bool, offline: Bool, past: Bool, viewing: Bool) -> [ReadOnly] {
+        [(!loaded, ReadOnly.reading), (unreadable, .unreadable), (offline, .offline), (past, .past), (viewing, .viewing)]
+            .filter(\.0).map(\.1)
+    }
+
+    var readOnly: [ReadOnly] {
+        Self.readOnly(loaded: isLoaded, unreadable: document?.unreadable == true, offline: offline,
+                      past: scrubbed || pastDocument != nil, viewing: viewing)
+    }
+
+    /// Editable exactly when nothing says otherwise.
+    func updateEditable() {
+        textView.isEditable = readOnly.isEmpty
     }
 
     var lineAtCaret: String {

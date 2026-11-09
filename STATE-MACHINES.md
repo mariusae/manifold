@@ -107,7 +107,7 @@ the grids catching it; `tilewalk` names the walk's space.
 Tests: `ManifoldAppTests/TileWalkTests`; the scenario passes.
 Machines: M20, M21.
 
-### I-4 A past revision becomes editable · **confirmed on reading** · medium-high
+### I-4 A past revision becomes editable · **fixed** · medium-high
 Three formulas set `textView.isEditable`: `documentChanged` (all reasons,
 but it returns early while a past revision is shown), file history's
 (`false`), and `offline`'s didSet (`!offline && !unreadable`, ignoring the
@@ -115,6 +115,15 @@ rest). Shown a past revision, the host goes offline and comes back: the
 past text is editable. Typing does nothing to it (a static document), but
 the text view records undo groups against it; after history closes ⌘Z can
 apply them to the live file (suspected).
+
+Evidence: `Tests/scenarios/past-revision-read-only.sh` — on the old code a
+past revision of `Package.swift` reports `editable true` once
+`fencing away 2` has taken its host away and back.
+Fix: one rule (`EditorView.readOnly`: reading, unreadable, offline, past,
+viewing) decides, through `updateEditable()`, at every change of any of
+them; the history's `filehistory` report says why (`editable false (a past
+revision)`).
+Tests: `ManifoldAppTests/EditorAccessTests`; the scenario passes.
 Machine: M15.
 
 ### I-5 One failure, stuck for good (or retried blindly) · **confirmed on reading** · medium
@@ -339,7 +348,8 @@ so a slow handshake after the first connection is dropped at ~8 s.
 EditorView `viewing`, `offline`, `isLoaded`, `document.unreadable`,
 `fileHistory.position` (scrubbed), `pastDocument`.
 Invariant: editable ⇔ loaded ∧ readable ∧ online ∧ not viewing ∧ not on a
-past revision; computed in one place. Findings: I-4.
+past revision; computed in one place (`readOnly`, `updateEditable()`),
+called wherever one of them changes. Findings: I-4 — fixed.
 
 #### M16 Editor file history and blame · implicit
 `fileHistory` (shown, position), `blameShown`, `historyAsked`, the strip's
