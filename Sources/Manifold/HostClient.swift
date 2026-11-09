@@ -207,12 +207,14 @@ final class HostClient {
     /// it shows: a link that's slow for a moment answers well before.
     static let quietAfter: TimeInterval = 3
     private var nextProposal = 1
-    private var pendingProposals: [Int: (String?) -> Void] = [:]
-    private var pendingLSP: [Int: (LSPResult) -> Void] = [:]
-    private var pendingSCIP: [Int: (SCIPResult) -> Void] = [:]
-    private var pendingListings: [Int: ([DirectoryEntry]?, Bool) -> Void] = [:]
-    private var pendingLookUps: [Int: ([PathKind?]?) -> Void] = [:]
-    private var pendingMachine: [Int: (MachineSample?) -> Void] = [:]
+    /// What's asked and not yet answered, by its proposal's number: what
+    /// to do with the answer, and what to say instead if the link drops
+    /// first (or never was) — so no one waits on an answer that can't come.
+    private var waiting: [Int: Waiting] = [:]
+    private struct Waiting {
+        let answer: (Any) -> Void
+        let drop: () -> Void
+    }
     /// What the host's server can do beyond its protocol (`welcome`).
     private(set) var features: Set<String> = []
     /// How the host's ssh agent stands (§8.6), as it last said.
@@ -489,32 +491,43 @@ final class HostClient {
         }
     }
 
-    /// Asks the host to do something only it can.
-    func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
+    /// Asks the host something, `done` with its answer — or with `offline`
+    /// at once when not attached, and when the link drops before it comes.
+    private func ask<T>(_ proposal: Proposal, offline: T, _ done: @escaping (T) -> Void) {
+        guard conn != nil else { return done(offline) }
         let id = nextProposal
         nextProposal += 1
-        if let done { pendingProposals[id] = done }
+        waiting[id] = Waiting(answer: { ($0 as? T).map(done) }, drop: { done(offline) })
+        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+    }
+
+    /// The answer to proposal `id`, to whoever's waiting on it.
+    private func answer<T>(_ id: Int, _ value: T) {
+        waiting.removeValue(forKey: id)?.answer(value)
+    }
+
+    /// Asks the host to do something only it can; `done` with what went
+    /// wrong, if anything ("not attached", when the link isn't there).
+    func propose(_ proposal: Proposal, done: ((String?) -> Void)? = nil) {
         // A link broken can be made again at once.
         if case .unlink = proposal { recentLinks = [:] }
-        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+        guard let done else {
+            let id = nextProposal
+            nextProposal += 1
+            conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+            return
+        }
+        ask(proposal, offline: "not attached" as String?, done)
     }
 
     /// Asks the block's host's language server something.
     func lsp(_ request: LSPRequest, done: @escaping (LSPResult) -> Void) {
-        guard conn != nil else { return done(.error("not attached")) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingLSP[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .lsp(request))))
+        ask(.lsp(request), offline: .error("not attached"), done)
     }
 
     /// A question for the host's SCIP index of a file's project (§2.5).
     func scip(_ request: SCIPRequest, done: @escaping (SCIPResult) -> Void) {
-        guard conn != nil else { return done(.error("not attached")) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingSCIP[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .scip(request))))
+        ask(.scip(request), offline: .error("not attached"), done)
     }
 
     /// A folder's entries, ignored ones marked (§7.4).
@@ -526,11 +539,7 @@ final class HostClient {
     /// for none, not attached. Fewer than asked when the host ran out of
     /// time looking.
     func lookUp(_ paths: [String], done: @escaping ([PathKind?]?) -> Void) {
-        guard conn != nil else { return done(nil) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingLookUps[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .lookUpPaths(paths: paths))))
+        ask(.lookUpPaths(paths: paths), offline: nil, done)
     }
 
     /// Whether the host's server can read its machine (one from before can't).
@@ -543,10 +552,7 @@ final class HostClient {
         guard conn != nil, readsMachine else { return done(nil) }
         var q = query
         q.since = machineHistory.last?.at
-        let id = nextProposal
-        nextProposal += 1
-        pendingMachine[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .machine(q))))
+        ask(.machine(q), offline: nil, done)
     }
 
     /// The tree under a folder, less what's ignored, named relative to it.
@@ -556,31 +562,18 @@ final class HostClient {
 
     /// A project's languages as GitHub counts them (§2.6), from its host.
     func languages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) {
-        guard conn != nil else { return done(nil) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingLanguages[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .languages(path: path))))
+        ask(.languages(path: path), offline: nil, done)
     }
-    private var pendingLanguages: [Int: ([Linguist.Count]?) -> Void] = [:]
 
     /// A file's history, as the host's version control has it.
     func fileHistory(_ request: FileHistoryRequest, done: @escaping (FileHistoryResult) -> Void) {
-        guard conn != nil else { return done(.error("not attached")) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingFileHistory[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, .fileHistory(request))))
+        ask(.fileHistory(request), offline: .error("not attached"), done)
     }
-    private var pendingFileHistory: [Int: (FileHistoryResult) -> Void] = [:]
 
     private func list(_ proposal: Proposal, done: @escaping ([DirectoryEntry]?, Bool) -> Void) {
-        guard conn != nil else { return done(nil, false) }
-        let id = nextProposal
-        nextProposal += 1
-        pendingListings[id] = done
-        conn?.send(.message(ClientMessage.propose(id: id, proposal)))
+        ask(proposal, offline: Listing(entries: nil, complete: false)) { done($0.entries, $0.complete) }
     }
+    private struct Listing { var entries: [DirectoryEntry]?; var complete: Bool }
 
     // MARK: Conveniences
 
@@ -1134,6 +1127,10 @@ final class HostClient {
             self.isConnected = false
             // Reads asked over this link won't be answered: asked again on the next.
             self.readsInFlight = []
+            // Nor will what's asked of it: said so now, not waited on forever.
+            let dropped = self.waiting.values
+            self.waiting = [:]
+            for w in dropped { w.drop() }
             self.forwards.linkClosed()
             self.pingSent = nil
             // Gone before it answered: unreachable, not still connecting.
@@ -1322,7 +1319,7 @@ final class HostClient {
             lower(proposal, into: shard)
         case let .done(id, error):
             if let error { NSLog("proposal %d: %@", id, error) }
-            pendingProposals.removeValue(forKey: id)?(error)
+            answer(id, error)
         case let .history(shard, base, entries):
             onHistory?(shard, base, entries)
         case let .removed(shard):
@@ -1342,9 +1339,9 @@ final class HostClient {
             gutters[block] = marks
             onGutter?(block)
         case let .lspResult(id, result):
-            pendingLSP.removeValue(forKey: id)?(result)
+            answer(id, result)
         case let .scipResult(id, result):
-            pendingSCIP.removeValue(forKey: id)?(result)
+            answer(id, result)
         case .end:
             break // only on a file's stream
         case let .notebookLive(block, cell, output):
@@ -1352,13 +1349,13 @@ final class HostClient {
         case let .passwordInput(block, on):
             SecureInput.shared.set(block, readingPassword: on)
         case let .listing(id, entries, complete):
-            pendingListings.removeValue(forKey: id)?(entries, complete)
+            answer(id, Listing(entries: entries, complete: complete))
         case let .languages(id, counts):
-            pendingLanguages.removeValue(forKey: id)?(counts)
+            answer(id, counts)
         case let .fileHistory(id, result):
-            pendingFileHistory.removeValue(forKey: id)?(result)
+            answer(id, result)
         case let .pathKinds(id, kinds):
-            pendingLookUps.removeValue(forKey: id)?(kinds)
+            answer(id, kinds)
         case let .machine(id, sample):
             if let sample {
                 // The history, what's new added on, five minutes kept.
@@ -1370,7 +1367,7 @@ final class HostClient {
                 kept.history = []
                 machineLatest = kept
             }
-            pendingMachine.removeValue(forKey: id)?(sample)
+            answer(id, sample)
         case let .agentLink(status):
             agentLink = status
             onChange?()
