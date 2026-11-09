@@ -52,6 +52,8 @@ final class SpaceStripView: NSView {
         var status: StatusGlyph.Look?
         /// The first of another host's.
         var hostBreak: Bool
+        /// Its host, when it's another machine's (underlined in its colour).
+        var remote: HostID? = nil
     }
 
     /// A host none of whose spaces are here yet — being reached for the
@@ -67,7 +69,8 @@ final class SpaceStripView: NSView {
         var connecting: Bool
     }
 
-    /// One row's height; more rows, each `side + gap` more.
+    /// One row's height; more rows, each `side + gap` more (and room for
+    /// an underline under each, when a remote host's are among them).
     static let height: CGFloat = 36
     static let side: CGFloat = 24
     static let gap: CGFloat = 6
@@ -95,7 +98,10 @@ final class SpaceStripView: NSView {
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private(set) var pending: [Pending] = []
     private var pills: [NSRect] = []
-    private var pillBreaks: Set<Int> = []
+    /// Each remote host's colour, its spaces underlined in it.
+    private var hostColors: [HostID: NSColor] = [:]
+    /// More between rows when there are underlines, so each is its row's.
+    static let underlineRoom: CGFloat = 4
     private var hoveredPill: Int? { didSet { if hoveredPill != oldValue { needsDisplay = true } } }
     /// Each pill's turning ring (or a host unreachable's mark), by host.
     private var glyphs: [HostID: StatusGlyph] = [:]
@@ -195,6 +201,9 @@ final class SpaceStripView: NSView {
         let rows = wantedHeight(width: bounds.width)
         chips = new
         pending = newPending
+        var remotes: [HostID] = []
+        for h in chips.compactMap(\.remote) + pending.map(\.host) where !remotes.contains(h) { remotes.append(h) }
+        hostColors = Self.colors(for: remotes)
         if wantedHeight(width: bounds.width) != rows { superview?.superview?.needsLayout = true }
         needsLayout = true
         needsDisplay = true
@@ -202,36 +211,73 @@ final class SpaceStripView: NSView {
 
     /// Where each goes at a width, the + last, a host's pill among the
     /// squares where its spaces will be: in rows from the left, another
-    /// row when one's full; between hosts a hairline's room (none at a
-    /// row's start). And which have a hairline before them.
-    private func place(width: CGFloat) -> (frames: [NSRect], breaks: Set<Int>, pills: [NSRect], pillBreaks: Set<Int>) {
-        var out: [NSRect] = [], breaks: Set<Int> = [], pills: [NSRect] = [], pillBreaks: Set<Int> = []
+    /// row when one's full; between hosts a little more room (none at a
+    /// row's start: there, its underline says another host's begun).
+    private func place(width: CGFloat) -> (frames: [NSRect], pills: [NSRect]) {
+        var out: [NSRect] = [], pills: [NSRect] = []
         var x = Self.inset, y = (Self.height - Self.side) / 2
-        func put(_ w: CGFloat, lead wanted: CGFloat) -> (NSRect, Bool) {
+        func put(_ w: CGFloat, lead wanted: CGFloat) -> NSRect {
             var lead = wanted
             if x > Self.inset, x + lead + w > width - 8 {
                 x = Self.inset
-                y += Self.side + Self.gap
+                y += Self.side + Self.gap + (hostColors.isEmpty ? 0 : Self.underlineRoom)
                 lead = 0
             }
             x += lead
             let r = NSRect(x: x, y: y.rounded(), width: w, height: Self.side)
             x += w + Self.gap
-            return (r, lead == 7)
+            return r
         }
         var p = 0
         for i in 0...chips.count {
             while p < pending.count, pending[p].at <= i {
-                let (r, broken) = put(Self.pillWidth, lead: pending[p].hostBreak ? 7 : 0)
-                if broken { pillBreaks.insert(p) }
-                pills.append(r)
+                pills.append(put(Self.pillWidth, lead: pending[p].hostBreak ? 7 : 0))
                 p += 1
             }
-            let (r, broken) = put(Self.side, lead: i == chips.count ? 2 : chips[i].hostBreak ? 7 : 0)
-            if broken { breaks.insert(i) }
-            out.append(r)
+            out.append(put(Self.side, lead: i == chips.count ? 2 : chips[i].hostBreak ? 7 : 0))
         }
-        return (out, breaks, pills, pillBreaks)
+        return (out, pills)
+    }
+
+    /// The colours remote hosts are told apart by: each host's its own,
+    /// the same wherever it's seen (from its name), another's if two
+    /// would share one.
+    static let hostPalette: [NSColor] = [.systemBlue, .systemOrange, .systemPurple, .systemTeal, .systemPink,
+                                         .systemGreen, .systemIndigo, .systemYellow, .systemBrown, .systemRed]
+
+    static func colors(for hosts: [HostID]) -> [HostID: NSColor] {
+        var out: [HostID: NSColor] = [:], taken = Set<Int>()
+        for host in hosts {
+            var h: UInt32 = 2166136261
+            for b in host.description.utf8 { h = (h ^ UInt32(b)) &* 16777619 }
+            var i = Int(h % UInt32(hostPalette.count))
+            for _ in hostPalette.indices where taken.contains(i) { i = (i + 1) % hostPalette.count }
+            taken.insert(i)
+            out[host] = hostPalette[i]
+        }
+        return out
+    }
+
+    /// Each run of a remote host's squares (and its pill) in a row: where
+    /// it's underlined, and in what. A run broken by a row's end is
+    /// underlined on each row.
+    func hostRuns() -> [(host: HostID, rect: NSRect)] {
+        var items: [(r: NSRect, host: HostID?)] = []
+        for (i, c) in chips.enumerated() where frames.indices.contains(i) { items.append((frames[i], c.remote)) }
+        for (j, p) in pending.enumerated() where pills.indices.contains(j) { items.append((pills[j], p.host)) }
+        items.sort { ($0.r.minY, $0.r.minX) < ($1.r.minY, $1.r.minX) }
+        var runs: [(host: HostID, rect: NSRect)] = []
+        var run: (host: HostID, rect: NSRect)?
+        for item in items {
+            if let r = run, r.host == item.host, r.rect.minY == item.r.minY {
+                run = (r.host, r.rect.union(item.r))
+                continue
+            }
+            if let r = run { runs.append(r) }
+            run = item.host.map { ($0, item.r) }
+        }
+        if let r = run { runs.append(r) }
+        return runs
     }
 
     /// Its height at a width: as many rows as it takes.
@@ -240,11 +286,9 @@ final class SpaceStripView: NSView {
         return last.maxY + (Self.height - Self.side) / 2
     }
 
-    private var breaks: Set<Int> = []
-
     override func layout() {
         super.layout()
-        (frames, breaks, pills, pillBreaks) = place(width: bounds.width)
+        (frames, pills) = place(width: bounds.width)
         // Each pill's ring, at its middle; those of hosts no longer waited on, gone.
         for (j, p) in pending.enumerated() where pills.indices.contains(j) {
             let g = glyphs[p.host] ?? {
@@ -288,13 +332,16 @@ final class SpaceStripView: NSView {
                 image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
             }
         }
+        // Another machine's spaces: underlined in its colour, row by row
+        // (this Mac's aren't), so a host's begun even where a row has.
+        for run in hostRuns() {
+            let line = NSRect(x: run.rect.minX + 2, y: run.rect.maxY + 2, width: run.rect.width - 4, height: 2)
+            (hostColors[run.host] ?? Theme.secondaryText).withAlphaComponent(0.8).setFill()
+            NSBezierPath(roundedRect: line, xRadius: 1, yRadius: 1).fill()
+        }
         // A host still being reached: a capsule, its ring turning in it.
         for (j, _) in pending.enumerated() where pills.indices.contains(j) {
             let r = pills[j]
-            if pillBreaks.contains(j) {
-                Theme.divider.setFill()
-                NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
-            }
             let capsule = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: r.height / 2, yRadius: r.height / 2)
             Theme.text.withAlphaComponent(hoveredPill == j ? 0.1 : 0.05).setFill()
             capsule.fill()
@@ -304,10 +351,6 @@ final class SpaceStripView: NSView {
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
             let r = rect(i)
-            if breaks.contains(i) {
-                Theme.divider.setFill()
-                NSRect(x: r.minX - 7, y: r.midY - 7, width: 1, height: 14).fill()
-            }
             let lit = flashing.map { $0.index == i && $0.lit } ?? false
             SpaceSquare.fill(r, color: c.color, alpha: lit ? 0.6 : c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
             if dropTarget == i {
@@ -521,7 +564,7 @@ extension MainWindowController {
                 let name = title(of: a)
                 out.append(.init(id: id, title: name, symbol: SpaceLook.symbol(of: b), letter: SpaceLook.letter(of: name),
                                  color: SpaceLook.color(of: b), current: id == selected, status: spaceStatus(a),
-                                 hostBreak: first && before))
+                                 hostBreak: first && before, remote: c.isRemote ? c.host : nil))
                 first = false
             }
         }
@@ -741,6 +784,18 @@ extension MainWindowController {
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
+        case "pretend":
+            // "spaces pretend <i> <j>": as if the squares from i were one
+            // remote host's, and from j another's (until the strip's shown
+            // again) — to see their underlines.
+            let at = w.dropFirst().compactMap(Int.init)
+            let hosts = [HostID("debug-far"), HostID("debug-near")]
+            var chips = strip.chips
+            for (k, start) in at.prefix(2).enumerated() where chips.indices.contains(start) {
+                for i in start..<chips.count { chips[i].remote = hosts[k]; chips[i].hostBreak = i == start }
+            }
+            strip.show(chips, pending: strip.pending)
+            return strip.hostRuns().map { "\($0.host) \(Int($0.rect.minX)),\(Int($0.rect.minY)) \(Int($0.rect.width))" }.joined(separator: "\n")
         case "numbers": strip.showsNumbers = w.dropFirst().first != "off"
         case "host":
             // "spaces host [hover]": the heading's host line; with hover, its card.
