@@ -676,7 +676,7 @@ final class TextView: NSView, NSTextInputClient {
         if !markdown, !string.isEmpty, let syntax, let docFont, !syntax.isDocCode(line: n) {
             let start = text.offset(ofLine: n)
             for r in syntax.docWords(in: TextRange(start, start + string.utf8.count)) {
-                let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
+                let a = column(r.start), b = column(r.end)
                 guard b > a else { continue }
                 attributed.addAttributes([.font: docFont, .kern: docTracking], range: NSRange(location: a, length: b - a))
             }
@@ -686,12 +686,11 @@ final class TextView: NSView, NSTextInputClient {
             let start = text.offset(ofLine: n), end = start + string.utf8.count
             let faint = textColor.withAlphaComponent(Self.commentInk)
             for r in syntax.plainComments(in: TextRange(start, end)) {
-                let a = utf16Index(in: string, byteOffset: r.start - start), b = utf16Index(in: string, byteOffset: r.end - start)
+                let a = column(r.start), b = column(r.end)
                 if b > a { attributed.addAttribute(.foregroundColor, value: faint, range: NSRange(location: a, length: b - a)) }
             }
             for r in structure.names[n] ?? [] {
-                let a = utf16Index(in: string, byteOffset: max(r.start, start) - start)
-                let b = utf16Index(in: string, byteOffset: min(r.end, end) - start)
+                let a = column(max(r.start, start)), b = column(min(r.end, end))
                 guard b > a else { continue }
                 if let bold = boldFont {
                     attributed.addAttribute(.font, value: bold, range: NSRange(location: a, length: b - a))
@@ -705,8 +704,7 @@ final class TextView: NSView, NSTextInputClient {
         if !linkRanges.isEmpty, !string.isEmpty {
             let start = text.offset(ofLine: n), end = start + string.utf8.count
             for r in linkRanges where r.end > start && r.start < end {
-                let a = utf16Index(in: string, byteOffset: max(r.start, start) - start)
-                let b = utf16Index(in: string, byteOffset: min(r.end, end) - start)
+                let a = column(max(r.start, start)), b = column(min(r.end, end))
                 if b > a { attributed.addAttributes([.foregroundColor: Self.linkColor, Self.glows: true], range: NSRange(location: a, length: b - a)) }
             }
         }
@@ -882,8 +880,7 @@ final class TextView: NSView, NSTextInputClient {
     private func position(of offset: Int) -> (line: Int, row: Int, x: CGFloat) {
         let n = text.line(at: offset)
         let l = layout(line: n)
-        let lineStart = text.offset(ofLine: n)
-        let u16 = utf16Index(in: l.text, byteOffset: offset - lineStart)
+        let u16 = column(offset)
         var row = 0
         for (i, s) in l.rowStarts.enumerated() where s <= u16 { row = i }
         // A caret at the very end of a wrapped row belongs to the next row.
@@ -906,26 +903,23 @@ final class TextView: NSView, NSTextInputClient {
         let lineTop = top(ofLine: n)
         var row = Int((point.y - lineTop) / lineHeight)
         row = min(max(row, 0), l.rows.count - 1)
-        let x = point.x - textLeft
+        return text.byteOffset(line: n, character: index(inRow: row, of: l, atX: point.x - textLeft))
+    }
+
+    /// The index (UTF-16, in its line) at an x across a row of a line's
+    /// layout. Past a wrapped row's end stays on that row.
+    private func index(inRow row: Int, of l: LineLayout, atX x: CGFloat) -> Int {
         var u16 = CTLineGetStringIndexForPosition(l.rows[row], CGPoint(x: max(0, x), y: 0))
         if u16 == kCFNotFound { u16 = 0 }
-        let rowEnd = row + 1 < l.rowStarts.count ? l.rowStarts[row + 1] : (l.text as NSString).length
-        // Past a wrapped row's end stays on that row.
-        if u16 > rowEnd || (u16 == rowEnd && row + 1 < l.rows.count) { u16 = max(rowEnd - (row + 1 < l.rows.count ? 1 : 0), l.rowStarts[row]) }
-        return text.offset(ofLine: n) + byteOffset(in: l.text, utf16Index: min(u16, (l.text as NSString).length))
+        let length = (l.text as NSString).length
+        let wrapped = row + 1 < l.rows.count
+        let rowEnd = row + 1 < l.rowStarts.count ? l.rowStarts[row + 1] : length
+        if u16 > rowEnd || (u16 == rowEnd && wrapped) { u16 = max(rowEnd - (wrapped ? 1 : 0), l.rowStarts[row]) }
+        return min(u16, length)
     }
 
-    private func utf16Index(in s: String, byteOffset: Int) -> Int {
-        let utf8 = s.utf8
-        guard let i = utf8.index(utf8.startIndex, offsetBy: byteOffset, limitedBy: utf8.endIndex) else { return s.utf16.count }
-        return s.utf16.distance(from: s.utf16.startIndex, to: i)
-    }
-
-    private func byteOffset(in s: String, utf16Index: Int) -> Int {
-        let utf16 = s.utf16
-        guard let i = utf16.index(utf16.startIndex, offsetBy: utf16Index, limitedBy: utf16.endIndex) else { return s.utf8.count }
-        return s.utf8.distance(from: s.utf8.startIndex, to: i)
-    }
+    /// A byte offset's column in its line, in UTF-16 (as Core Text counts).
+    private func column(_ offset: Int) -> Int { text.lspPosition(ofByte: offset).character }
 
     // MARK: Folds and places (§2.5)
 
@@ -1476,8 +1470,7 @@ final class TextView: NSView, NSTextInputClient {
             let lineStart = text.offset(ofLine: n)
             let lineEnd = lineStart + l.text.utf8.count
             let s = max(range.start, lineStart), e = min(range.end, lineEnd)
-            let su = utf16Index(in: l.text, byteOffset: s - lineStart)
-            let eu = utf16Index(in: l.text, byteOffset: e - lineStart)
+            let su = column(s), eu = column(e)
             let lineTop = top(ofLine: n)
             for (r, row) in l.rows.enumerated() {
                 let rs = l.rowStarts[r]
@@ -1888,14 +1881,7 @@ final class TextView: NSView, NSTextInputClient {
                 while line + 1 < text.lineCount, hiddenLines.contains(line) { line += 1 }
                 row = 0
             }
-            let targetLayout = layout(line: line)
-            let rowLine = targetLayout.rows[row]
-            var u16 = CTLineGetStringIndexForPosition(rowLine, CGPoint(x: goalX, y: 0))
-            if u16 == kCFNotFound { u16 = 0 }
-            let rowEnd = row + 1 < targetLayout.rowStarts.count ? targetLayout.rowStarts[row + 1] : (targetLayout.text as NSString).length
-            if u16 > rowEnd { u16 = rowEnd }
-            if row + 1 < targetLayout.rows.count, u16 == rowEnd { u16 = max(rowEnd - 1, targetLayout.rowStarts[row]) }
-            let offset = text.offset(ofLine: line) + byteOffset(in: targetLayout.text, utf16Index: u16)
+            let offset = text.byteOffset(line: line, character: index(inRow: row, of: layout(line: line), atX: goalX))
             var moved = extend ? Selection(s.anchor, offset) : Selection(at: offset)
             moved.goalX = goalX
             out.append(moved)
@@ -2402,11 +2388,7 @@ final class TextView: NSView, NSTextInputClient {
             let line = p.line + (up ? -1 : 1)
             guard line >= 0, line < text.lineCount else { continue }
             let l = layout(line: line)
-            let row = up ? l.rows.count - 1 : 0
-            var u16 = CTLineGetStringIndexForPosition(l.rows[row], CGPoint(x: p.x, y: 0))
-            if u16 == kCFNotFound { u16 = 0 }
-            let offset = text.offset(ofLine: line) + byteOffset(in: l.text, utf16Index: min(u16, (l.text as NSString).length))
-            out.append(Selection(at: offset))
+            out.append(Selection(at: text.byteOffset(line: line, character: index(inRow: up ? l.rows.count - 1 : 0, of: l, atX: p.x))))
         }
         setSelections(out)
     }
@@ -3244,24 +3226,15 @@ final class TextView: NSView, NSTextInputClient {
     /// The byte offset of a line and column (from 1), for going to places.
     func offset(line: Int, column: Int?) -> TextRange {
         let n = min(max(line - 1, 0), text.lineCount - 1)
-        let r = text.lineRange(n)
-        if let column {
-            let lineText = text.lineText(n)
-            let o = r.start + byteOffset(in: lineText, utf16Index: min(column - 1, (lineText as NSString).length))
-            return TextRange(at: o)
-        }
-        return r
+        if let column { return TextRange(at: text.byteOffset(line: n, character: max(column - 1, 0))) }
+        return text.lineRange(n)
     }
 
     /// The line (from 0) of the primary caret.
     var caretLine: Int { text.line(at: primarySelection.head) }
 
     /// The column (from 1, in UTF-16) of the primary caret.
-    var caretColumn: Int {
-        let n = caretLine
-        let lineText = text.lineText(n)
-        return utf16Index(in: lineText, byteOffset: primarySelection.head - text.offset(ofLine: n)) + 1
-    }
+    var caretColumn: Int { column(primarySelection.head) + 1 }
 }
 
 extension TextView: NSDraggingSource {
@@ -3413,7 +3386,7 @@ extension TextView {
         textColor.withAlphaComponent(0.14).setFill()
         for r in s.rules where r.line >= first && r.line <= last + 1 && r.line < text.lineCount && !hiddenLines.contains(r.line) {
             let l = layout(line: r.line)
-            let x = textLeft + (l.rows.first.map { CTLineGetOffsetForStringIndex($0, utf16Index(in: l.text, byteOffset: min(r.from, l.text.utf8.count)), nil) } ?? 0)
+            let x = textLeft + (l.rows.first.map { CTLineGetOffsetForStringIndex($0, column(text.offset(ofLine: r.line) + min(r.from, l.text.utf8.count)), nil) } ?? 0)
             var y = top(ofLine: r.line)
             if r.inBlank, !hiddenLines.contains(r.line - 1) { y = (top(ofLine: r.line - 1) + y) / 2 }
             NSRect(x: x, y: (y - px / 2).rounded(.down), width: max(bounds.width - Self.insets.right - x, 0), height: px).fill()
