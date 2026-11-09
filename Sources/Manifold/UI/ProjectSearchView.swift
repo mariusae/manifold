@@ -27,7 +27,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         case more(String)
     }
     private var rows: [Row] = []
-    private let status = NSTextField(labelWithString: "")
+    private let status = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private let popOut = FlatButton("Open in a Tile", symbol: "arrow.up.right.square", font: UIType.detail)
     private let scroll = ClippingScrollView()
     private let table = FlatTable(column: "found")
@@ -44,9 +44,6 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         super.init(frame: frame)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        status.font = UIType.detail
-        status.textColor = Theme.secondaryText
-        status.lineBreakMode = .byTruncatingTail
         popOut.target = self
         popOut.action = #selector(popOutClicked)
         popOut.toolTip = "This search in a tile of its own, beside: every symbol, file and line found, kept"

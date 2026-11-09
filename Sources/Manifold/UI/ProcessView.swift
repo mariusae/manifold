@@ -39,7 +39,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     private var asked: Date?
     private let fieldBox = FlatFieldBox()
     private var field: FlatField { fieldBox.field }
-    private let status = NSTextField(labelWithString: "")
+    private let status = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
     private let end = FlatButton("End")
     private let kill = FlatButton("Force End")
     private let scroll = ClippingScrollView()
@@ -82,9 +82,6 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
         field.placeholderString = "Filter"
         field.delegate = self
         fieldBox.onChange = { [weak self] in self?.filterChanged() }
-        status.font = UIType.footnote
-        status.textColor = Theme.secondaryText
-        status.lineBreakMode = .byTruncatingTail
         for (b, action) in [(end, #selector(endClicked)), (kill, #selector(killClicked))] {
             b.target = self
             b.action = action

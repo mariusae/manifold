@@ -30,7 +30,7 @@ final class BusyNote: NSView {
     private var counted: (words: String, from: String, since: Int64)?
 
     private let spinner = NSProgressIndicator()
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField.label(font: UIType.row, color: Theme.secondaryText, align: .center)
     private var pending: DispatchWorkItem?
     private(set) var state: State = .idle
 
@@ -39,10 +39,6 @@ final class BusyNote: NSView {
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
-        label.font = UIType.row
-        label.textColor = Theme.secondaryText
-        label.alignment = .center
-        label.lineBreakMode = .byTruncatingTail
         bar.style = .bar
         bar.controlSize = .small
         bar.isIndeterminate = true

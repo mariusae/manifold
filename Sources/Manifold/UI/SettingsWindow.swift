@@ -152,9 +152,7 @@ class SettingsPane: NSViewController {
 
     /// A row: its label, and what it sets — sized as it wants to be.
     func row(_ label: String, _ control: NSView, note: String? = nil, top: Bool = false) {
-        let l = NSTextField(labelWithString: label.isEmpty ? "" : label + ":")
-        l.font = UIType.row
-        l.textColor = Theme.text
+        let l = NSTextField.label(label.isEmpty ? "" : label + ":", font: UIType.row)
         control.setContentHuggingPriority(.required, for: .horizontal)
         let r = form.addRow(with: [l, control])
         r.yPlacement = .center
@@ -269,14 +267,12 @@ final class AppearancePane: SettingsPane {
 final class TintPicker: NSView {
     var tint: Tint = .blue { didSet { needsDisplay = true; name.stringValue = tint.title; needsLayout = true } }
     var onPick: ((Tint) -> Void)?
-    private let name = NSTextField(labelWithString: "")
+    private let name = NSTextField.label(color: Theme.secondaryText)
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private static let side: CGFloat = 20, spacing: CGFloat = 10
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        name.font = UIType.body
-        name.textColor = Theme.secondaryText
         addSubview(name)
         for (i, t) in Tint.allCases.enumerated() { addToolTip(rect(i), owner: t.title as NSString, userData: nil) }
     }

@@ -38,7 +38,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     private let pathBox = FlatFieldBox(symbol: "folder", clears: false, fontSize: 12)
     private var pathField: FlatField { pathBox.field }
     private let projectButton = FlatButton("Expand to Project", symbol: "arrow.up.left.and.arrow.down.right", font: UIType.detail)
-    private let status = NSTextField(labelWithString: "")
+    private let status = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private let scroll = ClippingScrollView()
     private let table = FlatTable(column: "hit", rowHeight: TileMetrics.denseRow)
     private let preview = SearchPreviewView()
@@ -112,9 +112,6 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         projectButton.target = self
         projectButton.action = #selector(expandToProject)
         projectButton.isHidden = true
-        status.font = UIType.detail
-        status.textColor = Theme.secondaryText
-        status.lineBreakMode = .byTruncatingTail
         relationControl.isHidden = true
         relationControl.onChange = { [weak self] i in self?.relationChosen(i) }
         relationControl.setToolTip("The name, as text, under the folder", forSegment: 0)

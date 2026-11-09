@@ -131,7 +131,7 @@ final class PDFPagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 private final class PageCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("pdfPage")
     private let picture = NSImageView()
-    private let number = NSTextField(labelWithString: "")
+    private let number = NSTextField.label(font: UIType.caption, color: Theme.secondaryText, align: .center)
 
     init() {
         super.init(frame: .zero)
@@ -140,9 +140,6 @@ private final class PageCell: NSTableCellView {
         picture.wantsLayer = true
         picture.layer?.borderWidth = 0.5
         picture.themed { $0.layer?.borderColor = EdgeColor.hairline.cgColor }
-        number.font = UIType.caption
-        number.textColor = Theme.secondaryText
-        number.alignment = .center
         addSubview(picture)
         addSubview(number)
     }

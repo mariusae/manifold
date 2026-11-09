@@ -10,7 +10,7 @@ final class FolderReadme: NSView {
     private let bar = Bar()
     private let chevron = NSImageView()
     private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: UIType.label, cut: .byTruncatingMiddle)
     private(set) var page: MarkdownView?
     /// The bar clicked.
     var onToggle: (() -> Void)?
@@ -39,9 +39,6 @@ final class FolderReadme: NSView {
         chevron.contentTintColor = Theme.secondaryText
         icon.image = Theme.symbol("doc.text", size: 12, weight: .regular)
         icon.contentTintColor = Theme.secondaryText
-        title.font = UIType.label
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingMiddle
         for v in [chevron, icon, title] { bar.addSubview(v) }
         addSubview(bar)
         bar.onClick = { [weak self] in self?.onToggle?() }

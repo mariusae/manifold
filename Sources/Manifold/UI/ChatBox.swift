@@ -192,8 +192,8 @@ final class SendButton: ClickView {
 /// square, its name over where it is.
 final class ChipView: NSView {
     private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: UIType.label)
+    private let detail = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private let square = NSView()
     /// Taken out (a reference's card), by its × under the pointer.
     var onRemove: (() -> Void)? { didSet { remove.isHidden = true } }
@@ -211,13 +211,7 @@ final class ChipView: NSView {
         icon.imageScaling = .scaleProportionallyDown
         icon.contentTintColor = Theme.secondaryText
         title.stringValue = chip.title
-        title.font = UIType.label
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingTail
         detail.stringValue = chip.detail
-        detail.font = UIType.detail
-        detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingTail
         detail.isHidden = chip.detail.isEmpty
         for v in [square, icon, title, detail, remove] as [NSView] { addSubview(v) }
         remove.isHidden = true

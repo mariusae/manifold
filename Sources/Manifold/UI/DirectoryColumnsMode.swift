@@ -488,14 +488,11 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 /// it parting it from the group before).
 final class ColumnHeaderCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("column-header")
-    let label = NSTextField(labelWithString: "")
+    let label = NSTextField.label(font: UIType.section, color: Theme.secondaryText)
 
     init() {
         super.init(frame: .zero)
         identifier = Self.id
-        label.font = UIType.section
-        label.textColor = Theme.secondaryText
-        label.lineBreakMode = .byTruncatingTail
         addSubview(label)
     }
 

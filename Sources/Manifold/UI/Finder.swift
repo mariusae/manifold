@@ -375,7 +375,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = ClippingScrollView()
-    private let hint = NSTextField(labelWithString: "")
+    private let hint = NSTextField.label(font: UIType.footnote, color: Theme.tertiaryText, cut: .byTruncatingHead, align: .right)
     private var root = ""
     private var shown: [FinderItem] = []
     private var listing = 0
@@ -451,10 +451,6 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         scroll.autohidesScrollers = true
         background.addSubview(scroll)
 
-        hint.font = UIType.footnote
-        hint.textColor = Theme.tertiaryText
-        hint.alignment = .right
-        hint.lineBreakMode = .byTruncatingHead
         background.addSubview(hint)
         background.addSubview(chipRow)
         background.addSubview(countRow)
@@ -1139,9 +1135,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 final class FileCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("FileCell")
     private let symbol = NSImageView()
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
-    private let note = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: FileCell.titleFont)
+    private let detail = NSTextField.label(font: FileCell.detailFont, color: Theme.secondaryText)
+    private let note = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText, align: .right)
     private let agePill = AgePill()
     private var level = 0
     private var symbolName = ""
@@ -1166,13 +1162,6 @@ final class FileCell: NSTableCellView {
         identifier = Self.identifier
         symbol.symbolConfiguration = .init(pointSize: UIType.symbolSize, weight: .medium)
         symbol.contentTintColor = Theme.secondaryText
-        title.font = Self.titleFont
-        title.textColor = Theme.text
-        detail.font = Self.detailFont
-        detail.textColor = Theme.secondaryText
-        note.font = UIType.detail
-        note.textColor = Theme.tertiaryText
-        note.alignment = .right
         for field in [title, detail, note] {
             field.lineBreakMode = .byTruncatingMiddle
             field.maximumNumberOfLines = 1
@@ -1257,9 +1246,9 @@ final class ExcerptCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("ExcerptCell")
     private let symbol = NSImageView()
     private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let detail = NSTextField.label(font: UIType.caption, color: Theme.tertiaryText, cut: .byTruncatingMiddle)
     private let excerpt = NSTextField(wrappingLabelWithString: "")
-    private let note = NSTextField(labelWithString: "")
+    private let note = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText, align: .right)
 
     init() {
         super.init(frame: .zero)
@@ -1268,15 +1257,9 @@ final class ExcerptCell: NSTableCellView {
         symbol.contentTintColor = Theme.secondaryText
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1
-        detail.font = UIType.caption
-        detail.textColor = Theme.tertiaryText
-        detail.lineBreakMode = .byTruncatingMiddle
         excerpt.maximumNumberOfLines = 2
         excerpt.lineBreakMode = .byTruncatingTail
         excerpt.cell?.truncatesLastVisibleLine = true
-        note.font = UIType.detail
-        note.textColor = Theme.tertiaryText
-        note.alignment = .right
         for v in [symbol, title, detail, excerpt, note] { addSubview(v) }
     }
 

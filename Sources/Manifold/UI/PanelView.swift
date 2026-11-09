@@ -231,9 +231,7 @@ final class PanelView: NSView, PaneContent {
             let s = Flat.slider(value: value(item, values) as? Double ?? minimum, min: minimum, max: maximum)
             s.isContinuous = false
             s.isEnabled = enabled
-            let shown = NSTextField(labelWithString: "")
-            shown.textColor = Theme.secondaryText
-            shown.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            let shown = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular), color: Theme.secondaryText)
             func show(_ v: Double) { shown.stringValue = step.map { $0 >= 1 } == true ? String(Int(v.rounded())) : String(format: "%.2f", v) }
             show(s.doubleValue)
             let target = ClosureTarget { [weak self, weak s] in
@@ -356,9 +354,7 @@ final class PanelView: NSView, PaneContent {
             group.alignment = .leading
             group.spacing = 4
             if let label {
-                let t = NSTextField(labelWithString: label)
-                t.font = UIType.caption
-                t.textColor = Theme.secondaryText
+                let t = NSTextField.label(label, font: UIType.caption, color: Theme.secondaryText)
                 group.addArrangedSubview(t)
             }
             group.addArrangedSubview(frame)
@@ -386,8 +382,7 @@ final class PanelView: NSView, PaneContent {
             web.fullWidth = true
             view = web
         default:
-            let l = NSTextField(labelWithString: "(no widget \(type))")
-            l.textColor = Theme.secondaryText
+            let l = NSTextField.label("(no widget \(type))", font: UIType.row, color: Theme.secondaryText)
             view = l
         }
         if let tip = item["tip"] as? String { view.toolTip = tip }
@@ -398,9 +393,7 @@ final class PanelView: NSView, PaneContent {
     /// A widget with its label above it.
     private func labeled(_ label: String?, _ v: NSView) -> NSView {
         guard let label, !label.isEmpty else { return v }
-        let l = NSTextField(labelWithString: label)
-        l.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        l.textColor = Theme.secondaryText
+        let l = NSTextField.label(label, font: .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium), color: Theme.secondaryText)
         let s = NSStackView(views: [l, v])
         s.orientation = .vertical
         s.alignment = .leading

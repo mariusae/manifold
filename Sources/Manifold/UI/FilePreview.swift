@@ -20,9 +20,9 @@ final class FilePreviewView: NSView {
     private var page: MarkdownView?
     private var pageText: (text: String, version: Int)?
     private let icon = NSImageView()
-    private let name = NSTextField(labelWithString: "")
-    private let info = NSTextField(labelWithString: "")
-    private let date = NSTextField(labelWithString: "")
+    private let name = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
+    private let info = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
+    private let date = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private(set) var node: BrowserNode?
     private var token = 0
     /// Gives up on the file being fetched for the preview, if one is.
@@ -34,14 +34,6 @@ final class FilePreviewView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         icon.imageScaling = .scaleProportionallyUpOrDown
-        name.font = UIType.title
-        name.textColor = Theme.text
-        name.lineBreakMode = .byTruncatingMiddle
-        for f in [info, date] {
-            f.font = UIType.detail
-            f.textColor = Theme.secondaryText
-            f.lineBreakMode = .byTruncatingTail
-        }
         for v in [icon, name, info, date] { addSubview(v) }
     }
 

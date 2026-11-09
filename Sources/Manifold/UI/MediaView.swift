@@ -23,12 +23,12 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     weak var delegate: MediaViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let note = NSTextField(labelWithString: "")
+    private let note = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, align: .right)
     /// While a big file comes from its host: how much has, in the middle
     /// of where it will be — shown only if it takes a moment.
     private let coming = NSStackView()
     private let comingBar = NSProgressIndicator()
-    private let comingWords = NSTextField(labelWithString: "")
+    private let comingWords = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private let scroll: NSScrollView = {
         let s = ClippingScrollView()
         s.contentView = CenteringClipView()
@@ -47,10 +47,10 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate let nextButton = IconButton(symbol: "chevron.right", size: 11, target: nil, action: nil)
     fileprivate let pageBox = FlatFieldBox(symbol: nil, clears: false, fontSize: 11.5)
     fileprivate var pageField: FlatField { pageBox.field }
-    fileprivate let pageCount = NSTextField(labelWithString: "")
+    fileprivate let pageCount = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular), color: Theme.secondaryText)
     fileprivate let zoomOutButton = IconButton(symbol: "minus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
     fileprivate let zoomInButton = IconButton(symbol: "plus.magnifyingglass", size: 12, weight: .regular, target: nil, action: nil)
-    fileprivate let zoomLabel = NSTextField(labelWithString: "")
+    fileprivate let zoomLabel = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .center)
     fileprivate let layoutButton = IconButton(symbol: "doc.on.doc", size: 11, weight: .regular, target: nil, action: nil)
     fileprivate var sidebar: TileSidebar?
     /// The pointer on the strip: its arrows, zoom and layout shown.
@@ -100,17 +100,12 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        note.font = UIType.detail
-        note.textColor = Theme.secondaryText
-        note.alignment = .right
         addSubview(note)
         comingBar.style = .bar
         comingBar.controlSize = .small
         comingBar.minValue = 0
         comingBar.maxValue = 1
         comingBar.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        comingWords.font = UIType.detail
-        comingWords.textColor = Theme.secondaryText
         coming.orientation = .vertical
         coming.spacing = 6
         coming.addArrangedSubview(comingWords)
@@ -334,11 +329,6 @@ extension MediaView: Searchable {
         pageField.target = self
         pageField.action = #selector(pageEntered)
         pageBox.toolTip = "Go to Page"
-        pageCount.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
-        pageCount.textColor = Theme.secondaryText
-        zoomLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        zoomLabel.textColor = Theme.secondaryText
-        zoomLabel.alignment = .center
         for v in [previousButton, nextButton, pageBox, pageCount, zoomOutButton, zoomInButton, zoomLabel, layoutButton] {
             v.isHidden = true
             addSubview(v)

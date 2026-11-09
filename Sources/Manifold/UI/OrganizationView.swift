@@ -1317,7 +1317,7 @@ final class OrgRowView: NSTableCellView {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let count = CountPill()
-    private let detail = NSTextField(labelWithString: "")
+    private let detail = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
     private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
     private let pill = StatusPillView()
@@ -1359,9 +1359,6 @@ final class OrgRowView: NSTableCellView {
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         name.cell?.truncatesLastVisibleLine = true
-        detail.font = UIType.footnote
-        detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingTail
         trailing.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         trailing.textColor = Theme.secondaryText
         trailing.alignment = .right

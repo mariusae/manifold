@@ -3,7 +3,7 @@ import AppKit
 /// What the window shows with no space at all: a word on what a space is,
 /// and the ways to make one — a terminal, a folder, or a block found again.
 final class EmptyStateView: NSView {
-    private let heading = NSTextField(labelWithString: "No spaces")
+    private let heading = NSTextField.label("No spaces", font: UIType.heading, align: .center)
     /// The other ways in, as keys in grey (Dia's: one action, the rest a hint).
     private let note = NSTextField(wrappingLabelWithString: "⌘O Open   ⌘N New Block")
     private let buttons: [FlatButton]
@@ -13,9 +13,6 @@ final class EmptyStateView: NSView {
             FlatButton("New Space", symbol: Marks.terminal, style: .primary, target: target, action: #selector(MainWindowController.newTerminal(_:))),
         ]
         super.init(frame: .zero)
-        heading.font = UIType.heading
-        heading.textColor = Theme.text
-        heading.alignment = .center
         note.font = UIType.body
         note.textColor = Theme.tertiaryText
         note.alignment = .center

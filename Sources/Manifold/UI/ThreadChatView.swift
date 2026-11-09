@@ -64,7 +64,7 @@ final class ThreadChatView: NSView {
     var newSpace: BlockID?
 
     private let header = NSStackView()
-    private let placeLabel = NSTextField(labelWithString: "")
+    private let placeLabel = NSTextField.label(font: UIType.caption, color: Theme.secondaryText, cut: .byTruncatingMiddle)
     private let driftLabel = NSTextField(labelWithString: "")
     private let contextView = NSTextField(wrappingLabelWithString: "")
     private let scroll = NSScrollView()
@@ -84,9 +84,6 @@ final class ThreadChatView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        placeLabel.font = UIType.caption
-        placeLabel.textColor = Theme.secondaryText
-        placeLabel.lineBreakMode = .byTruncatingMiddle
         driftLabel.font = UIType.footnote
         driftLabel.textColor = Theme.tertiaryText
         contextView.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
@@ -268,9 +265,7 @@ final class ThreadChatView: NSView {
     }
 
     private func eventRow(_ words: String, at: Stamp? = nil, icon: NSImage? = nil, tone: NSColor? = nil) -> NSView {
-        let label = NSTextField(labelWithString: words + (at.flatMap { BlockSummary.ago($0, now: Date()) }.map { " · " + $0 } ?? ""))
-        label.font = UIType.footnote
-        label.textColor = tone ?? Theme.tertiaryText
+        let label = NSTextField.label(words + (at.flatMap { BlockSummary.ago($0, now: Date()) }.map { " · " + $0 } ?? ""), font: UIType.footnote, color: tone ?? Theme.tertiaryText)
         var views: [NSView] = [NSView()]
         if let icon {
             let image = NSImageView(image: icon)
@@ -286,9 +281,7 @@ final class ThreadChatView: NSView {
     }
 
     private func rule(_ words: String) -> NSView {
-        let label = NSTextField(labelWithString: words)
-        label.font = UIType.caption
-        label.textColor = Theme.accent
+        let label = NSTextField.label(words, font: UIType.caption, color: Theme.accent)
         let left = HairlineView(), right = HairlineView()
         let line = NSStackView(views: [left, label, right])
         line.spacing = 6
@@ -409,12 +402,8 @@ final class CommentView: NSView {
         body.limit = max(120, width - indent)
         var views: [NSView] = []
         if !continued {
-            let name = NSTextField(labelWithString: e.author.isYou ? "You" : e.author.name)
-            name.font = .systemFont(ofSize: 12, weight: .semibold)
-            name.textColor = Theme.text
-            let when = NSTextField(labelWithString: BlockSummary.ago(e.at, now: Date()) ?? "")
-            when.font = UIType.footnote
-            when.textColor = Theme.tertiaryText
+            let name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: 12, weight: .semibold))
+            let when = NSTextField.label(BlockSummary.ago(e.at, now: Date()) ?? "", font: UIType.footnote, color: Theme.tertiaryText)
             when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
             if case let .you(machine) = e.author { name.toolTip = machine.map { "From \($0)" } }
             let head = NSStackView(views: [name, when])

@@ -12,8 +12,9 @@ final class PlaceholderView: NSView, PaneContent {
     var known: () -> Bool = { false }
     var isDead: Bool { known() }
     var onAttach: (() -> Void)?
-    private let title = NSTextField(labelWithString: "")
-    private let note = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: UIType.heading, align: .center)
+    /// In the primary grey: on the sheet's grey, the secondary wouldn't read in the dark.
+    private let note = NSTextField.label(align: .center)
     private let button = FlatButton("Attach", style: .primary)
 
     init(placement: PlacementID, block: BlockID, label: String) {
@@ -23,14 +24,7 @@ final class PlaceholderView: NSView, PaneContent {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = ($0.paper ?? Theme.sheet(level: 0)).cgColor }
         title.stringValue = "On \(label)"
-        title.font = UIType.heading
-        title.textColor = Theme.text
-        title.alignment = .center
         note.stringValue = "Not attached to that host."
-        note.font = UIType.body
-        // On the sheet's grey, the secondary grey wouldn't read in the dark.
-        note.textColor = Theme.text
-        note.alignment = .center
         button.target = self
         button.action = #selector(attachClicked)
         button.isHidden = HostsFile.load().destination(of: block.host) == nil

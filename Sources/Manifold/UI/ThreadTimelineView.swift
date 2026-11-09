@@ -68,7 +68,7 @@ final class ThreadTimelineView: NSView {
     /// The space it's of.
     var space: BlockID?
 
-    private let titleLabel = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField.label(font: UIType.title, color: .labelColor)
     private let scopeControl = ChipGroup()
     private let filterControl = ChipGroup(labels: ["All", "Open", "Unread"])
     private let readAll = FlatButton("Mark All Read", font: UIType.detail)
@@ -93,7 +93,7 @@ final class ThreadTimelineView: NSView {
     private let scroll = NSScrollView()
     private let list = FlippedStack()
     private let empty = NSTextField(wrappingLabelWithString: "")
-    private let replyingTo = NSTextField(labelWithString: "")
+    private let replyingTo = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
     private let clearReply = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
     let composer = ComposerTextView()
     private(set) lazy var box = ChatBox(composer: composer)
@@ -103,8 +103,6 @@ final class ThreadTimelineView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        titleLabel.font = UIType.title
-        titleLabel.lineBreakMode = .byTruncatingTail
         scopeControl.target = self
         scopeControl.action = #selector(scopeChosen)
         filterControl.selectedSegment = 0
@@ -132,9 +130,6 @@ final class ThreadTimelineView: NSView {
         empty.font = UIType.body
         empty.textColor = Theme.secondaryText
         empty.alignment = .center
-        replyingTo.font = UIType.footnote
-        replyingTo.textColor = Theme.secondaryText
-        replyingTo.lineBreakMode = .byTruncatingTail
         clearReply.target = self
         clearReply.action = #selector(unchoose)
         composer.font = UIType.body
@@ -322,10 +317,7 @@ final class ThreadTimelineView: NSView {
             case .stopped(let why): words = why
             case .comment: words = ""
             }
-            let label = NSTextField(labelWithString: words + " · " + when)
-            label.font = UIType.footnote
-            label.textColor = Theme.secondaryText
-            label.lineBreakMode = .byTruncatingTail
+            let label = NSTextField.label(words + " · " + when, font: UIType.footnote, color: Theme.secondaryText)
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             label.toolTip = words
             let line = NSStackView(views: [label])
@@ -335,9 +327,7 @@ final class ThreadTimelineView: NSView {
     }
 
     private func rule() -> NSView {
-        let label = NSTextField(labelWithString: "New")
-        label.font = UIType.caption
-        label.textColor = Theme.accent
+        let label = NSTextField.label("New", font: UIType.caption, color: Theme.accent)
         let left = HairlineView(), right = HairlineView()
         let line = NSStackView(views: [left, label, right])
         line.spacing = 6
@@ -519,7 +509,7 @@ final class LinkLabel: NSView {
             label.textColor = strong ? Theme.text : Theme.secondaryText
         }
     }
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField.label(font: UIType.caption, color: .labelColor, cut: .byTruncatingMiddle)
     private let image = NSImageView()
     private let action: () -> Void
 
@@ -527,8 +517,6 @@ final class LinkLabel: NSView {
         self.action = action
         super.init(frame: .zero)
         label.stringValue = words
-        label.font = UIType.caption
-        label.lineBreakMode = .byTruncatingMiddle
         image.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
         let s = NSStackView(views: [image, label])
         s.spacing = 4

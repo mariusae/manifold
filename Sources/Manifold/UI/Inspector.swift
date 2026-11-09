@@ -12,9 +12,9 @@ import ManifoldCore
 final class InspectorPanel: NSPanel {
     let list = InspectorList()
     private let icon = NSImageView()
-    private let name = NSTextField(labelWithString: "")
-    private let what = NSTextField(labelWithString: "")
-    private let tags = NSTextField(labelWithString: "")
+    private let name = NSTextField.label(font: .systemFont(ofSize: 13, weight: .semibold), cut: .byTruncatingMiddle)
+    private let what = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
+    private let tags = NSTextField.label(font: UIType.detail)
     private let tagIcon = NSImageView()
     private let header = NSView()
     private let rule = FlatDivider()
@@ -42,15 +42,6 @@ final class InspectorPanel: NSPanel {
         content.wantsLayer = true
         content.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         icon.imageScaling = .scaleProportionallyDown
-        name.font = .systemFont(ofSize: 13, weight: .semibold)
-        name.textColor = Theme.text
-        name.lineBreakMode = .byTruncatingMiddle
-        what.font = UIType.detail
-        what.textColor = Theme.secondaryText
-        what.lineBreakMode = .byTruncatingTail
-        tags.font = UIType.detail
-        tags.textColor = Theme.text
-        tags.lineBreakMode = .byTruncatingTail
         tagIcon.image = Theme.symbol("tag", size: 10, weight: .medium, color: Theme.secondaryText)
         for v in [icon, name, what, tags, tagIcon, rule] { header.addSubview(v) }
         content.addSubview(header)

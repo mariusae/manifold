@@ -68,7 +68,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private var lastVersion = -1
     var completion: CompletionPopup?
     var hover: NSPopover?
-    let status = NSTextField(labelWithString: "")
+    let status = NSTextField.label(font: UIType.detail)
     let statusBox = NSView()
     /// The status's tint (a diagnostic's colour, or none), and whether its
     /// ground is themed yet.
@@ -179,9 +179,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
         textView.cardFor = { [weak self] id, place in self?.blockCard?(id, place) }
-        status.font = UIType.detail
-        status.textColor = Theme.text
-        status.lineBreakMode = .byTruncatingTail
         status.maximumNumberOfLines = 1
         statusBox.wantsLayer = true
         statusBox.isHidden = true

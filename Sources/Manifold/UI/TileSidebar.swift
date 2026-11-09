@@ -51,7 +51,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     private var filtering: Bool { !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }
     private let scroll = ClippingScrollView()
     private let table = FlatTable(column: "entry", rowHeight: TileMetrics.nameRow)
-    private let empty = NSTextField(labelWithString: "")
+    private let empty = NSTextField.label(color: Theme.secondaryText, align: .center)
     private let tabs: FlatSegments?
     private let pagesView: NSView?
     /// Being marked from the view's scrolling: not a pick.
@@ -93,9 +93,6 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         scroll.hold(table)
         addSubview(scroll)
         empty.stringValue = emptyText
-        empty.font = UIType.body
-        empty.textColor = Theme.secondaryText
-        empty.alignment = .center
         addSubview(empty)
         if let tabs {
             tabs.onChange = { [weak self] _ in self?.tabChosen() }

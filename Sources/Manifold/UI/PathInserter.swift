@@ -88,7 +88,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     /// for however much came.
     private let again = Debouncer()
     /// At the field's right: what's being looked through, or that nothing matched.
-    private let status = NSTextField(labelWithString: "")
+    private let status = NSTextField.label(font: .systemFont(ofSize: 11), color: Theme.tertiaryText, align: .right)
     private let spinner = NSProgressIndicator()
 
     private static let width: CGFloat = 320
@@ -170,9 +170,6 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         field.cell?.usesSingleLineMode = true
         field.cell?.lineBreakMode = .byTruncatingHead
         ground.addSubview(field)
-        status.font = .systemFont(ofSize: 11)
-        status.textColor = Theme.tertiaryText
-        status.alignment = .right
         ground.addSubview(status)
         spinner.style = .spinning
         spinner.controlSize = .small

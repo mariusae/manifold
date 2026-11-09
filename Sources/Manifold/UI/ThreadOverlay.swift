@@ -11,7 +11,7 @@ final class ThreadOverlayView: PopoverView {
     let chat = ThreadChatView()
     private let close = IconButton(symbol: "xmark", size: 10, target: nil, action: nil)
     private let popOut = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
-    private let titleLabel = NSTextField(labelWithString: "")
+    private let titleLabel = NSTextField.label(font: .systemFont(ofSize: 13, weight: .semibold), cut: .byTruncatingMiddle)
     var onClose: (() -> Void)?
     var onPopOut: (() -> Void)?
     /// The place, and its threads, stepped through.
@@ -29,9 +29,6 @@ final class ThreadOverlayView: PopoverView {
         popOut.target = self
         popOut.action = #selector(popOutClicked)
         popOut.toolTip = "Open as a Tile"
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = Theme.text
-        titleLabel.lineBreakMode = .byTruncatingMiddle
         chat.fits = false
         chat.showsTileButton = false
         for v in [titleLabel, popOut, close, chat] as [NSView] { addSubview(v) }

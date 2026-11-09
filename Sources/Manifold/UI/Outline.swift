@@ -573,7 +573,7 @@ final class FloatingList: NSView {
 /// and its ⋯.
 final class FloatingListRow: NSView, NSDraggingSource {
     private let label = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let detail = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, align: .right)
     private let icon = NSImageView()
     private let more = IconButton(symbol: "ellipsis", size: 11, weight: .semibold, target: nil, action: nil)
     private var row = FloatingList.Row(title: "")
@@ -586,10 +586,6 @@ final class FloatingListRow: NSView, NSDraggingSource {
         super.init(frame: frame)
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
-        detail.font = UIType.detail
-        detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingTail
-        detail.alignment = .right
         icon.imageScaling = .scaleProportionallyDown
         more.isHidden = true
         more.target = self

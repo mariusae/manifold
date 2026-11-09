@@ -82,7 +82,7 @@ final class SidebarView: NSView {
     static let pushedHeight: CGFloat = 36
     private let backButton = IconButton(symbol: "chevron.left", size: 12, weight: .semibold, target: nil, action: nil)
     private let pushedTitle = NSTextField(labelWithString: "")
-    private let pushedSubtitle = NSTextField(labelWithString: "")
+    private let pushedSubtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     /// Under a space's name: the host it's on, a remote's ping times by it.
     let spaceHost = SpaceHostLine()
     private var pushed: Bool { organization == .closed }
@@ -113,8 +113,6 @@ final class SidebarView: NSView {
         pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
-        pushedSubtitle.font = UIType.detail
-        pushedSubtitle.textColor = Theme.secondaryText
         for v in [backButton, pushedTitle, pushedSubtitle, spaceHost] { v.isHidden = true; card.addSubview(v) }
 
         for t in tabs {
@@ -523,16 +521,13 @@ final class SidebarTab: ClickView {
     var chosen = false { didSet { if chosen != oldValue { update() } } }
     var count = 0 { didSet { if count != oldValue { update() } } }
     private let icon = NSImageView()
-    private let badge = NSTextField(labelWithString: "")
+    /// A grey count, as the pills are.
+    private let badge = NSTextField.label(font: UIType.badge, align: .center)
 
     init(_ organization: Organization) {
         self.organization = organization
         super.init(frame: .zero)
         icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
-        badge.font = UIType.badge
-        badge.alignment = .center
-        // A grey count, as the pills are.
-        badge.textColor = Theme.text
         badge.wantsLayer = true
         badge.layer?.cornerRadius = 6
         badge.drawsBackground = false

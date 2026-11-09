@@ -22,7 +22,7 @@ final class HistoryView: NSView {
         s.cell = FlatSliderCell()
         return s
     }()
-    private let when = NSTextField(labelWithString: "")
+    private let when = NSTextField.label(color: Theme.secondaryText, align: .center)
     private let scroll = ClippingScrollView()
     private let textView = TextView()
     private let textDocument = StaticDocument()
@@ -43,9 +43,6 @@ final class HistoryView: NSView {
         slider.target = self
         slider.action = #selector(scrubbed)
         slider.isContinuous = true
-        when.font = UIType.body
-        when.textColor = Theme.secondaryText
-        when.alignment = .center
         restore.target = self
         restore.action = #selector(restoreClicked)
         close.target = self

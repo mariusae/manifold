@@ -53,7 +53,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     private let split = NSSplitView()
     private let listBox = NSView()
     private let paneBox = NSView()
-    private let paneNote = NSTextField(labelWithString: "")
+    private let paneNote = NSTextField.label(color: Theme.secondaryText, align: .center)
     private var pane: DiffView?
     private var paneSubject: DiffSubject?
     private let paneWork = Debouncer()
@@ -95,9 +95,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         listBox.addSubview(scroll)
         listBox.addSubview(note)
         note.host = block.host
-        paneNote.font = UIType.body
-        paneNote.textColor = Theme.secondaryText
-        paneNote.alignment = .center
         paneBox.addSubview(paneNote)
         split.isVertical = false
         split.dividerStyle = .thin

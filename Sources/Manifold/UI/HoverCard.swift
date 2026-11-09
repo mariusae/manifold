@@ -14,8 +14,8 @@ final class HoverCard: NSObject {
     /// Where a lent view goes: its own size kept, drawn smaller.
     private let liveHolder = NSView()
     private let scaler = NSView()
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
+    private let detail = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, cut: .byTruncatingMiddle)
     private let body = NSTextField(wrappingLabelWithString: "")
     /// A block's summary card, under its picture, in place of the title,
     /// detail and text.
@@ -44,12 +44,6 @@ final class HoverCard: NSObject {
     private override init() {
         super.init()
         Flat.float(box)
-        title.font = UIType.title
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingMiddle
-        detail.font = UIType.detail
-        detail.textColor = Theme.secondaryText
-        detail.lineBreakMode = .byTruncatingMiddle
         body.font = UIType.body
         body.textColor = Theme.text
         body.maximumNumberOfLines = 8

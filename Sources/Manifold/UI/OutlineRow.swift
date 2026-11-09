@@ -23,7 +23,7 @@ final class OutlineRow: NSTableCellView {
     /// The mark's color (a layer's, so set again when light and dark switch).
     private var markColor: NSColor = Theme.secondaryText.withAlphaComponent(0.6)
     private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
+    private let detail = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular), color: Theme.secondaryText, align: .right)
     private var level = 0
 
     override init(frame: NSRect) {
@@ -34,9 +34,6 @@ final class OutlineRow: NSTableCellView {
         title.font = UIType.body
         title.textColor = Theme.text
         title.lineBreakMode = .byTruncatingTail
-        detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
-        detail.textColor = Theme.secondaryText
-        detail.alignment = .right
         for v in [mark, title, detail] { addSubview(v) }
     }
 

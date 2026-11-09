@@ -54,8 +54,8 @@ final class NeighborhoodView: NSView {
     var source: ((BlockID) -> NeighborhoodModel)?
 
     private let panel = NSView()
-    private let title = NSTextField(labelWithString: "")
-    private let hint = NSTextField(labelWithString: "Click a block to look around it · double-click or ⏎ to go there · ⎋ closes")
+    private let title = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
+    private let hint = NSTextField.label("Click a block to look around it · double-click or ⏎ to go there · ⎋ closes", font: UIType.detail, color: Theme.secondaryText, align: .center)
     private let back = FlatButton("Back", symbol: "chevron.left")
     private let close = FlatButton("Done")
     private let canvas = GraphCanvas()
@@ -67,12 +67,6 @@ final class NeighborhoodView: NSView {
         themed { $0.layer?.backgroundColor = Theme.scrim.cgColor }
         Flat.float(panel)
         addSubview(panel)
-        title.font = UIType.title
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingMiddle
-        hint.font = UIType.detail
-        hint.textColor = Theme.secondaryText
-        hint.alignment = .center
         back.target = self
         back.action = #selector(backClicked)
         close.target = self

@@ -2060,7 +2060,7 @@ final class GridView: NSView, NSDraggingSource {
 /// same on every kind of block.
 final class HostPill: NSView {
     private let icon = NSImageView()
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField.label(font: UIType.caption, color: Theme.secondaryText)
     var host: String? {
         didSet {
             guard host != oldValue else { return }
@@ -2079,9 +2079,6 @@ final class HostPill: NSView {
         themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.07).cgColor }
         icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
         icon.contentTintColor = Theme.secondaryText
-        label.font = UIType.caption
-        label.textColor = Theme.secondaryText
-        label.lineBreakMode = .byTruncatingTail
         addSubview(icon)
         addSubview(label)
     }
@@ -2226,7 +2223,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var downOnIcon = false
     private var focused = false
     private var maximized = false
-    private let subtitle = NSTextField(labelWithString: "")
+    private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, cut: .byTruncatingMiddle)
     private let close = IconButton(symbol: "xmark", size: 9, weight: .semibold, target: nil, action: nil)
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
@@ -2305,9 +2302,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         name.alignment = .left
-        subtitle.font = UIType.detail
-        subtitle.textColor = Theme.secondaryText
-        subtitle.lineBreakMode = .byTruncatingMiddle
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⌘W)"

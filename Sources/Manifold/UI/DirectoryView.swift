@@ -129,7 +129,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The filter, in its box: flat, as Claude Code's (`FlatFieldBox`).
     private let searchBox = FlatFieldBox()
     private var search: FlatField { searchBox.field }
-    private let footer = NSTextField(labelWithString: "")
+    private let footer = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText, align: .center)
     /// Over the files: "Reading…" until the folder's listed, why if it
     /// can't be, or that there's nothing in it.
     private let note = BusyNote()
@@ -239,9 +239,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         results.onPopOut = { [weak self] in self?.popOutSearch() }
         results.onBack = { [weak self] in self?.focusFilter() }
         addSubview(results)
-        footer.font = UIType.footnote
-        footer.textColor = Theme.secondaryText
-        footer.alignment = .center
         footer.isHidden = true
         addSubview(footer)
         addSubview(note)

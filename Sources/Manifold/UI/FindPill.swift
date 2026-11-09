@@ -26,7 +26,7 @@ protocol Replaceable: Searchable {
 class CapsulePill: NSView, NSTextFieldDelegate {
     static let rowHeight: CGFloat = 28
     let field = NSTextField()
-    let count = NSTextField(labelWithString: "")
+    let count = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .right)
     let close = IconButton(symbol: "xmark", size: 9, target: nil, action: nil)
 
     init(width: CGFloat) {
@@ -37,9 +37,6 @@ class CapsulePill: NSView, NSTextFieldDelegate {
         // Above a terminal's Metal layer, which sits over its subviews.
         layer?.zPosition = 10
         style(field)
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = Theme.secondaryText
-        count.alignment = .right
         close.target = self
         close.action = #selector(closeClicked)
         for v in [field, count, close] { addSubview(v) }

@@ -523,7 +523,8 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
     private let box = NSView()
     let output = OutputTextView()
     private let outputScroll = ClippingScrollView()
-    private let count = NSTextField(labelWithString: "")
+    /// The run's number, as the editor numbers its lines.
+    private let count = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.codeLineNumber, align: .right)
     private let queuedIcon = NSImageView()
     private let play = IconButton("play.fill", size: 10, tip: "Run (⌘↩)")
     private let menuButton = IconButton("ellipsis", size: 10, tip: "Cell")
@@ -614,10 +615,6 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
         editor.delegate = self
         editor.cellView = self
         box.addSubview(editor)
-        // The run's number, as the editor numbers its lines.
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = Theme.codeLineNumber
-        count.alignment = .right
         addSubview(count)
         queuedIcon.image = Theme.symbol("clock", size: 11)
         queuedIcon.contentTintColor = Theme.secondaryText

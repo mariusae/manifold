@@ -29,7 +29,7 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
     private var scopeHosts: [HostID] = []
     private var scopeBar = FlatSegments(titles: ["All Hosts"])
     private let scopeHolder = NSView()
-    private let rootLabel = NSTextField(labelWithString: "Root marker for every language:")
+    private let rootLabel = NSTextField.label("Root marker for every language:")
     private let rootBox = FlatFieldBox(symbol: nil, clears: true, fontSize: 12)
     private let note = NSTextField(wrappingLabelWithString: "")
     private var problem: String?
@@ -99,8 +99,6 @@ final class LanguageServersPane: NSViewController, NSTableViewDataSource, NSTabl
         note.textColor = Theme.secondaryText
         status.font = UIType.footnote
         status.textColor = Theme.secondaryText
-        rootLabel.font = UIType.body
-        rootLabel.textColor = Theme.text
         rootBox.field.placeholderString = "as for all hosts"
         NotificationCenter.default.addObserver(self, selector: #selector(rootEdited), name: NSControl.textDidEndEditingNotification, object: rootBox.field)
         for v in [add, remove, defaults, note, status, rootLabel, rootBox] {

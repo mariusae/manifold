@@ -98,9 +98,7 @@ final class NoteOutlinePath: NSView {
         for (i, ancestor) in ancestors.enumerated() {
             let text = Self.plain(ancestor.text)
             guard !text.isEmpty, !(i == 0 && text.caseInsensitiveCompare(name) == .orderedSame) else { continue }
-            let separator = NSTextField(labelWithString: "›")
-            separator.font = font
-            separator.textColor = Theme.tertiaryText
+            let separator = NSTextField.label("›", font: font, color: Theme.tertiaryText)
             stack.addArrangedSubview(separator)
             stack.addArrangedSubview(step(text, symbol: nil, index: ancestor.index))
         }
@@ -109,10 +107,7 @@ final class NoteOutlinePath: NSView {
 
     func showReadOnly() {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let label = NSTextField(labelWithString: "Read only: this note's Markdown has shapes an outline can't write back as they are — Edit as Text (⌥⌘↩) to change it")
-        label.font = UIType.caption
-        label.textColor = Theme.secondaryText
-        label.lineBreakMode = .byTruncatingTail
+        let label = NSTextField.label("Read only: this note's Markdown has shapes an outline can't write back as they are — Edit as Text (⌥⌘↩) to change it", font: UIType.caption, color: Theme.secondaryText)
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         stack.addArrangedSubview(label)
         needsLayout = true

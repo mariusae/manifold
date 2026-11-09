@@ -58,7 +58,7 @@ final class ThreadTileView: NSView, PaneContent {
 final class ThreadCardView: NSView {
     let chat = ThreadChatView()
     private let nav = NSStackView()
-    private let count = NSTextField(labelWithString: "")
+    private let count = NSTextField.label(font: UIType.caption, color: Theme.secondaryText)
     private let prev = IconButton(symbol: "chevron.left", size: 10, target: nil, action: nil)
     private let next = IconButton(symbol: "chevron.right", size: 10, target: nil, action: nil)
     var threads: [BlockID] = [] { didSet { index = min(index, max(0, threads.count - 1)); updateNav() } }
@@ -68,8 +68,6 @@ final class ThreadCardView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        count.font = UIType.caption
-        count.textColor = Theme.secondaryText
         prev.target = self; prev.action = #selector(stepBack)
         next.target = self; next.action = #selector(stepOn)
         nav.orientation = .horizontal

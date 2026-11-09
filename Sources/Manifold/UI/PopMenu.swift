@@ -46,7 +46,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
 
     private let glass = NSImageView()
     private let field = NSTextField()
-    private let hintLabel = NSTextField(labelWithString: "")
+    private let hintLabel = NSTextField.label(font: .systemFont(ofSize: 12, weight: .medium), color: Theme.tertiaryText)
     private let clear = IconButton(symbol: "xmark.circle.fill", size: 12, weight: .regular, target: nil, action: nil)
     private let filterButton = IconButton(symbol: "line.3.horizontal.decrease", size: 12, weight: .medium, target: nil, action: nil)
     private var chipButtons: [ChipButton] = []
@@ -68,8 +68,6 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         field.font = UIType.hudField
         field.placeholderString = placeholder
         field.delegate = self
-        hintLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        hintLabel.textColor = Theme.tertiaryText
         clear.contentTintColor = Theme.tertiaryText
         clear.onClick = { [weak self] in
             guard let self else { return }

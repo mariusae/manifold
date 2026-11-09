@@ -35,7 +35,7 @@ final class SearchPreviewView: NSView {
     var open: (String, Int) -> Void = { _, _ in }
     var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
 
-    private let title = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: .systemFont(ofSize: 11.5, weight: .medium), color: Theme.secondaryText, cut: .byTruncatingHead)
     private let scroll = ClippingScrollView()
     /// The file's text: a view made afresh for each file, on the text
     /// system laid out for it off the main thread.
@@ -43,7 +43,7 @@ final class SearchPreviewView: NSView {
     /// What owns the shown file's text system (its layout manager, its
     /// container): kept while it's shown.
     private var storage: NSTextStorage?
-    private let empty = NSTextField(labelWithString: "")
+    private let empty = NSTextField.label(color: Theme.secondaryText, align: .center)
     /// "Reading…" while a match's file comes from its host.
     private let note = BusyNote()
     private let divider = FlatDivider()
@@ -74,9 +74,6 @@ final class SearchPreviewView: NSView {
         wantsLayer = true
         clipsToBounds = true
         themed { $0.layer?.backgroundColor = Theme.codePage.cgColor }
-        title.font = .systemFont(ofSize: 11.5, weight: .medium)
-        title.textColor = Theme.secondaryText
-        title.lineBreakMode = .byTruncatingHead
         addSubview(title)
         addSubview(divider)
         configure(text)
@@ -90,9 +87,6 @@ final class SearchPreviewView: NSView {
         addSubview(gutter)
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(gutter, selector: #selector(LineGutter.scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
-        empty.font = UIType.body
-        empty.textColor = Theme.secondaryText
-        empty.alignment = .center
         addSubview(empty)
         addSubview(note)
     }

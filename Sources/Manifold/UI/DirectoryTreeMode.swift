@@ -17,7 +17,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     private let outline = TreeOutline(column: "name", rowHeight: TileMetrics.nameRow)
     private let right = NSView()
     private let preview = FilePreviewView()
-    private let nothing = NSTextField(labelWithString: "")
+    private let nothing = NSTextField.label(color: Theme.secondaryText, align: .center)
     /// Open folders, relative to the root.
     private var expanded: Set<String>
     /// Each folder's shown entries, as last asked for.
@@ -74,9 +74,6 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
             guard let owner else { done(nil); return {} }
             return owner.resolve(path, done: done)
         }
-        nothing.font = UIType.body
-        nothing.textColor = Theme.secondaryText
-        nothing.alignment = .center
         right.addSubview(preview)
         right.addSubview(nothing)
         split.isVertical = true

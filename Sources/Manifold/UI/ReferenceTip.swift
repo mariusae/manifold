@@ -13,7 +13,7 @@ import ManifoldCore
     static var whyMissing: ((BlockID) -> String?)?
 
     private static var shared: ReferenceTip?
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField.label(font: .systemFont(ofSize: 12))
     /// The view whose link it's for, while hovered: gone from under the
     /// pointer, it goes.
     private weak var owner: NSView?
@@ -101,9 +101,6 @@ import ManifoldCore
         layer?.cornerRadius = Radius.control
         // Over the palette and the drop's badge too.
         layer?.zPosition = 140
-        label.font = .systemFont(ofSize: 12)
-        label.textColor = Theme.text
-        label.lineBreakMode = .byTruncatingTail
         addSubview(label)
     }
 

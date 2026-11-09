@@ -32,7 +32,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         }
     }
 
-    private let note = NSTextField(labelWithString: "")
+    private let note = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, align: .right)
     /// While its host compares (and sends what it found): said in the
     /// middle, a moment on — with how much has come, from another host.
     private let waiting = BusyNote()
@@ -74,9 +74,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        note.font = UIType.detail
-        note.textColor = Theme.secondaryText
-        note.alignment = .right
         addSubview(note)
         waiting.host = block.host
         addSubview(waiting)
@@ -1325,7 +1322,7 @@ final class ReadingTextView: NSTextView {
 }
 
 final class CommitHeaderView: NSView {
-    private let meta = NSTextField(labelWithString: "")
+    private let meta = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     /// The message folded to its subject, or whole.
     private let fold = IconButton(symbol: "chevron.down", size: 9, weight: .semibold, target: nil, action: nil)
     private(set) var folded = CommitHeaderView.foldsMessages
@@ -1383,9 +1380,6 @@ final class CommitHeaderView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        meta.font = UIType.detail
-        meta.textColor = Theme.secondaryText
-        meta.lineBreakMode = .byTruncatingTail
         text.isEditable = false
         text.isSelectable = true
         text.drawsBackground = false

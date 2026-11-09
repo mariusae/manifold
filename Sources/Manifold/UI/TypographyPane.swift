@@ -18,16 +18,18 @@ final class TypographyPane: SettingsPane {
     private let bold = NSPopUpButton()
     private let size = NSTextField()
     private let sizeStepper = NSStepper()
+    /// A slider's value beside it.
+    private static let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
     private let leading = Flat.slider(value: 1.4, min: 0.9, max: 2.4)
-    private let leadingValue = NSTextField(labelWithString: "")
+    private let leadingValue = NSTextField.label(font: TypographyPane.valueFont, color: Theme.secondaryText)
     private let tracking = Flat.slider(value: 0, min: -80, max: 200)
-    private let trackingValue = NSTextField(labelWithString: "")
+    private let trackingValue = NSTextField.label(font: TypographyPane.valueFont, color: Theme.secondaryText)
     private let features = NSTextField()
     private let featureMenu = NSPopUpButton(frame: .zero, pullsDown: true)
     private let measure = Flat.slider(value: 0, min: 0, max: 120)
-    private let measureValue = NSTextField(labelWithString: "")
+    private let measureValue = NSTextField.label(font: TypographyPane.valueFont, color: Theme.secondaryText)
     private let gapSlider = Flat.slider(value: 1, min: 0, max: 2.5)
-    private let gapValue = NSTextField(labelWithString: "")
+    private let gapValue = NSTextField.label(font: TypographyPane.valueFont, color: Theme.secondaryText)
     private let sample = NSTextField(wrappingLabelWithString: "")
     /// The role the fields were last filled for: they're filled again for
     /// another, even while one has the keyboard.
@@ -76,15 +78,13 @@ final class TypographyPane: SettingsPane {
         sizeStepper.valueWraps = false
         sizeStepper.target = self
         sizeStepper.action = #selector(steppedSize)
-        row("Size", line([size, sizeStepper, label("pt")]))
+        row("Size", line([size, sizeStepper, NSTextField.label("pt", font: UIType.row, color: Theme.secondaryText)]))
 
         for (s, v) in [(leading, leadingValue), (tracking, trackingValue), (measure, measureValue), (gapSlider, gapValue)] {
             s.isContinuous = true
             s.target = self
             s.action = #selector(slid(_:))
             s.widthAnchor.constraint(equalToConstant: 240).isActive = true
-            v.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-            v.textColor = Theme.secondaryText
             v.widthAnchor.constraint(equalToConstant: 90).isActive = true
         }
         row("Line Height", line([leading, leadingValue]), note: "Technical is set on the monospaced's lines, at its size where the monospaced is 13 pt.")
@@ -127,12 +127,6 @@ final class TypographyPane: SettingsPane {
             sample.topAnchor.constraint(equalTo: card.topAnchor, constant: 10),
         ])
         row("Sample", card, top: true)
-    }
-
-    private func label(_ s: String) -> NSTextField {
-        let l = NSTextField(labelWithString: s)
-        l.textColor = Theme.secondaryText
-        return l
     }
 
     private func line(_ views: [NSView]) -> NSStackView {

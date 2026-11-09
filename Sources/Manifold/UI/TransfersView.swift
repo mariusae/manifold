@@ -8,14 +8,12 @@ final class TransfersView: NSView {
     static let rowHeight: CGFloat = 40
     static let maxRows = 4
     private var rows: [TransferRowView] = []
-    private let more = NSTextField(labelWithString: "")
+    private let more = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
 
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        more.font = UIType.footnote
-        more.textColor = Theme.secondaryText
         addSubview(more)
     }
 
@@ -99,7 +97,7 @@ final class TransfersView: NSView {
 final class TransferRowView: ClickView {
     let item: Transfers.Item
     private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: "")
+    private let title = NSTextField.label(font: UIType.label, cut: .byTruncatingMiddle)
     private let detail = NSTextField(labelWithString: "")
     private let close: IconButton
 
@@ -112,9 +110,6 @@ final class TransferRowView: ClickView {
         close.target = self
         close.action = #selector(closeClicked)
         icon.image = Theme.symbol(item.symbol, size: 11, weight: .semibold)
-        title.font = UIType.label
-        title.textColor = Theme.text
-        title.lineBreakMode = .byTruncatingMiddle
         detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
@@ -185,15 +180,13 @@ final class TransferRowView: ClickView {
 /// away: a ring filling as they go (red if one failed) and how many;
 /// clicked, the sidebar comes out to show them.
 final class TransfersBadge: ClickView {
-    private let label = NSTextField(labelWithString: "")
+    private let label = NSTextField.label(font: UIType.caption)
     private var fraction: Double?
     private var failed = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         Flat.float(self, shadow: false)
-        label.font = UIType.caption
-        label.textColor = Theme.text
         addSubview(label)
     }
 
