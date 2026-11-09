@@ -50,6 +50,15 @@ final class OutlineNoteView: NSView, PaneContent {
 
     private let scroll = NSScrollView()
     private let text: NoteOutlineTextView
+    /// Find (⌘F): the pill over the rows, as every tile's.
+    private lazy var finder: FindHost = {
+        let f = FindHost(view: self, target: self)
+        f.area = { [weak self] in self?.scroll.frame ?? .zero }
+        return f
+    }()
+    private lazy var textSearch = TextViewSearch(text)
+    /// The matches found again a moment after an edit.
+    private let findAgain = Debouncer()
 
     /// ⌘↩ from the menu: the caret's row a checkbox, checked, a bullet again.
     func cycleChecklist() { text.cycleChecklist(nil) }
@@ -93,6 +102,7 @@ final class OutlineNoteView: NSView, PaneContent {
         text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         text.textContainerInset = NSSize(width: 14, height: 14)
         text.onRowsChanged = { [weak self] in self?.rowsChanged() }
+        text.onFind = { [weak self] sender in self?.finder.perform(sender) }
         text.onFocusChange = { [weak self] in
             self?.showPath()
             self?.markCurrent()
@@ -130,6 +140,7 @@ final class OutlineNoteView: NSView, PaneContent {
         path.frame = NSRect(x: 14, y: bounds.height - bar - 4, width: max(0, bounds.width - 28), height: bar)
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - (barShown ? bar + 4 : 0))
         text.frame.size.width = scroll.contentSize.width
+        finder.layout(in: scroll.frame)
     }
 
     private let path = NoteOutlinePath()
@@ -187,6 +198,7 @@ final class OutlineNoteView: NSView, PaneContent {
         outline.rows = text.fullRows
         let markdown = NoteOutlineMarkdown.serialize(outline)
         updateHeadings()
+        if finder.pill != nil { findAgain.schedule(after: 0.3) { [weak self] in self?.finder.refresh() } }
         guard markdown != written, let old = source()?.text?.text.string else { return }
         written = markdown
         apply([Self.edit(from: old, to: markdown)])
@@ -514,6 +526,40 @@ extension NSAttributedString.Key {
 
 /// A block's card under the row that embeds it (§3.11), as its summary
 /// said when the row was styled.
+extension OutlineNoteView: Replaceable {
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        textSearch.search(query, caseSensitive: caseSensitive, done: done)
+    }
+
+    func findNext(forward: Bool) { textSearch.findNext(forward: forward) }
+
+    func endSearch() {
+        findAgain.cancel()
+        textSearch.end()
+        window?.makeFirstResponder(text)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) { done(textSearch.selectedText) }
+
+    /// The match gone to, replaced; the pill then finds the rest again.
+    func replaceCurrent(with replacement: String) {
+        guard text.isEditable, let r = textSearch.currentMatch else { return NSSound.beep() }
+        text.replaceCharacters(r, with: replacement, selecting: NSRange(location: r.location + (replacement as NSString).length, length: 0), name: "Replace")
+    }
+
+    /// Every match replaced, as one step to undo.
+    func replaceAll(with replacement: String) {
+        let found = textSearch.found
+        guard text.isEditable, !found.isEmpty else { return NSSound.beep() }
+        text.undoManager?.beginUndoGrouping()
+        for r in found.reversed() {
+            text.replaceCharacters(r, with: replacement, selecting: NSRange(location: r.location + (replacement as NSString).length, length: 0), name: "Replace All")
+        }
+        text.undoManager?.endUndoGrouping()
+        finder.refresh()
+    }
+}
+
 final class NoteCard {
     let block: BlockID
     let place: String?
@@ -1266,8 +1312,6 @@ final class NoteOutlineTextView: NSTextView {
         isRichText = false
         importsGraphics = false
         allowsUndo = true
-        usesFindBar = true
-        isIncrementalSearchingEnabled = true
         isContinuousSpellCheckingEnabled = true
         drawsBackground = false
         isAutomaticLinkDetectionEnabled = false
@@ -1310,7 +1354,15 @@ final class NoteOutlineTextView: NSTextView {
     @objc func undo(_ sender: Any?) { if undo.canUndo { undo.undo() } else { NSSound.beep() } }
     @objc func redo(_ sender: Any?) { if undo.canRedo { undo.redo() } else { NSSound.beep() } }
 
+    /// The Find menu's actions (⌘F, ⌘G, ⌘E), for the tile's find pill.
+    var onFind: ((Any?) -> Void)?
+
+    override func performTextFinderAction(_ sender: Any?) {
+        if let onFind { onFind(sender) } else { super.performTextFinderAction(sender) }
+    }
+
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(performTextFinderAction(_:)), onFind != nil { return true }
         if let ok = validateOutline(item) { return ok }
         if item.action == #selector(undo(_:)) { return undo.canUndo }
         if item.action == #selector(redo(_:)) { return undo.canRedo }

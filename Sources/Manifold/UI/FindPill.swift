@@ -514,6 +514,10 @@ final class TextViewSearch {
         lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (tv.string as NSString).length))
     }
 
+    /// Every match, and the one gone to: what Replace takes.
+    var found: [NSRange] { matches }
+    var currentMatch: NSRange? { current.flatMap { matches.indices.contains($0) ? matches[$0] : nil } }
+
     /// The selection, for ⌘E and as the pill's first query.
     var selectedText: String? {
         guard let tv = textView, tv.selectedRange().length > 0 else { return nil }
