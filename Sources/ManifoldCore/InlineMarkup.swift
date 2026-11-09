@@ -89,6 +89,8 @@ public enum InlineMarkup {
     private static let autolink = try! NSRegularExpression(pattern: "<(" + TextLinks.scheme + #"[^\s<>]+)>"#)
     private static let url = TextLinks.url
     private static let tag = try! NSRegularExpression(pattern: #"(?<=^|\s)#\p{L}[\p{L}\p{N}/_-]*"#)
+    /// `***text***`: strong around emphasis, their marks run together.
+    private static let both = try! NSRegularExpression(pattern: #"(\*\*\*|___)(?=\S)(.+?)(?<=\S)\1"#)
     private static let strong = try! NSRegularExpression(pattern: #"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
     private static let strike = try! NSRegularExpression(pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#)
     /// Not a run of `=`, as a conflict's divider is.
@@ -151,6 +153,13 @@ public enum InlineMarkup {
         add(autolink) { InlineSpan(kind: .link(group($0, 1)), range: $0.range, content: $0.range(at: 1)) }
         add(url) { InlineSpan(kind: .url(text.substring(with: $0.range)), range: $0.range, content: $0.range) }
         add(tag) { InlineSpan(kind: .tag, range: $0.range, content: $0.range) }
+        for match in both.matches(in: string, range: range) {
+            let inner = NSRange(location: match.range.location + 2, length: match.range.length - 4)
+            let strong = InlineSpan(kind: .strong, range: match.range, content: inner)
+            guard fits(strong, among: spans) else { continue }
+            spans.append(strong)
+            spans.append(InlineSpan(kind: .emphasis, range: inner, content: match.range(at: 2)))
+        }
         add(strong) { InlineSpan(kind: .strong, range: $0.range, content: $0.range(at: 2)) }
         add(strike) { InlineSpan(kind: .strikethrough, range: $0.range, content: $0.range(at: 1)) }
         add(highlight) { InlineSpan(kind: .highlight, range: $0.range, content: $0.range(at: 1)) }

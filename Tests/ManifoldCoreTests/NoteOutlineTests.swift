@@ -115,6 +115,12 @@ struct NoteOutlineTests {
         // Delete after "bold**" takes the d, not a *.
         let gone = InlineEditing.deletion(at: 10, forward: false, text: text, within: whole, spans: spans)
         #expect(gone.map { text.substring(with: $0) } == "d")
+        // ***Both***: strong around emphasis, every mark hidden.
+        let both = "***x*** ==lit== ``a`b`` https://e.com/a." as NSString
+        let found = InlineMarkup.spans(in: both, range: NSRange(location: 0, length: both.length))
+        #expect(found.map(\.kind) == [.strong, .emphasis, .highlight, .code, .url("https://e.com/a")])
+        #expect(found.flatMap(\.markup).map { both.substring(with: $0) } == ["**", "**", "*", "*", "==", "==", "``", "``"])
+        #expect(InlineMarkup.plainText(both as String) == "x lit a`b https://e.com/a.")
     }
 
     /// A place in a note, as a reference names it, read as what it stands for.

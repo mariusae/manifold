@@ -47,19 +47,10 @@ enum MarkdownStyle {
         /// says it's code, and a row of tinted spans reads as chips).
         var codeTint: NSColor
         var chipTint: NSColor
+        /// `==text==`'s ground: the outline's highlighter.
+        var highlight: NSColor = NoteOutlineStyler.highlighter
     }
 
-    private static let both = try! NSRegularExpression(pattern: #"(\*\*\*|___)(?=\S)(.+?)(?<=\S)\1"#)
-    private static let bold = try! NSRegularExpression(pattern: #"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"#)
-    private static let italic = try! NSRegularExpression(pattern: #"(?<![\*\w])(\*|_)(?=\S)([^\*_]+?)(?<=\S)\1(?![\*\w])"#)
-    private static let strike = try! NSRegularExpression(pattern: #"~~(?=\S)(.+?)(?<=\S)~~"#)
-    private static let code = try! NSRegularExpression(pattern: #"`([^`]+)`"#)
-    /// A link: `[words](address)` — or, to a block, no words (an image's
-    /// `![](manifold:…)`), its pill naming it.
-    private static let link = try! NSRegularExpression(pattern: #"(\[)([^\]\n]*)(\]\()([^)\s]+)(\))"#)
-    /// A picture's size noted after it (`<!-- {"width":320} -->`, as the
-    /// outline's grip writes one): markup, out of sight with the picture.
-    private static let sizeNote = try! NSRegularExpression(pattern: #"\G<!--\s*\{[^{}\n]*\}\s*-->"#)
     /// A block's reference written bare (`manifold:host/id#place`, as an
     /// agent writes one): its pill too.
     private static let reference = TextLinks.bareReference
@@ -122,56 +113,81 @@ enum MarkdownStyle {
             a.addAttribute(.font, value: italicFont, range: NSRange(location: m.range.length, length: all.length - m.range.length))
         }
 
-        // Code spans: in their font, on a tint, and left alone otherwise.
-        var codeRanges: [NSRange] = []
-        for m in code.matches(in: a.string, range: all) {
-            codeRanges.append(m.range)
-            a.addAttributes([.font: codeFont], range: m.range(at: 1))
-            mark(NSRange(location: m.range.location, length: 1))
-            mark(NSRange(location: m.range.location + m.range.length - 1, length: 1))
-        }
-        func inCode(_ r: NSRange) -> Bool { codeRanges.contains { NSIntersectionRange($0, r).length > 0 } }
+        // The inline Markdown, as the outline reads it (InlineMarkup).
+        let spans = InlineMarkup.spans(in: s, range: all)
 
-        // Links: the words as a link, the rest hidden — or, to a block,
-        // its pill (on the caret's line, a chip of the words as written).
-        for m in link.matches(in: a.string, range: all) where !inCode(m.range) {
-            let words = m.range(at: 2), address = s.substring(with: m.range(at: 4))
-            // A picture's size after it: markup.
-            if m.range.location > 0, s.character(at: m.range.location - 1) == 0x21,
-               let note = sizeNote.firstMatch(in: a.string, options: .anchored, range: NSRange(location: NSMaxRange(m.range), length: all.length - NSMaxRange(m.range))) {
-                mark(note.range)
-            }
-            // No words, and no block to name it: left as written.
-            if words.length == 0, !address.hasPrefix("manifold:") { continue }
-            a.addAttribute(target, value: address, range: m.range)
-            let rest = NSRange(location: m.range(at: 3).location, length: m.range(at: 3).length + m.range(at: 4).length + m.range(at: 5).length)
+        // Code spans: in their font, and left alone otherwise.
+        for span in spans where span.kind == .code {
+            a.addAttribute(.font, value: codeFont, range: span.content)
+            span.markup.forEach(mark)
+        }
+
+        /// A block's pill over a run: its first character as wide as the
+        /// pill, the rest out of sight.
+        func showPill(_ r: NSRange, _ look: PillLook) {
+            let first = NSRange(location: r.location, length: 1)
+            a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: pillWidth(look), font: base)], range: first)
+            hide(NSRange(location: r.location + 1, length: r.length - 1))
+        }
+
+        /// A link: the words as a link, the rest hidden — or, to a block,
+        /// its pill (on the caret's line, a chip of the words as written).
+        /// `whole` runs from what opens it (`[`, `<`) to what closes it;
+        /// `bang`, an image's `!` before it.
+        func link(_ whole: NSRange, words: NSRange, to address: String, bang: Bool = false) {
+            a.addAttribute(target, value: address, range: whole)
+            let open = NSRange(location: whole.location, length: words.location - whole.location)
+            let rest = NSRange(location: NSMaxRange(words), length: NSMaxRange(whole) - NSMaxRange(words))
             if address.hasPrefix("manifold:"), let (id, place) = BlockID.link(address) {
                 if !reveal, var look = look(id) {
                     // A link to a place in the block (a heading, a PDF's page):
                     // its own words, which name the place, not the block's name.
                     let named = s.substring(with: words).trimmingCharacters(in: .whitespaces)
                     if place != nil, !named.isEmpty { look.title = named }
-                    let width = pillWidth(look)
-                    let first = NSRange(location: m.range.location, length: 1)
-                    a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: width, font: base)], range: first)
-                    hide(NSRange(location: m.range.location + 1, length: m.range.length - 1))
+                    showPill(whole, look)
                     // An image shown (`![](manifold:…)`): its pill, the mark gone too.
-                    if m.range.location > 0, s.character(at: m.range.location - 1) == 0x21 { hide(NSRange(location: m.range.location - 1, length: 1)) }
+                    if bang { hide(NSRange(location: whole.location - 1, length: 1)) }
                 } else {
                     a.addAttributes([.foregroundColor: palette.text, chip: palette.chipTint], range: words)
-                    dim(m.range(at: 1)); dim(rest)
+                    dim(open); dim(rest)
                 }
             } else {
                 a.addAttributes([.foregroundColor: palette.accent, .underlineStyle: NSUnderlineStyle.single.rawValue], range: words)
-                mark(m.range(at: 1)); mark(rest)
+                mark(open); mark(rest)
+            }
+        }
+
+        // Links, and addresses written bare or in `<…>`.
+        for span in spans {
+            switch span.kind {
+            case let .link(address) where !address.isEmpty:
+                link(span.range, words: span.content, to: address)
+            case let .url(address):
+                link(span.range, words: span.content, to: address)
+            case let .image(picture):
+                // `![words](source)`, then perhaps its size noted
+                // (`<!-- {"width":320} -->`, as the outline's grip writes
+                // one): the size, markup; the rest, a link to the source —
+                // with no words, only a block's (its pill), else as written.
+                let words = NSRange(location: span.range.location + 2, length: (picture.alt as NSString).length)
+                let whole = NSRange(location: span.range.location + 1, length: NSMaxRange(words) + 3 + (picture.source as NSString).length - span.range.location - 1)
+                if NSMaxRange(whole) < NSMaxRange(span.range) { mark(NSRange(location: NSMaxRange(whole), length: NSMaxRange(span.range) - NSMaxRange(whole))) }
+                if picture.source.isEmpty || words.length == 0 && !picture.source.hasPrefix("manifold:") { continue }
+                link(whole, words: words, to: picture.source, bang: true)
+            default:
+                break
             }
         }
 
         // A bare reference: its block's pill, as a link's; on the caret's
-        // line, as written.
-        var linked: [NSRange] = []
-        for m in link.matches(in: a.string, range: all) { linked.append(m.range) }
-        for m in reference.matches(in: a.string, range: all) where !inCode(m.range) && !linked.contains(where: { NSIntersectionRange($0, m.range).length > 0 }) {
+        // line, as written. Not in code, nor in a link or an address.
+        let opaque = spans.filter {
+            switch $0.kind {
+            case .code, .link, .url, .image, .imageText, .wikiLink, .comment: true
+            default: false
+            }
+        }.map(\.range)
+        for m in reference.matches(in: a.string, range: all) where !opaque.contains(where: { NSIntersectionRange($0, m.range).length > 0 }) {
             let address = s.substring(with: m.range)
             guard let (id, place) = BlockID.link(address) else { continue }
             a.addAttribute(target, value: address, range: m.range)
@@ -184,40 +200,43 @@ enum MarkdownStyle {
                 let at = Locator(fragment: place)
                 if let anchor = at?.anchorID, let name = Self.placeName?(id, anchor) { look.title = name } else { look.title += " · " + (at?.words ?? place) }
             }
-            let first = NSRange(location: m.range.location, length: 1)
-            a.addAttributes([pill: look as Any, .foregroundColor: NSColor.clear, kCTRunDelegateAttributeName as NSAttributedString.Key: RunWidth.delegate(width: pillWidth(look), font: base)], range: first)
-            hide(NSRange(location: m.range.location + 1, length: m.range.length - 1))
+            showPill(m.range, look)
         }
 
-        // Emphasis: the face changes, the markers go.
-        // ***Both***: the bold-italic face, its markers gone; neither bold's
-        // nor italic's to take after.
-        var bothRanges: [NSRange] = []
-        for m in both.matches(in: a.string, range: all) where !inCode(m.range) {
-            bothRanges.append(m.range)
-            a.addAttributes([.font: base.emphasized(bold: true, italic: true), .foregroundColor: palette.strong], range: m.range(at: 2))
-            mark(m.range(at: 1))
-            mark(NSRange(location: m.range.location + m.range.length - 3, length: 3))
+        /// Each run of a span's own words restyled — not a marker hidden,
+        /// a pill, or code, which keep their look.
+        func restyle(_ r: NSRange, _ change: (NSFont, NSRange) -> Void) {
+            a.enumerateAttributes(in: r) { attrs, run, _ in
+                guard attrs[hidden] == nil, attrs[pill] == nil else { return }
+                let font = attrs[.font] as? NSFont ?? base
+                if font != codeFont { change(font, run) }
+            }
         }
-        func inBoth(_ r: NSRange) -> Bool { bothRanges.contains { NSIntersectionRange($0, r).length > 0 } }
-        for m in bold.matches(in: a.string, range: all) where !inCode(m.range) && !inBoth(m.range) {
-            a.addAttributes([.font: boldFont, .foregroundColor: palette.strong], range: m.range(at: 2))
-            mark(m.range(at: 1))
-            mark(NSRange(location: m.range.location + m.range.length - m.range(at: 1).length, length: m.range(at: 1).length))
+
+        // Emphasis: the face changes, the markers go. Bold first, so
+        // italic inside bold (or around it, `***both***`) is bold-italic.
+        for span in spans where span.kind == .strong {
+            restyle(span.content) { _, run in a.addAttributes([.font: boldFont, .foregroundColor: palette.strong], range: run) }
+            span.markup.forEach(mark)
         }
-        for m in italic.matches(in: a.string, range: all) where !inCode(m.range) && !inBoth(m.range) {
-            let inner = m.range(at: 2)
-            let current = a.attribute(.font, at: inner.location, effectiveRange: nil) as? NSFont ?? base
-            // Bold and italic both: the bold-italic face, from the base.
-            let bolded = current != base && current != italicFont
-            a.addAttribute(.font, value: base.emphasized(bold: bolded, italic: true), range: inner)
-            mark(m.range(at: 1))
-            mark(NSRange(location: m.range.location + m.range.length - 1, length: 1))
+        for span in spans where span.kind == .emphasis {
+            restyle(span.content) { font, run in
+                // Bold and italic both: the bold-italic face, from the base.
+                a.addAttribute(.font, value: base.emphasized(bold: font != base && font != italicFont, italic: true), range: run)
+            }
+            span.markup.forEach(mark)
         }
-        for m in strike.matches(in: a.string, range: all) where !inCode(m.range) {
-            a.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: m.range(at: 1))
-            mark(NSRange(location: m.range.location, length: 2))
-            mark(NSRange(location: m.range.location + m.range.length - 2, length: 2))
+        for span in spans {
+            switch span.kind {
+            case .strikethrough:
+                a.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: span.content)
+            case .highlight:
+                // `==text==`: on the highlighter's ground.
+                a.addAttribute(chip, value: palette.highlight, range: span.content)
+            default:
+                continue
+            }
+            span.markup.forEach(mark)
         }
     }
 
