@@ -25,7 +25,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     weak var delegate: GitViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let header = NSTextField(labelWithString: "")
     private let branchLabel = NSTextField(labelWithString: "")
     private let refresh = IconButton(symbol: "arrow.clockwise", size: 11, weight: .medium, target: nil, action: nil)
     private let scroll = ClippingScrollView()
@@ -73,9 +72,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        header.font = UIType.label
-        header.textColor = Theme.secondaryText
-        header.lineBreakMode = .byTruncatingMiddle
         branchLabel.font = UIType.label
         branchLabel.textColor = Theme.text
         branchLabel.alignment = .right
@@ -84,7 +80,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         refresh.action = #selector(refreshClicked)
         refresh.toolTip = "Refresh"
         refresh.alphaValue = 0
-        for v in [header, branchLabel, refresh] { addSubview(v) }
+        for v in [branchLabel, refresh] { addSubview(v) }
 
         let column = NSTableColumn(identifier: .init("row"))
         column.resizingMask = .autoresizingMask
@@ -214,7 +210,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         let w = bounds.width
         updateTrackingAreas()
         // Where it is is the bar's; here the branch, and refresh under the pointer.
-        header.isHidden = true
         branchLabel.alignment = .left
         branchLabel.frame = NSRect(x: 12, y: bounds.height - 20, width: max(0, w - 12 - 36), height: 16)
         refresh.frame = NSRect(x: w - 12 - 20, y: bounds.height - 22, width: 20, height: 20)
@@ -272,8 +267,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         root = b.path ?? ""
         vcs = g.vcs ?? .git
         // A project's (§2.6): its folder in the repository, its changes and commits alone.
-        header.stringValue = (g.scope.map { root.appendingPathComponent($0) } ?? root).abbreviatingHome
-            + (g.scope != nil ? " · in \(root.lastPathComponent)" : "") + (g.vcs == .sapling ? " · Sapling" : "")
         var branch = g.branch ?? ""
         if g.ahead > 0 { branch += " ↑\(g.ahead)" }
         if g.behind > 0 { branch += " ↓\(g.behind)" }

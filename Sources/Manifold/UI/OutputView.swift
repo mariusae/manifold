@@ -40,15 +40,13 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
     }()
     /// The find pill below the header, clear of its buttons.
     private var findArea: NSRect {
-        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight + GridView.band)
+        NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.headerHeight)
     }
     private lazy var textSearch = TextViewSearch(text)
 
     var focusView: NSView { text }
     var isDead: Bool { false }
     static let headerHeight: CGFloat = 44
-    /// Narrower than this, the buttons are their symbols alone.
-    static let titledWidth: CGFloat = 380
     private var copied = false
     private var headerHovered = false {
         didSet {
@@ -191,14 +189,13 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         let w = bounds.width, h = bounds.height
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         finder.layout(in: findArea)
-        // The command over how it went, at the left; the buttons at the
-        // right, their titles dropped when the tile is narrow.
-        // Glyphs, shown under the pointer (Dia's way); the copy's check says it took.
-        let titled = false
+        // The command over how it went, at the left; at the right, the
+        // buttons' glyphs, shown under the pointer (Dia's way); the copy's
+        // check says it took.
         for b in [back, copy] { b.alphaValue = headerHovered || copied ? 1 : 0 }
         updateTrackingAreas()
-        back.title = titled ? "Show in Terminal" : ""
-        copy.title = titled ? (copied ? "Copied" : "Copy") : ""
+        back.title = ""
+        copy.title = ""
         copy.symbolName = copied ? "checkmark" : "doc.on.doc"
         for b in [back, copy] { b.sizeToFit() }
         let by = ((Self.headerHeight - copy.frame.height) / 2).rounded()

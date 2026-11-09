@@ -482,7 +482,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             for case let w as WebView in views.values { w.documentChanged() }
             for case let s as SearchView in views.values { s.codeFont = codeFont; s.documentChanged() }
             for case let g as GitView in views.values { g.documentChanged() }
-            for case let m as MediaView in views.values { m.documentChanged() }
             for case let pv as ProcessView in views.values { pv.documentChanged() }
             for case let d as DiffView in views.values { d.documentChanged() }
             for case let panel as PanelView in views.values { panel.documentChanged() }

@@ -160,7 +160,7 @@ final class ProcessView: NSView, PaneContent, KeepsViewState, NSTableViewDataSou
     /// the filter, and the status gives way.
     override func layout() {
         super.layout()
-        let w = bounds.width, top = bounds.height - GridView.band - 2
+        let w = bounds.width, top = bounds.height - 2
         let buttons: CGFloat = 84 + 6 + 56
         let segments = modes.intrinsicContentSize.width + 8
         let wide = w >= 12 + segments + 140 + 12 + buttons + 12

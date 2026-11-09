@@ -23,7 +23,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     weak var delegate: MediaViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
     /// While a big file comes from its host: how much has, in the middle
     /// of where it will be — shown only if it takes a moment.
@@ -109,13 +108,9 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        header.font = UIType.label
-        header.textColor = Theme.secondaryText
-        header.lineBreakMode = .byTruncatingMiddle
         note.font = UIType.detail
         note.textColor = Theme.secondaryText
         note.alignment = .right
-        addSubview(header)
         addSubview(note)
         comingBar.style = .bar
         comingBar.controlSize = .small
@@ -214,10 +209,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             }
         } else {
             // Its path is the bar's: here only what it is (its size), at the right.
-            header.frame = .zero
             note.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width - 24, height: 16)
         }
-        header.isHidden = true
         pdfView?.frame = content
         scroll.frame = content
         let size = coming.fittingSize
@@ -231,10 +224,6 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         if window != nil { load() }
     }
 
-    func documentChanged() {
-        guard let b = source() else { return }
-        header.stringValue = (b.path ?? "").abbreviatingHome
-    }
 
     private func load() {
         guard let b = source(), b.path != nil else { return }
@@ -408,7 +397,6 @@ extension MediaView: Searchable {
             place(previousButton, width: 22)
             right -= 8
         }
-        header.frame = .zero
         note.frame = .zero
         // At rest only where it's at ("3 of 40"); the pointer on the strip,
         // the arrows, zoom and layout too.
@@ -657,7 +645,7 @@ extension MediaView: Searchable {
         let page = p.currentPage.flatMap { pg in p.document.map { $0.index(for: pg) + 1 } } ?? 0
         var lines = ["page \(page) \(pageCount.stringValue) field \(pageField.stringValue) zoom \(zoomLabel.stringValue) display \(p.displayMode.rawValue) found \(found.count) at \(foundAt)"]
         let shown: [(String, NSView)] = [("prev", previousButton), ("field", pageBox), ("zoom", zoomLabel), ("layout", layoutButton)]
-        lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " ") + " header \(Int(header.frame.width))")
+        lines.append("controls " + shown.map { "\($0.0)\($0.1.isHidden ? "-" : "+")" }.joined(separator: " "))
         if let sidebar, !sidebar.isHidden { lines.append(sidebar.debugEntries) } else { lines.append("sidebar hidden") }
         return lines.joined(separator: "\n")
     }

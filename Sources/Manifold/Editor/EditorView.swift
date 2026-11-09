@@ -1053,7 +1053,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private func layoutLinePill() {
         guard let linePill else { return }
         let w = min(LinePill.width, bounds.width - 20), h = FindPill.rowHeight
-        let y = bounds.maxY - (bounds.width >= 860 ? 4 : GridView.band + 6) - h
+        let y = bounds.maxY - (bounds.width >= 860 ? 4 : 6) - h
         linePill.frame = NSRect(x: bounds.maxX - 10 - w, y: y, width: w, height: h)
     }
 

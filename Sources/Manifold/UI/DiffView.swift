@@ -32,7 +32,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         }
     }
 
-    private let header = NSTextField(labelWithString: "")
     private let note = NSTextField(labelWithString: "")
     /// While its host compares (and sends what it found): said in the
     /// middle, a moment on — with how much has come, from another host.
@@ -76,13 +75,9 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        header.font = UIType.label
-        header.textColor = Theme.secondaryText
-        header.lineBreakMode = .byTruncatingMiddle
         note.font = UIType.detail
         note.textColor = Theme.secondaryText
         note.alignment = .right
-        addSubview(header)
         addSubview(note)
         waiting.host = block.host
         addSubview(waiting)
@@ -170,7 +165,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     override func layout() {
         super.layout()
         // What's compared is the bar's; here only how much changed, at the right.
-        header.isHidden = true
         note.frame = NSRect(x: 12, y: bounds.height - Self.strip + 4, width: bounds.width - 24, height: 16)
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
@@ -202,7 +196,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         // Waiting until it's compared (or said why not).
         waiting.set(d?.loadedAt == nil && d?.error == nil ? .busy("Comparing…") : .idle)
         guard let d else { return }
-        header.stringValue = b.displayTitle
         guard d.loadedAt != loadedAt else { return }
         loadedAt = d.loadedAt
         rebuild()

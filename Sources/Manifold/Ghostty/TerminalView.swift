@@ -468,7 +468,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         glow.isHidden = isHidden
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
-        scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: max(0, frame.height - GridView.band))
+        scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: frame.height)
         scrubber.isHidden = isHidden || scrollbar.total <= scrollbar.len
         scrubber.update(total: Double(scrollbar.total), offset: Double(scrollbar.offset), shown: Double(scrollbar.len))
         updateDots()

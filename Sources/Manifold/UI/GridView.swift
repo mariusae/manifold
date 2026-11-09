@@ -154,9 +154,6 @@ final class GridView: NSView, NSDraggingSource {
     /// The tile the focus ring was round at the last layout.
     private var ringFor: PlacementID?
 
-    /// What a tile's content leaves at its top: nothing — the bar is above
-    /// it, not over it (kept for the views that asked).
-    static let band: CGFloat = 0
     /// A tile is a card (§3.1): its bar at the top — symbol, name, where it
     /// is, its links and status, maximize and close — and its content
     /// beneath, rounded, with room between cards and around them.
@@ -1701,7 +1698,7 @@ final class GridView: NSView, NSDraggingSource {
         let f = columnFrames()[c]
         let frames = tileFrames(column: c, in: f)
         guard let ra = column.firstIndex(where: { $0.shown.id == a }), let rb = column.firstIndex(where: { $0.shown.id == b }) else { return }
-        let minHeight = Self.band + 24
+        let minHeight: CGFloat = 24
         let top = frames[ra].maxY, bottom = frames[rb].minY
         let n = Double(max(shownTiles(c).count, 1))
         func share(_ id: PlacementID) -> Double { heights[id] ?? 1 / n }
