@@ -1794,26 +1794,17 @@ final class TextView: NSView, NSTextInputClient {
         inputContext?.handleEvent(event)
     }
 
-    /// Shortcuts the standard selectors don't cover.
+    /// Shortcuts no menu item has. (Bold, Italic, Code, Duplicate, Join,
+    /// Comment, Move Line, Add Caret… are the Edit menu's key equivalents,
+    /// and only those: ⌘D is Delete Block, ⌘/ the tile's outline.)
     private func handleShortcut(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         let chars = event.charactersIgnoringModifiers ?? ""
         switch (flags, chars) {
-        case ([.command], "b") where acceptsBlockLinks: toggleWrap("**"); return true
-        case ([.command], "i") where acceptsBlockLinks: toggleWrap("_"); return true
-        case ([.command, .shift], "x") where acceptsBlockLinks: toggleWrap("~~"); return true
-        case ([.command, .shift], "c") where acceptsBlockLinks: toggleWrap("`"); return true
-        case ([.command], "d"): selectNextOccurrence(); return true
-        case ([.command, .shift], "d"): duplicateLines(); return true
+        // ⌃⇧K, as other editors have it, beside the menu's ⇧⌘K.
         case ([.control, .shift], "k"): deleteLines(); return true
-        case ([.command], "/"): toggleComment(); return true
-        case ([.control], "j"): joinLines(); return true
         // ⌃Space, or ⌥⎋ where ⌃Space switches the input source.
         case ([.control], " "), ([.option], "\u{1B}"): delegate?.textViewRequestsCompletion(self); return true
-        case ([.command, .control], String(UnicodeScalar(NSUpArrowFunctionKey)!)): moveLines(up: true); return true
-        case ([.command, .control], String(UnicodeScalar(NSDownArrowFunctionKey)!)): moveLines(up: false); return true
-        case ([.control, .shift], String(UnicodeScalar(NSUpArrowFunctionKey)!)): addCaret(up: true); return true
-        case ([.control, .shift], String(UnicodeScalar(NSDownArrowFunctionKey)!)): addCaret(up: false); return true
         // ⌥↑ ⌥↓: a page up or down, as elsewhere on the Mac (not a
         // paragraph's ends, which ⌘← ⌘→ and the line's own keys have).
         case ([.option], String(UnicodeScalar(NSUpArrowFunctionKey)!)): page(-1, extend: false); return true
