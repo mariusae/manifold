@@ -7,7 +7,7 @@ import ManifoldCore
 /// or the composer for one. The space's timeline is the sidebar's. ⎋
 /// closes it; its ↖↘ makes the thread a tile; a place in it clicked is
 /// gone to, the overlay kept.
-final class ThreadOverlayView: NSView {
+final class ThreadOverlayView: PopoverView {
     let chat = ThreadChatView()
     private let close = IconButton(symbol: "xmark", size: 10, target: nil, action: nil)
     private let popOut = IconButton(symbol: "arrow.up.left.and.arrow.down.right", size: 10, target: nil, action: nil)
@@ -23,13 +23,6 @@ final class ThreadOverlayView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.masksToBounds = false
-        shadow = NSShadow()
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 18
-        layer?.shadowOffset = NSSize(width: 0, height: -6)
         close.target = self
         close.action = #selector(closeClicked)
         close.toolTip = "Close (⎋)"
@@ -42,12 +35,6 @@ final class ThreadOverlayView: NSView {
         chat.fits = false
         chat.showsTileButton = false
         for v in [titleLabel, popOut, close, chat] as [NSView] { addSubview(v) }
-        themed { v in
-            // Lighter than the window it's over, its edge a hairline.
-            v.layer?.backgroundColor = Theme.panel.cgColor
-            v.layer?.borderColor = Theme.panelBorder.cgColor
-            v.layer?.borderWidth = 0.5
-        }
     }
 
     required init?(coder: NSCoder) { fatalError() }

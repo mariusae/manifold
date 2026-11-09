@@ -6,7 +6,7 @@ import AppKit
 /// button showing a row of chips; then its rows, in sections under small
 /// headers, a hairline between groups. ↑↓ choose, ↩ goes, ⎋ or a click
 /// outside closes it.
-final class PopMenu: NSView, NSTextFieldDelegate {
+final class PopMenu: PopoverView, NSTextFieldDelegate {
     struct Item {
         var symbol: String
         var image: NSImage? = nil
@@ -44,7 +44,6 @@ final class PopMenu: NSView, NSTextFieldDelegate {
     /// What it says with nothing to show.
     var empty = "Nothing here"
 
-    private let ground = NSVisualEffectView()
     private let glass = NSImageView()
     private let field = NSTextField()
     private let hintLabel = NSTextField(labelWithString: "")
@@ -61,23 +60,6 @@ final class PopMenu: NSView, NSTextFieldDelegate {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.cornerCurve = .continuous
-        layer?.masksToBounds = false
-        shadow = NSShadow()
-        layer?.shadowOpacity = 0.28
-        layer?.shadowRadius = 20
-        layer?.shadowOffset = NSSize(width: 0, height: -8)
-        ground.material = .popover
-        ground.blendingMode = .withinWindow
-        ground.state = .active
-        ground.wantsLayer = true
-        ground.layer?.cornerRadius = 12
-        ground.layer?.cornerCurve = .continuous
-        ground.layer?.masksToBounds = true
-        ground.layer?.borderWidth = 0.5
-        addSubview(ground)
         glass.image = Theme.symbol("magnifyingglass", size: 13, weight: .regular)
         glass.contentTintColor = Theme.secondaryText
         field.isBordered = false
@@ -114,8 +96,7 @@ final class PopMenu: NSView, NSTextFieldDelegate {
             if !item.keepsOpen { self?.onClose?() }
             item.run()
         }
-        for v in [glass, field, hintLabel, clear, filterButton, scroll] as [NSView] { ground.addSubview(v) }
-        themed { v in v.ground.layer?.borderColor = Flat.line.cgColor }
+        for v in [glass, field, hintLabel, clear, filterButton, scroll] as [NSView] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -131,7 +112,7 @@ final class PopMenu: NSView, NSTextFieldDelegate {
                 self.updateFilterLook()
                 self.refresh()
             }
-            ground.addSubview(b)
+            addSubview(b)
             return b
         }
     }
@@ -162,7 +143,6 @@ final class PopMenu: NSView, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
-        ground.frame = bounds
         let w = bounds.width, top = bounds.height
         let sy = top - Self.searchHeight
         glass.frame = NSRect(x: 14, y: sy + (Self.searchHeight - 16) / 2, width: 16, height: 16)
@@ -376,36 +356,32 @@ final class PopMenuList: NSView {
             let r = NSRect(x: 0, y: r0.minY, width: w, height: r0.height)
             switch l {
             case .header(let t):
-                NSAttributedString(string: t, attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText])
-                    .draw(at: NSPoint(x: 16, y: r.minY + 8))
+                Flat.menuHeader(t, at: NSPoint(x: 16, y: r.minY + 8))
             case .rule:
                 Theme.divider.setFill()
                 NSRect(x: 12, y: r.minY, width: w - 24, height: 1).fill()
             case .item(let i):
                 let item = items[i]
-                let band = r.insetBy(dx: 6, dy: 1)
-                if chosen == i {
-                    Theme.text.withAlphaComponent(0.09).setFill()
-                    NSBezierPath(roundedRect: band, xRadius: 7, yRadius: 7).fill()
-                }
-                let ink = item.dimmed ? Theme.secondaryText : Theme.text
+                let lit = chosen == i
+                if lit { Flat.menuBand(r.insetBy(dx: 6, dy: 1)) }
+                let ink = lit ? Flat.onBand() : item.dimmed ? Theme.secondaryText : Theme.text
                 let iconRect = NSRect(x: 16, y: r.minY + (Self.row - 16) / 2, width: 16, height: 16)
                 if let image = item.image {
                     image.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-                } else if let image = Theme.symbol(item.symbol, size: 12.5, weight: .regular, color: Theme.secondaryText) {
+                } else if let image = Theme.symbol(item.symbol, size: 12.5, weight: .regular, color: lit ? Flat.onBand() : Theme.secondaryText) {
                     let z = image.size
                     image.draw(in: NSRect(x: iconRect.midX - z.width / 2, y: iconRect.midY - z.height / 2, width: z.width, height: z.height),
                                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 }
                 var right = w - 16
-                if item.chevron, let c = Theme.symbol("chevron.right", size: 10, weight: .semibold, color: Theme.tertiaryText) {
+                if item.chevron, let c = Theme.symbol("chevron.right", size: 10, weight: .semibold, color: lit ? Flat.onBand(dim: true) : Theme.tertiaryText) {
                     let z = c.size
                     c.draw(in: NSRect(x: right - z.width, y: r.minY + (Self.row - z.height) / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                     right -= z.width + 8
                 }
                 if !item.trailing.isEmpty {
-                    let t = NSAttributedString(string: item.trailing, attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText])
+                    let t = NSAttributedString(string: item.trailing, attributes: [.font: UIType.detail, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.tertiaryText])
                     let z = t.size()
                     t.draw(at: NSPoint(x: right - z.width, y: r.minY + (Self.row - z.height) / 2))
                     right -= z.width + 8
@@ -415,7 +391,7 @@ final class PopMenuList: NSView {
                     .draw(with: NSRect(x: x, y: r.minY + (Self.row - 17) / 2 + 0.5, width: max(0, right - x), height: 17),
                           options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
                 if !item.subtitle.isEmpty {
-                    NSAttributedString(string: item.subtitle, attributes: [.font: UIType.detail, .foregroundColor: Theme.secondaryText])
+                    NSAttributedString(string: item.subtitle, attributes: [.font: UIType.detail, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.secondaryText])
                         .draw(with: NSRect(x: x, y: r.minY + Self.row - 8, width: max(0, w - 16 - x), height: 15),
                               options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
                 }

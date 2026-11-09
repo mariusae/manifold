@@ -37,6 +37,21 @@ enum Flat {
         }
     }
 
+    /// A menu's chosen row — under the pointer, or come to by the arrows —
+    /// in every menu alike: the tint, its words on it in `onBand`.
+    static func menuBand(_ r: NSRect) {
+        Theme.accent.setFill()
+        NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
+    }
+
+    /// Words on a menu's chosen row (`dim`: what's beside its name).
+    static func onBand(dim: Bool = false) -> NSColor { NSColor.white.withAlphaComponent(dim ? 0.75 : 1) }
+
+    /// A menu's section heading: its name, as the sidebar's sections have it.
+    static func menuHeader(_ title: String, at p: NSPoint) {
+        NSAttributedString(string: title, attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText]).draw(at: p)
+    }
+
     /// The mark at a row's left edge saying it's the one — a marked row,
     /// a notebook's focused cell: the tint, a little light, this wide,
     /// rounded as a hairline.

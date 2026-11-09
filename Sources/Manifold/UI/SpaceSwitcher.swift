@@ -7,7 +7,7 @@ import ManifoldCore
 /// picture (else its symbol and name), the focused one ringed; over it
 /// its square, its name, its host, what wants you there. ` steps on, ⇧`
 /// back; letting go of ⌘ goes to the one chosen, ⎋ stays.
-final class SpaceSwitcherView: NSView {
+final class SpaceSwitcherView: PopoverView {
     struct Card {
         struct Tile {
             var frame: NSRect          // in the unit square, y down
@@ -28,53 +28,20 @@ final class SpaceSwitcherView: NSView {
         var docked: Int
     }
 
-    var cards: [Card] = [] { didSet { needsLayout = true; canvas.needsDisplay = true } }
-    var chosen = 0 { didSet { if chosen != oldValue { canvas.needsDisplay = true } } }
-    /// What the cards are drawn in, over the frosted ground.
-    private let canvas = Canvas()
+    var cards: [Card] = [] { didSet { needsLayout = true; needsDisplay = true } }
+    var chosen = 0 { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onPick: ((Int) -> Void)?
 
     static let cardSize = NSSize(width: 236, height: 176)
     static let gap: CGFloat = 14
     static let pad: CGFloat = 18
     static let perRow = 4
-    private let ground = NSVisualEffectView()
 
     override var isFlipped: Bool { true }
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 16
-        layer?.cornerCurve = .continuous
-        shadow = NSShadow()
-        layer?.shadowOpacity = 0.3
-        layer?.shadowRadius = 24
-        layer?.shadowOffset = NSSize(width: 0, height: -8)
-        ground.material = .popover
-        ground.blendingMode = .withinWindow
-        ground.state = .active
-        ground.wantsLayer = true
-        ground.layer?.cornerRadius = 16
-        ground.layer?.cornerCurve = .continuous
-        ground.layer?.masksToBounds = true
-        addSubview(ground)
-        canvas.owner = self
-        addSubview(canvas)
-    }
-
-    private final class Canvas: NSView {
-        weak var owner: SpaceSwitcherView?
-        override var isFlipped: Bool { true }
-        override func draw(_ dirtyRect: NSRect) { owner?.drawCards() }
-        // A card clicked goes there: the pointing hand.
-        override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-        override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-        override func mouseDown(with event: NSEvent) {}
-        override func mouseUp(with event: NSEvent) { owner?.mouseUp(with: event) }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
+    // A card clicked goes there: the pointing hand.
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     /// Its size for its cards, as many rows as they take (three at most shown).
     var wantedSize: NSSize {
@@ -91,13 +58,7 @@ final class SpaceSwitcherView: NSView {
                       width: Self.cardSize.width, height: Self.cardSize.height)
     }
 
-    override func layout() {
-        super.layout()
-        ground.frame = bounds
-        canvas.frame = bounds
-    }
-
-    fileprivate func drawCards() {
+    override func drawContent(_ dirtyRect: NSRect) {
         for (i, c) in cards.enumerated() where i < Self.perRow * 3 {
             let r = cardRect(i)
             let lit = i == chosen

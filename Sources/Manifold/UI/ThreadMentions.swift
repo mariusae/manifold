@@ -102,7 +102,7 @@ final class MentionPopover {
 /// The rows, as Dia's: in parts under small grey headers (Agents, Here,
 /// Files), a line each — its icon and title, a detail in grey — the
 /// chosen on the accent, its words white.
-private final class MentionList: NSView {
+private final class MentionList: PopoverView {
     var choices: [MentionChoice] = [] { didSet { lay(); needsDisplay = true } }
     var selected = 0 { didSet { needsDisplay = true } }
     var onChoose: ((MentionChoice) -> Void)?
@@ -116,14 +116,6 @@ private final class MentionList: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 10
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 0.5
-        themed { v in
-            v.layer?.backgroundColor = Theme.panel.cgColor
-            v.layer?.borderColor = Theme.panelBorder.cgColor
-        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -135,7 +127,7 @@ private final class MentionList: NSView {
         var last: String?
         for c in choices {
             if !c.category.isEmpty, c.category != last {
-                headers.append((c.category.uppercased(), y))
+                headers.append((c.category, y))
                 y += Self.headerHeight
                 last = c.category
             }
@@ -148,28 +140,22 @@ private final class MentionList: NSView {
     private var height: CGFloat = 10
     var wantedSize: NSSize { NSSize(width: Self.width, height: height) }
 
-    override func draw(_ dirtyRect: NSRect) {
-        for (title, y) in headers {
-            NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: Theme.tertiaryText, .kern: 0.4])
-                .draw(at: NSPoint(x: 13, y: y + 7))
-        }
+    override func drawContent(_ dirtyRect: NSRect) {
+        for (title, y) in headers { Flat.menuHeader(title, at: NSPoint(x: 13, y: y + 5)) }
         for (i, c) in choices.enumerated() where rows.indices.contains(i) {
             let r = rows[i]
             let lit = i == selected
-            if lit {
-                Theme.accent.setFill()
-                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
-            }
+            if lit { Flat.menuBand(r) }
             let iconRect = NSRect(x: r.minX + 7, y: r.midY - 7, width: 14, height: 14)
             if let icon = c.icon {
                 icon.draw(in: iconRect)
-            } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium, color: lit ? .white : Theme.secondaryText) {
+            } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium, color: lit ? Flat.onBand() : Theme.secondaryText) {
                 let z = image.size
                 image.draw(in: NSRect(x: iconRect.midX - z.width / 2, y: iconRect.midY - z.height / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
-            let title = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: lit ? NSColor.white : Theme.text])
-            let detail = NSAttributedString(string: c.detail, attributes: [.font: UIType.footnote, .foregroundColor: lit ? NSColor.white.withAlphaComponent(0.75) : Theme.tertiaryText])
+            let title = NSAttributedString(string: c.title, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: lit ? Flat.onBand() : Theme.text])
+            let detail = NSAttributedString(string: c.detail, attributes: [.font: UIType.footnote, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.tertiaryText])
             let x = iconRect.maxX + 8
             let tw = min(title.size().width + 2, r.width - (x - r.minX) - 8)
             title.draw(with: NSRect(x: x, y: r.midY - 8, width: tw, height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])

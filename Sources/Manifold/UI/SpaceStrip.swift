@@ -762,7 +762,7 @@ extension MainWindowController {
 /// pointer's on it: a row each — whether it's connected, its name, how
 /// many spaces it has — the shown space's host marked. Clicked, a new
 /// space there.
-final class HostPickerView: NSView {
+final class HostPickerView: PopoverView {
     struct Row: Equatable {
         var host: HostID
         var label: String
@@ -786,14 +786,6 @@ final class HostPickerView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.cornerCurve = .continuous
-        themed { v in
-            v.layer?.backgroundColor = Theme.panel.cgColor
-            v.layer?.borderColor = Theme.panelBorder.cgColor
-            v.layer?.borderWidth = 0.5
-        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -810,30 +802,27 @@ final class HostPickerView: NSView {
         NSRect(x: 4, y: Self.headHeight + CGFloat(i) * Self.rowHeight, width: bounds.width - 8, height: Self.rowHeight)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        NSAttributedString(string: "New space on", attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText])
-            .draw(at: NSPoint(x: 12, y: 6))
+    override func drawContent(_ dirtyRect: NSRect) {
+        Flat.menuHeader("New space on", at: NSPoint(x: 12, y: 6))
         for (i, row) in rows.enumerated() {
             let r = rowRect(i)
-            if hovered == i {
-                Theme.text.withAlphaComponent(0.09).setFill()
-                NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
-            }
+            let lit = hovered == i
+            if lit { Flat.menuBand(r) }
             let dot = NSRect(x: r.minX + 9, y: r.midY - 3.5, width: 7, height: 7)
             (row.connected ? Status.done : Theme.tertiaryText).withAlphaComponent(0.9).setFill()
             NSBezierPath(ovalIn: dot).fill()
             let count = NSAttributedString(string: row.spaces == 1 ? "1 space" : "\(row.spaces) spaces",
-                                           attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText])
+                                           attributes: [.font: UIType.detail, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.tertiaryText])
             let cz = count.size()
             count.draw(at: NSPoint(x: r.maxX - 10 - cz.width, y: r.midY - cz.height / 2))
             var x = dot.maxX + 9
-            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: Theme.accent) {
+            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: lit ? Flat.onBand() : Theme.accent) {
                 let z = image.size
                 image.draw(in: NSRect(x: x, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 x += z.width + 6
             }
-            NSAttributedString(string: row.label, attributes: [.font: UIType.row, .foregroundColor: row.connected ? Theme.text : Theme.secondaryText])
+            NSAttributedString(string: row.label, attributes: [.font: UIType.row, .foregroundColor: lit ? Flat.onBand() : row.connected ? Theme.text : Theme.secondaryText])
                 .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, r.maxX - 16 - cz.width - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
     }
