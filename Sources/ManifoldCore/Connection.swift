@@ -255,7 +255,6 @@ public enum Paths {
     public static var label: URL { directory.appendingPathComponent("label") }
 
     public static var socket: String { directory.appendingPathComponent("manifoldd.sock").path }
-    public static var state: URL { directory.appendingPathComponent("state.json") }
     public static var logs: URL { directory.appendingPathComponent("logs") }
     public static var log: URL { directory.appendingPathComponent("manifoldd.log") }
 

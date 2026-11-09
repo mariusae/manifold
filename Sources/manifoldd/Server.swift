@@ -195,7 +195,7 @@ final class Server {
         lock = open(Paths.directory.appendingPathComponent("manifoldd.lock").path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard lock >= 0, flock(lock, LOCK_EX | LOCK_NB) == 0 else { throw ServerError.alreadyRunning }
         Server.resetIfFormatChanged()
-        let session = HostSession.identify(directory: Paths.directory, logs: Paths.logs)
+        let session = HostSession.identify(directory: Paths.directory)
         host = session.id
         label = session.label
         clock = Clock(host: session.id)
@@ -2579,10 +2579,6 @@ final class Server {
     }
 
     private func load() {
-        let shards = store.shards()
-        if shards.isEmpty, let data = try? Data(contentsOf: Paths.state) {
-            migrate(data)
-        }
         for shard in store.shards() {
             store.load(shard, into: node)
         }
@@ -2612,17 +2608,6 @@ final class Server {
                 self.append(.agents(found), to: .desk(self.host))
             }
         }
-    }
-
-    /// A `state.json` from before blocks becomes logs.
-    private func migrate(_ data: Data) {
-        let editors = Paths.directory.appendingPathComponent("editors")
-        let out = Migration.migrate(stateJSON: data, editorsDirectory: editors, readFile: { TextFile.read($0)?.text },
-                                    host: host, clock: clock)
-        for (shard, entries) in out { store.append(entries, to: shard) }
-        store.closeAll()
-        try? FileManager.default.moveItem(at: Paths.state, to: Paths.state.appendingPathExtension("migrated"))
-        log("migrated \(out.count) shards from \(Paths.state.lastPathComponent)")
     }
 
     /// The changed shards' snapshots written. `later`: encoded and written

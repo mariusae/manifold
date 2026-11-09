@@ -261,30 +261,6 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(d.wall >= a.wall + 10_000)
 }
 
-@Test func migratesOldState() throws {
-    let json = """
-    {"tabs":[{"id":"11111111-1111-1111-1111-111111111111","customTitle":"work",
-      "columns":[{"id":"22222222-2222-2222-2222-222222222222","panes":[
-        {"id":"33333333-3333-3333-3333-333333333333","kind":"terminal","cwd":"/tmp"},
-        {"id":"44444444-4444-4444-4444-444444444444","kind":"editor","path":"/tmp/x.txt"}]}],
-      "focusedPane":"33333333-3333-3333-3333-333333333333","fractions":[1]}],
-     "selectedTab":"11111111-1111-1111-1111-111111111111","window":{"sidebarPinned":true}}
-    """
-    let out = Migration.migrate(stateJSON: Data(json.utf8), editorsDirectory: nil, readFile: { _ in "disk" },
-                                host: .local, clock: Clock(host: .local))
-    let node = Node()
-    for (shard, entries) in out { #expect(node.apply(entries, to: shard)) }
-    let arrangements = node.blocks(of: .arrangement)
-    #expect(arrangements.count == 1)
-    #expect(arrangements[0].title == "work")
-    #expect(arrangements[0].arrangement?.columns[0].count == 2)
-    #expect(node.blocks(of: .terminal).first?.terminal?.cwd == "/tmp")
-    #expect(node.blocks(of: .text).first?.text?.text.string == "disk")
-    #expect(node.desk(.local).window.sidebarPinned)
-    #expect(node.desk(.local).selected == arrangements[0].id)
-    #expect(node.registry(.local).blocks.count == 3)
-}
-
 // MARK: Language servers
 
 @Test func ropeLSPPositions() {
@@ -781,100 +757,24 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(scanner.sawReports)
 }
 
-@Test func aHostBecomesASessionAndItsLogsFollow() throws {
+@Test func aHostIsMintedASessionOnceAndAnOldNameBecomesItsLabel() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
-    let logs = dir.appendingPathComponent("logs")
-    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-    // A host named "local" with a block and a registry, as before sessions.
-    let store = LogStore(directory: logs)
-    let old = HostID.local
-    let block = BlockID(host: old)
-    let at = Stamp(wall: 1, host: old)
-    store.append([Entry(seq: 1, at: at, event: .create(kind: .text, title: "note", path: nil))], to: .block(block))
-    store.append([Entry(seq: 1, at: at, event: .register(RegistryEntry(id: block, kind: .text, created: at, lastSeen: at)))], to: .registry(old))
-    store.closeAll()
-    let first = HostSession.identify(directory: dir, logs: logs)
-    #expect(first.id != old && first.id.raw.hasPrefix("h") && first.id.raw.count == 11)
-    #expect(first.label == nil, "“local” is no one's label")
-    // The same id next time; the logs under the new id, their contents rewritten.
-    #expect(HostSession.identify(directory: dir, logs: logs).id == first.id)
-    let node = Node()
-    let reloaded = LogStore(directory: logs)
-    let shards = reloaded.shards()
-    #expect(shards.allSatisfy { $0.host == first.id })
-    for s in shards { reloaded.load(s, into: node) }
-    let moved = BlockID(host: first.id, ulid: block.ulid)
-    #expect(node.block(moved)?.title == "note")
-    #expect(node.registry(first.id).blocks[moved]?.id == moved)
-    #expect(node.block(moved)?.created.host == first.id)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    // A server from before sessions, named by its first client.
+    try Data("devbox".utf8).write(to: dir.appendingPathComponent("host"))
+    let first = HostSession.identify(directory: dir)
+    #expect(first.id.raw.hasPrefix("h") && first.id.raw.count == 11)
+    #expect(first.label == "devbox")
+    // The same id next time, the label kept.
+    let again = HostSession.identify(directory: dir)
+    #expect(again.id == first.id && again.label == "devbox")
+    // "local" is no one's label.
+    let other = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
+    try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+    try Data("local".utf8).write(to: other.appendingPathComponent("host"))
+    #expect(HostSession.identify(directory: other).label == nil)
     try? FileManager.default.removeItem(at: dir)
-}
-
-@Test func aRewriteCutShortResumesAndKeepsTheSnapshotsPlace() throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
-    let logs = dir.appendingPathComponent("logs")
-    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-    let store = LogStore(directory: logs)
-    let old = HostID.local
-    let block = BlockID(host: old)
-    let at = Stamp(wall: 1, host: old)
-    let node = Node()
-    let shard = ShardID.block(block)
-    let create = Entry(seq: 1, at: at, event: .create(kind: .text, title: "note", path: nil))
-    store.append([create], to: shard)
-    node.apply(create, to: shard)
-    // A snapshot part way, then more log after it.
-    store.snapshot(node, shard)
-    let rename = Entry(seq: 2, at: Stamp(wall: 2, host: old), event: .title("renamed"))
-    store.append([rename], to: shard)
-    store.closeAll()
-    // A session already minted, as after a rewrite that was cut short.
-    let minted = HostSession.mint()
-    try Data(minted.raw.utf8).write(to: dir.appendingPathComponent("session"))
-    let got = HostSession.identify(directory: dir, logs: logs)
-    #expect(got.id == minted)
-    let reloaded = LogStore(directory: logs)
-    #expect(reloaded.shards() == [.block(BlockID(host: minted, ulid: block.ulid))])
-    let replica = Node()
-    for s in reloaded.shards() { reloaded.load(s, into: replica) }
-    let moved = BlockID(host: minted, ulid: block.ulid)
-    #expect(replica.block(moved)?.title == "renamed", "the entry after the snapshot is replayed from where the snapshot's offset landed")
-    #expect(replica.seq(.block(moved)) == 2)
-    try? FileManager.default.removeItem(at: dir)
-}
-
-@Test func blocksFromBeforeULIDsFollowTooAndAFileAlreadyRenamedIsFinished() throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mf-session-\(ULID.make())")
-    let logs = dir.appendingPathComponent("logs")
-    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-    let store = LogStore(directory: logs)
-    let old = HostID.local
-    let uuid = BlockID(host: old, ulid: "125CB03F-19D2-4890-A260-6227E7E1AE54")
-    let at = Stamp(wall: 1, host: old)
-    store.append([Entry(seq: 1, at: at, event: .create(kind: .terminal, title: "sh", path: nil))], to: .block(uuid))
-    store.append([Entry(seq: 1, at: at, event: .register(RegistryEntry(id: uuid, kind: .terminal, created: at, lastSeen: at)))], to: .registry(old))
-    store.closeAll()
-    // A rewrite that renamed the block's file but left the old names in it
-    // (as one from before UUIDs were known did), the session minted.
-    let minted = HostSession.mint()
-    try Data(minted.raw.utf8).write(to: dir.appendingPathComponent("session"))
-    let moved = BlockID(host: minted, ulid: uuid.ulid)
-    try FileManager.default.moveItem(at: logs.appendingPathComponent(ShardID.block(uuid).fileName + ".log"),
-                                     to: logs.appendingPathComponent(ShardID.block(moved).fileName + ".log"))
-    // And a stray log under the old name, made since: set aside, not written over.
-    store.append([Entry(seq: 1, at: at, event: .create(kind: .terminal, title: "stray", path: nil))], to: .block(uuid))
-    store.closeAll()
-    #expect(HostSession.identify(directory: dir, logs: logs).id == minted)
-    let node = Node()
-    let reloaded = LogStore(directory: logs)
-    #expect(Set(reloaded.shards()) == [.block(moved), .registry(minted)])
-    for s in reloaded.shards() { reloaded.load(s, into: node) }
-    #expect(node.block(moved)?.title == "sh")
-    #expect(node.block(moved)?.created.host == minted)
-    #expect(node.registry(minted).blocks[moved]?.id == moved)
-    let names = try FileManager.default.contentsOfDirectory(atPath: logs.path)
-    #expect(names.contains(ShardID.block(uuid).fileName + ".log.superseded"))
-    try? FileManager.default.removeItem(at: dir)
+    try? FileManager.default.removeItem(at: other)
 }
 
 @Test func aCommandsOutputLeavesTheNextPromptOff() {
