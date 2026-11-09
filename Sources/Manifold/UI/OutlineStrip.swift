@@ -256,6 +256,13 @@ final class OutlineStripView: NSView {
         relayout()
     }
 
+    /// The strip's own span: half the view's height, in its middle (a
+    /// short view's 120 points, or all of one shorter than that).
+    var track: (top: CGFloat, height: CGFloat) {
+        let h = min(bounds.height, max(bounds.height / 2, 120))
+        return (((bounds.height - h) / 2).rounded(), h)
+    }
+
     private func relayout() {
         let usable = items.count == outline.items.count ? items : []
         let shownIndices = Set(outline.shown)
@@ -263,12 +270,12 @@ final class OutlineStripView: NSView {
         let admitted = usable.indices.filter { shownIndices.contains($0) }
         let sub = admitted.map { usable[$0] }
         let picked = StripLayout.rest(sub, total: total, focus: focus, policy: policy,
-                                      budget: StripLayout.budget(height: bounds.height),
+                                      budget: StripLayout.budget(height: track.height),
                                       previous: Set(rest.compactMap { admitted.firstIndex(of: $0) }))
-        let placed = StripLayout.place(sub, rest: picked, total: total, height: bounds.height,
+        let placed = StripLayout.place(sub, rest: picked, total: total, height: track.height,
                                        pointer: pointer, magnification: Self.magnification)
         rest = picked.map { admitted[$0] }
-        marks = placed.map { StripMark(index: admitted[$0.index], y: $0.y, scale: $0.scale, extra: $0.extra) }
+        marks = placed.map { StripMark(index: admitted[$0.index], y: track.top + $0.y, scale: $0.scale, extra: $0.extra) }
         draw(animated: pointer != nil)
     }
 
@@ -322,8 +329,8 @@ final class OutlineStripView: NSView {
         }
         // The knob: what shows, where it is in the whole.
         if scrolls, total > shown {
-            let length = max(bounds.height - 2 * StripLayout.pad, 1)
-            let top = StripLayout.pad + CGFloat(offset / total) * length
+            let length = max(track.height - 2 * StripLayout.pad, 1)
+            let top = track.top + StripLayout.pad + CGFloat(offset / total) * length
             let height = max(CGFloat(shown / total) * length, 12)
             knob.frame = NSRect(x: 1, y: top, width: bounds.width - 2, height: height)
             knob.isHidden = false
@@ -358,8 +365,8 @@ final class OutlineStripView: NSView {
             p.addLine(to: CGPoint(x: x + h, y: pointingUp ? y + h / 2 : y - h / 2))
             return p
         }
-        up.path = path(StripLayout.pad / 2, pointingUp: true)
-        down.path = path(bounds.height - StripLayout.pad / 2, pointingUp: false)
+        up.path = path(track.top + StripLayout.pad / 2, pointingUp: true)
+        down.path = path(track.top + track.height - StripLayout.pad / 2, pointingUp: false)
         up.isHidden = previousTarget == nil || items.isEmpty
         down.isHidden = nextTarget == nil || items.isEmpty
         effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -370,8 +377,9 @@ final class OutlineStripView: NSView {
 
     /// Which chevron a height in the strip is on, if one's shown there.
     private func chevron(at y: CGFloat) -> Chevron? {
-        if y < StripLayout.pad, !up.isHidden { return .up }
-        if y > bounds.height - StripLayout.pad, !down.isHidden { return .down }
+        let t = track
+        if y >= t.top - 4, y < t.top + StripLayout.pad, !up.isHidden { return .up }
+        if y > t.top + t.height - StripLayout.pad, y <= t.top + t.height + 4, !down.isHidden { return .down }
         return nil
     }
 
@@ -427,8 +435,8 @@ final class OutlineStripView: NSView {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
 
     private func fraction(at y: CGFloat) -> Double {
-        let length = max(bounds.height - 2 * StripLayout.pad, 1)
-        return Double(min(max((y - StripLayout.pad) / length, 0), 1))
+        let length = max(track.height - 2 * StripLayout.pad, 1)
+        return Double(min(max((y - track.top - StripLayout.pad) / length, 0), 1))
     }
 
     /// The mark nearest a height in the strip, if one's within reach.
@@ -448,7 +456,8 @@ final class OutlineStripView: NSView {
             if let i = hovered, outline.items.indices.contains(i) {
                 let item = outline.items[i]
                 card.show(title: item.title, detail: c == .up ? "Previous" : "Next", lines: preview?(i) ?? [],
-                          code: previewIsCode || item.code, beside: self, at: c == .up ? StripLayout.pad / 2 : bounds.height - StripLayout.pad / 2, pointerAt: y)
+                          code: previewIsCode || item.code, beside: self,
+                          at: c == .up ? track.top + StripLayout.pad / 2 : track.top + track.height - StripLayout.pad / 2, pointerAt: y)
             }
             return
         }
@@ -466,8 +475,17 @@ final class OutlineStripView: NSView {
                   beside: self, at: m.y, pointerAt: y)
     }
 
-    override func mouseEntered(with event: NSEvent) { hover(at: convert(event.locationInWindow, from: nil).y) }
-    override func mouseMoved(with event: NSEvent) { hover(at: convert(event.locationInWindow, from: nil).y) }
+    /// Whether a height is on the strip (its span, and a little round it).
+    private func onStrip(_ y: CGFloat) -> Bool {
+        let t = track
+        return y >= t.top - 6 && y <= t.top + t.height + 6
+    }
+
+    override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseMoved(with event: NSEvent) {
+        let y = convert(event.locationInWindow, from: nil).y
+        hover(at: onStrip(y) ? y : nil)
+    }
     override func mouseExited(with event: NSEvent) {
         guard dragging == nil else { return }
         hover(at: nil)
@@ -489,7 +507,7 @@ final class OutlineStripView: NSView {
         if dragging == nil, !dragged { dragging = (p.y, offset); card.hide() }
         guard let d = dragging else { return }
         dragged = true
-        let rows = Double(p.y - d.grab) / Double(max(1, bounds.height - 2 * StripLayout.pad)) * total
+        let rows = Double(p.y - d.grab) / Double(max(1, track.height - 2 * StripLayout.pad)) * total
         let target = min(max(d.start + rows, 0), max(total - shown, 0))
         onScroll?(target / max(total - shown, 1))
     }
@@ -501,6 +519,7 @@ final class OutlineStripView: NSView {
         recolor()
         if dragged || wasDragging { return }
         if let c = chevron(at: p.y) { return go(c) }
+        guard onStrip(p.y) else { return }
         // On a mark: its item gone to; else, the page there.
         if let m = mark(near: p.y) {
             card.hide()
@@ -517,13 +536,13 @@ final class OutlineStripView: NSView {
             let t = outline.items.indices.contains(m.index) ? outline.items[m.index].title : "?"
             return "\(m.index) y \(Int(m.y)) x\(String(format: "%.2f", m.scale))\(m.extra ? " +" : "")\(hovered == m.index ? " *" : "") \(t.prefix(40))"
         }
-        return "up \(up.isHidden ? "-" : previousTarget.map(String.init) ?? "-") down \(down.isHidden ? "-" : nextTarget.map(String.init) ?? "-") items \(items.count) rest \(rest.count) budget \(StripLayout.budget(height: bounds.height)) pointer \(pointer.map { String(format: "%.2f", $0) } ?? "-") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
+        return "up \(up.isHidden ? "-" : previousTarget.map(String.init) ?? "-") down \(down.isHidden ? "-" : nextTarget.map(String.init) ?? "-") items \(items.count) rest \(rest.count) budget \(StripLayout.budget(height: track.height)) track \(Int(track.top))+\(Int(track.height)) pointer \(pointer.map { String(format: "%.2f", $0) } ?? "-") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
     }
 
     func debug(_ arg: String) -> String {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first {
-        case "hover": if let f = a.dropFirst().first.flatMap(Double.init) { hover(at: StripLayout.pad + CGFloat(f) * max(bounds.height - 2 * StripLayout.pad, 1)) }
+        case "hover": if let f = a.dropFirst().first.flatMap(Double.init) { hover(at: track.top + StripLayout.pad + CGFloat(f) * max(track.height - 2 * StripLayout.pad, 1)) }
         case "off": hover(at: nil)
         case "pick": if let i = a.dropFirst().first.flatMap(Int.init) { outline.pick(i) }
         case "up": go(.up)

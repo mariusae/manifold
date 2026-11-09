@@ -134,3 +134,24 @@ private func total(_ items: [StripItem]) -> Double { (items.last.map { $0.start 
     strip.update(total: 600, offset: 500, shown: 100)
     #expect(strip.nextTarget == nil)
 }
+
+// The strip takes half the view's height, in its middle: its marks, its
+// knob and its chevrons all within it.
+@MainActor
+@Test func theStripIsHalfTheViewInItsMiddle() {
+    let outline = Outline()
+    outline.set((0..<60).map { Outline.Item(title: "Item \($0)", level: $0 % 5 == 0 ? 0 : 1) })
+    let strip = OutlineStripView(outline: outline, policy: .document)
+    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width, height: 600)
+    strip.set((0..<60).map { StripItem(level: $0 % 5 == 0 ? 0 : 1, start: Double($0 * 10), size: 10) })
+    strip.update(total: 600, offset: 0, shown: 100)
+    strip.layoutSubtreeIfNeeded()
+    #expect(strip.track.top == 150 && strip.track.height == 300)
+    #expect(!strip.marks.isEmpty)
+    #expect(strip.marks.allSatisfy { $0.y >= 150 && $0.y <= 450 })
+    #expect(strip.marks.count == StripLayout.budget(height: 300))
+    // A short view: at least 120 points of it.
+    strip.frame.size.height = 180
+    strip.layoutSubtreeIfNeeded()
+    #expect(strip.track.height == 120 && strip.track.top == 30)
+}
