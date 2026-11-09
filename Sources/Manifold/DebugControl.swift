@@ -648,12 +648,12 @@ enum DebugControl {
             try? data.write(to: URL(fileURLWithPath: arg))
             return "wrote \(cg.width)x\(cg.height)"
         case "flights":
-            // ⌥⇥'s and ⌃⇥'s pictures on their way, this moment.
+            // ⌃⇥'s pictures on their way, this moment.
             return wc?.debugFlights ?? "no window"
         case "walk":
             return wc?.debugWalk(arg) ?? "no window"
         case "tilewalk":
-            // ⌥⇥: "tilewalk step|back|show|end|escape|pick <n>|order".
+            // ⌃⇥: "tilewalk step|back|show|end|escape|pick <n>|order".
             return wc?.debugTileWalk(arg) ?? "no window"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.

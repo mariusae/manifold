@@ -68,18 +68,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     /// The places settled on in this window, the latest first: the trail
     /// as this window has it, which every switcher walks at its own scale —
-    /// ⌘` its spaces, ⌥⇥ its tiles, ⌃⇥ the space's (its docked tiles
-    /// too). Those
+    /// ⌘` its spaces, ⌃⇥ the space's tiles (its docked ones too). Those
     /// only passed on a walk aren't in it, and it doesn't wait on a host to
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
     private(set) var settled: [Settled] = []
-    /// ⌥⇥'s walk, while option is held: the places in the order it began
+    /// ⌃⇥'s walk, while control is held: the places in the order it began
     /// with, how far along it is, and what shows its cards if it's held.
     private var tileWalk: (places: [Settled], index: Int, show: DispatchWorkItem)?
     private var tileMonitors: [Any] = []
     private var tileLeaving: NSObjectProtocol?
-    /// ⌥⇥'s cards, once they show, and their pictures on their way.
+    /// ⌃⇥'s cards, once they show, and their pictures on their way.
     private var tileSwitcher: (frame: NSView, column: CardColumnView)?
     private var tileFlights: [CALayer] = []
     let sidebar = SidebarView()
@@ -949,8 +948,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var footerMenu: (view: PopMenu?, which: FooterMenu) = (nil, .threads)
     var footerMonitor: Any?
     var tilesShowAll = false
-    /// ⌥⇥'s walk through the spaces: their order, the one chosen; its
-    /// cards, shown; what shows them, and what watches ⌥ and ⎋.
+    /// ⌘`'s walk through the spaces: their order, the one chosen; its
+    /// cards, shown; what shows them, and what watches ⌘ and ⎋.
     var spaceSwitch: (order: [BlockID], index: Int)?
     var spaceSwitcher: SpaceSwitcherView?
     var spaceSwitchShow: DispatchWorkItem?
@@ -3350,21 +3349,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if settled.count > 200 { settled.removeLast() }
     }
 
-    // MARK: ⌥⇥
+    // MARK: ⌃⇥
 
-    /// ⌥⇥ (⌥⇧⇥ back): the tiles most recently settled on first, in every
-    /// space — the trail ⌘` walks by space, tile by tile. As ⌘⇥ is: let
-    /// go quickly, and it's gone to the one before (back and forth between
-    /// two); held a moment, the cards come, each ⌥⇥ a step further, and
-    /// letting go of option goes to the one chosen — its card becoming its
-    /// tile, in its space. Those passed on the way aren't settled on;
-    /// Escape leaves things be. From the menu it's one step.
-    @objc func walkTiles(_ sender: Any?) { walkTiles(back: false) }
-    @objc func walkTilesBack(_ sender: Any?) { walkTiles(back: true) }
+    /// ⌃⇥ (⌃⇧⇥ back): this space's tiles — those in the grid and those
+    /// docked (§3.1) — the latest settled on first. As ⌘⇥ is: let go
+    /// quickly, and it's gone to the one before (back and forth between
+    /// two); held a moment, the cards come, each ⌃⇥ a step further, and
+    /// letting go of control goes to the one chosen — its card becoming
+    /// its tile (a docked one going back where it was). Those passed on the
+    /// way aren't settled on; Escape leaves things be. From the menu it's
+    /// one step. (⌥⇥ is left unbound.)
+    @objc func walkSpaceTiles(_ sender: Any?) { walkTiles(back: false) }
+    @objc func walkSpaceTilesBack(_ sender: Any?) { walkTiles(back: true) }
 
-    /// The key a tile walk is held on: option (⌥⇥, every space), control
-    /// (⌃⇥, this space's).
-    private var tileWalkKey: NSEvent.ModifierFlags = .option
+    /// The key a tile walk is held on.
+    private let tileWalkKey: NSEvent.ModifierFlags = .control
 
     /// The tiles of the trail, the latest first, from where the window is:
     /// those settled on here, then the hosts' trail, then the rest of this
@@ -3391,7 +3390,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     static let tileWalkLimit = 24
 
-    private func walkTiles(back: Bool, inSpace: Bool = false) {
+    private func walkTiles(back: Bool) {
         let pressed = Date()
         let step = back ? -1 : 1
         if var w = tileWalk {
@@ -3412,16 +3411,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 return
             }
         }
-        tileWalkKey = inSpace ? .control : .option
-        let places = tileTrail(space: inSpace ? selected : nil)
+        let places = tileTrail(space: selected)
         // Where the walk begins: the focused tile, or (none) before the first.
         let start = places.first.map { $0.tile == arrangement?.focused } == true ? 0 : -1
         guard places.count > (start == 0 ? 1 : 0) else { return NSSound.beep() }
         let n = places.count
         let index = ((start + step) % n + n) % n
         guard NSEvent.modifierFlags.contains(tileWalkKey) || debugHeld else { return go(to: places[index]) }
-        // As ⌃⇥'s: the cards made now, out of sight, shown in a moment if
-        // option's still held, and in place when the wait's done.
+        // The cards made now, out of sight, shown in a moment if control's
+        // still held, and in place when the wait's done.
         let work = DispatchWorkItem { [weak self] in self?.revealTileSwitcher(settledBy: pressed + Self.switcherSettled) }
         tileWalk = (places, index, work)
         watchTileWalk()
@@ -3430,7 +3428,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (pressed + Self.switcherDelay).timeIntervalSinceNow), execute: work)
     }
 
-    /// ⌥⇥'s cards made out of sight: what shows them, unfolding to be in
+    /// ⌃⇥'s cards made out of sight: what shows them, unfolding to be in
     /// place by the time it's given.
     private var tileUnseen: ((Date) -> Void)?
     /// When they last began unfolding (media time).
@@ -3702,31 +3700,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Debugging: when ⌥⇥'s cards were last asked for, shown, and in place.
+    /// Debugging: when ⌃⇥'s cards were last asked for, shown, and in place.
     var debugTilesPressed: Date?
     var debugTilesShown: Date?
     var debugTilesSettled: Date?
 
-    /// "tilewalk step|back|end|escape|order|pick <n>": ⌥⇥ pressed with
+    /// "tilewalk step|back|end|escape|order|pick <n>": ⌃⇥ pressed with
     /// option held, option let go, Escape, a card clicked; or the walk and
-    /// ⌥⇥'s order.
+    /// ⌃⇥'s order.
     func debugTileWalk(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         switch w.first ?? "" {
         case "step", "back", "space", "spaceback":
-            // "space", "spaceback": ⌃⇥'s, among this space's tiles.
+            // ("space", "spaceback": the same, as they were once another walk's.)
             debugHeld = true
             if tileWalk == nil { debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil }
-            walkTiles(back: w.first == "back" || w.first == "spaceback", inSpace: w.first?.hasPrefix("space") == true)
+            walkTiles(back: w.first == "back" || w.first == "spaceback")
         case "again":
-            // "tilewalk again <seconds>": ⌥⇥ pressed, then ⇥ again that much later.
+            // "tilewalk again <seconds>": ⌃⇥ pressed, then ⇥ again that much later.
             debugHeld = true
             debugTilesPressed = Date(); debugTilesShown = nil; debugTilesSettled = nil
             walkTiles(back: false)
             let after = w.dropFirst().first.flatMap { Double($0) } ?? 0.03
             DispatchQueue.main.asyncAfter(deadline: .now() + max(0, (debugTilesPressed! + after).timeIntervalSinceNow)) { [weak self] in self?.walkTiles(back: false) }
         case "tap":
-            // "tilewalk tap <seconds>": ⌥⇥ pressed, option let go that much later.
+            // "tilewalk tap <seconds>": ⌃⇥ pressed, control let go that much later.
             // (Timed from the press, as a key let go is, not from when the
             // cards are made.)
             debugHeld = true
@@ -3755,16 +3753,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") } ?? "-") cards=\(tileSwitcher != nil) order=\(tileTrail().prefix(8).map(named).joined(separator: ",")) space=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
     }
 
-    // MARK: ⌃⇥
-
-    /// ⌃⇥ (⌃⇧⇥ back): ⌥⇥'s walk, held on control, among this space's
-    /// tiles — those in the grid and those docked (§3.1), the latest
-    /// settled on first. A tap goes back and forth between two; a docked
-    /// one settled on goes back where it was.
-    @objc func walkSpaceTiles(_ sender: Any?) { walkTiles(back: false, inSpace: true) }
-    @objc func walkSpaceTilesBack(_ sender: Any?) { walkTiles(back: true, inSpace: true) }
-
-    /// ⌃⇥ (⌥⇥) held, its cards are in place this long after it's pressed:
+    /// ⌃⇥ held, its cards are in place this long after it's pressed:
     /// settled by then, not starting — but long enough that they're seen
     /// coming out of where they are, which says what they are.
     static let switcherSettled: TimeInterval = 0.27
@@ -5942,11 +5931,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             if event.keyCode == 50 {
                 guard mods == .command || mods == [.command, .shift] else { return event }
                 if mods.contains(.shift) { self.walkTabsBack(nil) } else { self.walkTabs(nil) }
-                return nil
-            }
-            // ⌥⇥, the trail's tiles (taken from a terminal, as ⌃⇥ is).
-            if event.keyCode == 48, mods == .option || mods == [.option, .shift] {
-                if mods.contains(.shift) { self.walkTilesBack(nil) } else { self.walkTiles(nil) }
                 return nil
             }
             guard mods == .control || mods == [.control, .shift] else { return event }
@@ -10716,16 +10700,8 @@ extension MainWindowController: TerminalViewDelegate {
         let context = "turn \(turn)"
         let (id, made) = turnBlock(turn, of: agent)
         if made { return show(id, lens: .output, place, kind: .opened, context: context) }
-        showTurnWhenMade(id, place: place, context: context)
-    }
-
-    /// `context`: the link the host made for it ("turn N"), said again —
-    /// a link of another context would take its place, and the turn's
-    /// block then not be found to show again.
-    private func showTurnWhenMade(_ id: BlockID, place: Where, context: String) {
-        whenMade(id, what: "the turn", made: { [weak self] in self?.hosts.block(id)?.output?.markdown != nil }) { [weak self] in
-            self?.show(id, lens: .output, place, kind: .opened, context: context)
-        }
+        showWhenMade(id, lens: .output, place: place, context: context, what: "the turn",
+                     made: { [weak self] in self?.hosts.block(id)?.output?.markdown != nil })
     }
 
     /// Changes in This Turn: the working tree between the turn's two
@@ -10774,13 +10750,16 @@ extension MainWindowController: TerminalViewDelegate {
     }
 
     /// A block the host is making, shown as soon as it exists here.
-    /// `context`: the link the host made for it, said again (see showTurnWhenMade).
-    func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it") {
+    /// `context`: the link the host made for it, said again — a link of
+    /// another context would take its place, and the block then not be
+    /// found to show again. `made`: when it counts as made (a turn, once
+    /// its transcript is in); by default, once the block exists.
+    func showWhenMade(_ id: BlockID, lens: Lens, place: Where, context: String? = nil, what: String = "it", made: (() -> Bool)? = nil) {
         let place = inNewColumn ? Where.beside : place
         inNewColumn = false
         // In the space it was asked for in, wherever you are once it's made.
         let space = selected
-        whenMade(id, what: what, made: { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
+        whenMade(id, what: what, made: made ?? { [weak self] in self?.hosts.block(id) != nil }) { [weak self] in
             guard let self else { return }
             self.show(id, lens: lens, place, kind: .opened, context: context,
                       in: space.flatMap { self.hosts.arrangement($0) != nil && self.allWorkspaces.contains($0) ? $0 : nil })

@@ -839,7 +839,7 @@ final class GridView: NSView, NSDraggingSource {
         }
         layoutShadows(frameNow, gliding: gliding)
         warpIfGrown()
-        // A tile chosen in the switcher (⌥⇥, ⌃⇥), once it's laid out:
+        // A tile chosen in the switcher (⌃⇥), once it's laid out:
         // grown from its card into its place.
         if let m = pendingArrival {
             if Date().timeIntervalSince(m.at) > 1 { land() } else if frameNow[m.id].map({ $0.height > 0 }) == true, !pushedOut(m.id) {
@@ -1359,7 +1359,7 @@ final class GridView: NSView, NSDraggingSource {
         /// Over (positive) or under the rest: a pile's order.
         var z: CGFloat = 0
         /// What a picture shows at the far smaller end (a tile become a card
-        /// about as wide as it, ⌃⇥'s and ⌥⇥'s): this much of its width — seen
+        /// about as wide as it, ⌃⇥'s): this much of its width — seen
         /// to shrink as it goes, as Overview's tiles do, rather than only
         /// be cut off from below.
         var shrink: CGFloat = 1
@@ -1978,7 +1978,7 @@ final class GridView: NSView, NSDraggingSource {
         }
     }
 
-    // MARK: A card becoming its tile (⌥⇥, ⌃⇥)
+    // MARK: A card becoming its tile (⌃⇥)
 
     /// Pictures on their way, and the tiles kept out of sight meanwhile:
     /// all put back at once when the next switch comes before they're
@@ -2119,7 +2119,7 @@ final class GridView: NSView, NSDraggingSource {
         flying.append(w)
     }
 
-    /// A card chosen elsewhere (⌥⇥'s), where it is in `view`'s terms,
+    /// A card chosen elsewhere (⌃⇥'s), where it is in `view`'s terms,
     /// becoming tile `id` once the tile's laid out where it goes — the tile
     /// out of sight till then (a second at most).
     func becomeTile(_ id: PlacementID, from card: GridView.Pictured, picture: CGImage?, at r: NSRect, in view: NSView) {

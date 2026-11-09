@@ -612,7 +612,7 @@ destination:
    a time, a tap going further back rather than back and forth. What
    the window settled on comes first, ahead of the hosts' trail, so a
    switch doesn't wait on a host to hear of it.
-   ⌃⇥ or ⌥⇥ held, its cards are in place 270 ms after the
+   ⌃⇥ held, its cards are in place 270 ms after the
    press: made out of sight as it's pressed (some 25 ms), shown 120 ms on
    and unfolding in the 150 ms left — long enough to be seen coming out
    of where they are, which says what they are (an earlier 150 ms, shown
@@ -2890,10 +2890,8 @@ purpose — set down so a later audit reads them as choices, not slips.
 - **⌃⇥ walks the space's tiles,** docked ones too, as a browser's tabs,
   in every view, a terminal's too; a quick release switches without
   showing cards, as ⌘⇥ does.
-- **⌥⇥ walks the trail's tiles,** across spaces, as ⌘` walks its
-  spaces: free on the Mac, and taken from a terminal as ⌃⇥ is (Meta-Tab,
-  with Option as Meta). ⌃\` was the other choice, but a terminal's ⌃\` is
-  NUL (Emacs's set-mark), and ⌥\` is the grave accent's dead key.
+- **⌥⇥ is left unbound.** It once walked every space's tiles; ⌘`'s
+  cards and ⌃⇥ cover that, and a terminal keeps Meta-Tab.
 - **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-
   stays readline's and Emacs's undo; the mouse's back and forward buttons
   work there. **⌘[ ⌘]** are a tile's own history.
@@ -2982,7 +2980,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   card (⌃⇥, Overview) is one shape going from the one's place and size
   to the other's, what it shows scaled to its width from its top (cut,
   never stretched) and changing on the way — shrinking to some 60% of
-  that, for a card about as wide as its tile (⌃⇥'s, ⌥⇥'s), so the tile
+  that, for a card about as wide as its tile (⌃⇥'s), so the tile
   is seen to shrink into it rather than only be cut off from below, and a
   docked tile's card comes out of its row in the sidebar and goes back
   into it — nothing just fades in; the

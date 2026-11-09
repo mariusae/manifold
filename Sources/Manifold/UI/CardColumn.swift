@@ -276,7 +276,7 @@ final class CardTitle: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// A switcher's tiles (⌥⇥, ⌃⇥) as a column of their summary cards, the
+/// A switcher's tiles (⌃⇥) as a column of their summary cards, the
 /// latest settled on first, scrolled through, the one chosen ringed. ⇥
 /// moves the choice; once the pointer moves over the cards, it chooses
 /// what it's over; a card clicked is gone to.

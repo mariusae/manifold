@@ -75,7 +75,7 @@ parts from the Mac's conventions on purpose.
   under (else over the one it was over, else a column of its own where
   its was, as wide), taking its room back from the tiles that took it.
   **⌃⇥** walks the space's tiles, docked ones too, the latest settled on
-  first, as ⌥⇥ walks every space's: let go quickly and it goes to the
+  first: let go quickly and it goes to the
   one before, so a tap goes back and forth between two (⌃⇧⇥, the
   farthest); held a moment, their summary cards come, a docked one's out
   of its row in the sidebar, each ⇥ a card further, and letting go goes
@@ -295,8 +295,7 @@ parts from the Mac's conventions on purpose.
   card clicked goes there). With one space, ⌘\` goes round the app's
   windows, as macOS has it. ⌃⇥ is the space's tiles; ⌥⇥ is free.
   Back (⌃-) is the other way over it: a stack of every place, within
-  blocks too, walked one step at a time. ⌥⇥ is taken from a terminal
-  too, as ⌃⇥ is (Meta-Tab, with Option as Meta).
+  blocks too, walked one step at a time.
 - Drag a tile by its bar: between two tiles to put it there, near a
   column's side for a new column there, onto a space in the
   sidebar for its active column, or between spaces for one of
