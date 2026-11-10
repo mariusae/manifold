@@ -1940,6 +1940,15 @@ final class Server {
             return
         }
         attachedEnv = req.env
+        if sessions[id] == nil, state.hasExited, req.start == false {
+            // Its shell exited: shown as it was, ended — its transcript (the
+            // line saying so at its end), and no more — till a new one's asked for.
+            let history = (try? Data(contentsOf: historyFile(id))) ?? Data()
+            conn.send(Frame(.data, history))
+            conn.send(Frame(.replayDone, Data([1])))
+            conn.close()
+            return
+        }
         guard let session = sessions[id] ?? startSession(id, state, cols: req.cols, rows: req.rows, env: req.env) else {
             conn.close()
             return
@@ -1966,6 +1975,7 @@ final class Server {
         guard let s = Session(id: id, cwd: state.cwd, cols: cols, rows: rows,
                               env: env, history: history, command: state.command,
                               shell: node.desk(host).preferences.shell, queue: queue) else { return nil }
+        s.exitedWhat = Self.exitedWhat(state)
         s.onExit = { [weak self] status in self?.sessionExited(id, status: status) }
         s.onTitle = { [weak self] title in
             guard self?.node.block(id)?.terminal?.title != title else { return }
@@ -2449,10 +2459,18 @@ final class Server {
         }
     }
 
+    /// What exited, in the line across its transcript: an agent's
+    /// command by its name; else the shell.
+    static func exitedWhat(_ state: TerminalState?) -> String? {
+        guard let c = state?.command, let first = c.split(separator: " ").first else { return nil }
+        return (String(first) as NSString).lastPathComponent
+    }
+
     private func sessionExited(_ id: BlockID, status: Int32) {
         guard let s = sessions.removeValue(forKey: id) else { return }
         lastSizes[id] = s.size
-        // Its transcript whole, to show as it was until a shell starts again.
+        // Its transcript whole (one that exited of itself, the line saying
+        // so at its end), to show as it was until a shell starts again.
         try? FileManager.default.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
         try? s.takeHistory().write(to: historyFile(id), options: .atomic)
         if s.endedForIdleness {

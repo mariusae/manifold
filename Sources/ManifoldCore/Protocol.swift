@@ -682,6 +682,11 @@ public struct AttachRequest: Codable, Sendable {
     /// one that arrived written twice.
     public var inputID: String?
     public var input: InputResume?
+    /// False: a terminal whose shell exited (`TerminalState.hasExited`)
+    /// isn't given a new one — its transcript is sent as it was, and the
+    /// stream closed; true (or unsaid, as an app from before says it), a
+    /// shell is started if none is running.
+    public var start: Bool?
 
     public init(block: BlockID, cols: UInt16, rows: UInt16, env: [String: String], resume: Bool = false, ttyModes: Bool = false) {
         self.block = block

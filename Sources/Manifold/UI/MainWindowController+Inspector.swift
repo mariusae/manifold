@@ -786,6 +786,7 @@ extension MainWindowController {
             var notes: [String] = []
             if let status = StatusGlyph.remark(b) { notes.append(status) }
             if b == nil { notes.append("not attached") }
+            if let t = b?.terminal, t.hasExited { notes.append(TerminalView.exitedWords(t.exitStatus).capitalizingFirst) }
             let n = OrgNode(id: "\(aid)/tile/\(p.id)", block: p.block, title: title,
                             symbol: b.map { Theme.symbolName(for: $0) } ?? "questionmark.square.dashed",
                             detail: notes.joined(separator: " · "))

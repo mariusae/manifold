@@ -2021,3 +2021,19 @@ private final class Seen: @unchecked Sendable {
     c.apply(.heights([x.id: 1, y.id: 0]))
     #expect(c.isDocked(y.id) && c.columns[0].map(\.id) == [x.id])
 }
+
+// A shell that exits of itself leaves its terminal ended — when, and with
+// what status — till a new one starts; one ended for idling is dormant,
+// not exited.
+@Test func aShellThatExitsLeavesItsTerminalEndedTillANewOneStarts() {
+    var t = TerminalState()
+    t.apply(.shell(.started(pid: 7)), at: stamp())
+    #expect(!t.hasExited)
+    let at = stamp()
+    t.apply(.shell(.ended(status: 3)), at: at)
+    #expect(t.hasExited && t.exitStatus == 3 && t.exitedAt == at)
+    t.apply(.shell(.started(pid: 8)), at: stamp())
+    #expect(!t.hasExited && t.exitStatus == nil)
+    t.apply(.shell(.dormant(idleSeconds: 60)), at: stamp())
+    #expect(!t.hasExited)
+}

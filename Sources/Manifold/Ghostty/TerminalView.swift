@@ -5,6 +5,9 @@ import ManifoldCore
 protocol TerminalViewDelegate: AnyObject {
     func terminalDidFocus(_ view: TerminalView)
     func terminalDidClose(_ view: TerminalView)
+    /// Its shell exited, and a new one's wanted (`start`), or started
+    /// elsewhere: the view made again, attached to it.
+    func terminalRestart(_ view: TerminalView, start: Bool)
     /// A link in the terminal was opened (⌘-clicked): a URL, or a path;
     /// `over`: ⌥ was held too, for what opens to go over the terminal.
     func terminal(_ view: TerminalView, open target: String, over: Bool)
@@ -116,7 +119,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// if it's back already.
     private func linkClosed(linkWent: Bool) {
         if !linkWent {
-            surfaceClosed()
+            shellExited()
         } else if link.linkUp {
             link.resume()
         } else {
@@ -134,9 +137,59 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     required init?(coder: NSCoder) { fatalError() }
 
+    // MARK: Its shell exited
+
+    /// Its shell exited of itself (`exit`, a crash): the stream closed, and
+    /// none has started since. Shown as it was — the line saying so across
+    /// its end — dimmed, a banner over it; Return, or the banner's button,
+    /// starts a new one under it.
+    private(set) var exited = false
+    private var exitBanner: ExitBanner?
+    /// The block's shell, as the window last said: its process; the status
+    /// it exited with, if it did.
+    private var shellPid: Int32?
+    private var exitStatus: Int32?
+    /// The process it had when its stream closed: another's after, a new
+    /// shell started elsewhere (another Mac, `mani run`), shown here too.
+    private var exitedPid: Int32?
+
+    func shell(pid: Int32?, exited status: Int32?) {
+        shellPid = pid
+        exitStatus = status
+        exitBanner?.status = status
+        if exited, let pid, pid != exitedPid { delegate?.terminalRestart(self, start: false) }
+    }
+
+    /// How it ended, in a few words: "exited", "exited with status 1",
+    /// "ended by signal 9".
+    static func exitedWords(_ status: Int32?) -> String {
+        guard let s = status, s != 0 else { return "exited" }
+        return s > 128 ? "ended by signal \(s - 128)" : "exited with status \(s)"
+    }
+
+    private func shellExited() {
+        guard !exited else { return }
+        exited = true
+        exitedPid = shellPid
+        alphaValue = 0.6
+        let b = exitBanner ?? ExitBanner(agent: isAgent)
+        b.status = exitStatus
+        b.onRestart = { [weak self] in self?.restartShell() }
+        exitBanner = b
+        layoutScroller()
+        updateDots()
+    }
+
+    /// A new shell, under the transcript as it was.
+    func restartShell() {
+        guard exited else { return }
+        delegate?.terminalRestart(self, start: true)
+    }
+
     /// Frees the surface, and closes its stream; the session itself lives
     /// on in the server.
     func destroy() {
+        exitBanner?.removeFromSuperview()
         finder.hide()
         scrubber.removeFromSuperview()
         dots.removeFromSuperview()
@@ -530,6 +583,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         if glow.superview !== parent { parent.addSubview(glow) }
         glow.frame = frame
         glow.isHidden = isHidden
+        if let b = exitBanner {
+            if b.superview !== parent { parent.addSubview(b) }
+            b.layer?.zPosition = 6
+            let size = b.wanted
+            b.frame = NSRect(x: (frame.midX - size.width / 2).rounded(), y: frame.minY + 14, width: size.width, height: size.height)
+            b.isHidden = isHidden
+        }
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
         scrubber.frame = OutlineStripView.frame(right: frame.maxX, y: frame.minY, height: frame.height)
@@ -573,7 +633,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// then there. None while a command runs, or another screen shows.
     private func updateOutcome(cell: CGFloat) {
         dots.set(outcome: {
-            guard !isAgent, let c = commands.last, !c.isRunning, let at = located[c.id], let info = cellInfo,
+            guard !isAgent, !exited, let c = commands.last, !c.isRunning, let at = located[c.id], let info = cellInfo,
                   info.flags & 1 == 0, scrollbar.len > 0 else { return nil }
             // The cursor's row on the screen: the active area is its last rows.
             let row = scrollbar.total - scrollbar.len + Int(info.cursor_y)
@@ -926,7 +986,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     var debugScrubber: String {
-        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor) pad \(cellInfo.map { "\(Int($0.pad_left)),\(Int($0.pad_top))" } ?? "?")\n" + dots.debugDots
+        (exited ? "exited \(exitStatus.map(String.init) ?? "?") " : "") + "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor) pad \(cellInfo.map { "\(Int($0.pad_left)),\(Int($0.pad_top))" } ?? "?")\n" + dots.debugDots
     }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
@@ -1672,7 +1732,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             self.delegate?.terminal(self, setCopyOnSelect: !Self.copyOnSelect)
         }
         item.state = Self.copyOnSelect ? .on : .off
-        return [item]
+        guard exited else { return [item] }
+        // Its shell exited: a new one, as Return and the banner start.
+        let restart = ClosureMenuItem(isAgent ? "Start Again" : "New Shell", symbol: "arrow.clockwise") { [weak self] in self?.restartShell() }
+        return [restart, item]
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -1832,6 +1895,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Keyboard
 
     override func keyDown(with event: NSEvent) {
+        if exited {
+            // Return: a new shell; nothing else has anywhere to go.
+            if event.keyCode == 36 || event.keyCode == 76 { restartShell() } else { NSSound.beep() }
+            return
+        }
         guard let surface else {
             interpretKeyEvents([event])
             return
@@ -2261,4 +2329,62 @@ extension TerminalView: DropTaking {
             for b in blocks { self.delegate?.terminal(self, linkedFrom: b) }
         }
     }
+}
+
+
+/// Over a terminal whose shell exited: so, how, and a button for a new
+/// shell (as Return is). A capsule on the panel's ground, in the terminal's
+/// parent, not dimmed with it.
+final class ExitBanner: NSView {
+    private let label = NSTextField(labelWithString: "")
+    private let button = FlatButton("New Shell", symbol: "arrow.clockwise", font: UIType.detail)
+    private let agent: Bool
+    var onRestart: (() -> Void)?
+    var status: Int32? { didSet { update() } }
+
+    init(agent: Bool) {
+        self.agent = agent
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = Radius.capsule(30)
+        layer?.borderWidth = 1
+        themed {
+            $0.layer?.backgroundColor = Theme.panel.cgColor
+            $0.layer?.borderColor = EdgeColor.hairline.cgColor
+        }
+        label.font = UIType.detail
+        label.textColor = Theme.secondaryText
+        button.target = self
+        button.action = #selector(restart)
+        button.toolTip = agent ? "Start it again (Return)" : "Start a new shell here (Return)"
+        if agent { button.title = "Start Again" }
+        addSubview(label)
+        addSubview(button)
+        update()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func update() {
+        let words = TerminalView.exitedWords(status)
+        label.stringValue = (agent ? "Agent " : "Shell ") + words
+        label.textColor = (status ?? 0) == 0 ? Theme.secondaryText : Theme.statusError
+        needsLayout = true
+    }
+
+    var wanted: NSSize {
+        NSSize(width: 14 + label.intrinsicContentSize.width + 10 + button.intrinsicContentSize.width + 6, height: 30)
+    }
+
+    override func layout() {
+        super.layout()
+        let lw = label.intrinsicContentSize.width, lh = label.intrinsicContentSize.height
+        label.frame = NSRect(x: 14, y: ((bounds.height - lh) / 2).rounded(), width: lw, height: lh)
+        let b = button.intrinsicContentSize
+        button.frame = NSRect(x: bounds.width - b.width - 6, y: ((bounds.height - b.height) / 2).rounded(), width: b.width, height: b.height)
+    }
+
+    @objc private func restart() { onRestart?() }
+
+    var debugText: String { label.stringValue + " | " + button.title }
 }

@@ -243,6 +243,15 @@ public struct TerminalState: Codable, Equatable, Sendable {
     /// The commands the shell ran (§3.8), the last `commandLimit` of them:
     /// what the scrubber marks.
     public var commands: [ShellCommand]?
+    /// When its shell (or an agent's command) exited of itself — `exit`
+    /// typed, a crash — and with what status: the terminal stays as it
+    /// was, ended, till a new shell is asked for. Not set for one ended
+    /// for lying idle (dormant), nor with its server.
+    public var exitedAt: Stamp?
+    public var exitStatus: Int32?
+
+    /// Its shell exited, and none has started since.
+    public var hasExited: Bool { exitedAt != nil && pid == nil }
 
     public static let commandLimit = 1000
 

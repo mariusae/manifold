@@ -41,6 +41,12 @@ struct Shown: Equatable {
     var place: String? { block?.place }
     var isDirty: Bool { block?.text?.isDirty == true }
     var isDormant: Bool { block?.terminal?.dormantSince != nil && block?.terminal?.pid == nil }
+    /// Its shell exited, none started since: said after its name, as
+    /// "(exited)", with the status if it wasn't 0.
+    var exitedWords: String? {
+        guard let t = block?.terminal, t.hasExited else { return nil }
+        return TerminalView.exitedWords(t.exitStatus)
+    }
 
     private func kindOf(_ lens: Lens) -> BlockKind {
         switch lens {

@@ -2551,7 +2551,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: IconHandle.markSize)
         }
-        let title = shown.title + (shown.isDormant ? "  (dormant)" : "")
+        let title = shown.title + (shown.isDormant ? "  (dormant)" : shown.exitedWords.map { "  (\($0))" } ?? "")
         // Edited and unsaved: a dot after the name, amber when the file
         // changed on disk under the edits (the menu says what to do).
         let stale = shown.block?.text?.stale == true

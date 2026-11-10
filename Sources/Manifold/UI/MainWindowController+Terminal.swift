@@ -231,6 +231,17 @@ extension MainWindowController: TerminalViewDelegate {
         focus(view.placement)
     }
 
+    func terminalRestart(_ view: TerminalView, start: Bool) {
+        guard views[view.placement] === view else { return }
+        // Made again: attached afresh — its transcript, then the new shell
+        // under it (asked for, if `start`).
+        if start { restartingShells.insert(view.block) }
+        views.removeValue(forKey: view.placement)
+        view.removeFromSuperview()
+        view.destroy()
+        render()
+    }
+
     func terminalDidClose(_ view: TerminalView) {
         guard views[view.placement] === view else { return }
         views.removeValue(forKey: view.placement)

@@ -717,14 +717,20 @@ extension TerminalState {
                 busy = false
                 dormantSince = nil
                 dormantAfter = nil
-            case .ended:
+                exitedAt = nil
+                exitStatus = nil
+            case let .ended(status):
                 pid = nil
                 busy = false
+                exitedAt = at
+                exitStatus = status
             case let .dormant(idle):
                 pid = nil
                 busy = false
                 dormantSince = at
                 dormantAfter = idle
+                exitedAt = nil
+                exitStatus = nil
             case let .busy(b):
                 busy = b
             }

@@ -130,6 +130,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
     var recentlyClosed: Set<BlockID> = []
+    /// Terminals whose shell exited, a new one asked for: their views'
+    /// next attach starts it (`terminalRestart`).
+    var restartingShells: Set<BlockID> = []
     private(set) var sidebarShown = false {
         // The copies' badge only while the sidebar (which shows them) is away.
         didSet { if sidebarShown != oldValue { transfersChanged() } }
@@ -748,6 +751,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         case .terminal, .agent:
             let t = TerminalView(placement: p.id, block: p.block, client: hosts.client(of: p.block))
             t.delegate = self
+            if restartingShells.remove(p.block) != nil { t.link.restartShell() }
             configure(t, for: p)
             t.readingPassword = SecureInput.shared.reading.contains(p.block)
             t.setSidebar(viewState(of: p)["outline"] == "1")
@@ -935,6 +939,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// What a terminal's view shows of its block, said again at each render.
     private func configure(_ t: TerminalView, for p: Placement) {
         let terminal = hosts.block(p.block)?.terminal
+        t.shell(pid: terminal?.pid, exited: terminal?.hasExited == true ? terminal?.exitStatus ?? 0 : nil)
         t.commands = terminal?.commands ?? []
         t.isAgent = isAgent(p)
         t.turns = Set(terminal?.turns?.map(\.id) ?? [])

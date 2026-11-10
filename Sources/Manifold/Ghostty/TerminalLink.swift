@@ -55,6 +55,12 @@ final class TerminalLink {
     private var outputNoted = false
     /// On `queue`.
     private var sawOutput = false
+    /// On `lock`: its shell exited (the stream closed of itself): not
+    /// attached again — a new size, the host back — till a new shell is
+    /// asked for (`restartShell`).
+    private var holding = false
+    /// On `lock`: the next attach asks for a shell, if its last exited.
+    private var startShell = false
 
     /// When a keystroke went up that no output has answered yet (under the
     /// lock: typed on Ghostty's thread, answered on `queue`).
@@ -182,7 +188,7 @@ final class TerminalLink {
         let send: MuxStream? = lock.withLock {
             let changed = size != (cols, rows)
             size = (cols, rows)
-            if !attached, !attaching {
+            if !attached, !attaching, !holding {
                 attaching = true
                 // Attached before: a resume, as any attach after the first
                 // is (§ M17) — what it shows kept, what was typed sent.
@@ -249,11 +255,19 @@ final class TerminalLink {
 
     // MARK: The stream
 
+    /// The next attach asks for a new shell (its last exited).
+    func restartShell() {
+        lock.withLock {
+            holding = false
+            startShell = true
+        }
+    }
+
     /// The host's link is back: attached again, the terminal as it is —
     /// what it showed kept, caught up with the screen now.
     func resume() {
         let go: (Bool, resume: Bool) = lock.withLock {
-            guard !attached, !attaching else { return (false, false) }
+            guard !attached, !attaching, !holding else { return (false, false) }
             attaching = true
             return (true, everAttached)
         }
@@ -281,6 +295,8 @@ final class TerminalLink {
                 self?.stream = nil
                 self?.attached = false
                 self?.acceptInput = false
+                // The shell gone, not the link: held, as it was.
+                if !linkWent { self?.holding = true }
             }
             DispatchQueue.main.async { self?.onClosed?(linkWent) }
         }
@@ -298,9 +314,12 @@ final class TerminalLink {
             inputSent = inputEnd
             return (self.size, resume ? input : nil)
         }
+        let start: Bool = lock.withLock { defer { startShell = false }; return startShell }
         var req = AttachRequest(block: block, cols: size.cols, rows: size.rows, env: Self.environment, resume: resume, ttyModes: true)
         req.inputID = inputID
         req.input = input
+        // A shell that exited isn't started again unless asked.
+        req.start = start
         stream.send(.message(ClientMessage.attach(req)))
     }
 

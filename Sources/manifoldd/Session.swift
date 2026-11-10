@@ -161,6 +161,20 @@ final class Session {
         return Data(line.utf8)
     }
 
+    /// What exited, for the line saying so: an agent's command's name; nil, the shell.
+    var exitedWhat: String?
+
+    /// What's written across the transcript where its shell (or an agent's
+    /// command, `what`) exited of itself: with what status, and when.
+    static func exitedSeam(_ what: String?, status: Int32, at: Date) -> Data {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        let how = status == 0 ? "exited" : status > 128 ? "ended by signal \(status - 128)" : "exited with status \(status)"
+        let line = "\r\n\u{1b}[0m\u{1b}[2m── \(what ?? "shell") \(how) · \(f.string(from: at)) ──\u{1b}[0m\r\n"
+        return Data(line.utf8)
+    }
+
     /// Hangs up on the shell, as closing a terminal window does; one that
     /// ignores it is killed a while on. Until it has exited the session
     /// keeps itself — the server lets go of it at once (a block deleted)
@@ -598,10 +612,20 @@ final class Session {
         }
         if !readSource.isCancelled { readSource.cancel() }
         log("session \(id) exited: status \(status)")
+        // Its exit code as a shell says it: a signal's, 128 and its number.
+        let code: Int32 = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
+        if !endedForIdleness {
+            // A line across the transcript saying so — to those attached
+            // now, and kept with it for any later.
+            let line = Self.exitedSeam(exitedWhat, status: code, at: Date())
+            replay.append(line)
+            unsaved = true
+            passOn(line)
+        }
         let conns = attachments
         attachments = []
         for conn in conns { conn.close() }
-        onExit?(status)
+        onExit?(code)
         keptUntilExit = nil
     }
 
