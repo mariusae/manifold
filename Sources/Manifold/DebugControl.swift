@@ -834,6 +834,21 @@ enum DebugControl {
         case "graphcount":
             guard let wc else { return "no window" }
             return wc.hosts.all.map { "\(wc.hosts.label(of: $0.host)): \($0.node.links($0.host).links.count) links, \($0.node.registry($0.host).trail.count) steps" }.joined(separator: "\n")
+        case "handimage":
+            // "handimage <symbol> <out.png>": the pointing hand badged with it, 4×.
+            let w = arg.split(separator: " ").map(String.init)
+            guard w.count == 2 else { return "usage: handimage <symbol> <out.png>" }
+            let image = LinkCursor.cursor(w[0]).image
+            let s: CGFloat = 4
+            let out = NSImage(size: NSSize(width: image.size.width * s, height: image.size.height * s), flipped: false) { r in
+                NSColor.white.setFill()
+                r.fill()
+                image.draw(in: r)
+                return true
+            }
+            guard let tiff = out.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return "no image" }
+            try? png.write(to: URL(fileURLWithPath: w[1]))
+            return "wrote \(w[1])"
         case "pillmenu":
             // "pillmenu [title]": the focused tile's menu, or that item chosen.
             return wc?.debugPillMenu(arg) ?? "no window"

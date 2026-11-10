@@ -1188,8 +1188,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// A ⌘ link under the pointer: the hand, whatever the terminal asks for
     /// (its own I-beam set again at every move took it back).
     private var overCommandLink = false
-    /// The cursor to show: the hand over a ⌘ link, else the terminal's.
-    private var shownCursor: NSCursor { overCommandLink ? .pointingHand : cursor }
+    /// What the ⌘ link under the pointer goes to, as the hand's badge says
+    /// (`LinkCursor`): a page, a folder, a file by its kind.
+    private var commandLinkBadge: String?
+    /// The cursor to show: the hand over a ⌘ link, badged, else the terminal's.
+    private var shownCursor: NSCursor { overCommandLink ? LinkCursor.cursor(commandLinkBadge) : cursor }
 
     func setCursor(_ shape: ghostty_action_mouse_shape_e) {
         switch shape {
@@ -1614,6 +1617,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // A reference under it that leads nowhere says so.
         ReferenceTip.hover(hovered.map { links[$0].link.target }, in: self)
         overCommandLink = hovered != nil
+        commandLinkBadge = hovered.map { h in
+            let link = links[h].link
+            // A folder: this Mac's looked at; another host's, as it's been looked up there.
+            let isDirectory = link.path.map { p in lookUp == nil ? LinkCursor.isDirectory(p) : known[p].map { $0 == .folder } ?? false }
+            return LinkCursor.badge(for: link.target, isDirectory: isDirectory)
+        }
         shownCursor.set()
         return links
     }
@@ -1720,7 +1729,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             }
             return at.joined(separator: " + ") + " \(l.link.target) \(l.link.standing)"
         }
-        return (targets + [glow.debugLinkGlow]).joined(separator: "\n")
+        return (targets + [glow.debugLinkGlow, "hand " + (overCommandLink ? commandLinkBadge ?? "plain" : "none")]).joined(separator: "\n")
     }
 
     func debugUnmarkLinks() { unmarkLinks() }

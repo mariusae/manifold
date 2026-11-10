@@ -84,6 +84,9 @@ final class TextView: NSView, NSTextInputClient {
     /// What ⌘ shows as links: byte ranges of names there's somewhere to go
     /// to, in the link color go.dev's docs have.
     var linkRanges: [TextRange] = [] { didSet { if linkRanges != oldValue { layouts = [:]; needsDisplay = true } } }
+    /// What the ⌘ link under the pointer goes to, as the hand's badge says
+    /// (`LinkCursor`): a name in code, a page, a file by its kind.
+    var hoveredBadge: String? { didSet { if hoveredBadge != oldValue { updateCursor() } } }
     /// The link under the pointer, on a band (`linkHover`).
     var hoveredLink: TextRange? {
         didSet {
@@ -2906,7 +2909,9 @@ final class TextView: NSView, NSTextInputClient {
         // A link (or a name ⌘ shows as one) wins over a selection's hand.
         let linked = overLink || hoveredLink.map { !$0.isEmpty } == true
         if overSelection, !linked { return NSCursor.openHand.set() }
-        (overLink || hoveredLink.map { !$0.isEmpty } == true ? NSCursor.pointingHand : NSCursor.iBeam).set()
+        // A ⌘ link: the hand, badged with what it goes to.
+        if hoveredLink.map({ !$0.isEmpty }) == true { return LinkCursor.cursor(hoveredBadge).set() }
+        (overLink ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

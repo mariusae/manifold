@@ -299,6 +299,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             textView.hoveredLink = word.isEmpty ? nil : word
             textView.linkRanges = word.isEmpty ? [] : [word]
         }
+        // The hand's badge: a link's target's kind (a page, a file), else a
+        // name in code, to its definition.
+        textView.hoveredBadge = textView.hoveredLink.map { _ in
+            linkAt(offset).map { t in LinkCursor.badge(for: t, isDirectory: block.host == Drags.localHost ? LinkCursor.isDirectory(FileLocation.split(t)?.path ?? t) : nil) }
+                ?? LinkCursor.symbol
+        }
     }
 
     override func layout() {
@@ -456,6 +462,19 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         switch what {
         case "pick": headingsOutline.pick(Int(arg) ?? 0); return "picked"
         case "text": return String(textView.text.string.suffix(300))
+        case "hand":
+            // "scrub hand <line> <column>": the ⌘ link there, as the pointer
+            // on it with ⌘ held finds it, and the hand's badge.
+            let w = arg.split(separator: " ").compactMap { Int($0) }
+            guard w.count == 2 else { return "usage: scrub hand <line> <column>" }
+            let at = textView.offset(line: w[0], column: w[1]).start
+            let word = textView.wordRange(at: at)
+            textView.hoveredLink = word.isEmpty ? nil : word
+            textView.hoveredBadge = textView.hoveredLink.map { _ in
+                linkAt(at).map { t in LinkCursor.badge(for: t, isDirectory: block.host == Drags.localHost ? LinkCursor.isDirectory(FileLocation.split(t)?.path ?? t) : nil) }
+                    ?? LinkCursor.symbol
+            }
+            return "badge " + (textView.hoveredBadge ?? "none")
         case "popover":
             // "scrub popover": the card shown by the text (documentation, a peeked definition).
             guard let h = hover, h.isShown, let v = h.contentViewController?.view else { return "none shown; last peeked:\n" + debugLastPeek }

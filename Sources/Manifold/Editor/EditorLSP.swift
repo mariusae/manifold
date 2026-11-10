@@ -439,7 +439,7 @@ extension EditorView {
     /// What's under an offset to go to before a definition: an address (a
     /// web link, a block's reference), or a file named with its line as a
     /// compiler or a log names one (`main.c:12`), as a terminal's is.
-    private func linkAt(_ offset: Int) -> String? {
+    func linkAt(_ offset: Int) -> String? {
         let text = textView.text
         guard text.lineCount > 0 else { return nil }
         let n = text.line(at: offset)
