@@ -135,7 +135,7 @@ enum StripLayout {
 }
 
 /// The strip itself: the ticks, the scroll bar, the card.
-final class OutlineStripView: NSView {
+final class OutlineStripView: NSView, NSDraggingSource {
     /// The room it takes of its view's width: the scroll bar's.
     static let width: CGFloat = ScrubberView.width
     /// The ticks' lane, over the view's content left of that.
@@ -508,9 +508,37 @@ final class OutlineStripView: NSView {
         hover(at: nil)
     }
 
-    override func mouseDown(with event: NSEvent) {}
+    /// The tick a press began on, and where; whether it became a drag.
+    private var pressed: (index: Int, at: NSPoint)?
+    private var dragged = false
+
+    override func mouseDown(with event: NSEvent) {
+        dragged = false
+        pressed = nil
+        let p = convert(event.locationInWindow, from: nil)
+        guard onColumn(p), chevron(at: p.y) == nil, let t = tick(near: p.y) else { return }
+        pressed = (t.index, event.locationInWindow)
+    }
+
+    /// Dragged from a tick: its item, as its row in the outline is (§3.11)
+    /// — a heading, a page, a command — its pill under the pointer; the
+    /// card put away, out of the way of where it's dropped.
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragged, let p = pressed, hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4,
+              let writer = Drags.writer(outline.dragItem(p.index)) else { return }
+        dragged = true
+        card.hide()
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        let at = convert(event.locationInWindow, from: nil)
+        item.setDraggingFrame(NSRect(x: at.x - 6, y: at.y - 6, width: 12, height: 12), contents: nil)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+        FloatingList.shared.hideNow()
+    }
 
     override func mouseUp(with event: NSEvent) {
+        defer { pressed = nil }
+        guard !dragged else { return }
         let p = convert(event.locationInWindow, from: nil)
         guard onColumn(p) else { return }
         if let c = chevron(at: p.y) { return go(c) }
@@ -521,6 +549,9 @@ final class OutlineStripView: NSView {
     }
 
     // MARK: Debugging
+
+    /// What dragging the tick of item `i` carries.
+    func debugDrag(_ i: Int) -> NSPasteboardItem? { Drags.writer(outline.dragItem(i)) as? NSPasteboardItem }
 
     var debugState: String {
         let lines = ticks.map { t -> String in
@@ -553,7 +584,7 @@ final class OutlineStripView: NSView {
         return "wrote \(path)"
     }
 
-    /// "hover <f>" (the pointer that far down the column), "off", "pick <i>", "up", "down".
+    /// "hover <f>" (the pointer that far down the column), "off", "pick <i>", "drag <i>", "up", "down".
     func debug(_ arg: String) -> String {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first {
@@ -564,6 +595,10 @@ final class OutlineStripView: NSView {
             }
         case "off": hover(at: nil)
         case "pick": if let i = a.dropFirst().first.flatMap(Int.init) { outline.pick(i) }
+        case "drag":
+            // "drag <i>": what the tick of item i carries dragged.
+            guard let i = a.dropFirst().first.flatMap(Int.init), let item = debugDrag(i) else { return "nothing" }
+            return item.types.map { "\($0.rawValue): \((item.string(forType: $0) ?? "").prefix(200))" }.joined(separator: "\n")
         case "up": go(.up)
         case "down": go(.down)
         case "image":
@@ -573,6 +608,13 @@ final class OutlineStripView: NSView {
         }
         return debugState
     }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 }
 
 /// A strip for a scroll view's document: kept up with its scrolling and
