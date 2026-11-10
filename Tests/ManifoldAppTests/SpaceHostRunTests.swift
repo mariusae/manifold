@@ -50,6 +50,38 @@ import ManifoldCore
     }
 }
 
+// Each host's line is told from every other's — in every theme, by day
+// and by night, as drawn — by anyone: typical eyes, and those that don't
+// tell red from green (protanopia, deuteranopia) or blue from yellow
+// (tritanopia).
+@MainActor
+@Test func everyHostsLineIsToldFromEveryOtherByAnyone() {
+    let n = SpaceStripView.hostPalette.count
+    for palette in Palette.all {
+        for dark in [false, true] {
+            let lines = (0..<n).map { SpaceStripView.lineColor($0, palette: palette, dark: dark) }
+            for vision in ColorVision.allCases {
+                for i in 0..<n {
+                    for j in (i + 1)..<n {
+                        let d = vision.difference(lines[i], lines[j])
+                        #expect(d >= ColorVision.apart, "hosts \(i) and \(j) on \(palette.id) \(dark ? "dark" : "light"), \(vision): \(d)")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The simulation itself: red and green, far apart to typical eyes, all
+// but the same to a deuteranope's; blue and yellow apart to both.
+@Test func colorVisionSeesRedAndGreenAsADeuteranopeDoes() {
+    let red = NSColor(srgbRed: 0.8, green: 0.25, blue: 0.2, alpha: 1), green = NSColor(srgbRed: 0.45, green: 0.5, blue: 0.15, alpha: 1)
+    #expect(ColorVision.typical.difference(red, green) > 0.15)
+    #expect(ColorVision.deuteranopia.difference(red, green) < 0.06)
+    #expect(ColorVision.deuteranopia.difference(.systemBlue, .systemYellow) > 0.3)
+    #expect(ColorVision.typical.difference(red, red) < 1e-6)
+}
+
 // The line sits clear of a chosen square's ring.
 @MainActor
 @Test func aLineSitsClearOfAChosenSquaresRing() {

@@ -246,17 +246,23 @@ final class SpaceStripView: NSView {
     /// The colours remote hosts are told apart by: each host's its own,
     /// the same wherever it's seen (from its name), another's if two
     /// would share one. Deep by day and light by night, so a line stands
-    /// off the ground by its lightness and not its hue alone (seen by
-    /// anyone, colour-blind too); blue and orange first, the pair most
-    /// told apart. No brown (that deep, a grey) nor red (a failure's).
+    /// off the ground by its lightness and not its hue alone; and each
+    /// told from every other by anyone (`ColorVision`) — apart in
+    /// lightness as well as hue, as eyes that don't tell red from green
+    /// see only blue against yellow, and light against dark: an azure, an
+    /// orange, a deep plum (by night: sky, amber, a pale pink). Three, as
+    /// no more can all be told apart, a line this thin and this light on
+    /// a dark wash's brightest pools; a fourth host shares one. No red (a
+    /// failure's).
     static let hostPalette: [Shade] = [
-        .hex(0x0B5CAD, 0x6CB6FF), .hex(0xA14F00, 0xFFB35C), .hex(0x6F42C1, 0xC3A6FF), .hex(0x00756A, 0x4FD1C5),
-        .hex(0xA3307A, 0xFF8FC8), .hex(0x2E7D32, 0x7DDC7F), .hex(0x3949AB, 0x9FA8FF), .hex(0x7A5C00, 0xE8C547),
+        .hex(0x2266FF, 0x99BBFF), .hex(0xBB5500, 0xFFAA00), .hex(0x771155, 0xFFCCDD),
     ]
 
-    /// What a line must stand off its ground by: more than the 3:1 asked
-    /// of a mark, the wash being lit and turned a little by the day.
-    static let lineContrast: CGFloat = 3.5
+    /// What a line must stand off its ground by: by day, more than the
+    /// 3:1 asked of a mark, the wash being lit and turned a little by the
+    /// day; by night 3:1, as a line that stands off a dark wash's
+    /// brightest pools by more is too light for colours to be told apart.
+    static func lineContrast(dark: Bool) -> CGFloat { dark ? 3.05 : 3.5 }
 
     /// What a line can be over in a theme: its wash's colours, the pools
     /// of light laid on it, and the panel (the sidebar not pinned).
@@ -271,7 +277,7 @@ final class SpaceStripView: NSView {
     static func lineColor(_ i: Int, palette: Palette = .current, dark: Bool) -> NSColor {
         var c = hostPalette[i % hostPalette.count].color(dark: dark).usingColorSpace(.sRGB)!
         for g in grounds(palette, dark: dark) {
-            c = Tints.reaching(lineContrast, from: c, on: g, toward: dark ? .white : .black)
+            c = Tints.reaching(lineContrast(dark: dark), from: c, on: g, toward: dark ? .white : .black)
         }
         return c
     }
