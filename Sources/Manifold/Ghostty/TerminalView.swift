@@ -560,10 +560,12 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         })
     }
 
-    /// The terminal's padding at its left and top (GhosttyRuntime's config:
-    /// room at the left for the commands' dots, clear of the tile's edge
-    /// and the text).
+    /// Where the commands' dots are: a strip at the terminal's left whose
+    /// middle is their middle — 7 points in, as far from the tile's edge
+    /// (inside its border) as from the text, which begins 11 points in
+    /// (GhosttyRuntime's padding).
     static let dotsWidth: CGFloat = 14
+    /// The terminal's padding at its top (GhosttyRuntime's config).
     static let paddingTop: CGFloat = 6
 
     private func scroll(toFraction fraction: Double) {

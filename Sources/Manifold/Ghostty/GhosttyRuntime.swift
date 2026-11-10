@@ -17,7 +17,7 @@ final class GhosttyRuntime {
         cursor-style-blink = true
         adjust-cursor-thickness = 3
         minimum-contrast = 1.1
-        window-padding-x = 14,10
+        window-padding-x = 11,10
         window-padding-y = 6
         window-padding-balance = false
         window-padding-color = extend
