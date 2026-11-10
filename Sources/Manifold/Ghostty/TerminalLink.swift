@@ -48,6 +48,11 @@ final class TerminalLink {
     /// The first of the shell's output arrived (on the main thread): the
     /// terminal is reached.
     var onFirstOutput: (() -> Void)?
+    /// Output arrived and went to the terminal (on the main thread, a
+    /// moment after, once for any that came meanwhile).
+    var onOutput: (() -> Void)?
+    /// On `lock`: an `onOutput` is on its way.
+    private var outputNoted = false
     /// On `queue`.
     private var sawOutput = false
 
@@ -321,6 +326,13 @@ final class TerminalLink {
             }
             lock.withLock { answering = false }
             prediction?.output(echoTime: echoTime)
+            if lock.withLock({ () -> Bool in defer { outputNoted = true }; return !outputNoted }) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    guard let self else { return }
+                    self.lock.withLock { self.outputNoted = false }
+                    self.onOutput?()
+                }
+            }
         case .historyMark:
             if let m = HistoryMark(frame) { marked(m) }
         case .ttyMode:

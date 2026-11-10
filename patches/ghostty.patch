@@ -179,7 +179,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..10d718e 100644
+index 0d5a4f8..7062635 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -260,7 +260,7 @@ index 0d5a4f8..10d718e 100644
  
              return switch (self.coord_tag) {
                  // Exact coordinates require a specific pin.
-@@ -1696,6 +1728,290 @@ pub const CAPI = struct {
+@@ -1696,6 +1728,296 @@ pub const CAPI = struct {
          surface.updateSize(w, h);
      }
  
@@ -331,7 +331,8 @@ index 0d5a4f8..10d718e 100644
 +
 +    /// Manifold, debugging: the primary screen's rows, one a line — its
 +    /// page (counted from the first), its row in it, its flags (w: wraps
-+    /// on, c: goes on from the row above), the start of its text — and
++    /// on, c: goes on from the row above; p: a prompt begins on it, k: a
++    /// prompt goes on on it), the start of its text — and
 +    /// where the screen's top and the tracked pins are. Freed with
 +    /// `ghostty_surface_free_debug`.
 +    export fn ghostty_surface_debug_rows(surface: *Surface, out_len: *usize) ?[*]u8 {
@@ -366,10 +367,15 @@ index 0d5a4f8..10d718e 100644
 +                    if (p.node == n and p.y == y) pins += 1;
 +                }
 +                const is_top = top.node == n and top.y == y;
-+                w.writer.print("{d}:{d} {s}{s}{s} {s}{s}\n", .{
++                w.writer.print("{d}:{d} {s}{s}{s}{s} {s}{s}\n", .{
 +                    page_i, y,
 +                    if (row.wrap) "w" else "-",
 +                    if (row.wrap_continuation) "c" else "-",
++                    switch (row.semantic_prompt) {
++                        .none => "-",
++                        .prompt => "p",
++                        .prompt_continuation => "k",
++                    },
 +                    if (is_top) " TOP" else "",
 +                    text[0..tl],
 +                    if (pins > 0) " <pin>" else "",

@@ -100,6 +100,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         connecting.layer?.zPosition = 5
         connecting.set(surface == nil ? .idle : .busy("Connecting…"))
         link.onFirstOutput = { [weak self] in self?.connecting.set(.idle) }
+        link.onOutput = { [weak self] in self?.outputCame() }
         dots.onHover = { [weak self] id, rect in self?.showActions(ofCommand: id, at: rect) }
         dots.onLeave = { [weak dots] in
             guard let dots else { return }
@@ -546,18 +547,47 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard dots.superview != nil else { return }
         dots.frame = NSRect(x: frame.minX, y: frame.minY, width: Self.dotsWidth, height: frame.height)
         dots.isHidden = isHidden || isAgent
-        guard !dots.isHidden, let surface else { return dots.set([]) }
+        guard !dots.isHidden, let surface else { dots.set(outcome: nil); return dots.set([]) }
         let size = ghostty_surface_size(surface)
         let scale = backingScale
         let cell = CGFloat(size.cell_height_px) / scale
-        guard cell > 0 else { return dots.set([]) }
+        guard cell > 0 else { dots.set(outcome: nil); return dots.set([]) }
         let last = commands.last?.id
         dots.set(commands.compactMap { c -> CommandDots.Dot? in
-            guard let row = located[c.id], row >= scrollbar.offset, row < scrollbar.offset + max(scrollbar.len, 1) else { return nil }
-            // From the top: the padding, then the rows above it.
-            let fromTop = Self.paddingTop + CGFloat(row - scrollbar.offset) * cell + cell / 2
-            return CommandDots.Dot(id: c.id, y: frame.height - fromTop, failed: c.failed, running: c.ended == nil && c.id == last)
+            guard let row = located[c.id], let y = dotY(row: row, cell: cell) else { return nil }
+            return CommandDots.Dot(id: c.id, y: y, failed: c.failed, running: c.ended == nil && c.id == last)
         })
+        updateOutcome(cell: cell)
+    }
+
+    /// A row's middle in the dots' strip, from the bottom; nil if it isn't
+    /// in view.
+    private func dotY(row: Int, cell: CGFloat) -> CGFloat? {
+        guard row >= scrollbar.offset, row < scrollbar.offset + max(scrollbar.len, 1) else { return nil }
+        // From the top: the padding, then the rows above it.
+        return frame.height - (Self.paddingTop + CGFloat(row - scrollbar.offset) * cell + cell / 2)
+    }
+
+    /// The last command's outcome, at the line the shell waits on after it
+    /// (the cursor's, below the command's): until the next runs, its dot
+    /// then there. None while a command runs, or another screen shows.
+    private func updateOutcome(cell: CGFloat) {
+        dots.set(outcome: {
+            guard !isAgent, let c = commands.last, !c.isRunning, let at = located[c.id], let info = cellInfo,
+                  info.flags & 1 == 0, scrollbar.len > 0 else { return nil }
+            // The cursor's row on the screen: the active area is its last rows.
+            let row = scrollbar.total - scrollbar.len + Int(info.cursor_y)
+            guard row > at, let y = dotY(row: row, cell: cell) else { return nil }
+            return CommandDots.Outcome(id: c.id, y: y, failed: c.failed)
+        }())
+    }
+
+    /// The shell wrote something: the last command's outcome moved to the
+    /// line it now waits on (a prompt drawn, Return pressed at one).
+    private func outputCame() {
+        guard let surface, !dots.isHidden, commands.last.map({ !$0.isRunning }) == true || dots.outcome != nil else { return }
+        let cell = CGFloat(ghostty_surface_size(surface).cell_height_px) / backingScale
+        if cell > 0 { updateOutcome(cell: cell) }
     }
 
     /// Where the commands' dots are: a strip at the terminal's left whose
@@ -873,6 +903,23 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     func debugStrip(_ arg: String) -> String { scrubber.debug(arg) }
 
+    /// Debugging: the dots' strip drawn over the terminal's left edge, 4×.
+    private func debugDotsImage(to path: String) -> String {
+        guard let parent = superview else { return "no superview" }
+        let r = NSRect(x: dots.frame.minX, y: dots.frame.minY, width: 160, height: dots.frame.height)
+        guard let rep = parent.bitmapImageRepForCachingDisplay(in: r) else { return "no image" }
+        parent.cacheDisplay(in: r, to: rep)
+        let s: CGFloat = 4
+        let out = NSImage(size: NSSize(width: r.width * s, height: r.height * s))
+        out.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .none
+        NSImage(cgImage: rep.cgImage!, size: r.size).draw(in: NSRect(origin: .zero, size: out.size))
+        out.unlockFocus()
+        guard let tiff = out.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return "no png" }
+        try? png.write(to: URL(fileURLWithPath: path))
+        return "wrote \(path)"
+    }
+
     var debugScrubber: String {
         "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor) pad \(cellInfo.map { "\(Int($0.pad_left)),\(Int($0.pad_top))" } ?? "?")\n" + dots.debugDots
     }
@@ -912,6 +959,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             // "scrub dot <id>": as the pointer resting on the command's dot.
             guard let id = Int(arg), let d = dots.dot(id) else { return "no dot for \(arg)" }
             showActions(ofCommand: id, at: dots.rect(of: d))
+            return FloatingList.shared.debugRows
+        case "outcome":
+            // "scrub outcome": as the pointer resting on the last command's
+            // outcome; "scrub outcome <path>": the dots' strip and the rows
+            // beside it, drawn, 4×.
+            if !arg.isEmpty { return debugDotsImage(to: arg) }
+            guard let o = dots.outcome else { return "no outcome" }
+            showActions(ofCommand: o.id, at: dots.rect(of: o))
             return FloatingList.shared.debugRows
         case "go", "open":
             guard let id = Int(arg), commands.contains(where: { $0.id == id }) else { return "no such command" }

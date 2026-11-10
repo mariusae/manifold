@@ -590,10 +590,14 @@ final class FloatingListRow: NSView, NSDraggingSource {
 
 /// A shell's commands as a dot beside each one's prompt (§3.8), over the
 /// terminal's left padding: grey, red for one that failed, the accent for
-/// one still running. The pointer on a dot offers what can be done with
-/// the command (its output copied, or as a block of its own); a dot
-/// dragged is the command, as its outline's row is; anywhere else, the
-/// pointer and clicks are the terminal's.
+/// one still running. And, once the last has ended, its outcome at the
+/// prompt after it, where the shell waits for the next: a check, or a
+/// cross for one that failed — drawn, not a dot, as it isn't a command of
+/// that line but the one above it, till the next one runs (its dot then
+/// there). The pointer on a mark offers what can be done with its
+/// command (its output copied, or as a block of its own); a mark dragged
+/// is the command, as its outline's row is; anywhere else, the pointer
+/// and clicks are the terminal's.
 final class CommandDots: NSView, NSDraggingSource {
     struct Dot: Equatable {
         var id: Int
@@ -603,54 +607,107 @@ final class CommandDots: NSView, NSDraggingSource {
         var running = false
     }
 
-    /// The pointer came to a dot: its command, and where it is.
+    /// The last command's outcome, at the prompt after it.
+    struct Outcome: Equatable {
+        var id: Int
+        /// Its middle, from the bottom: the prompt's line.
+        var y: CGFloat
+        var failed: Bool
+    }
+
+    /// A mark the pointer can be on: a command's dot, or its outcome.
+    private struct Mark: Equatable {
+        var id: Int
+        var y: CGFloat
+        var outcome: Bool
+    }
+
+    /// The pointer came to a mark: its command, and where it is.
     var onHover: ((Int, NSRect) -> Void)?
-    /// The pointer left the dots.
+    /// The pointer left the marks.
     var onLeave: (() -> Void)?
-    /// What a command's dot carries dragged out (its place, its words).
+    /// What a command's mark carries dragged out (its place, its words).
     var drag: ((Int) -> NSPasteboardWriting?)?
-    /// Where a press on a dot began, and whether it became a drag.
-    private var pressed: (dot: Int, at: NSPoint)?
+    /// Where a press on a mark began, and whether it became a drag.
+    private var pressed: (mark: Mark, at: NSPoint)?
     private var dragged = false
     private var dots: [Dot] = []
-    private var hovered: Int?
+    private(set) var outcome: Outcome?
+    private var hovered: Mark?
     private static let diameter: CGFloat = 5
-    /// How near the pointer must be to a dot to be on it.
+    /// How near the pointer must be to a mark to be on it.
     private static let reach: CGFloat = 7
 
     func set(_ fresh: [Dot]) {
         guard fresh != dots else { return }
         dots = fresh
-        if let h = hovered, !dots.contains(where: { $0.id == h }) { hovered = nil }
+        if let h = hovered, !marks.contains(h) { hovered = nil }
         needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    func set(outcome fresh: Outcome?) {
+        guard fresh != outcome else { return }
+        outcome = fresh
+        if let h = hovered, !marks.contains(h) { hovered = nil }
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private var marks: [Mark] {
+        dots.map { Mark(id: $0.id, y: $0.y, outcome: false) } + (outcome.map { [Mark(id: $0.id, y: $0.y, outcome: true)] } ?? [])
     }
 
     func dot(_ id: Int) -> Dot? { dots.first { $0.id == id } }
 
-    func rect(of d: Dot) -> NSRect {
-        NSRect(x: bounds.midX - Self.reach, y: d.y - Self.reach, width: 2 * Self.reach, height: 2 * Self.reach)
+    func rect(of d: Dot) -> NSRect { rect(y: d.y) }
+    func rect(of o: Outcome) -> NSRect { rect(y: o.y) }
+
+    private func rect(y: CGFloat) -> NSRect {
+        NSRect(x: bounds.midX - Self.reach, y: y - Self.reach, width: 2 * Self.reach, height: 2 * Self.reach)
     }
 
-    private func dot(at p: NSPoint) -> Dot? {
-        dots.filter { abs($0.y - p.y) <= Self.reach && p.x >= bounds.minX - 2 && p.x <= bounds.maxX + 4 }
+    private func mark(at p: NSPoint) -> Mark? {
+        marks.filter { abs($0.y - p.y) <= Self.reach && p.x >= bounds.minX - 2 && p.x <= bounds.maxX + 4 }
             .min { abs($0.y - p.y) < abs($1.y - p.y) }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         for d in dots {
-            let hot = d.id == hovered
+            let hot = hovered == Mark(id: d.id, y: d.y, outcome: false)
             let color: NSColor = d.failed ? Theme.statusError : d.running ? Theme.accent
                 : hot ? Theme.text : Theme.secondaryText.withAlphaComponent(0.45)
             color.setFill()
             let r = hot ? Self.diameter + 2 : Self.diameter
             NSBezierPath(ovalIn: NSRect(x: bounds.midX - r / 2, y: d.y - r / 2, width: r, height: r)).fill()
         }
+        if let o = outcome {
+            let hot = hovered?.outcome == true
+            // A check, or a cross: 6 points across (7 on the pointer).
+            let s: CGFloat = hot ? 3.5 : 3, x = bounds.midX, y = o.y
+            let path = NSBezierPath()
+            if o.failed {
+                path.move(to: NSPoint(x: x - s * 0.8, y: y - s * 0.8))
+                path.line(to: NSPoint(x: x + s * 0.8, y: y + s * 0.8))
+                path.move(to: NSPoint(x: x - s * 0.8, y: y + s * 0.8))
+                path.line(to: NSPoint(x: x + s * 0.8, y: y - s * 0.8))
+            } else {
+                path.move(to: NSPoint(x: x - s, y: y + s * 0.05))
+                path.line(to: NSPoint(x: x - s * 0.3, y: y - s * 0.7))
+                path.line(to: NSPoint(x: x + s, y: y + s * 0.85))
+            }
+            path.lineWidth = hot ? 1.8 : 1.5
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            (o.failed ? Theme.statusError : Status.done).setStroke()
+            path.stroke()
+        }
     }
 
-    /// Only a dot is its own: the rest of the strip is the terminal's.
+    /// Only a mark is its own: the rest of the strip is the terminal's.
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden, let parent = superview else { return nil }
-        return dot(at: convert(point, from: parent)) == nil ? nil : self
+        return mark(at: convert(point, from: parent)) == nil ? nil : self
     }
 
     override func updateTrackingAreas() {
@@ -664,29 +721,29 @@ final class CommandDots: NSView, NSDraggingSource {
     override func mouseExited(with event: NSEvent) { pointer(at: nil) }
 
     private func pointer(at p: NSPoint?) {
-        let d = p.flatMap { dot(at: $0) }
-        guard d?.id != hovered else { return }
-        hovered = d?.id
+        let m = p.flatMap { mark(at: $0) }
+        guard m != hovered else { return }
+        hovered = m
         needsDisplay = true
-        if let d { onHover?(d.id, rect(of: d)) } else { onLeave?() }
+        if let m { onHover?(m.id, rect(y: m.y)) } else { onLeave?() }
     }
 
     override func mouseDown(with event: NSEvent) {
         dragged = false
         pressed = nil
-        guard let d = dot(at: convert(event.locationInWindow, from: nil)) else { return }
-        pressed = (d.id, event.locationInWindow)
-        onHover?(d.id, rect(of: d))
+        guard let m = mark(at: convert(event.locationInWindow, from: nil)) else { return }
+        pressed = (m, event.locationInWindow)
+        onHover?(m.id, rect(y: m.y))
     }
 
-    /// Dragged from a dot: the command, its pill under the pointer; its
+    /// Dragged from a mark: the command, its pill under the pointer; its
     /// actions put away, out of the way of where it's dropped.
     override func mouseDragged(with event: NSEvent) {
         guard !dragged, let p = pressed, hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4,
-              let d = dot(p.dot), let writer = drag?(p.dot) else { return }
+              marks.contains(p.mark), let writer = drag?(p.mark.id) else { return }
         dragged = true
         let item = NSDraggingItem(pasteboardWriter: writer)
-        item.setDraggingFrame(rect(of: d), contents: nil)
+        item.setDraggingFrame(rect(y: p.mark.y), contents: nil)
         let session = beginDraggingSession(with: [item], event: event, source: self)
         DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
         FloatingList.shared.hideNow()
@@ -702,12 +759,13 @@ final class CommandDots: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 
     override func resetCursorRects() {
-        for d in dots { addCursorRect(rect(of: d), cursor: .pointingHand) }
+        for m in marks { addCursorRect(rect(y: m.y), cursor: .pointingHand) }
     }
 
-    /// Debugging: each dot, from the bottom.
+    /// Debugging: each dot, from the bottom, and the outcome.
     var debugDots: String {
-        "dots \(dots.count) hidden \(isHidden)\n" + dots.map { "\($0.id) y\(Int($0.y))\($0.failed ? " failed" : "")\($0.running ? " running" : "")" }.joined(separator: "\n")
+        "dots \(dots.count) hidden \(isHidden)" + (outcome.map { " outcome \($0.id) y\(Int($0.y))\($0.failed ? " failed" : "")" } ?? "") + "\n"
+            + dots.map { "\($0.id) y\(Int($0.y))\($0.failed ? " failed" : "")\($0.running ? " running" : "")" }.joined(separator: "\n")
     }
 }
 
