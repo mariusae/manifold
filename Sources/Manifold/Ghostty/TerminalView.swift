@@ -295,8 +295,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     static let scrollerWidth: CGFloat = OutlineStripView.width
     /// In the superview, over the tile's right edge, as the find pill is:
     /// Ghostty's layer is this view's, under which a subview wouldn't show.
-    /// Its commands (an agent's turns) are ticks beside it, shown as it is
-    /// (while it scrolls, the pointer on it); each previewed by the last
+    /// Its commands (an agent's turns) are ticks beside it, shown while
+    /// it's scrolled with the mouse or the pointer's on them (not as its
+    /// output comes, or as you type); each previewed by the last
     /// lines of what it printed.
     private lazy var scrubber: OutlineStripView = {
         let s = OutlineStripView(outline: commandsOutline, policy: .recent)
@@ -304,6 +305,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
         s.preview = { [weak self] i in self?.previewLines(i) ?? [] }
         s.previewIsCode = true
+        s.scrollArea = self
         return s
     }()
 

@@ -13,9 +13,9 @@ import ManifoldCore
 /// chevron at its top or bottom to go on. The pointer on it widens the
 /// ticks around it, as the Dock does its icons, and brightens them; the
 /// one under the pointer is previewed in a card beside it, and clicked,
-/// gone to. The ticks show as an overlay scroll bar does: while the view
-/// scrolls or the pointer's on the strip, and a moment after — so they
-/// hide nothing under them the rest of the time.
+/// gone to. The ticks show only while the view is scrolled with the mouse
+/// or trackpad or the pointer's on the strip, and a moment after — so
+/// they hide nothing under them the rest of the time, typing included.
 
 /// An outline's item as the strip weighs it: its level, where it begins
 /// in the view's scroll units and how much it spans.
@@ -168,6 +168,10 @@ final class OutlineStripView: NSView {
     /// Whether the scroll bar is the strip's, or the view's own (a page's,
     /// a scroll view's), right of the ticks as the strip's would be.
     var hasScrollBar = true { didSet { if hasScrollBar != oldValue { needsLayout = true } } }
+    /// What's scrolled under it with the mouse or trackpad that shows the
+    /// ticks: its superview, unless it's over a view that isn't (a
+    /// terminal's strip is in the grid).
+    weak var scrollArea: NSView?
 
     private let scrubber = ScrubberView(frame: .zero)
     /// The items with ticks (all of them, not only those the column shows
@@ -209,6 +213,7 @@ final class OutlineStripView: NSView {
             column.addSublayer(c)
         }
         outline.watch(self) { [weak self] in self?.relayout() }
+        Self.watchWheel(self)
         themed { $0.draw(animated: false) }
     }
 
@@ -224,7 +229,7 @@ final class OutlineStripView: NSView {
         self.offset = offset
         self.shown = max(shown, 1)
         scrubber.update(total: self.total, offset: offset, shown: self.shown)
-        if moved { reveal(); relayout() }
+        if moved { relayout() }
     }
 
     /// The outline's items as the strip weighs them, one for each of its items.
@@ -297,6 +302,28 @@ final class OutlineStripView: NSView {
     /// The ticks shown, and faded a moment after unless the pointer's on
     /// the strip — always shown where the system's scroll bars are the
     /// kind that stay.
+    /// Every strip, for the scroll wheel to find the one it's over.
+    private static let strips = NSHashTable<OutlineStripView>.weakObjects()
+    private static var wheel: Any?
+
+    /// The ticks shown by scrolling with the mouse or trackpad over what
+    /// they're of — not by its moving otherwise (a terminal's output, a
+    /// key that pages), which would flash them up as you type.
+    private static func watchWheel(_ strip: OutlineStripView) {
+        strips.add(strip)
+        guard wheel == nil else { return }
+        wheel = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard event.scrollingDeltaY != 0 else { return event }
+            MainActor.unchecked {
+                for s in strips.allObjects where s.window === event.window && !s.isHiddenOrHasHiddenAncestor && !s.ticks.isEmpty {
+                    guard let area = s.scrollArea ?? s.superview else { continue }
+                    if area.bounds.contains(area.convert(event.locationInWindow, from: nil)) { s.reveal() }
+                }
+            }
+            return event
+        }
+    }
+
     private func reveal() {
         fade?.invalidate()
         fade = nil
