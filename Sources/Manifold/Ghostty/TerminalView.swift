@@ -840,12 +840,17 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func promptLines() -> [[(row: Int, text: String)]]? {
         guard let surface else { return [] }
         var tops = [UInt32](repeating: 0, count: 512)
-        var n = Int(ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count)))
-        guard UInt(n) != UInt.max else { return nil }
-        if n > tops.count {
-            tops = [UInt32](repeating: 0, count: n + 64)
-            n = min(Int(ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count))), tops.count)
+        // UInt.max while another screen shows: checked before it's an Int,
+        // which it can't be (that trapped, at launch, with a full-screen
+        // program in a terminal).
+        var count = ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count))
+        guard count != UInt.max else { return nil }
+        if count > UInt(tops.count) {
+            tops = [UInt32](repeating: 0, count: Int(count) + 64)
+            count = ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count))
+            guard count != UInt.max else { return nil }
         }
+        let n = Int(min(count, UInt(tops.count)))
         let prompts = tops.prefix(n).map(Int.init)
         let cols = max(Int(ghostty_surface_size(surface).columns), 1)
         return prompts.enumerated().map { j, top in
