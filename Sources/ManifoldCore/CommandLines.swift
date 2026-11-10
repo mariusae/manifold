@@ -80,4 +80,39 @@ public enum CommandLines {
         }
         return found
     }
+
+    /// Each command's line, by their indices, as `locate` finds them —
+    /// but looked for only among the shell's prompts, as the terminal
+    /// marked them (OSC 133;A): `prompts` the lines of each, top down,
+    /// from its first row (the prompt's) on, a few. Output, between the
+    /// prompts, is never taken for a command. A command is the first line
+    /// of its prompt that shows it, and each one older is at a prompt
+    /// above. The found: (prompt, line in it).
+    public static func locate(_ commands: [String], inPrompts prompts: [[String]], giveUp: Int = 8, budget: Int = 400_000) -> [Int: (prompt: Int, line: Int)] {
+        let trimmed = prompts.map { $0.map { $0.trimmingCharacters(in: .whitespaces) } }
+        let heads = commands.map { Array($0.prefix(8).utf8) }
+        var found: [Int: (prompt: Int, line: Int)] = [:]
+        var bound = trimmed.count
+        var misses = 0, looked = 0
+        for k in commands.indices.reversed() {
+            var hit: (prompt: Int, line: Int)?
+            var q = bound - 1
+            search: while q >= 0, looked < budget {
+                for (i, t) in trimmed[q].enumerated() {
+                    looked += 1
+                    if lineShows(commands[k], head: heads[k], in: t) { hit = (q, i); break search }
+                }
+                q -= 1
+            }
+            if let hit {
+                found[k] = hit
+                bound = hit.prompt
+                misses = 0
+            } else {
+                misses += 1
+                if misses >= giveUp || looked >= budget { break }
+            }
+        }
+        return found
+    }
 }

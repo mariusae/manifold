@@ -1587,6 +1587,25 @@ private final class Seen: @unchecked Sendable {
     #expect(CommandLines.locate((0..<50).map { "cmd\($0)" } + ["ls"], in: [p + "ls", "a", p]) == [50: 0])
 }
 
+@Test func commandsAreLookedForOnlyAtTheirPrompts() {
+    let p = "~/src› "
+    // Output that shows a command (a script cat), after it: not taken for it.
+    let prompts = [
+        [p + "ls", "a.txt"],
+        [p + "cat script", "ls", "echo hi"],
+        [p + "echo hi", "hi"],
+        [p],
+    ]
+    let found = CommandLines.locate(["ls", "cat script", "echo hi"], inPrompts: prompts)
+    #expect(found.mapValues { [$0.prompt, $0.line] } == [0: [0, 0], 1: [1, 0], 2: [2, 0]])
+    // A command is its prompt's first line that shows it, not its output.
+    let echo = CommandLines.locate(["echo echo"], inPrompts: [[p + "echo echo", "echo"], [p]])
+    #expect(echo[0]?.prompt == 0 && echo[0]?.line == 0)
+    // A prompt with nothing run at it (Return alone) is passed over.
+    let skipped = CommandLines.locate(["ls", "pwd"], inPrompts: [[p + "ls"], [p], [p + "pwd"], [p]])
+    #expect(skipped.mapValues(\.prompt) == [0: 0, 1: 2])
+}
+
 @Test func pathsWithLinesInATerminalAreLinks() {
     let rg = "./python/monarch/_src/actor/bootstrap.py:177:1:def run_worker_loop_forever("
     let l = TerminalLinks.links(in: rg)

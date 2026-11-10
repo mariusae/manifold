@@ -34,7 +34,7 @@ index f9d861b..6b49c77 100644
      // up here just so that they are more self-documenting.
      const libvt_step = b.step("lib-vt", "Build libghostty-vt");
 diff --git a/include/ghostty.h b/include/ghostty.h
-index 40ff55c..5198750 100644
+index 40ff55c..3499402 100644
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
 @@ -450,6 +450,12 @@ typedef struct {
@@ -50,7 +50,7 @@ index 40ff55c..5198750 100644
  } ghostty_surface_config_s;
  
  typedef struct {
-@@ -1086,6 +1092,43 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+@@ -1086,6 +1092,47 @@ void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
  void ghostty_surface_set_focus(ghostty_surface_t, bool);
  void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
  void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
@@ -89,6 +89,10 @@ index 40ff55c..5198750 100644
 +} ghostty_manifold_run_s;
 +void ghostty_surface_manifold_links(ghostty_surface_t, const ghostty_manifold_run_s*, uintptr_t, uint32_t, int32_t, uint32_t);
 +uintptr_t ghostty_surface_manifold_row(ghostty_surface_t, uint16_t, uint32_t*, uintptr_t);
++// Manifold: the rows the shell's prompts begin on (OSC 133;A), from the top
++// of the primary screen's scrollback, top down; how many (UINTPTR_MAX while
++// the alternate screen shows).
++uintptr_t ghostty_surface_manifold_prompts(ghostty_surface_t, uint32_t*, uintptr_t);
 +uint8_t* ghostty_surface_debug_rows(ghostty_surface_t, uintptr_t*);
 +void ghostty_surface_free_debug(ghostty_surface_t, uint8_t*, uintptr_t);
  ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
@@ -175,7 +179,7 @@ index 4d66622..a6c973e 100644
      const runtime_str = try std.fmt.allocPrint(alloc, "{d} ms", .{info.runtime_ms});
  
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
-index 0d5a4f8..5cd5e56 100644
+index 0d5a4f8..10d718e 100644
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
 @@ -410,6 +410,8 @@ pub const Surface = struct {
@@ -241,7 +245,22 @@ index 0d5a4f8..5cd5e56 100644
      pub fn defaultTermioEnv(self: *const Surface) !std.process.EnvMap {
          const alloc = self.app.core_app.alloc;
          var env = try internal_os.getEnvMap(alloc);
-@@ -1696,6 +1722,267 @@ pub const CAPI = struct {
+@@ -1337,7 +1363,13 @@ pub const CAPI = struct {
+ 
+             // Clamp our point to the screen bounds.
+             const clamped_x = @min(self.x, screen.pages.cols -| 1);
+-            const clamped_y = @min(self.y, screen.pages.rows -| 1);
++            // Manifold: a row of the screen or its history by its own
++            // number (one past them has no pin); only the active area's
++            // and the viewport's are clamped to the rows that show.
++            const clamped_y = switch (tag) {
++                .active, .viewport => @min(self.y, screen.pages.rows -| 1),
++                .screen, .history => self.y,
++            };
+ 
+             return switch (self.coord_tag) {
+                 // Exact coordinates require a specific pin.
+@@ -1696,6 +1728,290 @@ pub const CAPI = struct {
          surface.updateSize(w, h);
      }
  
@@ -497,6 +516,29 @@ index 0d5a4f8..5cd5e56 100644
 +        return n;
 +    }
 +
++    /// Manifold: the rows where the shell's prompts begin (OSC 133;A, a
++    /// prompt of several lines its first), counted from the top of the
++    /// primary screen's scrollback, top down — the first `cap` of them put
++    /// in `out`. How many there are (more than `cap`: ask again with
++    /// room); maxInt while another screen shows (the alternate one: its
++    /// rows aren't these).
++    export fn ghostty_surface_manifold_prompts(surface: *Surface, out: [*]u32, cap: usize) usize {
++        const core = &surface.core_surface;
++        core.renderer_state.mutex.lock();
++        defer core.renderer_state.mutex.unlock();
++        const t = &core.io.terminal;
++        if (t.screens.active_key != .primary) return std.math.maxInt(usize);
++        const s = t.screens.active;
++        var it = s.pages.promptIterator(.right_down, .{ .screen = .{} }, null);
++        var n: usize = 0;
++        while (it.next()) |p| {
++            const pt = s.pages.pointFromPin(.screen, p) orelse continue;
++            if (n < cap) out[n] = @intCast(pt.screen.y);
++            n += 1;
++        }
++        return n;
++    }
++
 +    /// Manifold: an anchor let go of.
 +    export fn ghostty_surface_history_release(surface: *Surface, anchor: *anyopaque) void {
 +        const core = &surface.core_surface;
@@ -615,10 +657,10 @@ index e7cf860..5ee7919 100644
              .expect = "~/Documents/notes.md",
 diff --git a/src/manifold_vt.zig b/src/manifold_vt.zig
 new file mode 100644
-index 0000000..1dbac95
+index 0000000..538719e
 --- /dev/null
 +++ b/src/manifold_vt.zig
-@@ -0,0 +1,227 @@
+@@ -0,0 +1,230 @@
 +//! Manifold: a terminal kept on the host for each shell (in manifoldd), by
 +//! the same emulator the app draws with. It's fed the shell's output as it
 +//! comes and resized with the shell's pty, and is written out on asking as
@@ -725,6 +767,7 @@ index 0000000..1dbac95
 +            pf.content = content(primary, history);
 +            pf.extra = .styles;
 +            pf.opts.unwrap = true;
++            pf.opts.manifold_prompts = true;
 +            try pf.format(writer);
 +            try writer.writeAll("\x1b[0m");
 +            try semantic(primary, writer);
@@ -735,6 +778,7 @@ index 0000000..1dbac95
 +    f.content = content(t.screens.active, history);
 +    f.extra = extra;
 +    f.opts.unwrap = t.modes.get(.wraparound);
++    f.opts.manifold_prompts = true;
 +    try f.format(writer);
 +
 +    // The cursor where it is: the scrolling region and tab stops, written
@@ -822,6 +866,7 @@ index 0000000..1dbac95
 +    // A line wrapped over rows is written as one, so it wraps again where
 +    // it goes (and is one line there, to copy or reflow).
 +    f.opts.unwrap = true;
++    f.opts.manifold_prompts = true;
 +    f.format(&w.writer) catch {
 +        w.deinit();
 +        return null;
@@ -1785,6 +1830,53 @@ index ea8ca14..a5ff74d 100644
  /// Scroll the active area and keep the cursor at the bottom of the screen.
  /// This is a very specialized function but it keeps it fast.
  pub fn cursorDownScroll(self: *Screen) !void {
+diff --git a/src/terminal/formatter.zig b/src/terminal/formatter.zig
+index 062e396..d005e69 100644
+--- a/src/terminal/formatter.zig
++++ b/src/terminal/formatter.zig
+@@ -108,6 +108,12 @@ pub const Options = struct {
+     /// for HTML or the actual palette indexes for VT).
+     palette: ?*const color.Palette = null,
+ 
++    /// Manifold: for VT, the shell's prompts marked as it marked them (OSC
++    /// 133;A at the start of a prompt's row, k=c on a row that continues
++    /// one, 133;C on the row after), so a terminal the rows are written to
++    /// knows where they are.
++    manifold_prompts: bool = false,
++
+     pub const plain: Options = .{ .emit = .plain };
+     pub const vt: Options = .{ .emit = .vt };
+     pub const html: Options = .{ .emit = .html };
+@@ -1001,6 +1007,9 @@ pub const PageFormatter = struct {
+         // when the hyperlink changes or ends.
+         var current_hyperlink_id: ?hyperlink.Id = null;
+ 
++        // Manifold: in a prompt's rows (`manifold_prompts`).
++        var in_prompt = false;
++
+         for (start_y..end_y + 1) |y_usize| {
+             const y: size.CellCountInt = @intCast(y_usize);
+             const row: *Row = self.page.getRow(y);
+@@ -1104,6 +1113,19 @@ pub const PageFormatter = struct {
+                 blank_rows = 0;
+             }
+ 
++            // Manifold: where the shell's prompts are, at the start of
++            // their rows (not a row a line wrapped onto).
++            if (self.opts.manifold_prompts and self.opts.emit == .vt and self.point_map == null and
++                row_start_x == 0 and !row.wrap_continuation)
++            {
++                switch (row.semantic_prompt) {
++                    .prompt => try writer.writeAll("\x1b]133;A\x07"),
++                    .prompt_continuation => try writer.writeAll("\x1b]133;A;k=c\x07"),
++                    .none => if (in_prompt) try writer.writeAll("\x1b]133;C\x07"),
++                }
++                in_prompt = row.semantic_prompt != .none;
++            }
++
+             // If we're not wrapped, we always add a newline so after
+             // the row is printed we can add a newline.
+             if (!row.wrap or !self.opts.unwrap) blank_rows += 1;
 diff --git a/src/termio.zig b/src/termio.zig
 index b168851..03e8817 100644
 --- a/src/termio.zig

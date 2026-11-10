@@ -749,10 +749,15 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             || (0x20000...0x3FFFD).contains(v) ? 2 : 1
     }
 
-    /// Finds the commands on the screen (`CommandLines.locate`): the
-    /// newest from the bottom up, so one gone or not to be found leaves the
-    /// rest found. They are all looked for again each time, so a screen
-    /// cleared or trimmed is simply read anew.
+    /// Finds the commands on the screen: the newest from the bottom up,
+    /// so one gone or not to be found leaves the rest found. Looked for
+    /// among the shell's prompts, where the terminal marked them
+    /// (`CommandLines.locate(_:inPrompts:)`), so output that shows a
+    /// command's words isn't taken for it; with no prompts marked (a shell
+    /// that doesn't say), through all the screen's lines. They are all
+    /// looked for again each time, so a screen cleared or trimmed is simply
+    /// read anew; while another screen shows (a full-screen program's),
+    /// those found stay as they were.
     /// `now`: here and now, for what needs the answer (going to one);
     /// else the screen read here and looked through on another thread (a
     /// scrollback's worth of lines, after every command), the answer taken
@@ -763,13 +768,23 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             if !located.isEmpty { located = [:]; updateDots() }
             return
         }
-        guard let lines = screenLines() else { return }
-        let texts = lines.map(\.text), rows = lines.map(\.row), commands = self.commands
+        guard let prompts = promptLines() else { return }
+        let commands = self.commands
+        let texts = commands.map(\.text)
+        let find: () -> [Int: Int]
+        if prompts.isEmpty {
+            guard let lines = screenLines() else { return }
+            let lineTexts = lines.map(\.text), rows = lines.map(\.row)
+            find = { CommandLines.locate(texts, in: lineTexts).mapValues { rows[$0] } }
+        } else {
+            let promptTexts = prompts.map { $0.map(\.text) }, rows = prompts.map { $0.map(\.row) }
+            find = { CommandLines.locate(texts, inPrompts: promptTexts).mapValues { rows[$0.prompt][$0.line] } }
+        }
         let generation = locateGeneration
         let take = { [weak self] (found: [Int: Int]) in
             guard let self, self.locateGeneration == generation else { return }
             var byID: [Int: Int] = [:]
-            for (k, l) in found { byID[commands[k].id] = rows[l] }
+            for (k, row) in found { byID[commands[k].id] = row }
             if byID != self.located {
                 self.located = byID
                 self.updateDots()
@@ -777,11 +792,48 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 self.markCurrentCommand()
             }
         }
-        if now { return take(CommandLines.locate(commands.map(\.text), in: texts)) }
+        if now { return take(find()) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let found = CommandLines.locate(commands.map(\.text), in: texts)
+            let found = find()
             DispatchQueue.main.async { take(found) }
         }
+    }
+
+    /// How many rows of a prompt, from its first, a command is looked for
+    /// in: a prompt of a few lines, a command of a few.
+    private static let promptRows = 8
+
+    /// The shell's prompts on the screen, as the terminal marked them (OSC
+    /// 133;A): each one's first rows (up to the next prompt) as lines,
+    /// soft-wrapped rows joined, each with the row it starts on. Empty if
+    /// none are marked; nil while another screen shows.
+    private func promptLines() -> [[(row: Int, text: String)]]? {
+        guard let surface else { return [] }
+        var tops = [UInt32](repeating: 0, count: 512)
+        var n = Int(ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count)))
+        guard UInt(n) != UInt.max else { return nil }
+        if n > tops.count {
+            tops = [UInt32](repeating: 0, count: n + 64)
+            n = min(Int(ghostty_surface_manifold_prompts(surface, &tops, UInt(tops.count))), tops.count)
+        }
+        let prompts = tops.prefix(n).map(Int.init)
+        let cols = max(Int(ghostty_surface_size(surface).columns), 1)
+        return prompts.enumerated().map { j, top in
+            let next = j + 1 < prompts.count ? prompts[j + 1] : Int.max
+            let last = min(top + Self.promptRows, next) - 1
+            var sel = ghostty_selection_s()
+            sel.top_left = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_EXACT, x: 0, y: UInt32(top))
+            sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(cols - 1), y: UInt32(last))
+            sel.rectangle = false
+            let lines = withText(sel) { raw in Self.lines(raw.bindMemory(to: UInt8.self), cols: cols) } ?? []
+            return lines.map { (top + $0.row, $0.text) }
+        }
+    }
+
+    /// Debugging: the prompts' first rows, as `locate` looks through them.
+    var debugPrompts: String {
+        guard let p = promptLines() else { return "another screen" }
+        return "prompts \(p.count)\n" + p.map { $0.map { "\($0.row) \($0.text.prefix(60))" }.joined(separator: " | ") }.joined(separator: "\n")
     }
     private var locateGeneration = 0
 
@@ -827,6 +879,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     func debugScrub(_ what: String, _ arg: String) -> String {
         switch what {
+        case "prompts":
+            // "scrub prompts": the prompts the terminal marked, as `locate` reads them.
+            return debugPrompts
         case "links":
             // "scrub links [<row> <col>]": the links marked as with ⌘ held
             // (the pointer on that cell); "scrub links off": unmarked.
