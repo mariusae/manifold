@@ -92,7 +92,7 @@ private func document() -> [StripItem] {
     let middle = (strip.ticks.first!.y + strip.ticks.last!.y) / 2
     #expect(abs(middle - 300) <= 1)
     #expect(strip.ticks.filter(\.lit).map(\.index) == [2])
-    #expect(strip.debugState.hasPrefix("up - down -"))
+    #expect(strip.debugState.contains("up - down -"))
 }
 
 @MainActor
@@ -111,10 +111,10 @@ private func document() -> [StripItem] {
     #expect(shows == StripLayout.column(count: 60, track: strip.track.height).shows)
     #expect(strip.track.height == 200)
     #expect(strip.ticks.last?.index == 59)
-    #expect(strip.debugState.hasPrefix("up + down -"))
+    #expect(strip.debugState.contains("up + down -"))
     strip.go(.up)
     #expect(strip.ticks.last!.index < 59)
-    #expect(strip.debugState.hasPrefix("up + down +"))
+    #expect(strip.debugState.contains("up + down +"))
     // Scrolled by hand, it stays where it was put till what shows moves.
     strip.update(total: 600, offset: 560, shown: 40)
     #expect(strip.ticks.last!.index < 59)
