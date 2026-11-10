@@ -20,6 +20,11 @@ protocol EditorViewDelegate: AnyObject {
     func editor(_ view: EditorView, follow target: String, over: Bool)
     /// A link ⌘-right-clicked: what can be done with it.
     func editor(_ view: EditorView, menuForLink target: String) -> NSMenu?
+    /// What every ⌘-right-click menu has about a thing (a link to it
+    /// copied, put in a note, an agent asked), added to `menu`.
+    func editor(_ view: EditorView, aboutItems subject: LinkSubject, to menu: NSMenu)
+    /// A file's text, from the block's host (a definition peeked at).
+    func editor(_ view: EditorView, read path: String, done: @escaping (String?) -> Void)
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
@@ -70,6 +75,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private var lastVersion = -1
     var completion: CompletionPopup?
     var hover: NSPopover?
+    /// Debugging: the last definition peeked at — where, and its lines.
+    var debugLastPeek = ""
     let status = NSTextField.label(font: UIType.detail)
     let statusBox = NSView()
     /// The status's tint (a diagnostic's colour, or none), and whether its
@@ -449,6 +456,11 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         switch what {
         case "pick": headingsOutline.pick(Int(arg) ?? 0); return "picked"
         case "text": return String(textView.text.string.suffix(300))
+        case "popover":
+            // "scrub popover": the card shown by the text (documentation, a peeked definition).
+            guard let h = hover, h.isShown, let v = h.contentViewController?.view else { return "none shown; last peeked:\n" + debugLastPeek }
+            func words(_ v: NSView) -> [String] { ((v as? NSTextField).map { [$0.stringValue] } ?? []) + ((v as? FlatButton).map { [$0.title] } ?? []) + v.subviews.flatMap(words) }
+            return words(v).joined(separator: "\n")
         case "cmdmenu":
             // "scrub cmdmenu <line> <column> [title]": the menu ⌘-right-click
             // there shows (lines and columns from 1), or that item chosen.
@@ -464,7 +476,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
                     return i.title
                 }.joined(separator: "\n")
             }
-            guard let item = menu.items.first(where: { $0.title == title }), let action = item.action else { return "no such item" }
+            // "Add to Note/New Note": an item of a submenu.
+            var items = menu.items, path = title.split(separator: "/").map(String.init)
+            while path.count > 1, let sub = items.first(where: { $0.title == path[0] })?.submenu { items = sub.items; path.removeFirst() }
+            guard let item = items.first(where: { $0.title == path[0] }), let action = item.action else { return "no such item" }
             NSApp.sendAction(action, to: item.target, from: item)
             return "chose \(title)"
         default: return "headings \(headingLines.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))"

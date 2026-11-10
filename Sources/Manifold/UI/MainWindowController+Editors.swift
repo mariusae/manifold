@@ -338,6 +338,17 @@ extension MainWindowController: EditorViewDelegate {
     /// A link in the text clicked: a block's gone to; an address opened.
     func editor(_ view: EditorView, follow target: String, over: Bool) { open(target, from: view.placement, over: over) }
     func editor(_ view: EditorView, menuForLink target: String) -> NSMenu? { linkMenu(target, from: view.placement) }
+    func editor(_ view: EditorView, aboutItems subject: LinkSubject, to menu: NSMenu) { aboutItems(subject, from: view.placement, to: menu) }
+
+    func editor(_ view: EditorView, read path: String, done: @escaping (String?) -> Void) {
+        let on = view.block.host
+        if on == host.host { return done(try? String(contentsOfFile: path, encoding: .utf8)) }
+        guard let client = hosts.client(on) else { return done(nil) }
+        var data = Data()
+        client.readFile(path, limit: 4 << 20, onData: { data.append($0) }) { error in
+            done(error == nil ? String(decoding: data, as: UTF8.self) : nil)
+        }
+    }
 
     /// A definition found (⌘-click): its file at its line, beside the
     /// editor — or, ⌘⌥-clicked, stacked over it.

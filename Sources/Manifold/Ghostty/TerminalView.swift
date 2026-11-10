@@ -1017,7 +1017,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                     return i.title
                 }.joined(separator: "\n")
             }
-            guard let item = menu.items.first(where: { $0.title == title }), let action = item.action else { return "no such item" }
+            // "Add to Note/New Note": an item of a submenu.
+            var items = menu.items, path = title.split(separator: "/").map(String.init)
+            while path.count > 1, let sub = items.first(where: { $0.title == path[0] })?.submenu { items = sub.items; path.removeFirst() }
+            guard let item = items.first(where: { $0.title == path[0] }), let action = item.action else { return "no such item" }
             NSApp.sendAction(action, to: item.target, from: item)
             return "chose \(title)"
         case "click":

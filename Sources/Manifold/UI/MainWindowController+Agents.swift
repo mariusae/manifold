@@ -76,7 +76,7 @@ extension MainWindowController {
 
     /// The agent to ask: the one in this space most lately settled on (a
     /// tile of its, still running), else any here.
-    private func agentForAsking() -> BlockID? {
+    func agentForAsking() -> BlockID? {
         guard let a = arrangement else { return nil }
         let agents = a.placements.filter { hosts.block($0.block)?.kind == .agent && hosts.block($0.block)?.terminal?.dormantSince == nil }
         guard !agents.isEmpty else { return nil }

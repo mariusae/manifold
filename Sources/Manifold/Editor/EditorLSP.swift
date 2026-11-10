@@ -359,6 +359,7 @@ extension EditorView {
         }
         item("Go to Definition", "arrow.up.forward.square", click: "⌘-click") { [weak self] in self?.definition(at: offset) }
         item("Go to Definition Over", "square.on.square", click: "⌥⌘-click") { [weak self] in self?.definition(at: offset, over: true) }
+        item("Peek Definition", "eye") { [weak self] in self?.peekDefinition(at: offset) }
         menu.addItem(.separator())
         for (title, symbol, action) in [("Find References", "magnifyingglass", #selector(EditorView.findReferences(_:))),
                                         ("Show Callers", "arrow.turn.down.left", #selector(MainWindowController.showCallers(_:))),
@@ -370,7 +371,64 @@ extension EditorView {
         }
         menu.addItem(.separator())
         item("Copy Name", "doc.on.doc") { NSPasteboard.copy(name) }
+        let line = textView.text.line(at: offset) + 1
+        let file = path.isEmpty ? (noteName ?? "this note") : (path as NSString).lastPathComponent
+        delegate?.editor(self, aboutItems: LinkSubject(place: Place(block: block, at: .range(word), name: name),
+                                                       label: name, forAgent: "`\(name)` (\(path.isEmpty ? file : path):\(line))", address: nil,
+                                                       cwd: path.isEmpty ? nil : (path as NSString).deletingLastPathComponent), to: menu)
         return menu
+    }
+
+    /// Peek Definition: where the name at `offset` is defined, a few lines
+    /// of it, in a card by the name — not gone to.
+    func peekDefinition(at offset: Int) {
+        ask(.definition(block, offset: offset), busy: "Looking for the definition…") { [weak self] result in
+            guard let self, case .locations(let places) = result else { return }
+            guard let place = places.first else { return self.flash("No definition found") }
+            let show = { [weak self] (text: String?) in
+                guard let self, let text else { return self?.flash("Couldn't read the definition") ?? () }
+                let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+                let from = max(0, place.line - 1), to = min(lines.count, place.line + 15)
+                guard from < to else { return self.flash("Couldn't read the definition") }
+                let snippet = lines[from..<to].joined(separator: "\n")
+                self.showPeek(snippet, title: "\((place.path as NSString).lastPathComponent):\(place.line + 1)", at: offset) { [weak self] in
+                    self?.go(to: place, over: false)
+                }
+            }
+            if place.path == self.path { return show(self.textView.text.string) }
+            self.delegate?.editor(self, read: place.path, done: show)
+        }
+    }
+
+    /// A definition peeked at: its lines, in the code's font, under a line
+    /// naming where they are, which clicked goes there.
+    private func showPeek(_ code: String, title: String, at offset: Int, go: @escaping () -> Void) {
+        debugLastPeek = title + "\n" + code
+        hover?.close()
+        let popover = NSPopover()
+        popover.behavior = .transient
+        let vc = NSViewController()
+        let head = FlatButton(title, symbol: "arrow.up.forward.square", font: UIType.detail)
+        let action = ClosureMenuItem("", { go(); popover.close() })
+        head.target = action
+        head.action = action.action
+        let label = NSTextField(labelWithString: code)
+        label.font = theme.font(.monospaced, size: 12)
+        label.isSelectable = true
+        label.lineBreakMode = .byClipping
+        let size = label.sizeThatFits(NSSize(width: 640, height: 420))
+        let w = min(max(size.width, head.intrinsicContentSize.width), 640) + 24, h = min(size.height, 420)
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h + 46))
+        head.frame = NSRect(x: 8, y: h + 16, width: head.intrinsicContentSize.width, height: 22)
+        label.frame = NSRect(x: 12, y: 10, width: w - 24, height: h)
+        view.addSubview(head)
+        view.addSubview(label)
+        vc.view = view
+        objc_setAssociatedObject(view, "manifold.peek.go", action, .OBJC_ASSOCIATION_RETAIN)
+        popover.contentViewController = vc
+        let r = textView.convert(textView.caretRectInWindow(offset), from: nil)
+        popover.show(relativeTo: r, of: textView, preferredEdge: .maxY)
+        hover = popover
     }
 
     func textView(_ view: TextView, commandClickAt offset: Int, over: Bool) {
