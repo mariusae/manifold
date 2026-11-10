@@ -1,14 +1,21 @@
 import AppKit
 import ManifoldCore
 
-/// A view's outline as its scroll bar (§3.1, §7.5): down the view's right
-/// edge, a mark for each item that fits — the most telling of them, where
-/// it is — its length how much it spans, its weight its level, its colour
-/// what it is (failed, running, what you asked an agent). The part shown
-/// is the knob, dragged as a scroll bar's. The pointer on it magnifies the
-/// marks around it, as the Dock does its icons, and the room that opens is
-/// given to the items there that didn't fit; the one under the pointer is
-/// previewed in a card beside it, and clicked, gone to.
+/// A view's outline beside its scroll bar (§3.1, §7.5), as claude.ai has
+/// its conversation's: a column of ticks, one for each item that's shown,
+/// evenly spaced, in the middle of the view's right edge, left of an
+/// ordinary scroll bar the full height. A tick's height is how much its
+/// item spans — four heights, against the rest of the view's, not any
+/// other's — and the ticks of what shows are lit. Which items have ticks
+/// doesn't change as you scroll: a page's headings down to the deepest
+/// level whose every heading fits (the others dropped), a terminal's
+/// commands all; when there are more than fit, the column scrolls, a
+/// chevron at its top or bottom to go on. The pointer on it widens the
+/// ticks around it, as the Dock does its icons, and brightens them; the
+/// one under the pointer is previewed in a card beside it, and clicked,
+/// gone to. Over a terminal, whose cells the ticks would hide, they show
+/// as an overlay scroll bar does: while it scrolls or the pointer's on the
+/// strip, and a moment after.
 
 /// An outline's item as the strip weighs it: its level, where it begins
 /// in the view's scroll units and how much it spans.
@@ -22,158 +29,127 @@ struct StripItem: Equatable {
     var running = false
 }
 
-/// Where the strip looks from when it picks: the part shown (a page), or
-/// the end (a terminal: its latest commands matter most).
+/// Which items the strip shows: a page's headings, its deepest levels
+/// dropped till they fit; or every one (a terminal's commands).
 enum StripPolicy: Equatable {
     case document
     case recent
 }
 
-/// A mark placed: the item it stands for, its middle (from the strip's
-/// top), how magnified it is there, and whether it's one the pointer's
-/// magnification made room for.
-struct StripMark: Equatable {
+/// A tick placed: the item it stands for, its middle (from the view's
+/// top), its height (0…3), and whether what it stands for shows.
+struct StripTick: Equatable {
     var index: Int
     var y: CGFloat
-    var scale: CGFloat
-    var extra: Bool
+    var height: Int
+    var lit: Bool
 }
 
 enum StripLayout {
-    /// The room a mark takes at rest, and the least between two magnified.
+    /// From one tick's middle to the next's.
     static let pitch: CGFloat = 12
-    static let minPitch: CGFloat = 7
-    /// Top and bottom, kept clear: the chevrons' room.
+    /// Above and below the column, when it scrolls: a chevron's room.
     static let pad: CGFloat = 14
+    /// A tick's width at rest, and its heights.
+    static let tickWidth: CGFloat = 12
+    static let heights: [CGFloat] = [1.5, 3, 4.5, 6]
+    /// How much wider the tick under the pointer is, and how far that
+    /// reaches (the Dock's).
+    static let swell: CGFloat = 2.2
+    static let reach: CGFloat = 2 * pitch
 
-    /// How many marks fit at rest.
-    static func budget(height: CGFloat) -> Int { max(3, Int((height - 2 * pad) / pitch)) }
+    /// How many ticks a span holds.
+    static func fits(_ height: CGFloat) -> Int { max(1, Int(height / pitch)) }
 
-    /// How much an item matters, where you are: its level, its size, what
-    /// it says (failed, running, asked), less how far it is from where the
-    /// strip looks from (`focus`, a fraction of the whole).
-    static func interest(_ item: StripItem, total: Double, largest: Double, focus: Double, sharpness: Double) -> Double {
-        // A level outweighs nearness and size: a page's H2 far off before
-        // a paragraph near.
-        let level = [2.0, 1.2, 0.5, 0.2][min(max(item.level, 0), 3)]
-        let size = log1p(max(item.size, 0)) / log1p(max(largest, 1)) * 0.5
-        var api = level + size
-        if item.failed { api += 1.5 }
-        if item.running { api += 2 }
-        if item.you { api += 0.2 }
-        let middle = (item.start + item.size / 2) / max(total, 1)
-        return api - abs(middle - focus) * sharpness
+    /// The items that have ticks: a page's headings down to the deepest
+    /// level whose every one fits (`fit`) — one deeper, scrolled, if that
+    /// leaves too few to say anything; every item of a terminal.
+    static func chosen(_ items: [StripItem], policy: StripPolicy, fit: Int) -> [Int] {
+        guard policy == .document, items.count > fit else { return Array(items.indices) }
+        let deepest = items.map(\.level).max() ?? 0
+        func upTo(_ l: Int) -> [Int] { items.indices.filter { items[$0].level <= l } }
+        var level = 0
+        for l in 0...deepest where upTo(l).count <= fit { level = l }
+        var out = upTo(level)
+        if out.count < min(fit, 3), level < deepest { out = upTo(level + 1) }
+        return out
     }
 
-    /// The marks at rest: the `budget` that matter most from `focus`, in
-    /// order. Those shown before keep a little more, so the marks don't
-    /// trade places at each scroll (`previous`).
-    static func rest(_ items: [StripItem], total: Double, focus: Double, policy: StripPolicy, budget: Int, previous: Set<Int> = []) -> [Int] {
-        guard items.count > budget else { return Array(items.indices) }
-        let largest = items.map(\.size).max() ?? 1
-        // A page's headings are its landmarks wherever they are; a
-        // terminal's latest commands matter most.
-        let sharpness = policy == .recent ? 1.6 : 0.6
-        let ranked = items.indices.map { i -> (Double, Int) in
-            (interest(items[i], total: total, largest: largest, focus: focus, sharpness: sharpness) + (previous.contains(i) ? 0.1 : 0), i)
-        }.sorted { $0.0 > $1.0 }
-        return ranked.prefix(budget).map(\.1).sorted()
+    /// Each tick's height (0…3): its item's size against the others'
+    /// (logarithmically, from about the smallest to about the largest, so
+    /// a stray one doesn't flatten the rest) — what's big here, not
+    /// anywhere.
+    static func heights(_ sizes: [Double]) -> [Int] {
+        let logs = sizes.map { log(max($0, 1)) }
+        let sorted = logs.sorted()
+        guard sorted.count > 1 else { return sizes.map { _ in 1 } }
+        let cut = sorted.count >= 10 ? sorted.count / 10 : 0
+        let lo = sorted[cut], hi = sorted[sorted.count - 1 - cut]
+        guard hi - lo > 1e-6 else { return sizes.map { _ in 1 } }
+        return logs.map { min(3, max(0, Int((($0 - lo) / (hi - lo)) * 4))) }
     }
 
-    /// The fisheye (Sarkar and Brown's): `x` (0…1) seen through a lens at
-    /// `p` magnifying `m + 1` times there — the ends stay, and so does `p`.
-    static func fisheye(_ x: Double, at p: Double, by m: Double) -> Double {
-        guard m > 0 else { return x }
-        if x >= p {
-            guard p < 1 else { return x }
-            let d = (x - p) / (1 - p)
-            return p + (m + 1) * d / (m * d + 1) * (1 - p)
-        }
-        guard p > 0 else { return x }
-        let d = (p - x) / p
-        return p - (m + 1) * d / (m * d + 1) * p
-    }
-
-    /// Each in order at least `gap` from the one before, all within 0…`length`,
-    /// moved as little as that takes.
-    static func spread(_ ys: [CGFloat], gap: CGFloat, length: CGFloat) -> [CGFloat] {
-        guard !ys.isEmpty else { return [] }
-        var out = ys
-        for k in out.indices.dropFirst() { out[k] = max(out[k], out[k - 1] + gap) }
-        if let last = out.indices.last { out[last] = min(out[last], length) }
-        for k in out.indices.reversed().dropFirst() { out[k] = min(out[k], out[k + 1] - gap) }
-        if out[0] < 0 {
-            out[0] = 0
-            for k in out.indices.dropFirst() { out[k] = max(out[k], out[k - 1] + gap) }
+    /// The ticks (positions in `ticks`) whose stretch shows: from their
+    /// item's start to the next tick's (its children with it, when theirs
+    /// were dropped).
+    static func lit(_ items: [StripItem], ticks: [Int], offset: Double, shown: Double, total: Double) -> Set<Int> {
+        var out: Set<Int> = []
+        for (k, i) in ticks.enumerated() {
+            let start = items[i].start
+            let end = max(k + 1 < ticks.count ? items[ticks[k + 1]].start : total, start + 1)
+            if start < offset + shown, end > offset { out.insert(k) }
         }
         return out
     }
 
-    /// The marks placed in a strip `height` high: those at rest where
-    /// their items are (spread to `pitch` apart where they crowd); with the
-    /// pointer at `pointer` (a fraction of the strip), magnified around it
-    /// by `magnification`, and the items between them there that the room
-    /// opened takes — the most telling first.
-    static func place(_ items: [StripItem], rest: [Int], total: Double, height: CGFloat,
-                      pointer: Double? = nil, magnification: Double = 2.5) -> [StripMark] {
-        guard !rest.isEmpty else { return [] }
-        let length = max(height - 2 * pad, 1)
-        let total = max(total, 1)
-        func fraction(_ i: Int) -> Double { min(max(items[i].start / total, 0), 1) }
-        // At rest: where each is, kept a pitch apart.
-        let atRest = spread(rest.map { CGFloat(fraction($0)) * length }, gap: pitch, length: length).map { Double($0 / length) }
-        guard let p = pointer, magnification > 1 else {
-            return zip(rest, atRest).map { StripMark(index: $0, y: pad + CGFloat($1) * length, scale: 1, extra: false) }
-        }
-        let m = magnification - 1
-        func lens(_ x: Double) -> Double { fisheye(x, at: p, by: m) }
-        func scale(_ x: Double) -> CGFloat {
-            let e = 0.004
-            let d = (lens(min(x + e, 1)) - lens(max(x - e, 0))) / (min(x + e, 1) - max(x - e, 0))
-            return CGFloat(min(max(d, 1), magnification))
-        }
-        var marks = zip(rest, atRest).map { StripMark(index: $0, y: pad + CGFloat(lens($1)) * length, scale: scale($1), extra: false) }
-        // Between each two (and before the first, after the last): the
-        // items there, where they are between them, as many as the room
-        // the lens opens within reach of the pointer holds.
-        let largest = items.map(\.size).max() ?? 1
-        let bounds = [(-1, 0.0, 0.0)] + zip(rest, atRest).map { ($0, $1, fraction($0)) } + [(items.count, 1.0, 1.0)]
-        let py = CGFloat(p) * length, reach = pitch * 6
-        for g in 0..<(bounds.count - 1) {
-            let (a, xa, fa) = bounds[g], (b, xb, fb) = bounds[g + 1]
-            guard b - a > 1 else { continue }
-            let top = max(CGFloat(lens(xa)) * length, py - reach), bottom = min(CGFloat(lens(xb)) * length, py + reach)
-            let fits = Int((bottom - top) / minPitch) - 1
-            guard fits > 0, bottom - top > pitch * 1.4 else { continue }
-            // Each where it is between the two, through the lens.
-            let candidates = ((a + 1)..<b).compactMap { i -> (Int, Double)? in
-                let x = fb > fa ? xa + (xb - xa) * (fraction(i) - fa) / (fb - fa) : (xa + xb) / 2
-                let y = CGFloat(lens(x)) * length
-                return y > top && y < bottom ? (i, x) : nil
-            }
-            let chosen = candidates.map { c in (interest(items[c.0], total: total, largest: largest, focus: p, sharpness: 1), c) }
-                .sorted { $0.0 > $1.0 }.prefix(fits).map(\.1)
-            for (i, x) in chosen {
-                marks.append(StripMark(index: i, y: pad + CGFloat(lens(x)) * length, scale: scale(x), extra: true))
-            }
-        }
-        marks.sort { $0.index < $1.index }
-        let ys = spread(marks.map { $0.y - pad }, gap: minPitch, length: length)
-        for k in marks.indices { marks[k].y = pad + ys[k] }
-        return marks
+    /// The column: how many ticks it shows, and whether it scrolls (there
+    /// being more than fit in `track`, the chevrons' room kept).
+    static func column(count: Int, track: CGFloat) -> (shows: Int, scrolls: Bool) {
+        if CGFloat(count) * pitch <= track { return (count, false) }
+        return (max(1, Int((track - 2 * pad) / pitch)), true)
     }
+
+    /// The first tick shown, moved as little as it takes to show `keep`
+    /// (its start, if not all of it fits).
+    static func follow(first: Int, keep: ClosedRange<Int>?, shows: Int, count: Int) -> Int {
+        var f = first
+        if let k = keep {
+            if k.upperBound >= f + shows { f = k.upperBound - shows + 1 }
+            if k.lowerBound < f { f = k.lowerBound }
+        }
+        return min(max(f, 0), max(count - shows, 0))
+    }
+
+    /// How much wider a tick is `d` from the pointer.
+    static func swollen(_ d: CGFloat) -> CGFloat { 1 + (swell - 1) * exp(-(d * d) / (2 * reach * reach)) }
 }
 
-/// The strip itself: the marks, the knob, the card.
+/// The strip itself: the ticks, the scroll bar, the card.
 final class OutlineStripView: NSView {
+    /// The room it takes of its view's width: the scroll bar's.
     static let width: CGFloat = ScrubberView.width
+    /// The ticks' lane, over the view's content left of that.
+    static let lane: CGFloat = 16
+
+    /// Its frame for a view whose right edge is at `right`: the scroll
+    /// bar there, the ticks' lane left of it.
+    static func frame(right: CGFloat, y: CGFloat, height: CGFloat) -> NSRect {
+        NSRect(x: right - width - lane, y: y, width: width + lane, height: height)
+    }
 
     /// Scrolled to a fraction of the content, the knob dragged or the track clicked.
-    var onScroll: ((Double) -> Void)?
+    var onScroll: ((Double) -> Void)? {
+        get { scrubber.onScroll }
+        set { scrubber.onScroll = newValue }
+    }
     /// What the card says of an item: a line or a few under its title.
     var preview: ((Int) -> [String])?
     /// Lines set in the code font in the card (a terminal's output).
     var previewIsCode = false
+    /// The ticks shown only while the content scrolls or the pointer's on
+    /// the strip, and a moment after, as an overlay scroll bar is (over a
+    /// terminal, whose cells they'd hide); else always.
+    var revealsOnActivity = false { didSet { column.opacity = revealsOnActivity ? 0 : 1 } }
 
     let outline: Outline
     private(set) var items: [StripItem] = []
@@ -181,44 +157,47 @@ final class OutlineStripView: NSView {
     private var total: Double = 1
     private var offset: Double = 0
     private var shown: Double = 1
-    /// Whether the knob means anything (an agent's turns have no rows).
-    var scrolls = true { didSet { needsLayout = true } }
+    /// Whether there's a scroll bar (an agent's turns have no rows).
+    var scrolls = true { didSet { if scrolls != oldValue { needsLayout = true } } }
 
-    private(set) var rest: [Int] = []
-    private(set) var marks: [StripMark] = []
-    private(set) var pointer: Double?
+    private let scrubber = ScrubberView(frame: .zero)
+    /// The items with ticks (all of them, not only those the column shows
+    /// now), their heights, and the first the column shows.
+    private(set) var chosen: [Int] = []
+    private var chosenHeights: [Int] = []
+    private var first = 0
+    private var litSeen: ClosedRange<Int>?
+    private(set) var ticks: [StripTick] = []
+    private var more = (above: false, below: false)
+    /// The ticks and chevrons, shown or faded together.
+    private let column = CALayer()
+    private var fade: Timer?
+    private var pointerIn = false
+    private var pointer: CGFloat?
     private var hovered: Int?
-    private var markLayers: [Int: CALayer] = [:]
-    private let knob = CALayer()
-    /// The way to the item before where you are, and the one after (as
-    /// claude.ai's strip has its ⌃): shown when there's one to go to.
+    private var layers: [Int: CALayer] = [:]
     private let up = CAShapeLayer(), down = CAShapeLayer()
     private var onChevron: Chevron?
     enum Chevron { case up, down }
     private let card = StripCard()
-    private var dragging: (grab: CGFloat, start: Double)?
-    private var dragged = false
-    private var fade: Timer?
-    static var magnification = 2.6
 
     init(outline: Outline, policy: StripPolicy) {
         self.outline = outline
         self.policy = policy
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: 100))
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width + Self.lane, height: 100))
         wantsLayer = true
         layer?.masksToBounds = false
-        knob.cornerRadius = Radius.inline
-        knob.opacity = 0
-        layer?.addSublayer(knob)
+        addSubview(scrubber)
+        layer?.addSublayer(column)
         for c in [up, down] {
             c.fillColor = nil
             c.lineWidth = 1.5
             c.lineCap = .round
             c.lineJoin = .round
-            layer?.addSublayer(c)
+            column.addSublayer(c)
         }
         outline.watch(self) { [weak self] in self?.relayout() }
-        themed { $0.recolor() }
+        themed { $0.draw(animated: false) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -232,6 +211,7 @@ final class OutlineStripView: NSView {
         self.total = max(total, 1)
         self.offset = offset
         self.shown = max(shown, 1)
+        scrubber.update(total: self.total, offset: offset, shown: self.shown)
         if moved { reveal(); relayout() }
     }
 
@@ -243,120 +223,135 @@ final class OutlineStripView: NSView {
         relayout()
     }
 
-    /// Where the strip looks from at rest: the middle of what shows, or the end.
-    private var focus: Double {
-        switch policy {
-        case .recent: 1
-        case .document: min(max((offset + shown / 2) / max(total, 1), 0), 1)
-        }
-    }
-
     override func layout() {
         super.layout()
+        scrubber.frame = NSRect(x: Self.lane, y: 0, width: Self.width, height: bounds.height)
         relayout()
     }
 
-    /// The strip's own span: half the view's height, in its middle (a
-    /// short view's 120 points, or all of one shorter than that).
+    /// The span the column may take: two thirds of the view's height, in
+    /// its middle (a short view's 120 points, or all of one shorter).
     var track: (top: CGFloat, height: CGFloat) {
-        let h = min(bounds.height, max(bounds.height / 2, 120))
+        let h = min(bounds.height, max(bounds.height * 2 / 3, 120))
         return (((bounds.height - h) / 2).rounded(), h)
     }
 
+    /// The column's ticks' span, from the first's top to the last's bottom.
+    private var block: (top: CGFloat, bottom: CGFloat) {
+        let n = CGFloat(ticks.count)
+        let top = ((bounds.height - n * StripLayout.pitch) / 2).rounded()
+        return (top, top + n * StripLayout.pitch)
+    }
+
     private func relayout() {
+        scrubber.isHidden = !scrolls
         let usable = items.count == outline.items.count ? items : []
-        let shownIndices = Set(outline.shown)
-        // Narrowed by the sidebar's filter: those it admits.
-        let admitted = usable.indices.filter { shownIndices.contains($0) }
-        let sub = admitted.map { usable[$0] }
-        let picked = StripLayout.rest(sub, total: total, focus: focus, policy: policy,
-                                      budget: StripLayout.budget(height: track.height),
-                                      previous: Set(rest.compactMap { admitted.firstIndex(of: $0) }))
-        let placed = StripLayout.place(sub, rest: picked, total: total, height: track.height,
-                                       pointer: pointer, magnification: Self.magnification)
-        rest = picked.map { admitted[$0] }
-        marks = placed.map { StripMark(index: admitted[$0.index], y: track.top + $0.y, scale: $0.scale, extra: $0.extra) }
+        let admitted = Set(outline.shown)
+        let pool = usable.indices.filter { admitted.contains($0) }
+        let t = track
+        let picked = StripLayout.chosen(pool.map { usable[$0] }, policy: policy, fit: StripLayout.fits(t.height)).map { pool[$0] }
+        if picked != chosen {
+            chosen = picked
+            litSeen = nil
+        }
+        chosenHeights = StripLayout.heights(picked.map { usable[$0].size })
+        let (shows, scrollsTicks) = StripLayout.column(count: picked.count, track: t.height)
+        let lit: Set<Int> = scrolls
+            ? StripLayout.lit(usable, ticks: picked, offset: offset, shown: shown, total: total)
+            : Set(outline.current.flatMap { picked.firstIndex(of: $0) }.map { [$0] } ?? [])
+        // The column follows what shows, when that changes; scrolled by
+        // its chevrons, it stays till then.
+        let range = lit.min().flatMap { lo in lit.max().map { lo...$0 } }
+        if range != litSeen {
+            first = StripLayout.follow(first: first, keep: range, shows: shows, count: picked.count)
+            litSeen = range
+        }
+        first = min(max(first, 0), max(picked.count - shows, 0))
+        let n = min(shows, picked.count)
+        let top = ((bounds.height - CGFloat(n) * StripLayout.pitch) / 2).rounded()
+        ticks = (0..<n).map { k in
+            StripTick(index: picked[first + k], y: top + (CGFloat(k) + 0.5) * StripLayout.pitch,
+                      height: chosenHeights[first + k], lit: lit.contains(first + k))
+        }
+        more = (scrollsTicks && first > 0, scrollsTicks && first + n < picked.count)
         draw(animated: pointer != nil)
     }
 
     // MARK: Drawing
 
-    private func color(_ item: StripItem, _ i: Int) -> NSColor {
+    /// The right end of the ticks, a little left of the scroll bar.
+    private var tickRight: CGFloat { Self.lane - 2 }
+
+    /// The ticks shown (over a terminal), and faded a moment after
+    /// unless the pointer's on the strip — always shown where the system's
+    /// scroll bars are the kind that stay.
+    private func reveal() {
+        guard revealsOnActivity else { return }
+        fade?.invalidate()
+        fade = nil
+        if column.opacity != 1 {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(Motion.reduced ? 0 : 0.15)
+            column.opacity = 1
+            CATransaction.commit()
+        }
+        guard NSScroller.preferredScrollerStyle == .overlay, !pointerIn else { return }
+        fade = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            MainActor.unchecked {
+                guard let self, !self.pointerIn else { return }
+                self.fade = nil
+                CATransaction.begin()
+                CATransaction.setAnimationDuration(0.3)
+                self.column.opacity = 0
+                CATransaction.commit()
+                self.card.hide()
+            }
+        }
+    }
+
+    private func color(_ item: StripItem, _ tick: StripTick) -> NSColor {
         if item.running { return Theme.accent }
         if item.failed { return Status.failed }
         if item.you { return Theme.accent }
-        if i == outline.current { return Theme.text }
-        return [Theme.text, Theme.secondaryText, Theme.tertiaryText, Theme.tertiaryText][min(item.level, 3)]
+        return tick.lit ? Theme.text : Theme.tertiaryText
     }
 
     private func draw(animated: Bool) {
         CATransaction.begin()
-        CATransaction.setAnimationDuration(animated && !Motion.reduced ? 0.14 : 0)
+        CATransaction.setAnimationDuration(animated && !Motion.reduced ? 0.12 : 0)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
         if !animated { CATransaction.setDisableActions(true) }
-        let largest = items.map(\.size).max() ?? 1
-        let keep = Set(marks.map(\.index))
-        for (i, l) in markLayers where !keep.contains(i) {
+        let keep = Set(ticks.map(\.index))
+        for (i, l) in layers where !keep.contains(i) {
             l.removeFromSuperlayer()
-            markLayers.removeValue(forKey: i)
+            layers.removeValue(forKey: i)
         }
-        let right = bounds.width - 2
-        for m in marks where items.indices.contains(m.index) {
-            let item = items[m.index]
-            let l = markLayers[m.index] ?? {
+        for t in ticks where items.indices.contains(t.index) {
+            let item = items[t.index]
+            let l = layers[t.index] ?? {
                 let l = CALayer()
-                l.opacity = 0
-                layer?.addSublayer(l)
-                markLayers[m.index] = l
+                column.insertSublayer(l, below: up)
+                layers[t.index] = l
                 return l
             }()
-            // Its length: how much it spans (a log, so one long section
-            // doesn't flatten the rest); its weight, its level.
-            let span = log1p(max(item.size, 0)) / log1p(max(largest, 1))
-            let length = (3 + 8 * CGFloat(span)) * (1 + (m.scale - 1) * 0.9)
-            let thick = [3.0, 2.0, 1.5, 1.5][min(item.level, 3)] * (1 + (m.scale - 1) * 0.25)
-            l.frame = NSRect(x: right - length, y: (m.y - thick / 2).rounded(.down), width: length, height: thick)
-            l.cornerRadius = thick / 2
-            effectiveAppearance.performAsCurrentDrawingAppearance { l.backgroundColor = color(item, m.index).cgColor }
-            // What shows (or where you are) in full; the rest paler, the
-            // landmarks less so — all of it full while the pointer's on it.
-            let lit = hovered == m.index
-            let inView = scrolls ? item.start < offset + shown && item.start + item.size > offset : m.index == outline.current
-            let landmark = item.level == 0 || item.failed || item.running || item.you
-            l.opacity = lit || pointer != nil || dragging != nil || inView ? 1 : (landmark ? 0.7 : 0.45)
-            l.borderWidth = lit ? 1.5 : 0
-            effectiveAppearance.performAsCurrentDrawingAppearance { l.borderColor = Theme.accent.cgColor }
-        }
-        // The knob: what shows, where it is in the whole.
-        if scrolls, total > shown {
-            let length = max(track.height - 2 * StripLayout.pad, 1)
-            let top = track.top + StripLayout.pad + CGFloat(offset / total) * length
-            let height = max(CGFloat(shown / total) * length, 12)
-            knob.frame = NSRect(x: 1, y: top, width: bounds.width - 2, height: height)
-            knob.isHidden = false
-        } else {
-            knob.isHidden = true
+            // Wider and brighter near the pointer.
+            let swell = pointer.map { StripLayout.swollen(abs($0 - t.y)) } ?? 1
+            let near = (swell - 1) / (StripLayout.swell - 1)
+            let w = StripLayout.tickWidth * swell
+            let h = StripLayout.heights[t.height]
+            l.frame = NSRect(x: tickRight - w, y: t.y - h / 2, width: w, height: h)
+            l.cornerRadius = min(min(h, w) / 2, 1.5)
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                let base = hovered == t.index ? Theme.text : color(item, t)
+                l.backgroundColor = (base.blended(withFraction: near * 0.7, of: Theme.text) ?? base).cgColor
+            }
         }
         drawChevrons()
         CATransaction.commit()
     }
 
-    /// The item ⌃ goes to: the start of the one you're in, if you're well
-    /// into it; else the one before. And ⌄: the one after.
-    var previousTarget: Int? {
-        let shownItems = outline.shown
-        guard let c = outline.current else { return nil }
-        if scrolls, items.indices.contains(c), shownItems.contains(c), offset > items[c].start + shown * 0.05 { return c }
-        return shownItems.last { $0 < c }
-    }
-
-    var nextTarget: Int? {
-        let c = outline.current ?? -1
-        return outline.shown.first { $0 > c }
-    }
-
     private func drawChevrons() {
-        let x = bounds.width - 2 - 5.5
+        let x = tickRight - StripLayout.tickWidth / 2
         func path(_ y: CGFloat, pointingUp: Bool) -> CGPath {
             let p = CGMutablePath()
             let h: CGFloat = 3.5
@@ -365,66 +360,62 @@ final class OutlineStripView: NSView {
             p.addLine(to: CGPoint(x: x + h, y: pointingUp ? y + h / 2 : y - h / 2))
             return p
         }
-        up.path = path(track.top + StripLayout.pad / 2, pointingUp: true)
-        down.path = path(track.top + track.height - StripLayout.pad / 2, pointingUp: false)
-        up.isHidden = previousTarget == nil || items.isEmpty
-        down.isHidden = nextTarget == nil || items.isEmpty
+        let b = block
+        up.path = path(b.top - StripLayout.pad / 2, pointingUp: true)
+        down.path = path(b.bottom + StripLayout.pad / 2, pointingUp: false)
+        up.isHidden = !more.above
+        down.isHidden = !more.below
         effectiveAppearance.performAsCurrentDrawingAppearance {
             up.strokeColor = (onChevron == .up ? Theme.text : Theme.tertiaryText).cgColor
             down.strokeColor = (onChevron == .down ? Theme.text : Theme.tertiaryText).cgColor
         }
     }
 
-    /// Which chevron a height in the strip is on, if one's shown there.
+    /// Which chevron a height is on, if one's shown there.
     private func chevron(at y: CGFloat) -> Chevron? {
-        let t = track
-        if y >= t.top - 4, y < t.top + StripLayout.pad, !up.isHidden { return .up }
-        if y > t.top + t.height - StripLayout.pad, y <= t.top + t.height + 4, !down.isHidden { return .down }
+        let b = block
+        if more.above, y >= b.top - StripLayout.pad - 2, y < b.top { return .up }
+        if more.below, y > b.bottom, y <= b.bottom + StripLayout.pad + 2 { return .down }
         return nil
     }
 
-    /// A chevron clicked: the item it goes to.
+    /// A chevron clicked: the column scrolled by most of itself.
     func go(_ c: Chevron) {
-        guard let i = c == .up ? previousTarget : nextTarget else { return }
+        let step = max(1, ticks.count - 2)
+        first += c == .up ? -step : step
+        first = min(max(first, 0), max(chosen.count - ticks.count, 0))
         card.hide()
-        outline.pick(i)
-    }
-
-    private func recolor() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            knob.backgroundColor = (dragging != nil ? Theme.handle : Theme.scrubberKnob).withAlphaComponent(0.55).cgColor
-        }
-        draw(animated: false)
-    }
-
-    /// The knob shown while the content moves, the pointer's on it, and a
-    /// moment after; the marks stay.
-    private func reveal() {
-        fade?.invalidate()
-        knob.opacity = 1
-        guard pointer == nil, dragging == nil else { return }
-        fade = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            MainActor.unchecked {
-                guard let self else { return }
-                CATransaction.begin()
-                CATransaction.setAnimationDuration(0.3)
-                self.knob.opacity = 0
-                CATransaction.commit()
-            }
-        }
+        relayout()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        recolor()
+        draw(animated: false)
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil { card.hide(); fade?.invalidate() } else { recolor() }
+        if window == nil { card.hide(); fade?.invalidate() } else { draw(animated: false) }
     }
 
     // MARK: The pointer
+
+    /// The column's span and the chevrons', in the ticks' lane.
+    private func onColumn(_ p: NSPoint) -> Bool {
+        guard !ticks.isEmpty, p.x >= 0, p.x < Self.lane else { return false }
+        let b = block
+        return p.y >= b.top - (more.above ? StripLayout.pad : 2) && p.y <= b.bottom + (more.below ? StripLayout.pad : 2)
+    }
+
+    /// The scroll bar where it is; the ticks' lane only on the column:
+    /// elsewhere it's the content's.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        guard bounds.contains(p), !isHidden else { return nil }
+        if p.x >= Self.lane { return scrubber.isHidden ? nil : scrubber.hitTest(p) }
+        // Faded, the ticks take nothing from what's under them.
+        return onColumn(p) && column.opacity > 0 ? self : nil
+    }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
@@ -432,121 +423,113 @@ final class OutlineStripView: NSView {
         super.updateTrackingAreas()
     }
 
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
-
-    private func fraction(at y: CGFloat) -> Double {
-        let length = max(track.height - 2 * StripLayout.pad, 1)
-        return Double(min(max((y - track.top - StripLayout.pad) / length, 0), 1))
+    override func resetCursorRects() {
+        let b = block
+        addCursorRect(NSRect(x: 0, y: b.top - StripLayout.pad, width: Self.lane, height: b.bottom - b.top + 2 * StripLayout.pad), cursor: .arrow)
     }
 
-    /// The mark nearest a height in the strip, if one's within reach.
-    private func mark(near y: CGFloat) -> StripMark? {
-        marks.min { abs($0.y - y) < abs($1.y - y) }.flatMap { abs($0.y - y) <= StripLayout.pitch ? $0 : nil }
+    /// The tick at a height, if there's one there.
+    private func tick(near y: CGFloat) -> StripTick? {
+        ticks.min { abs($0.y - y) < abs($1.y - y) }.flatMap { abs($0.y - y) <= StripLayout.pitch / 2 + 1 ? $0 : nil }
     }
 
-    /// The pointer at a height: the marks magnified around it, the one
-    /// there lit and its card shown; nil, off it.
+    /// The pointer at a height on the column: the ticks around it widened,
+    /// the one there previewed; nil, off it.
     func hover(at y: CGFloat?) {
-        // On a chevron: the item it goes to, in the card; the marks calm.
         if let y, let c = chevron(at: y) {
             onChevron = c
             pointer = nil
-            hovered = c == .up ? previousTarget : nextTarget
-            relayout()
-            if let i = hovered, outline.items.indices.contains(i) {
-                let item = outline.items[i]
-                card.show(title: item.title, detail: c == .up ? "Previous" : "Next", lines: preview?(i) ?? [],
-                          code: previewIsCode || item.code, beside: self,
-                          at: c == .up ? track.top + StripLayout.pad / 2 : track.top + track.height - StripLayout.pad / 2, pointerAt: y)
-            }
+            hovered = nil
+            card.hide()
+            draw(animated: true)
             return
         }
         onChevron = nil
-        pointer = y.map(fraction)
-        relayout()
-        hovered = y.flatMap { mark(near: $0)?.index }
+        let was = pointer
+        pointer = y
+        hovered = y.flatMap { tick(near: $0)?.index }
+        if was == nil, y == nil { return }
         draw(animated: true)
-        reveal()
-        guard let y, let i = hovered, outline.items.indices.contains(i), let m = marks.first(where: { $0.index == i }) else {
+        guard let y, let i = hovered, outline.items.indices.contains(i), let t = ticks.first(where: { $0.index == i }) else {
             return card.hide()
         }
         let item = outline.items[i]
         card.show(title: item.title, detail: item.detail, lines: preview?(i) ?? [], code: previewIsCode || item.code,
-                  beside: self, at: m.y, pointerAt: y)
-    }
-
-    /// Whether a height is on the strip (its span, and a little round it).
-    private func onStrip(_ y: CGFloat) -> Bool {
-        let t = track
-        return y >= t.top - 6 && y <= t.top + t.height + 6
+                  beside: self, at: t.y, pointerAt: y)
     }
 
     override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
     override func mouseMoved(with event: NSEvent) {
-        let y = convert(event.locationInWindow, from: nil).y
-        hover(at: onStrip(y) ? y : nil)
+        let p = convert(event.locationInWindow, from: nil)
+        if !pointerIn { pointerIn = true; reveal() }
+        hover(at: onColumn(p) ? p.y : nil)
     }
     override func mouseExited(with event: NSEvent) {
-        guard dragging == nil else { return }
+        pointerIn = false
+        reveal()
         hover(at: nil)
     }
 
-    override func mouseDown(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        dragged = false
-        guard chevron(at: p.y) == nil else { return }
-        if scrolls, knob.frame.insetBy(dx: 0, dy: -2).contains(p), mark(near: p.y) == nil {
-            dragging = (p.y, offset)
-            recolor()
-        }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard scrolls else { return }
-        let p = convert(event.locationInWindow, from: nil)
-        if dragging == nil, !dragged { dragging = (p.y, offset); card.hide() }
-        guard let d = dragging else { return }
-        dragged = true
-        let rows = Double(p.y - d.grab) / Double(max(1, track.height - 2 * StripLayout.pad)) * total
-        let target = min(max(d.start + rows, 0), max(total - shown, 0))
-        onScroll?(target / max(total - shown, 1))
-    }
+    override func mouseDown(with event: NSEvent) {}
 
     override func mouseUp(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        let wasDragging = dragging != nil
-        dragging = nil
-        recolor()
-        if dragged || wasDragging { return }
+        guard onColumn(p) else { return }
         if let c = chevron(at: p.y) { return go(c) }
-        guard onStrip(p.y) else { return }
-        // On a mark: its item gone to; else, the page there.
-        if let m = mark(near: p.y) {
+        if let t = tick(near: p.y) {
             card.hide()
-            outline.pick(m.index)
-            return
+            outline.pick(t.index)
         }
-        if scrolls { onScroll?(fraction(at: p.y)) }
     }
 
     // MARK: Debugging
 
     var debugState: String {
-        let lines = marks.map { m -> String in
-            let t = outline.items.indices.contains(m.index) ? outline.items[m.index].title : "?"
-            return "\(m.index) y \(Int(m.y)) x\(String(format: "%.2f", m.scale))\(m.extra ? " +" : "")\(hovered == m.index ? " *" : "") \(t.prefix(40))"
+        let lines = ticks.map { t -> String in
+            let title = outline.items.indices.contains(t.index) ? outline.items[t.index].title : "?"
+            return "\(t.index) y \(Int(t.y)) h\(t.height)\(t.lit ? " lit" : "")\(hovered == t.index ? " *" : "") \(title.prefix(40))"
         }
-        return "up \(up.isHidden ? "-" : previousTarget.map(String.init) ?? "-") down \(down.isHidden ? "-" : nextTarget.map(String.init) ?? "-") items \(items.count) rest \(rest.count) budget \(StripLayout.budget(height: track.height)) track \(Int(track.top))+\(Int(track.height)) pointer \(pointer.map { String(format: "%.2f", $0) } ?? "-") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
+        return "up \(more.above ? "+" : "-") down \(more.below ? "+" : "-") items \(items.count) chosen \(chosen.count) first \(first) shows \(ticks.count) track \(Int(track.top))+\(Int(track.height)) block \(Int(block.top))…\(Int(block.bottom)) scrollbar \(scrubber.isHidden ? "-" : "+") ticks \(column.opacity > 0 ? "shown" : "faded") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
     }
 
+    /// The strip drawn, wider (the ticks widened left of it), larger.
+    private func image(to path: String, scale: Double) -> String {
+        guard let root = layer else { return "no layer" }
+        let extra: CGFloat = 40, w = bounds.width + extra, h = bounds.height
+        let s = CGFloat(scale)
+        guard let ctx = CGContext(data: nil, width: Int(w * s), height: Int(h * s), bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return "no context" }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ctx.setFillColor(Theme.windowBackground.cgColor)
+        }
+        ctx.fill(CGRect(x: 0, y: 0, width: w * s, height: h * s))
+        // Flipped, as the view is.
+        ctx.translateBy(x: 0, y: h * s)
+        ctx.scaleBy(x: s, y: -s)
+        ctx.translateBy(x: extra, y: 0)
+        root.render(in: ctx)
+        guard let img = ctx.makeImage() else { return "no image" }
+        let rep = NSBitmapImageRep(cgImage: img)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        return "wrote \(path)"
+    }
+
+    /// "hover <f>" (the pointer that far down the column), "off", "pick <i>", "up", "down".
     func debug(_ arg: String) -> String {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first {
-        case "hover": if let f = a.dropFirst().first.flatMap(Double.init) { hover(at: track.top + StripLayout.pad + CGFloat(f) * max(track.height - 2 * StripLayout.pad, 1)) }
+        case "hover":
+            if let f = a.dropFirst().first.flatMap(Double.init) {
+                let b = block
+                hover(at: b.top + CGFloat(f) * (b.bottom - b.top))
+            }
         case "off": hover(at: nil)
         case "pick": if let i = a.dropFirst().first.flatMap(Int.init) { outline.pick(i) }
         case "up": go(.up)
         case "down": go(.down)
+        case "image":
+            // "image <path> [scale]": the strip's layers drawn, on its view's ground.
+            if a.count > 1 { return image(to: a[1], scale: a.count > 2 ? Double(a[2]) ?? 4 : 4) }
         default: break
         }
         return debugState
@@ -627,11 +610,12 @@ private final class StripCard {
         title.frame = NSRect(x: 12, y: top - tH, width: inner, height: tH); top -= tH
         if dH > 0 { detail.frame = NSRect(x: 12, y: top - dH - 2, width: inner, height: dH); top -= dH + 2 }
         if bH > 0 { body.frame = NSRect(x: 12, y: top - bH - 6, width: inner, height: bH) }
-        // Left of the strip, level with the mark, kept on the window.
+        // Left of the ticks (widened as they are under the pointer), level
+        // with the one it says, kept on the window.
         let inWindow = strip.convert(NSPoint(x: 0, y: y), to: nil)
         let screen = window.convertToScreen(NSRect(origin: inWindow, size: .zero)).origin
         let frame = window.frame
-        var x = screen.x - Self.width - 10
+        var x = screen.x - Self.width - 18
         x = max(frame.minX + 4, x)
         var yTop = min(screen.y + 16, frame.maxY - 30)
         yTop = max(yTop, frame.minY + h + 4)

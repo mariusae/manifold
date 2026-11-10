@@ -2,156 +2,124 @@ import AppKit
 import Testing
 @testable import Manifold
 
-// The outline strip (§3.1, §7.5): an outline's items as marks down a view's
-// edge, as many as fit, the most telling — and magnified around the
-// pointer, the room that opens given to the items there.
+// The outline strip (§3.1, §7.5), as claude.ai has its conversation's: a
+// column of evenly spaced ticks beside the scroll bar, their heights how
+// much their items span (against the rest of the view's), those of what
+// shows lit; which have ticks doesn't change as you scroll.
 
-/// A document: ten sections under three top-level headings, each
-/// heading followed by its subsections.
+/// A document: three top-level headings, each followed by its
+/// subsections (the middle one with twelve).
 private func document() -> [StripItem] {
     var out: [StripItem] = [], at = 0.0
     for top in 0..<3 {
         out.append(StripItem(level: 0, start: at, size: 100)); at += 100
         for _ in 0..<(top == 1 ? 12 : 6) {
-            out.append(StripItem(level: top == 2 ? 2 : 1, start: at, size: 60)); at += 60
+            out.append(StripItem(level: 1, start: at, size: 60)); at += 60
         }
     }
     return out
 }
 
-private func total(_ items: [StripItem]) -> Double { (items.last.map { $0.start + $0.size }) ?? 1 }
-
-@Test func atRestAStripShowsAsManyAsFitTopLevelFirst() {
+@Test func aPageShowsTheDeepestLevelWhoseEveryHeadingFits() {
     let items = document()
-    let rest = StripLayout.rest(items, total: total(items), focus: 0.5, policy: .document, budget: 8)
-    #expect(rest.count == 8)
-    #expect(rest == rest.sorted())
-    // Every top-level heading is among them, wherever it is.
-    for (i, item) in items.enumerated() where item.level == 0 { #expect(rest.contains(i)) }
+    // All 27 fit: all of them.
+    #expect(StripLayout.chosen(items, policy: .document, fit: 30).count == items.count)
+    // They don't: the subsections dropped, every top-level heading kept.
+    let top = StripLayout.chosen(items, policy: .document, fit: 20)
+    #expect(top == items.indices.filter { items[$0].level == 0 })
 }
 
-@Test func aTerminalsLatestCommandsAndItsFailuresAreKept() {
-    var items = (0..<40).map { StripItem(start: Double($0 * 10), size: 10) }
-    items[3].failed = true
-    let rest = StripLayout.rest(items, total: 400, focus: 1, policy: .recent, budget: 8)
-    // The last few, and the early one that failed.
-    #expect(rest.contains(39) && rest.contains(38) && rest.contains(37))
-    #expect(rest.contains(3))
-    #expect(!rest.contains(10))
+@Test func tooFewToSayAnythingTakesTheNextLevelScrolled() {
+    // A title and forty sections under it: the sections, not the title alone.
+    let items = [StripItem(level: 0, start: 0, size: 4000)] + (0..<40).map { StripItem(level: 1, start: Double($0 * 100), size: 100) }
+    #expect(StripLayout.chosen(items, policy: .document, fit: 20).count == 41)
+    #expect(StripLayout.column(count: 41, track: 240).scrolls)
 }
 
-@Test func restingMarksAreWhereTheirItemsAreAndAPitchApart() {
+@Test func aTerminalsCommandsAllHaveTicks() {
+    let items = (0..<40).map { StripItem(start: Double($0 * 10), size: 10) }
+    #expect(StripLayout.chosen(items, policy: .recent, fit: 8).count == 40)
+}
+
+@Test func heightsAreAgainstTheRestOfTheView() {
+    // The same sections, ten times bigger: the same heights.
+    let sizes = [10.0, 40, 200, 1000, 30]
+    #expect(StripLayout.heights(sizes) == StripLayout.heights(sizes.map { $0 * 10 }))
+    let h = StripLayout.heights(sizes)
+    #expect(h.min() == 0 && h.max() == 3)
+    // Order kept: a bigger one never shorter.
+    for (a, b) in zip(sizes, h) { for (c, d) in zip(sizes, h) where a < c { #expect(b <= d) } }
+    // All alike: all the middling height.
+    #expect(Set(StripLayout.heights([5, 5, 5])) == [1])
+}
+
+@Test func whatShowsIsLitItsChildrenWithItWhenTheyWereDropped() {
     let items = document()
-    let rest = StripLayout.rest(items, total: total(items), focus: 0.5, policy: .document, budget: 10)
-    let marks = StripLayout.place(items, rest: rest, total: total(items), height: 300)
-    for (a, b) in zip(marks, marks.dropFirst()) { #expect(b.y - a.y >= StripLayout.pitch - 0.01) }
-    #expect(marks.allSatisfy { $0.y >= StripLayout.pad - 0.01 && $0.y <= 300 - StripLayout.pad + 0.01 })
-    // The last top-level heading is about where it is on the page.
-    let last = items.lastIndex { $0.level == 0 }!
-    let y = marks.first { $0.index == last }!.y
-    let expected = StripLayout.pad + CGFloat(items[last].start / total(items)) * (300 - 2 * StripLayout.pad)
-    #expect(abs(y - expected) < 30)
+    let ticks = items.indices.filter { items[$0].level == 0 }
+    // The view on the middle heading's subsections: its tick lit, alone.
+    let middle = items[ticks[1]]
+    let lit = StripLayout.lit(items, ticks: ticks, offset: middle.start + 200, shown: 100, total: 2000)
+    #expect(lit == [1])
 }
 
-@Test func theLensKeepsItsEndsAndWhereItIs() {
-    for p in [0.0, 0.3, 0.5, 0.9, 1.0] {
-        #expect(abs(StripLayout.fisheye(0, at: p, by: 2) - 0) < 1e-9)
-        #expect(abs(StripLayout.fisheye(1, at: p, by: 2) - 1) < 1e-9)
-        #expect(abs(StripLayout.fisheye(p, at: p, by: 2) - p) < 1e-9)
-    }
-    // Monotone: order kept.
-    let xs = stride(from: 0.0, through: 1.0, by: 0.05).map { StripLayout.fisheye($0, at: 0.4, by: 3) }
-    #expect(xs == xs.sorted())
+@Test func theColumnFollowsWhatShowsMovingAsLittleAsItCan() {
+    #expect(StripLayout.follow(first: 0, keep: 25...26, shows: 10, count: 40) == 17)
+    #expect(StripLayout.follow(first: 17, keep: 20...21, shows: 10, count: 40) == 17)
+    #expect(StripLayout.follow(first: 17, keep: 3...3, shows: 10, count: 40) == 3)
+    // More shows than fits: its start.
+    #expect(StripLayout.follow(first: 0, keep: 5...30, shows: 10, count: 40) == 5)
 }
 
-@Test func theMarkUnderThePointerStaysAsTheStripMagnifies() {
-    let items = document()
-    let rest = StripLayout.rest(items, total: total(items), focus: 0.5, policy: .document, budget: 10)
-    let calm = StripLayout.place(items, rest: rest, total: total(items), height: 300)
-    let under = calm[4]
-    let p = Double((under.y - StripLayout.pad) / (300 - 2 * StripLayout.pad))
-    let lit = StripLayout.place(items, rest: rest, total: total(items), height: 300, pointer: p, magnification: 2.6)
-    let moved = lit.first { $0.index == under.index }!
-    #expect(abs(moved.y - under.y) < 4, "\(under.y) → \(moved.y)")
-    #expect(moved.scale > 1.5)
+@Test func thePointerWidensTheTicksNearIt() {
+    #expect(abs(StripLayout.swollen(0) - StripLayout.swell) < 1e-6)
+    #expect(StripLayout.swollen(StripLayout.pitch) > StripLayout.swollen(3 * StripLayout.pitch))
+    #expect(StripLayout.swollen(8 * StripLayout.pitch) < 1.01)
 }
 
-@Test func theRoomTheLensOpensIsGivenToItemsThereOnly() {
-    let items = document()
-    let rest = StripLayout.rest(items, total: total(items), focus: 0, policy: .document, budget: 8)
-    let calm = StripLayout.place(items, rest: rest, total: total(items), height: 300)
-    // The pointer over the long middle section, most of whose subsections didn't fit.
-    let p = 0.5
-    let lit = StripLayout.place(items, rest: rest, total: total(items), height: 300, pointer: p, magnification: 2.6)
-    let extra = lit.filter(\.extra)
-    #expect(!extra.isEmpty)
-    #expect(Set(calm.map(\.index)).isSubset(of: Set(lit.map(\.index))))
-    // All near the pointer.
-    let py = StripLayout.pad + CGFloat(p) * (300 - 2 * StripLayout.pad)
-    #expect(extra.allSatisfy { abs($0.y - py) < 120 })
-    // In order, and never on top of one another.
-    #expect(lit.map(\.index) == lit.map(\.index).sorted())
-    for (a, b) in zip(lit, lit.dropFirst()) { #expect(b.y - a.y >= StripLayout.minPitch - 0.01) }
-}
-
-@Test func marksDontTradePlacesForAFewPoints() {
-    let items = document()
-    let t = total(items)
-    let a = StripLayout.rest(items, total: t, focus: 0.40, policy: .document, budget: 9)
-    let b = StripLayout.rest(items, total: t, focus: 0.41, policy: .document, budget: 9, previous: Set(a))
-    #expect(a == b)
-}
-
-// Its chevrons, as claude.ai's strip has its ⌃: to the item before where
-// you are (the start of the one you're in, if you're well into it), and
-// to the one after; none where there's nowhere to go.
+// The strip's column: evenly spaced, in the middle of the view, within
+// two thirds of it; chevrons only while it scrolls, which scroll it.
 @MainActor
-@Test func theChevronsGoToTheItemBeforeAndAfter() {
+@Test func theColumnIsEvenlySpacedInTheMiddle() {
     let outline = Outline()
     outline.set((0..<6).map { Outline.Item(title: "Section \($0)") })
-    var picked: [Int] = []
-    outline.onPick = { picked.append($0) }
     let strip = OutlineStripView(outline: outline, policy: .document)
-    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width, height: 300)
-    strip.set((0..<6).map { StripItem(start: Double($0 * 100), size: 100) })
-    // At the start of section 2.
+    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width + OutlineStripView.lane, height: 600)
+    strip.set((0..<6).map { StripItem(start: Double($0 * 100), size: Double(50 + $0 * 100)) })
     strip.update(total: 600, offset: 200, shown: 100)
-    outline.current = 2
     strip.layoutSubtreeIfNeeded()
-    #expect(strip.previousTarget == 1)
-    #expect(strip.nextTarget == 3)
-    strip.go(.up)
-    strip.go(.down)
-    #expect(picked == [1, 3])
-    // Well into section 2: ⌃ goes back to its start first.
-    strip.update(total: 600, offset: 250, shown: 100)
-    #expect(strip.previousTarget == 2)
-    // At the first, nothing before; at the last, nothing after.
-    strip.update(total: 600, offset: 0, shown: 100)
-    outline.current = 0
-    #expect(strip.previousTarget == nil)
-    outline.current = 5
-    strip.update(total: 600, offset: 500, shown: 100)
-    #expect(strip.nextTarget == nil)
+    #expect(strip.ticks.count == 6)
+    for (a, b) in zip(strip.ticks, strip.ticks.dropFirst()) { #expect(abs(b.y - a.y - StripLayout.pitch) < 0.01) }
+    let middle = (strip.ticks.first!.y + strip.ticks.last!.y) / 2
+    #expect(abs(middle - 300) <= 1)
+    #expect(strip.ticks.filter(\.lit).map(\.index) == [2])
+    #expect(strip.debugState.hasPrefix("up - down -"))
 }
 
-// The strip takes half the view's height, in its middle: its marks, its
-// knob and its chevrons all within it.
 @MainActor
-@Test func theStripIsHalfTheViewInItsMiddle() {
+@Test func aColumnWithMoreThanFitsScrollsByItsChevrons() {
     let outline = Outline()
-    outline.set((0..<60).map { Outline.Item(title: "Item \($0)", level: $0 % 5 == 0 ? 0 : 1) })
-    let strip = OutlineStripView(outline: outline, policy: .document)
-    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width, height: 600)
-    strip.set((0..<60).map { StripItem(level: $0 % 5 == 0 ? 0 : 1, start: Double($0 * 10), size: 10) })
-    strip.update(total: 600, offset: 0, shown: 100)
+    outline.set((0..<60).map { Outline.Item(title: "Command \($0)") })
+    var picked: [Int] = []
+    outline.onPick = { picked.append($0) }
+    let strip = OutlineStripView(outline: outline, policy: .recent)
+    strip.frame = NSRect(x: 0, y: 0, width: OutlineStripView.width + OutlineStripView.lane, height: 300)
+    strip.set((0..<60).map { StripItem(start: Double($0 * 10), size: 10) })
+    // At the end: the latest shown, more above.
+    strip.update(total: 600, offset: 560, shown: 40)
     strip.layoutSubtreeIfNeeded()
-    #expect(strip.track.top == 150 && strip.track.height == 300)
-    #expect(!strip.marks.isEmpty)
-    #expect(strip.marks.allSatisfy { $0.y >= 150 && $0.y <= 450 })
-    #expect(strip.marks.count == StripLayout.budget(height: 300))
-    // A short view: at least 120 points of it.
-    strip.frame.size.height = 180
-    strip.layoutSubtreeIfNeeded()
-    #expect(strip.track.height == 120 && strip.track.top == 30)
+    let shows = strip.ticks.count
+    #expect(shows == StripLayout.column(count: 60, track: strip.track.height).shows)
+    #expect(strip.track.height == 200)
+    #expect(strip.ticks.last?.index == 59)
+    #expect(strip.debugState.hasPrefix("up + down -"))
+    strip.go(.up)
+    #expect(strip.ticks.last!.index < 59)
+    #expect(strip.debugState.hasPrefix("up + down +"))
+    // Scrolled by hand, it stays where it was put till what shows moves.
+    strip.update(total: 600, offset: 560, shown: 40)
+    #expect(strip.ticks.last!.index < 59)
+    strip.update(total: 600, offset: 570, shown: 30)
+    #expect(strip.ticks.last?.index == 59)
+    _ = strip.debug("pick 7")
+    #expect(picked == [7])
 }

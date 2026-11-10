@@ -295,16 +295,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     static let scrollerWidth: CGFloat = OutlineStripView.width
     /// In the superview, over the tile's right edge, as the find pill is:
     /// Ghostty's layer is this view's, under which a subview wouldn't show.
-    /// Its commands are its marks (an agent's turns), the latest the most
-    /// of them; each previewed by the last lines of what it printed.
+    /// Its commands (an agent's turns) are ticks beside it, shown as it is
+    /// (while it scrolls, the pointer on it); each previewed by the last
+    /// lines of what it printed.
     private lazy var scrubber: OutlineStripView = {
         let s = OutlineStripView(outline: commandsOutline, policy: .recent)
         s.layer?.zPosition = 5
         s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
         s.preview = { [weak self] i in self?.previewLines(i) ?? [] }
         s.previewIsCode = true
+        s.revealsOnActivity = true
         return s
     }()
+
 
     /// The outline's commands as the strip weighs them: each from the row
     /// it was found on to the next's, how it ended; an agent's turns, which
@@ -528,7 +531,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         glow.isHidden = isHidden
         connecting.frame = frame
         connecting.alphaValue = isHidden ? 0 : 1
-        scrubber.frame = NSRect(x: frame.maxX - Self.scrollerWidth, y: frame.minY, width: Self.scrollerWidth, height: frame.height)
+        scrubber.frame = OutlineStripView.frame(right: frame.maxX, y: frame.minY, height: frame.height)
         // Shown while there's more than fits, or a command to mark.
         scrubber.isHidden = isHidden || (scrollbar.total <= scrollbar.len && commandsOutline.items.isEmpty)
         if !(isAgent && !turns.isEmpty) {

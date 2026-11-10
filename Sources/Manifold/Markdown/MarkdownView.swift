@@ -188,8 +188,8 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
 
     // MARK: The scrubber (§3.1)
 
-    /// Its outline as its scroll bar: the headings where they are on the
-    /// page, previewed by the words under each.
+    /// Its scroll bar, its headings' ticks beside it, previewed by the
+    /// words under each.
     private lazy var scrubber: OutlineStripView = {
         let s = OutlineStripView(outline: headingsOutline, policy: .document)
         s.preview = { [weak self] i in self?.sectionLines(i) ?? [] }
@@ -354,7 +354,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
         // The page made once it shows at a size: not for a tile hidden, or
         // down to its bar.
         if made != nil || (window != nil && !isHiddenOrHasHiddenAncestor && r.width > 1 && r.height > 1) { web.frame = r }
-        scrubber.frame = NSRect(x: bounds.width - OutlineStripView.width, y: 0, width: OutlineStripView.width, height: bounds.height)
+        scrubber.frame = OutlineStripView.frame(right: bounds.width, y: 0, height: bounds.height)
         note.frame = r
         note.set(isUnread() ? .busy("Reading…") : .idle)
         finder.layout(in: r)
