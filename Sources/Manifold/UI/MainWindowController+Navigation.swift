@@ -198,6 +198,10 @@ extension MainWindowController {
             return client.node.blocks.first { $0.kind == .diff && $0.diff?.subject == subject }?.id ?? client.diffBlock(subject)
         }
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
+        Theme.isProject = { [weak self] b in
+            guard let path = b.path, let desk = self?.hosts.client(of: b.id)?.desk else { return false }
+            return desk.projects.contains { $0.root == path || $0.alias == path }
+        }
         ReferenceTip.whyMissing = { [weak self] id in self?.hosts.whyMissing(id) }
         Drags.keepImage = { [weak self] data, kind, note, insert in self?.keepImage(data, kind: kind, for: note, insert: insert) }
         Drags.block = { [weak self] id, mods in

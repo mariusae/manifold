@@ -548,7 +548,7 @@ final class GridView: NSView, NSDraggingSource {
             let viewOrder = subviews.firstIndex(of: t.view).map(String.init) ?? "-"
             let caret = t.view.caretRectInWindow.map { NSStringFromRect($0) } ?? "none"
             let capsule = p.map { NSStringFromRect($0.convert($0.capsule(in: $0), to: nil)) } ?? "-"
-            return "\(t.shown.title): hidden=\(p?.isHidden ?? true) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule) \(p?.debugEdit ?? "")"
+            return "\(t.shown.title) <\(t.shown.symbol)>: hidden=\(p?.isHidden ?? true) frame=\(p.map { NSStringFromRect($0.frame) } ?? "-") z=\(order) view z=\(viewOrder) caret=\(caret) capsule=\(capsule) \(p?.debugEdit ?? "")"
         }.joined(separator: "\n")
     }
 

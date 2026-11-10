@@ -112,8 +112,16 @@ enum Theme {
     /// (an agent block, a terminal running one) the agent's own mark.
     static func symbolName(for block: Block) -> String {
         if let a = block.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
+        if block.kind == .directory, isProject?(block) == true { return projectSymbol }
         return symbolName(for: block.kind, path: block.path)
     }
+
+    /// A folder made a project's (§2.6), told from any other folder: the
+    /// box its Make Project shows.
+    static let projectSymbol = "shippingbox"
+    /// Whether a folder's block is a project's root, as its host's desk
+    /// says (the window says how to ask).
+    static var isProject: ((Block) -> Bool)?
 
     /// A note's: a text not saved anywhere yet, unlike a file's page — a
     /// sticky note, its corner turned up (`Marks`).
