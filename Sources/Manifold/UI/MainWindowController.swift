@@ -1664,11 +1664,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// A new workspace on a host, with a terminal in it (at `cwd`, else
-    /// home), after the selected workspace if that's on the same host.
+    /// home), after `after` — else the selected workspace, if that's on
+    /// the same host.
     @discardableResult
-    func newWorkspace(on h: HostID, cwd: String?) -> BlockID? {
+    func newWorkspace(on h: HostID, cwd: String?, after: BlockID? = nil) -> BlockID? {
         guard let client = hosts.client(h) else { return nil }
-        let a = client.newArrangement(after: selected?.host == h ? selected : nil)
+        let a = client.newArrangement(after: after ?? (selected?.host == h ? selected : nil))
         let t = hosts.newTerminal(on: h, cwd: cwd)
         hosts.append(.place(Placement(block: t, lens: .terminal), column: 0, at: 0), to: .block(a))
         hosts.select(a)

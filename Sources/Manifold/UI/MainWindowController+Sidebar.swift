@@ -18,6 +18,24 @@ extension MainWindowController: SidebarDelegate {
         client.setWorkspaceOrder(order)
     }
 
+    /// A space moved to just before another of its host's (nil: after
+    /// its host's last) — dragged in the strip.
+    func moveSpace(_ arrangement: BlockID, before: BlockID?) {
+        guard let client = hosts.client(of: arrangement) else { return }
+        var order = client.desk.order
+        guard let from = order.firstIndex(of: arrangement) else { return }
+        order.remove(at: from)
+        if let before, let k = order.firstIndex(of: before) {
+            order.insert(arrangement, at: k)
+        } else {
+            // After the last of its host's shown in the strip (the order may
+            // hold others, not on the desk).
+            let last = order.lastIndex { $0.host == arrangement.host && allWorkspaces.contains($0) }
+            order.insert(arrangement, at: last.map { $0 + 1 } ?? order.count)
+        }
+        client.setWorkspaceOrder(order)
+    }
+
     func sidebarTogglePinned() {
         var state = hosts.state.window
         state.sidebarPinned.toggle()

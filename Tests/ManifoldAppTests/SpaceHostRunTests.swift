@@ -90,3 +90,33 @@ import ManifoldCore
     // And clear of the next row.
     #expect(SpaceStripView.underlineDrop + SpaceStripView.underlineWidth + 3 <= SpaceStripView.gap + SpaceStripView.underlineRoom)
 }
+
+// A square dragged among the strip's is put among its host's — its
+// section — and no further: dragged onto another host's, it stays at its
+// own host's end. Let go somewhere else, it says where: before which.
+@MainActor
+@Test func aSquareIsReorderedOnlyAmongItsHostsSquares() {
+    let here = HostID("here"), far = HostID("far")
+    let s = SpaceStripView(frame: NSRect(x: 0, y: 0, width: 400, height: SpaceStripView.height))
+    func chip(_ host: HostID, _ i: Int, first: Bool) -> SpaceStripView.Chip {
+        .init(id: BlockID(host: host), title: "\(host)\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
+              hostBreak: first && host == far, remote: host == far ? far : nil)
+    }
+    let chips = (0..<3).map { chip(here, $0, first: $0 == 0) } + (0..<2).map { chip(far, $0, first: $0 == 0) }
+    s.show(chips)
+    s.layoutSubtreeIfNeeded()
+    var moved: [(BlockID, BlockID?)] = []
+    s.onReorder = { moved.append(($0, $1)) }
+    // The first of here's onto the third: before none (here's last).
+    _ = s.debugReorder(0, to: 2)
+    #expect(s.chips.map(\.title) == ["here1", "here2", "here0", "far0", "far1"])
+    #expect(moved.count == 1 && moved[0].0 == chips[0].id && moved[0].1 == nil)
+    // Onto far's squares: still here's, at its end.
+    _ = s.debugReorder(1, to: 4)
+    #expect(s.chips.map(\.title) == ["here1", "here0", "here2", "far0", "far1"])
+    // far's second before its first; the break stays with far's first square.
+    _ = s.debugReorder(4, to: 3)
+    #expect(s.chips.map(\.title).suffix(2) == ["far1", "far0"])
+    #expect(s.chips[3].hostBreak && !s.chips[4].hostBreak)
+    #expect(moved.last?.0 == chips[4].id && moved.last?.1 == chips[3].id)
+}

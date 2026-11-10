@@ -88,6 +88,16 @@ final class SpaceStripView: NSView {
     /// The pointer on one (its rect in the window), or off them.
     var onHover: ((BlockID?, NSRect) -> Void)?
     var onMenu: ((BlockID) -> NSMenu?)?
+    /// A square dragged to another place among its host's: its space, and
+    /// the one it now comes before (nil: after its host's last).
+    var onReorder: ((BlockID, _ before: BlockID?) -> Void)?
+    /// The square a press began on, and where.
+    private var pressed: (index: Int, at: NSPoint)?
+    /// A square being dragged among its host's: which, where in it the
+    /// pointer took it, where the pointer is; the squares as they were.
+    private var reordering: (id: BlockID, grab: NSSize, at: NSPoint, was: [Chip])?
+    /// Squares shown meanwhile, kept till the drag's done.
+    private var shownLater: (chips: [Chip], pending: [Pending])?
     /// The + clicked.
     var onNew: (() -> Void)?
     /// The pointer on the + (its rect in the window), or off it.
@@ -201,6 +211,7 @@ final class SpaceStripView: NSView {
     }
 
     func show(_ new: [Chip], pending newPending: [Pending] = []) {
+        if reordering != nil { return shownLater = (new, newPending) }
         guard new != chips || newPending != pending else { return }
         let rows = wantedHeight(width: bounds.width)
         chips = new
@@ -389,40 +400,67 @@ final class SpaceStripView: NSView {
             capsule.stroke()
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
-            let r = rect(i)
-            let lit = flashing.map { $0.index == i && $0.lit } ?? false
-            SpaceSquare.fill(r, color: c.color, alpha: lit ? 0.6 : c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
-            if dropTarget == i {
-                // Something held over it, to go there.
-                let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
-                ring.lineWidth = 2
-                Theme.accent.setStroke()
-                ring.stroke()
+            if let m = reordering, m.id == c.id {
+                // Where it will go: a hollow its size.
+                let hollow = NSBezierPath(roundedRect: rect(i).insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+                Theme.text.withAlphaComponent(0.06).setFill()
+                hollow.fill()
+                continue
             }
-            if c.current {
-                let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
-                ring.lineWidth = 1.5
-                c.color.withAlphaComponent(0.85).setStroke()
-                ring.stroke()
-            }
-            SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
-            // ⌘ held: its number, over its bottom right, as a key's badge.
-            if showsNumbers, let n = number(i) {
-                let t = NSAttributedString(string: "\(n)", attributes: [.font: UIType.badge, .foregroundColor: Theme.panel])
-                let z = t.size()
-                let b = NSRect(x: r.maxX - 9, y: r.maxY - 9, width: max(13, z.width + 6), height: 13)
-                Theme.text.withAlphaComponent(0.85).setFill()
-                NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
-                t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
-            }
-            // What most wants you there, at its top right.
-            if let tone = Self.tone(c.status) {
-                let d = NSRect(x: r.maxX - 5, y: r.minY - 2, width: 7, height: 7)
-                Theme.panel.setFill()
-                NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
-                tone.setFill()
-                NSBezierPath(ovalIn: d).fill()
-            }
+            drawSquare(i, c, in: rect(i))
+        }
+        // The square dragged, over the rest, under the pointer, lifted.
+        if let m = reordering, let i = chips.firstIndex(where: { $0.id == m.id }) {
+            let r = NSRect(x: m.at.x - m.grab.width, y: m.at.y - m.grab.height, width: Self.side, height: Self.side)
+            NSGraphicsContext.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.25)
+            shadow.shadowBlurRadius = 6
+            shadow.shadowOffset = NSSize(width: 0, height: -2)
+            shadow.set()
+            Theme.panel.setFill()
+            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            drawSquare(i, chips[i], in: r)
+        }
+    }
+
+    /// A space's square: its colour (stronger shown, under the pointer, or
+    /// with something held over it), its ring if it's shown, its glyph, its
+    /// number with ⌘ held, what wants you there.
+    private func drawSquare(_ i: Int, _ c: Chip, in r: NSRect) {
+        let lit = flashing.map { $0.index == i && $0.lit } ?? false
+        SpaceSquare.fill(r, color: c.color, alpha: lit ? 0.6 : c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
+        if dropTarget == i {
+            // Something held over it, to go there.
+            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
+            ring.lineWidth = 2
+            Theme.accent.setStroke()
+            ring.stroke()
+        }
+        if c.current {
+            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
+            ring.lineWidth = 1.5
+            c.color.withAlphaComponent(0.85).setStroke()
+            ring.stroke()
+        }
+        SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
+        // ⌘ held: its number, over its bottom right, as a key's badge.
+        if showsNumbers, let n = number(i) {
+            let t = NSAttributedString(string: "\(n)", attributes: [.font: UIType.badge, .foregroundColor: Theme.panel])
+            let z = t.size()
+            let b = NSRect(x: r.maxX - 9, y: r.maxY - 9, width: max(13, z.width + 6), height: 13)
+            Theme.text.withAlphaComponent(0.85).setFill()
+            NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
+            t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
+        }
+        // What most wants you there, at its top right.
+        if let tone = Self.tone(c.status) {
+            let d = NSRect(x: r.maxX - 5, y: r.minY - 2, width: 7, height: 7)
+            Theme.panel.setFill()
+            NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
+            tone.setFill()
+            NSBezierPath(ovalIn: d).fill()
         }
     }
 
@@ -507,12 +545,88 @@ final class SpaceStripView: NSView {
         onHover?(chips[i].id, convert(rect(i), to: nil))
     }
 
-    override func mouseDown(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) {
+        pressed = index(at: event).flatMap { $0 == plus ? nil : ($0, convert(event.locationInWindow, from: nil)) }
+    }
+
+    /// A square dragged: among its host's, the others moving aside for it.
+    override func mouseDragged(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if reordering == nil {
+            guard let (i, at) = pressed, chips.indices.contains(i), hypot(p.x - at.x, p.y - at.y) > 4 else { return }
+            beginReorder(i, grab: at)
+        }
+        reorder(to: p)
+    }
+
     override func mouseUp(with event: NSEvent) {
+        defer { pressed = nil }
+        if reordering != nil { return endReorder() }
         guard let i = index(at: event) else { return }
         onHover?(nil, .zero)
         if i == plus { return onNew?() ?? () }
         onPick?(chips[i].id)
+    }
+
+    /// Square `i` taken up, the pointer at `grab` on it.
+    private func beginReorder(_ i: Int, grab: NSPoint) {
+        let r = rect(i)
+        reordering = (chips[i].id, NSSize(width: grab.x - r.minX, height: grab.y - r.minY), grab, chips)
+        hovered = nil
+        onHover?(nil, .zero)
+    }
+
+    /// The square dragged to `p`: put where it's nearest among its host's
+    /// squares (its section; no further), the others moving aside.
+    private func reorder(to p: NSPoint) {
+        guard var m = reordering, let from = chips.firstIndex(where: { $0.id == m.id }) else { return }
+        m.at = p
+        reordering = m
+        needsDisplay = true
+        let section = chips.indices.filter { chips[$0].id.host == m.id.host }
+        let middle = NSPoint(x: p.x - m.grab.width + Self.side / 2, y: p.y - m.grab.height + Self.side / 2)
+        func distance(_ i: Int) -> CGFloat { hypot(rect(i).midX - middle.x, rect(i).midY - middle.y) }
+        guard let to = section.min(by: { distance($0) < distance($1) }), to != from, let first = section.first else { return }
+        var c = chips
+        c.insert(c.remove(at: from), at: to)
+        // The host's first still set apart from the host before.
+        let breaks = chips[first].hostBreak
+        for i in section { c[i].hostBreak = i == first && breaks }
+        chips = c
+        (frames, pills) = place(width: bounds.width)
+    }
+
+    /// The square let go: its space where it now is among its host's, if
+    /// that's somewhere else.
+    private func endReorder() {
+        guard let m = reordering else { return }
+        reordering = nil
+        needsDisplay = true
+        let now = chips.filter { $0.id.host == m.id.host }.map(\.id)
+        let later = shownLater
+        shownLater = nil
+        if now != m.was.filter({ $0.id.host == m.id.host }).map(\.id), let k = now.firstIndex(of: m.id) {
+            // The desk's order changed: the strip's shown again from it.
+            onReorder?(m.id, k + 1 < now.count ? now[k + 1] : nil)
+        } else if let later {
+            show(later.chips, pending: later.pending)
+        }
+    }
+
+    /// Debugging: square `i` dragged onto square `j`'s place (a little
+    /// short of it) and let go, or held there; a drag held, let go.
+    func debugReorder(_ i: Int, to j: Int, hold: Bool = false) -> String {
+        guard chips.indices.contains(i), chips.indices.contains(j) else { return "no such square" }
+        let a = rect(i), b = rect(j)
+        beginReorder(i, grab: NSPoint(x: a.midX, y: a.midY))
+        reorder(to: NSPoint(x: b.midX - 5, y: b.midY + 3))
+        if !hold { endReorder() }
+        return debugChips
+    }
+
+    func debugDrop() -> String {
+        endReorder()
+        return debugChips
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -639,6 +753,7 @@ extension MainWindowController {
                 self.peekSpace(id, beside: rect, in: window)
             }
             strip.onMenu = { [weak self] id in self?.spaceMenu(id) }
+            strip.onReorder = { [weak self] id, before in self?.moveSpace(id, before: before) }
             // A host still being reached: its card, how that stands, live.
             strip.onHostHover = { [weak self] host, rect in
                 guard let self, let window = self.window, let host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }
@@ -780,6 +895,11 @@ extension MainWindowController {
         symbolItem.setSymbol("star.square", size: 12)
         menu.addItem(symbolItem)
         menu.addItem(.separator())
+        let after = NSMenuItem(title: "New Space After “\(b.arrangement.map(title(of:)) ?? "This One")”", action: #selector(newSpaceAfterFromStrip(_:)), keyEquivalent: "")
+        after.target = self
+        after.representedObject = id
+        after.setSymbol("plus.square", size: 12)
+        menu.addItem(after)
         let rename = NSMenuItem(title: "Rename Space…", action: #selector(renameSpaceFromStrip(_:)), keyEquivalent: "")
         rename.target = self
         rename.representedObject = id
@@ -802,6 +922,12 @@ extension MainWindowController {
         hosts.append(.annotate([key: value]), to: .block(id))
     }
 
+    /// A new space, with a terminal in it, right after this one on its
+    /// host, and gone to.
+    @objc func newSpaceAfterFromStrip(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? BlockID { newWorkspace(on: id.host, cwd: nil, after: id) }
+    }
+
     @objc func renameSpaceFromStrip(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? BlockID { renameSpace(id) }
     }
@@ -811,7 +937,7 @@ extension MainWindowController {
     }
 
     /// Debugging the strip: `spaces` its squares; `spaces hover <i>|off`;
-    /// `spaces pick <i>`; `spaces color <i> <name>`; `spaces symbol <i> <name>`.
+    /// `spaces pick <i>`; `spaces drag <i> <j>`; `spaces menu <i> [title]`; `spaces color <i> <name>`; `spaces symbol <i> <name>`.
     func debugSpaces(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         let strip = sidebar.spaces
@@ -821,6 +947,20 @@ extension MainWindowController {
         case "hover": strip.debugHover(w.dropFirst().first.flatMap(Int.init))
         case "hoverhost": strip.debugHoverPill(w.dropFirst().first.flatMap(Int.init))
         case "pick": if let id = chip(w.dropFirst().first) { strip.onPick?(id) }
+        case "drag":
+            // "spaces drag <i> <j>": square i dragged onto j's place, let go.
+            let n = w.dropFirst().compactMap(Int.init)
+            guard n.count == 2 else { return "usage: spaces drag <i> <j> [hold]" }
+            return strip.debugReorder(n[0], to: n[1], hold: w.last == "hold")
+        case "drop": return strip.debugDrop()
+        case "menu":
+            // "spaces menu <i> [title]": square i's menu, or that item chosen.
+            guard let id = chip(w.dropFirst().first), let menu = spaceMenu(id) else { return "no such square" }
+            let title = w.dropFirst(2).joined(separator: " ")
+            if title.isEmpty { return menu.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n") }
+            guard let item = menu.items.first(where: { $0.title.hasPrefix(title) }), let action = item.action else { return "no such item" }
+            NSApp.sendAction(action, to: item.target, from: item)
+            return "chose \(item.title)"
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
         case "needs": return sidebar.needsYou.debugRows
         case "pretend":
