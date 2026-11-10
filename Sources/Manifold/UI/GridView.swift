@@ -91,8 +91,6 @@ final class GridView: NSView, NSDraggingSource {
         var links: [LinkCard] = []
     }
     private var badges: [PlacementID: LinkBadge] = [:]
-    /// Each tile's outline, as ticks at its content's upper right (§7.5).
-    private var ticks: [PlacementID: OutlineTicks] = [:]
 
     weak var delegate: GridDelegate?
     private(set) var columns: [[Tile]] = []
@@ -240,10 +238,6 @@ final class GridView: NSView, NSDraggingSource {
             badges.removeValue(forKey: id)
             badgeRects.removeValue(forKey: id)
         }
-        for (id, t) in ticks where !incoming.contains(id) {
-            t.removeFromSuperview()
-            ticks.removeValue(forKey: id)
-        }
         for (id, c) in tileSummaries where !incoming.contains(id) {
             c.removeFromSuperview()
             tileSummaries.removeValue(forKey: id)
@@ -336,19 +330,6 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onDragStart = { [weak self, weak pill] event, thing in
                     guard let self, let pill else { return }
                     self.beginDrag(of: id, event: event, from: pill, thing: thing)
-                }
-                // Its outline, as ticks over its content's upper right
-                // (unless its scroll bar is its outline).
-                if let outline = tile.view.outline, !tile.view.outlineInStrip {
-                    if ticks[id]?.outline !== outline {
-                        ticks[id]?.removeFromSuperview()
-                        let t = OutlineTicks(outline: outline)
-                        ticks[id] = t
-                        addSubview(t)
-                    }
-                } else {
-                    ticks[id]?.removeFromSuperview()
-                    ticks.removeValue(forKey: id)
                 }
                 // The block's links, as a badge at the upper right.
                 if tile.links.isEmpty {
@@ -669,7 +650,6 @@ final class GridView: NSView, NSDraggingSource {
                     badges[t.shown.id]?.isHidden = true
                     // A summarized tile's card too (it showed over the maximized one).
                     tileSummaries[t.shown.id]?.isHidden = true
-                    ticks[t.shown.id]?.available = false
                 }
                 for d in columnDividers + rowDividers { d.isHidden = true }
             }
@@ -679,7 +659,6 @@ final class GridView: NSView, NSDraggingSource {
             tileSummaries[full]?.isHidden = true
             let r = bounds.insetBy(dx: Self.inset, dy: Self.inset)
             tile.view.frame = Self.body(of: r)
-            placeTicks(of: tile, in: tile.view.frame, shown: true)
             focusRing.isHidden = true
             if let pill = pills[full] {
                 pill.isHidden = false
@@ -699,7 +678,6 @@ final class GridView: NSView, NSDraggingSource {
             if out { setHidden(t.view, true) }
             pills[t.shown.id]?.isHidden = out
             badges[t.shown.id]?.isHidden = out
-            ticks[t.shown.id]?.available = !out
         }
         for d in columnDividers + rowDividers { d.isHidden = false }
         let frames = columnFrames()
@@ -777,7 +755,6 @@ final class GridView: NSView, NSDraggingSource {
                     card.isHidden = false
                     keep(card, above: tile.view)
                 }
-                placeTicks(of: tile, in: body, shown: !collapsed && !summarized)
                 if let pill = pills[tile.shown.id] {
                     pill.collapsed = collapsed
                     let bar = Self.bar(of: r)
@@ -1698,18 +1675,6 @@ final class GridView: NSView, NSDraggingSource {
         DragPill.dress(session, from: view, at: NSEvent.mouseLocation)
     }
 
-    /// A tile's outline ticks at its content's upper right, in from the
-    /// scroll bar, over the content (they take no room of their own).
-    private func placeTicks(of tile: Tile, in body: NSRect, shown: Bool) {
-        guard let t = ticks[tile.shown.id] else { return }
-        let size = OutlineTicks.size
-        t.frame = NSRect(x: body.maxX - ScrubberView.width - size.width - 2, y: body.maxY - tile.view.outlineInset - size.height - 6,
-                         width: size.width, height: size.height)
-        // Not while finding: the find pill's there, doing the same job.
-        t.available = shown && body.height >= 3 * size.height && !FindHost.isFinding(tile.view)
-        keep(t, above: tile.view)
-    }
-
     /// Debugging: a point a drop at slot `at` of column `column` would be
     /// made at (the upper part of the tile it goes before; below the last).
     func debugSlotPoint(column c: Int, at: Int) -> NSPoint {
@@ -1720,8 +1685,6 @@ final class GridView: NSView, NSDraggingSource {
         return at < tiles.count ? NSPoint(x: frames[c].midX, y: tiles[at].maxY - 3) : NSPoint(x: frames[c].midX, y: last.minY + 3)
     }
 
-    /// Debugging: the focused tile's ticks, and its outline.
-    func debugTicks(_ id: PlacementID) -> OutlineTicks? { ticks[id] }
     /// Debugging: a tile's pill.
     func debugPill(_ id: PlacementID) -> TilePill? { pills[id] }
 

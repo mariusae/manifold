@@ -115,16 +115,20 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
         // The scroll bar is a scrubber (§3.1): down the right, outside
-        // the text.
-        scroll.hasVerticalScroller = false
+        // the text, the outline's ticks beside it.
         scroll.documentView = textView
         addSubview(scroll)
-        scrubber.onScroll = { [weak self] f in
-            guard let self else { return }
-            let span = max(self.textView.frame.height - self.scroll.contentSize.height, 0)
-            self.scroll(toY: f * span)
+        strip.tops = { [weak self] in
+            guard let self else { return [] }
+            let items = self.headingsOutline.items
+            guard items.count == self.headingLines.count else { return [] }
+            return zip(self.headingLines, items).map { (self.textView.top(ofLine: $0), $1.level) }
         }
-        addSubview(scrubber)
+        strip.strip.preview = { [weak self] i in self?.sectionLines(i) ?? [] }
+        // Over the text, whose lines may run under them: shown as the
+        // scroll bar is.
+        strip.strip.revealsOnActivity = true
+        addSubview(strip.strip)
         addSubview(note)
         note.host = block.host
         // The definitions the top of the text is in, pinned over it.
@@ -318,8 +322,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
         updatePinned()
-        scrubber.frame = NSRect(x: bounds.width - ScrubberView.width, y: bottom, width: ScrubberView.width, height: top - bottom)
-        updateScrubber()
+        strip.place(NSRect(x: left, y: bottom, width: bounds.width - left, height: top - bottom))
         finder.layout(in: bounds)
         layoutLinePill()
         if let reveal = pendingReveal, window != nil, scroll.contentSize.height >= 1 {
@@ -332,7 +335,23 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     // MARK: The scrubber (§3.1)
 
-    private let scrubber = ScrubberView(frame: .zero)
+    private lazy var strip = ScrollStrip(outline: headingsOutline, scroll: scroll, ownsScrollBar: true)
+
+    /// The first lines under a heading (a symbol's declaration, the words
+    /// under a Markdown heading): what the strip's card says.
+    private func sectionLines(_ i: Int) -> [String] {
+        guard headingLines.indices.contains(i) else { return [] }
+        let text = textView.text, first = headingLines[i]
+        let end = i + 1 < headingLines.count ? headingLines[i + 1] : text.lineCount
+        var out: [String] = []
+        var line = isMarkdownOutline ? first + 1 : first
+        while line < min(end, text.lineCount), out.count < 4 {
+            let t = text.lineText(line)
+            if !t.trimmingCharacters(in: .whitespaces).isEmpty { out.append(isMarkdownOutline ? t.trimmingCharacters(in: .whitespaces) : t) }
+            line += 1
+        }
+        return out
+    }
     /// "Reading…" over the page until the file's text is in, so the empty
     /// page isn't taken for an empty file.
     private let note = BusyNote()
@@ -388,7 +407,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     /// A Markdown text's (a note's) headings — or a source file's types and
     /// functions, as its language server says — the one you're in marked:
-    /// as ticks at the tile's upper right, and in the sidebar at its left.
+    /// as ticks beside its scroll bar, and in the sidebar at its left.
     private let headingsOutline = Outline()
     var outline: Outline? { hasOutline ? headingsOutline : nil }
     private var sidebar: TileSidebar?
@@ -488,10 +507,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         markCurrentHeading()
     }
 
-    private func updateScrubber() {
-        scrubber.update(total: Double(textView.frame.height), offset: Double(scroll.contentView.bounds.minY),
-                        shown: Double(scroll.contentSize.height))
-    }
+    private func updateScrubber() { strip.update() }
 
     func destroy() {
         watchCommandKey(false)
@@ -1005,7 +1021,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         addSubview(p)
         linePill = p
-        FindHost.standAside(for: self, true)
         layoutLinePill()
         p.focus()
     }
@@ -1015,7 +1030,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     private func closeLinePill() {
         linePill?.removeFromSuperview()
         linePill = nil
-        FindHost.standAside(for: self, false)
     }
 
     /// Where find's pill would be: the upper right, a band down.

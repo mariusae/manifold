@@ -397,8 +397,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: The outline (§7.5)
 
     /// The commands (an agent's turns), each with how it ended; chosen,
-    /// the terminal goes there. Its tile's outline, as ticks at its upper
-    /// right, and listed in the sidebar at the tile's left — in the
+    /// the terminal goes there. Its tile's outline, as ticks beside its
+    /// scroll bar, and listed in the sidebar at the tile's left — in the
     /// superview, as the scrubber is (Ghostty's layer is this view's): the
     /// terminal moves over to make room for it. A shell's commands keep
     /// their dots too, for what's done with a command (copied, a block).
@@ -447,7 +447,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         isAgent && !turns.isEmpty ? commands.filter { turns.contains($0.id) } : commands
     }
     var outline: Outline? { commandsOutline }
-    var outlineInStrip: Bool { true }
     private var sidebar: TileSidebar?
     /// The frame the grid gave, the sidebar's room taken from it.
     private var given: NSRect?

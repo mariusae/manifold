@@ -6,7 +6,7 @@ import ManifoldCore
 /// changes — which of them you're at, and what each does: chosen, the view
 /// goes there; its menu, what else can be done with it (a link to it, an
 /// agent turn's changes). One per view, kept as the view changes whether
-/// or not anything shows it; the tile's ticks (`OutlineTicks`) and its
+/// or not anything shows it; the view's strip (`OutlineStripView`) and its
 /// sidebar (`TileSidebar`) both show it.
 final class Outline {
     struct Item: Equatable {
@@ -118,130 +118,7 @@ final class Outline {
     }
 }
 
-/// A tile's outline at its upper right (§7.5): a few short ticks — five at
-/// most, however long the outline — the one nearest where you are longer
-/// and darker. The pointer on them opens the whole outline over them
-/// (`FloatingList`): an item clicked goes there; its actions are its ⋯.
-/// It takes no room of its own: it sits over the content's corner, in
-/// from the scroll bar.
-final class OutlineTicks: NSView {
-    static let maxTicks = 5
-    static let size = NSSize(width: 22, height: 28)
-    private static let spacing: CGFloat = 5
-    private static let thickness: CGFloat = 2
-
-    let outline: Outline
-    /// Whether the grid shows its tile (not collapsed, stashed, or held).
-    var available = true { didSet { if available != oldValue { refresh() } } }
-    private var hovering = false
-
-    init(outline: Outline) {
-        self.outline = outline
-        super.init(frame: NSRect(origin: .zero, size: Self.size))
-        wantsLayer = true
-        layer?.zPosition = 5
-        outline.watch(self) { [weak self] in self?.refresh() }
-        refresh()
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { true }
-
-    private func refresh() {
-        isHidden = !available || outline.shown.isEmpty
-        needsDisplay = true
-        // The list's rows made only while it shows for these ticks: they were
-        // made for every entry at each layout (every tile's ticks), the list
-        // shown or not.
-        if isHidden { FloatingList.shared.hide(for: self) } else if FloatingList.shared.isShown(for: self) { FloatingList.shared.update(rows(), for: self) }
-    }
-
-    /// Which tick stands for the item you're at: the item itself among
-    /// five or fewer; its share of the way down a longer outline.
-    var currentTick: Int? {
-        let shown = outline.shown
-        guard let c = outline.current, !shown.isEmpty else { return nil }
-        // Narrowed: the nearest shown at or before where you are.
-        let at = shown.lastIndex { $0 <= c } ?? 0
-        let n = min(shown.count, Self.maxTicks)
-        guard shown.count > n else { return at }
-        return Int((Double(at) / Double(max(1, shown.count - 1)) * Double(n - 1)).rounded())
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let n = min(outline.shown.count, Self.maxTicks)
-        let span = CGFloat(n - 1) * Self.spacing + Self.thickness
-        var y = ((bounds.height - span) / 2).rounded()
-        let right = bounds.width - 4
-        for i in 0..<n {
-            let here = i == currentTick
-            let length: CGFloat = here ? 14 : 10
-            (here || hovering ? Theme.text : Theme.secondaryText.withAlphaComponent(0.55)).setFill()
-            NSBezierPath(roundedRect: NSRect(x: right - length, y: y, width: length, height: Self.thickness),
-                         xRadius: Self.thickness / 2, yRadius: Self.thickness / 2).fill()
-            y += Self.spacing
-        }
-    }
-
-    /// The outline's items as the list's rows.
-    private func rows() -> [FloatingList.Row] {
-        let shown = outline.shown, c = outline.current
-        let here = c.flatMap { c in shown.last { $0 <= c } }
-        return shown.map { i in
-            let item = outline.items[i]
-            return FloatingList.Row(title: item.title, detail: item.detail, level: item.level, code: item.code,
-                             failed: item.failed, running: item.running, current: i == here,
-                             action: { [weak outline] in
-                                 FloatingList.shared.hideNow()
-                                 outline?.pick(i)
-                             },
-                             menu: outline.menuFor == nil ? nil : { [weak outline] in outline?.menuFor?(i) },
-                             drag: !outline.draggable ? nil : { [weak outline] _ in outline?.dragItem(i) })
-        }
-    }
-
-    /// The whole outline, over the ticks.
-    func open() {
-        guard !isHidden, let window else { return }
-        let r = convert(bounds, to: nil)
-        FloatingList.shared.show(rows(), for: self, in: window, place: .overTopRight(r), scrollToCurrent: true)
-    }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    // Clicked, it opens: the pointing hand.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-
-    override func mouseEntered(with event: NSEvent) {
-        hovering = true
-        needsDisplay = true
-        open()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        hovering = false
-        needsDisplay = true
-        FloatingList.shared.openerLeft(self)
-    }
-
-    override func mouseDown(with event: NSEvent) { open() }
-
-    /// Debugging: the ticks as drawn, and the items.
-    var debugState: String {
-        let n = min(outline.shown.count, Self.maxTicks)
-        return "ticks \(n) current tick \(currentTick.map(String.init) ?? "-") hidden \(isHidden)\n"
-            + outline.items.enumerated().map { "\($0.offset == outline.current ? "*" : " ")\(String(repeating: "  ", count: $0.element.level))\($0.element.title)\($0.element.detail.isEmpty ? "" : " · " + $0.element.detail)" }.joined(separator: "\n")
-    }
-}
-
-/// A list floating over the window — an outline opened from its ticks, a
-/// command's actions from its dot — in a little window of its own over it,
+/// A list floating over the window — a command's actions from its dot — in a little window of its own over it,
 /// as a menu is: the views under it don't see the pointer while it's on
 /// the list (a terminal's caret cursor, a page's), and it has a window's
 /// shadow. A row clicked does what it does; one with a menu has a ⋯ while the

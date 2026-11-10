@@ -53,6 +53,9 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate let zoomLabel = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .center)
     fileprivate let layoutButton = IconButton("doc.on.doc", weight: .regular, tip: "Page Layout")
     fileprivate var sidebar: TileSidebar?
+    /// The contents' ticks down the right, left of the PDF's scroll bar
+    /// (its own, in it): made once its pages are laid out in a scroll view.
+    fileprivate var strip: ScrollStrip?
     /// The pointer on the strip: its arrows, zoom and layout shown.
     fileprivate lazy var reveal = HoverReveal(in: self) { [unowned self] in stripControls }
     /// The sidebar's pages, once it's made.
@@ -61,7 +64,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     /// The table of contents, flattened: each entry's item and its page.
     fileprivate var contents: [(item: PDFOutline, page: Int?)] = []
     /// A PDF's table of contents, the entry whose page shows marked: as
-    /// ticks at the tile's upper right, and in the sidebar at its left.
+    /// ticks beside its scroll bar, and in the sidebar at its left.
     private lazy var contentsOutline: Outline = {
         let o = Outline()
         o.onPick = { [weak self] i in
@@ -192,6 +195,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             note.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width - 24, height: 16)
         }
         pdfView?.frame = content
+        strip?.place(content)
         scroll.frame = content
         let size = coming.fittingSize
         coming.frame = NSRect(x: content.midX - size.width / 2, y: content.midY - size.height / 2, width: size.width, height: size.height)
@@ -388,12 +392,41 @@ extension MediaView: Searchable {
         var levels: [Int] = []
         if let root = doc.outlineRoot { walk(root, 0) }
         contentsOutline.set(zip(contents, levels).map { Outline.Item(title: $0.0.item.label ?? "Untitled", level: min($0.1, 4)) })
+        makeStrip()
         // The contents first when there are any, unless the pages were chosen.
         if keeper.value("sidebarPage") == nil { sidebar?.show(page: contents.isEmpty ? .pages : .contents) }
         pages?.reload()
         pageChanged()
         scaleChanged()
         needsLayout = true
+    }
+
+    private func makeStrip() {
+        guard strip == nil, let p = pdfView, let scroll = p.documentView?.enclosingScrollView else { return }
+        let s = ScrollStrip(outline: contentsOutline, scroll: scroll, ownsScrollBar: false)
+        s.tops = { [weak self] in self?.contentTops() ?? [] }
+        addSubview(s.strip, positioned: .above, relativeTo: p)
+        strip = s
+        needsLayout = true
+    }
+
+    /// Where each entry of the contents is in the PDF's pages as laid out
+    /// (its page's top, without a place on it).
+    private func contentTops() -> [(y: CGFloat, level: Int)] {
+        guard let p = pdfView, let doc = p.document, let view = p.documentView else { return [] }
+        let items = contentsOutline.items
+        guard items.count == contents.count else { return [] }
+        var last: CGFloat = view.isFlipped ? 0 : view.frame.height
+        return zip(contents, items).map { entry, item in
+            if let d = entry.item.destination, let page = d.page ?? entry.page.flatMap(doc.page(at:)) {
+                let box = page.bounds(for: p.displayBox)
+                var at = d.point
+                if at.y > box.maxY || at.y < box.minY { at.y = box.maxY }
+                if at.x > box.maxX || at.x < box.minX { at.x = box.minX }
+                last = view.convert(p.convert(at, from: page), from: p).y
+            }
+            return (last, item.level)
+        }
     }
 
     fileprivate func pageChanged() {
@@ -476,8 +509,6 @@ extension MediaView: Searchable {
 
     // An image's is empty, and shows nothing.
     var outline: Outline? { contentsOutline }
-    /// Under the bar of page and zoom.
-    var outlineInset: CGFloat { Self.barHeight }
     static let barHeight = TileMetrics.strip
     var hasSidebar: Bool { pdfView != nil }
     var sidebarShown: Bool { sidebar?.isHidden == false }

@@ -75,6 +75,44 @@ final class OutlineNoteView: NSView, PaneContent {
     var dropTarget: DropTaking { text }
     var isDead: Bool { false }
     var outline: Outline? { headings }
+    /// The outline's ticks down the right, left of the scroll bar, shown
+    /// as it is: the rows run under them.
+    private lazy var strip: ScrollStrip = {
+        let s = ScrollStrip(outline: headings, scroll: scroll, ownsScrollBar: false)
+        s.tops = { [weak self] in self?.itemTops() ?? [] }
+        s.strip.revealsOnActivity = true
+        s.strip.preview = { [weak self] i in self?.itemWords(i) ?? [] }
+        return s
+    }()
+
+    /// Where each item's row is in the text (one outside a focus, at the
+    /// top or the end).
+    private func itemTops() -> [(y: CGFloat, level: Int)] {
+        guard let layout = text.layoutManager, headings.items.count == itemRows.count else { return [] }
+        let ranges = text.paragraphRanges, before = text.focus?.before.count ?? 0
+        let origin = text.textContainerOrigin.y
+        return zip(itemRows, headings.items).map { row, item in
+            let r = row - before
+            guard !ranges.isEmpty else { return (0, item.level) }
+            if r < 0 { return (0, item.level) }
+            if r >= ranges.count { return (text.frame.height, item.level) }
+            let glyph = layout.glyphIndexForCharacter(at: ranges[r].location)
+            return (layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY + origin, item.level)
+        }
+    }
+
+    /// The rows under an item, as words: what the strip's card says.
+    private func itemWords(_ i: Int) -> [String] {
+        guard itemRows.indices.contains(i) else { return [] }
+        let rows = text.fullRows, end = i + 1 < itemRows.count ? itemRows[i + 1] : rows.count
+        var out: [String] = []
+        for r in (itemRows[i] + 1)..<max(end, itemRows[i] + 1) where rows.indices.contains(r) {
+            let t = rows[r].text.trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { out.append(t) }
+            if out.count == 4 { break }
+        }
+        return out
+    }
 
     /// Its folds, in the tile's menu (⌥⌘9 and ⌥⌘0 in it).
     var pillItems: [NSMenuItem] {
@@ -113,6 +151,7 @@ final class OutlineNoteView: NSView, PaneContent {
             self.window?.makeFirstResponder(self.text)
         }
         addSubview(scroll)
+        addSubview(strip.strip)
         addSubview(path)
         headings.onPick = { [weak self] i in self?.goToHeading(i) }
         // An entry's place: its line in the Markdown, as the editor's are.
@@ -140,6 +179,7 @@ final class OutlineNoteView: NSView, PaneContent {
         path.frame = NSRect(x: 14, y: bounds.height - bar - 4, width: max(0, bounds.width - 28), height: bar)
         scroll.frame = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - (barShown ? bar + 4 : 0))
         text.frame.size.width = scroll.contentSize.width
+        strip.place(scroll.frame)
         finder.layout(in: scroll.frame)
     }
 
@@ -233,6 +273,7 @@ final class OutlineNoteView: NSView, PaneContent {
         itemRows = items.map(\.row)
         itemLines = items.map(\.line)
         headings.set(items.map(Outline.Item.init))
+        strip.refill()
         markCurrent()
         markThreads()
     }

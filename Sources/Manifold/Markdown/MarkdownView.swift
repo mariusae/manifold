@@ -257,11 +257,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             self.headingsOutline.set(items.map(Outline.Item.init))
             // Each entry its section: from its top to the next's at its
             // level or above (the last, to the page's end).
-            self.scrubber.set(tops.indices.map { k in
-                let next = ((k + 1)..<tops.count).first { items[$0].level <= items[k].level }
-                let end = next.map { tops[$0] } ?? h
-                return StripItem(level: items[k].level, start: tops[k], size: max(end - tops[k], 1))
-            })
+            self.scrubber.set(StripLayout.sections(tops: tops, levels: items.map(\.level), total: h))
             self.scrubber.update(total: h, offset: y, shown: v)
             self.markCurrentHeading(at: y)
         }
@@ -269,11 +265,10 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
 
     // MARK: The outline (§7.5)
 
-    /// The page's headings, the one you're in marked: as ticks at the
-    /// tile's upper right, and in the sidebar at its left.
+    /// The page's headings, the one you're in marked: as ticks beside its
+    /// scroll bar, and in the sidebar at its left.
     private let headingsOutline = Outline()
     var outline: Outline? { headingsOutline }
-    var outlineInStrip: Bool { true }
     private var sidebar: TileSidebar?
     private var sidebarRestored = false
     /// The page shows a note or a Markdown file, which things dropped go into.

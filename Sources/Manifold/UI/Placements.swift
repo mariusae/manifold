@@ -94,14 +94,9 @@ protocol PaneContent: NSView {
     /// The sidebar, where it isn't among the view's own subviews (a
     /// terminal's sits beside it); else found among them.
     var sidebarView: TileSidebar? { get }
-    /// Its outline, if it has one (§7.5): the tile shows it as ticks at its
-    /// upper right, the whole of it over them while the pointer is there.
+    /// Its outline, if it has one (§7.5): shown as ticks beside its scroll
+    /// bar (`OutlineStripView`), and in its sidebar.
     var outline: Outline? { get }
-    /// Its outline is its scroll bar's (`OutlineStripView`): no ticks.
-    var outlineInStrip: Bool { get }
-    /// How far down from its top its content begins, under a header of its
-    /// own (a PDF's page and zoom): the ticks go below that.
-    var outlineInset: CGFloat { get }
     /// Where in its block the view is now, for the block navigation stack
     /// (§3.5): an editor's line, a terminal's command gone to, a page's
     /// scroll, a PDF's page. Nil: only the tile.
@@ -209,8 +204,6 @@ extension PaneContent {
     func toggleSidebar() {}
     var sidebarView: TileSidebar? { nil }
     var outline: Outline? { nil }
-    var outlineInStrip: Bool { false }
-    var outlineInset: CGFloat { 0 }
     var navLocation: NavLocation? { nil }
     func go(to location: NavLocation) {}
 }

@@ -1049,15 +1049,15 @@ enum DebugControl {
             return (wc?.debugFocusedBlock?.description ?? "nothing focused") + (wc?.window?.isKeyWindow == true ? " key" : " not key")
                 + " responder " + (wc?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "none")
         case "strip":
-            // "strip": the focused terminal's or preview's outline strip, its
-            // marks; "strip hover <f>" (the pointer that far down it), "strip
-            // off", "strip pick <i>".
+            // "strip": the focused tile's outline strip, its ticks; "strip
+            // hover <f>" (the pointer that far down it), "strip off",
+            // "strip pick <i>", "strip up|down", "strip image <path>".
             guard let v = wc?.debugFocusedView else { return "nothing focused" }
-            func find(_ v: NSView) -> NSView? { (v is TerminalView || v is MarkdownView) ? v : v.subviews.lazy.compactMap(find).first }
+            func find(_ v: NSView) -> NSView? { (v is TerminalView || v is OutlineStripView) ? v : v.subviews.lazy.compactMap(find).first }
             switch find(v) {
             case let t as TerminalView: return t.debugStrip(arg)
-            case let m as MarkdownView: return m.debugStrip(arg)
-            default: return "no terminal or preview focused"
+            case let s as OutlineStripView: return s.debug(arg)
+            default: return "no strip in the focused tile"
             }
         case "scrub":
             // "scrub": the focused terminal's scrubber; "scrub hover <f>",
@@ -1295,9 +1295,8 @@ enum DebugControl {
             guard let root = wc?.window?.contentView else { return "no window" }
             return StatusGlyph.debugSpinners(in: root, force: arg == "force")
         case "ticks":
-            // "ticks": the focused tile's outline ticks and items; "ticks
-            // open", its outline over them; "ticks rows", the list shown;
-            // "ticks click N" a row clicked, "ticks click menu N" its menu.
+            // The floating list (a command's actions): "ticks rows", the
+            // list shown; "ticks click N" a row clicked, "ticks click menu N" its menu.
             return wc?.debugTicks(arg) ?? "no window"
         case "outputs":
             return wc?.debugOutputs(arg) ?? "no window"

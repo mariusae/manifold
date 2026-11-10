@@ -128,6 +128,18 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        // The outline's ticks down the right, left of the scroll bar,
+        // shown as it is: the rows run under them.
+        strip.tops = { [weak self] in
+            guard let self else { return [] }
+            let items = self.changesOutline.items
+            guard items.count == self.marks.count else { return [] }
+            return zip(self.marks, items).map { (self.rowsView.rect(ofRow: $0).minY, $1.level) }
+        }
+        strip.strip.revealsOnActivity = true
+        strip.strip.preview = { [weak self] i in self?.markLines(i) ?? [] }
+        strip.strip.previewIsCode = true
+        addSubview(strip.strip)
         sticky.rows = rowsView
         sticky.isHidden = true
         sticky.onClick = { [weak self] in if let name = self?.sticky.name { self?.toggleFile(name) } }
@@ -171,6 +183,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             top -= h
         }
         scroll.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: top)
+        strip.place(scroll.frame)
         sticky.frame = NSRect(x: left, y: top - rowsView.rowHeightShown, width: bounds.width - left, height: rowsView.rowHeightShown)
         waiting.frame = scroll.frame
         rowsView.minWidth = scroll.contentSize.width
@@ -420,7 +433,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     // MARK: The outline (§7.5)
 
     /// The files, their hunks under them, each chosen to go there; the
-    /// one you're in marked: as ticks at the tile's upper right, and in the
+    /// one you're in marked: as ticks beside its scroll bar, and in the
     /// sidebar at its left.
     private lazy var changesOutline: Outline = {
         let o = Outline()
@@ -446,8 +459,23 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
         return o
     }()
     var outline: Outline? { changesOutline }
-    /// Under the header (what's compared, and how much changed).
-    var outlineInset: CGFloat { Self.strip }
+    private lazy var strip = ScrollStrip(outline: changesOutline, scroll: scroll, ownsScrollBar: false)
+
+    /// The first changed lines under a file or a hunk: what the strip's card says.
+    private func markLines(_ i: Int) -> [String] {
+        guard marks.indices.contains(i) else { return [] }
+        let rows = rowsView.rows, end = i + 1 < marks.count ? marks[i + 1] : rows.count
+        var out: [String] = []
+        for r in (marks[i] + 1)..<max(end, marks[i] + 1) {
+            switch rows[r].kind {
+            case .added: out.append("+" + rows[r].text)
+            case .removed: out.append("-" + rows[r].text)
+            default: break
+            }
+            if out.count == 5 { break }
+        }
+        return out
+    }
     /// The line over the changes: how much changed.
     static let strip = TileMetrics.strip
     private var sidebar: TileSidebar?

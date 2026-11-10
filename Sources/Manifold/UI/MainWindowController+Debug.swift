@@ -170,7 +170,7 @@ extension MainWindowController {
         guard let root = window?.contentView, let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) else { return }
         var v: NSView? = hit
         while let view = v, view !== content {
-            if view is ScrubberView || view is OutlineTicks || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is OrganizationView { view.mouseMoved(with: event); break }
+            if view is ScrubberView || view is OutlineStripView || view is CommandDots || view is FloatingListRow || view is LinkBadge || view is OrganizationView { view.mouseMoved(with: event); break }
             if let badge = view.superview as? LinkBadge { badge.mouseMoved(with: event); break }
             v = view.superview
         }
@@ -219,15 +219,8 @@ extension MainWindowController {
         case "click": return FloatingList.shared.debugClick(words.count > 1 ? words[1] : "")
         case "pointer": return FloatingList.shared.debugPointer(arg)
         case "leave": return FloatingList.shared.debugPointer("leave")
-        default: break
+        default: return "ticks rows|click …|pointer …|leave"
         }
-        guard let f = arrangement?.focused else { return "no tile focused" }
-        guard let t = content.debugTicks(f) else { return "no outline" }
-        if words.first == "open" {
-            t.open()
-            return FloatingList.shared.debugRows
-        }
-        return "frame \(NSStringFromRect(t.frame))\n" + t.debugState
     }
 
     /// Debugging: the focused tile's own sidebar — "toggle", "pick N",

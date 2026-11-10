@@ -122,8 +122,10 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         // a browser by the one alone (Google's) serves an old, plain version.
         config.applicationNameForUserAgent = Self.safari
         // Scrolling is told of, so the page's state is kept as it moves.
+        // Each frame while it moves, too, for the outline's ticks to follow.
         let watch = WKUserScript(source: """
-            (function () { var t; window.addEventListener('scroll', function () {
+            (function () { var t, live = false; window.addEventListener('scroll', function () {
+              if (!live) { live = true; requestAnimationFrame(function () { live = false; try { window.webkit.messageHandlers.manifoldState.postMessage({ scrolling: window.scrollY }); } catch (e) {} }); }
               clearTimeout(t); t = setTimeout(function () { try { window.webkit.messageHandlers.manifoldState.postMessage({ scroll: window.scrollY }); } catch (e) {} }, 400);
             }); })();
             """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -131,7 +133,14 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         // A scrollbar that shows (§3.1), as the lenses' do.
         config.userContentController.addUserScript(WKUserScript(source: "(function(){var s=document.createElement('style');s.textContent='::-webkit-scrollbar{width:12px;height:12px}::-webkit-scrollbar-thumb{background:rgba(127,127,127,.5);border-radius:7px;border:3px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:rgba(127,127,127,.8);background-clip:content-box}::-webkit-scrollbar-track{background:transparent}';(document.head||document.documentElement).appendChild(s);})();", injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let handler = StateMessages()
-        handler.onState = { [weak self] _ in self?.keepInteraction() }
+        handler.onState = { [weak self] _ in
+            self?.keepInteraction()
+            self?.readHeadings()
+        }
+        handler.onScrolling = { [weak self] y in
+            guard let self, let g = self.pageGeometry else { return }
+            self.strip.update(total: g.height, offset: y, shown: g.shown)
+        }
         config.userContentController.add(handler, name: "manifoldState")
         let selectionOwner = WeakView()
         selectionOwner.view = self
@@ -178,6 +187,15 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
             sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height)
         }
         web.frame = NSRect(x: left, y: 0, width: bounds.width - left, height: bounds.height)
+        // Over the page (made again, it goes in under the failure's note).
+        if let w = subviews.firstIndex(of: web), subviews.firstIndex(of: strip).map({ $0 < w }) ?? true {
+            addSubview(strip, positioned: .above, relativeTo: web)
+        }
+        strip.frame = OutlineStripView.frame(right: web.frame.maxX, y: 0, height: bounds.height)
+        if web.frame.size != geometrySize {
+            geometrySize = web.frame.size
+            readHeadings()
+        }
         failure.frame = web.frame
         placeLoadLine()
         finder.layout(in: web.frame)
@@ -206,8 +224,8 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
 
     // MARK: The outline (§7.5)
 
-    /// The page's headings, each chosen to go there: as ticks at the
-    /// tile's upper right, and in the sidebar at its left.
+    /// The page's headings, each chosen to go there: as ticks beside its
+    /// scroll bar, and in the sidebar at its left.
     private lazy var headingsOutline: Outline = {
         let o = Outline()
         o.block = block
@@ -218,6 +236,23 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
         return o
     }()
     var outline: Outline? { headingsOutline }
+    /// The headings' ticks down the right, left of the page's own scroll
+    /// bar, shown as it is: the page runs under them.
+    private lazy var strip: OutlineStripView = {
+        let s = OutlineStripView(outline: headingsOutline, policy: .document)
+        s.hasScrollBar = false
+        s.revealsOnActivity = true
+        s.preview = { [weak self] i in
+            guard let self, self.headingWords.indices.contains(i), !self.headingWords[i].isEmpty else { return [] }
+            return [self.headingWords[i]]
+        }
+        return s
+    }()
+    /// The page's height and the part shown, as last read; the size it was read at.
+    private var pageGeometry: (height: Double, shown: Double)?
+    private var geometrySize: NSSize?
+    /// The words under each heading, as last read.
+    private var headingWords: [String] = []
     private var sidebar: TileSidebar?
     var hasSidebar: Bool { true }
     var sidebarShown: Bool { sidebar?.isHidden == false }
@@ -238,14 +273,26 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
 
     /// The headings as the page has them now (after each load, too).
     private func readHeadings() {
-        let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){m.push([hs[i].tagName,hs[i].textContent.trim().slice(0,160)]);}return m;})()"
+        // Each with where it is on the page and the words after it; and
+        // the page's height, the part shown and where.
+        let js = "(function(){var hs=document.querySelectorAll('h1,h2,h3,h4,h5,h6');var m=[];for(var i=0;i<hs.length;i++){var h=hs[i],t=h.textContent.trim().slice(0,160);if(!t)continue;var n=h.nextElementSibling,w='';while(n&&w.length<240&&!/^H[1-6]$/.test(n.tagName)){w+=' '+(n.innerText||'').trim();n=n.nextElementSibling;}m.push([h.tagName,t,h.getBoundingClientRect().top+window.scrollY,w.trim().slice(0,240)]);}return {m:m,h:document.documentElement.scrollHeight,v:window.innerHeight,y:window.scrollY};})()"
         web.evaluateJavaScript(js) { [weak self] r, _ in
-            let rows = (r as? [[Any]]) ?? []
-            let headings = rows.compactMap { row -> (title: String, level: Int)? in
-                guard row.count == 2, let tag = row[0] as? String, let text = row[1] as? String, !text.isEmpty else { return nil }
-                return (text, Int(tag.dropFirst()) ?? 1)
+            guard let self, let d = r as? [String: Any] else { return }
+            let rows = (d["m"] as? [[Any]]) ?? []
+            var headings: [(title: String, level: Int)] = [], tops: [Double] = [], words: [String] = []
+            for row in rows {
+                guard row.count == 4, let tag = row[0] as? String, let text = row[1] as? String, !text.isEmpty else { continue }
+                headings.append((text, Int(tag.dropFirst()) ?? 1))
+                tops.append((row[2] as? Double) ?? tops.last ?? 0)
+                words.append((row[3] as? String) ?? "")
             }
-            self?.headingsOutline.set(Outline.headings(headings))
+            let items = Outline.headings(headings)
+            self.headingsOutline.set(items)
+            self.headingWords = words
+            let h = (d["h"] as? Double) ?? 1, v = (d["v"] as? Double) ?? 1
+            self.pageGeometry = (h, v)
+            self.strip.set(StripLayout.sections(tops: tops, levels: items.map(\.level), total: h))
+            self.strip.update(total: h, offset: (d["y"] as? Double) ?? 0, shown: v)
         }
     }
 

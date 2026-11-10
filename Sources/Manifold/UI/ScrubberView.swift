@@ -6,8 +6,8 @@ import ManifoldCore
 /// as a knob, which drags as a scroll bar's does; a click on the track
 /// jumps there. Shown as macOS shows its overlay scroll bars: while the
 /// content scrolls or grows, while the pointer is on it, and a moment
-/// after. (Where you are in what it holds is the outline's: its ticks at
-/// the tile's upper right.)
+/// after. (Where you are in what it holds is the outline's: its ticks
+/// beside it, `OutlineStripView`.)
 final class ScrubberView: NSView {
     static let width: CGFloat = 14
 

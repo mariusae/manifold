@@ -58,6 +58,16 @@ enum StripLayout {
     static let swell: CGFloat = 2.2
     static let reach: CGFloat = 2 * pitch
 
+    /// Items from where each begins and its level: each a section, from
+    /// its top to the next at its level or above (the last, to the end).
+    static func sections(tops: [Double], levels: [Int], total: Double) -> [StripItem] {
+        tops.indices.map { k in
+            let next = ((k + 1)..<tops.count).first { levels[$0] <= levels[k] }
+            let end = next.map { tops[$0] } ?? total
+            return StripItem(level: levels[k], start: tops[k], size: max(end - tops[k], 1))
+        }
+    }
+
     /// How many ticks a span holds.
     static func fits(_ height: CGFloat) -> Int { max(1, Int(height / pitch)) }
 
@@ -157,8 +167,11 @@ final class OutlineStripView: NSView {
     private var total: Double = 1
     private var offset: Double = 0
     private var shown: Double = 1
-    /// Whether there's a scroll bar (an agent's turns have no rows).
+    /// Whether what it shows scrolls (an agent's turns have no rows).
     var scrolls = true { didSet { if scrolls != oldValue { needsLayout = true } } }
+    /// Whether the scroll bar is the strip's, or the view's own (a page's,
+    /// a scroll view's), right of the ticks as the strip's would be.
+    var hasScrollBar = true { didSet { if hasScrollBar != oldValue { needsLayout = true } } }
 
     private let scrubber = ScrubberView(frame: .zero)
     /// The items with ticks (all of them, not only those the column shows
@@ -244,7 +257,7 @@ final class OutlineStripView: NSView {
     }
 
     private func relayout() {
-        scrubber.isHidden = !scrolls
+        scrubber.isHidden = !scrolls || !hasScrollBar
         let usable = items.count == outline.items.count ? items : []
         let admitted = Set(outline.shown)
         let pool = usable.indices.filter { admitted.contains($0) }
@@ -487,9 +500,10 @@ final class OutlineStripView: NSView {
     var debugState: String {
         let lines = ticks.map { t -> String in
             let title = outline.items.indices.contains(t.index) ? outline.items[t.index].title : "?"
-            return "\(t.index) y \(Int(t.y)) h\(t.height)\(t.lit ? " lit" : "")\(hovered == t.index ? " *" : "") \(title.prefix(40))"
+            let at = items.indices.contains(t.index) ? " @\(Int(items[t.index].start))+\(Int(items[t.index].size))" : ""
+            return "\(t.index) y \(Int(t.y)) h\(t.height)\(at)\(t.lit ? " lit" : "")\(hovered == t.index ? " *" : "") \(title.prefix(40))"
         }
-        return "up \(more.above ? "+" : "-") down \(more.below ? "+" : "-") items \(items.count) chosen \(chosen.count) first \(first) shows \(ticks.count) track \(Int(track.top))+\(Int(track.height)) block \(Int(block.top))…\(Int(block.bottom)) scrollbar \(scrubber.isHidden ? "-" : "+") ticks \(column.opacity > 0 ? "shown" : "faded") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
+        return "total \(Int(total)) offset \(Int(offset)) shown \(Int(shown)) up \(more.above ? "+" : "-") down \(more.below ? "+" : "-") items \(items.count) chosen \(chosen.count) first \(first) shows \(ticks.count) track \(Int(track.top))+\(Int(track.height)) block \(Int(block.top))…\(Int(block.bottom)) scrollbar \(scrubber.isHidden ? "-" : "+") ticks \(column.opacity > 0 ? "shown" : "faded") card \(card.isShown ? card.debugTitle : "-")\n" + lines.joined(separator: "\n")
     }
 
     /// The strip drawn, wider (the ticks widened left of it), larger.
@@ -533,6 +547,78 @@ final class OutlineStripView: NSView {
         default: break
         }
         return debugState
+    }
+}
+
+/// A strip for a scroll view's document: kept up with its scrolling and
+/// its size, its items' tops asked for again as the document or the
+/// outline changes; its scroll bar the strip's (the scroll view's own
+/// hidden) or the scroll view's.
+@MainActor
+final class ScrollStrip {
+    let strip: OutlineStripView
+    private weak var scroll: NSScrollView?
+    /// Each item's top in the document (its own coordinates) and level,
+    /// one for each of the outline's items.
+    var tops: () -> [(y: CGFloat, level: Int)] = { [] }
+    private var filled: (size: NSSize, generation: Int)?
+    private var observer: NSObjectProtocol?
+
+    init(outline: Outline, scroll: NSScrollView, ownsScrollBar: Bool) {
+        strip = OutlineStripView(outline: outline, policy: .document)
+        self.scroll = scroll
+        strip.hasScrollBar = ownsScrollBar
+        if ownsScrollBar {
+            scroll.hasVerticalScroller = false
+            strip.onScroll = { [weak self] f in self?.scroll(to: f) }
+        }
+        scroll.contentView.postsBoundsChangedNotifications = true
+        observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.unchecked { self?.update() }
+        }
+        outline.watch(strip) { [weak self] in
+            MainActor.unchecked { self?.update() }
+        }
+    }
+
+    deinit { observer.map(NotificationCenter.default.removeObserver) }
+
+    /// Down the right of `rect` (in the strip's superview).
+    func place(_ rect: NSRect) {
+        strip.frame = OutlineStripView.frame(right: rect.maxX, y: rect.minY, height: rect.height)
+        update()
+    }
+
+    /// The document's height, the part shown and where — from its top.
+    private var extent: (total: Double, offset: Double, shown: Double)? {
+        guard let scroll, let doc = scroll.documentView else { return nil }
+        let h = doc.frame.height, clip = scroll.contentView.bounds
+        return (Double(h), Double(doc.isFlipped ? clip.minY : h - clip.maxY), Double(clip.height))
+    }
+
+    /// The tops asked for again, the next time it's brought up to date.
+    func refill() { filled = nil; update() }
+
+    func update() {
+        guard let scroll, let doc = scroll.documentView, let e = extent else { return }
+        let key = (doc.frame.size, strip.outline.generation)
+        if filled.map({ $0.size != key.0 || $0.generation != key.1 }) ?? true {
+            filled = key
+            let t = tops()
+            if t.count == strip.outline.items.count {
+                let ys = t.map { Double(doc.isFlipped ? $0.y : doc.frame.height - $0.y) }
+                strip.set(StripLayout.sections(tops: ys, levels: t.map(\.level), total: e.total))
+            }
+        }
+        strip.update(total: e.total, offset: e.offset, shown: e.shown)
+    }
+
+    private func scroll(to f: Double) {
+        guard let scroll, let doc = scroll.documentView, let e = extent else { return }
+        let top = CGFloat(f * max(e.total - e.shown, 0))
+        let y = doc.isFlipped ? top : doc.frame.height - CGFloat(e.shown) - top
+        scroll.contentView.scroll(to: NSPoint(x: scroll.contentView.bounds.minX, y: y))
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 }
 
