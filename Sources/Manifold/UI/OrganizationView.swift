@@ -1124,7 +1124,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     func debugRows() -> String {
         (0..<outline.numberOfRows).compactMap { row in
             guard let n = outline.item(atRow: row) as? OrgNode else { return nil }
-            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.docked ? " [docked]" : "")"
+            return "\(row) \(String(repeating: "  ", count: outline.level(forRow: row)))\(n.id) | \(n.title)\(n.detail.isEmpty ? "" : " · " + n.detail)\(n.dimmed ? " [dim]" : "")\(n.look.map { " [\($0)]" } ?? "")\(n.dirty ? " [dirty]" : "")\(n.image != nil ? " [icon]" : "")\(n.docked ? " [docked]" : "") <\(n.symbol)>"
         }.joined(separator: "\n")
     }
 
@@ -1138,7 +1138,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
                                          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window?.windowNumber ?? 0,
                                          context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return "no event" }
         mouseMoved(with: e)
-        return "hovered \(trackedRow)"
+        // The row's own buttons, which its tracking area shows.
+        for r in 0..<outline.numberOfRows {
+            if let v = outline.view(atColumn: 0, row: r, makeIfNecessary: false) as? OrgRowView, r != row { _ = v.debugHover(false) }
+        }
+        let buttons = row >= 0 ? (outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? OrgRowView)?.debugHover(true) : nil
+        return "hovered \(trackedRow)" + (buttons.map { "\n" + $0 } ?? "")
     }
 
     /// The row's context menu: its titles, or the item named chosen.
@@ -1411,6 +1416,15 @@ final class OrgRowView: NSTableCellView {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
 
+    /// Debugging: as the pointer coming onto it (or leaving): its buttons
+    /// shown, laid out; where they went.
+    func debugHover(_ on: Bool) -> String {
+        hovering = on
+        layoutSubtreeIfNeeded()
+        return accessoryButtons.map { "\($0.toolTip ?? "?") \(NSStringFromRect($0.frame))" }.joined(separator: ", ")
+            + " in \(NSStringFromRect(bounds)); icon \(NSStringFromRect(icon.frame)), name \(NSStringFromRect(name.frame))"
+    }
+
     override func prepareForReuse() {
         super.prepareForReuse()
         hovering = false
@@ -1577,7 +1591,16 @@ final class OrgRowView: NSTableCellView {
             let ix: CGFloat = 0
             icon.frame = NSRect(x: 2 + ix, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4
-            if !count.isHidden {
+            // The pointer on it: its buttons at the right of the name's
+            // line, over what's there, as a row of one line has them.
+            if hovering, !accessoryButtons.isEmpty {
+                for b in accessoryButtons.reversed() {
+                    b.frame = NSRect(x: right - 20, y: (h - 21 - 1.5).rounded(), width: 20, height: 20)
+                    right -= 22
+                }
+                for v in [count, trailing, glyph, pill] as [NSView] { v.frame = .zero }
+                right -= 2
+            } else if !count.isHidden {
                 let w = count.wantedWidth
                 count.frame = NSRect(x: right - w, y: (h - 21 + (17 - CountPill.height) / 2).rounded(), width: w, height: CountPill.height)
                 right -= w + 6
