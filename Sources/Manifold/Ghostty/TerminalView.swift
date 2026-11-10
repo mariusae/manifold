@@ -5,6 +5,8 @@ import ManifoldCore
 protocol TerminalViewDelegate: AnyObject {
     func terminalDidFocus(_ view: TerminalView)
     func terminalDidClose(_ view: TerminalView)
+    /// A link ⌘-right-clicked: what can be done with it.
+    func terminal(_ view: TerminalView, menuForLink target: String) -> NSMenu?
     /// Its shell exited, and a new one's wanted (`start`), or started
     /// elsewhere: the view made again, attached to it.
     func terminalRestart(_ view: TerminalView, start: Bool)
@@ -1000,6 +1002,24 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             if arg == "off" { debugUnmarkLinks(); return "ok" }
             let n = arg.split(separator: " ").compactMap { Int($0) }
             return debugLinks(hoverRow: n.first, col: n.count > 1 ? n[1] : nil)
+        case "linkmenu":
+            // "scrub linkmenu <row> <col> [title]": the menu ⌘-right-click
+            // on that cell shows, or that item chosen.
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count >= 2, let grid else { return "usage: scrub linkmenu <row> <col> [title]" }
+            guard let hit = link(at: grid.point(col: Double(n[1]) + 0.5, row: Double(n[0]) + 0.5)), hit.standing != .possible,
+                  let menu = delegate?.terminal(self, menuForLink: hit.target) else { return "no link there" }
+            let title = arg.split(separator: " ").dropFirst(2).joined(separator: " ")
+            if title.isEmpty {
+                return hit.target + "\n" + menu.items.map { i in
+                    guard !i.isSeparatorItem else { return "---" }
+                    if #available(macOS 14.4, *), let s = i.subtitle { return i.title + "  (" + s + ")" }
+                    return i.title
+                }.joined(separator: "\n")
+            }
+            guard let item = menu.items.first(where: { $0.title == title }), let action = item.action else { return "no such item" }
+            NSApp.sendAction(action, to: item.target, from: item)
+            return "chose \(title)"
         case "click":
             // "scrub click <row> <col>": a ⌘-click on that cell, as far as a link there.
             let n = arg.split(separator: " ").compactMap { Int($0) }
@@ -1739,6 +1759,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        // ⌘ on a link: what can be done with it (each way ⌘-click opens it,
+        // copied, its folder) — not the terminal's menu, nor its program's.
+        if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)),
+           hit.standing != .possible, let menu = delegate?.terminal(self, menuForLink: hit.target) {
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return
+        }
         guard let surface,
               ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, mods(event.modifierFlags))
         else { return super.rightMouseDown(with: event) }

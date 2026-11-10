@@ -338,6 +338,41 @@ extension EditorView {
     func textView(_ view: TextView, mentioned block: BlockID) { delegate?.editor(self, linkedFrom: block) }
     func textView(_ view: TextView, follow target: String, over: Bool) { delegate?.editor(self, follow: target, over: over) }
 
+    /// ⌘-right-click: a link there, what can be done with it (each way
+    /// ⌘-click opens it, copied, its folder); a name in code, where it
+    /// goes — its definition, as ⌘-click and ⌥⌘-click go, its references,
+    /// callers, documentation, its uses — and its name copied.
+    func textView(_ view: TextView, commandMenuAt offset: Int, link: String?) -> NSMenu? {
+        if let target = link ?? linkAt(offset) { return delegate?.editor(self, menuForLink: target) }
+        guard textView.syntaxLanguage != nil, !textView.markdown else { return nil }
+        let word = textView.wordRange(at: offset)
+        guard !word.isEmpty else { return nil }
+        let name = String(textView.text[word])
+        // As the other code items act at the caret: the caret on the name.
+        textView.setSelections([Selection(at: offset)], scroll: false)
+        window?.makeFirstResponder(textView)
+        let menu = NSMenu()
+        func item(_ title: String, _ symbol: String, click: String? = nil, _ run: @escaping () -> Void) {
+            let i = ClosureMenuItem(title, symbol: symbol, run)
+            if let click, #available(macOS 14.4, *) { i.subtitle = click }
+            menu.addItem(i)
+        }
+        item("Go to Definition", "arrow.up.forward.square", click: "⌘-click") { [weak self] in self?.definition(at: offset) }
+        item("Go to Definition Over", "square.on.square", click: "⌥⌘-click") { [weak self] in self?.definition(at: offset, over: true) }
+        menu.addItem(.separator())
+        for (title, symbol, action) in [("Find References", "magnifyingglass", #selector(EditorView.findReferences(_:))),
+                                        ("Show Callers", "arrow.turn.down.left", #selector(MainWindowController.showCallers(_:))),
+                                        ("Show Documentation", "doc.text", #selector(EditorView.showDocumentation(_:))),
+                                        ("Highlight Uses", "highlighter", #selector(TextView.highlightUses(_:)))] {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            i.setSymbol(symbol, size: 12)
+            menu.addItem(i)
+        }
+        menu.addItem(.separator())
+        item("Copy Name", "doc.on.doc") { NSPasteboard.copy(name) }
+        return menu
+    }
+
     func textView(_ view: TextView, commandClickAt offset: Int, over: Bool) {
         if let target = linkAt(offset) { delegate?.editor(self, follow: target, over: over); return }
         definition(at: offset, over: over)

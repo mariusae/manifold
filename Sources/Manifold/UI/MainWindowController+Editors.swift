@@ -337,6 +337,7 @@ extension MainWindowController: EditorViewDelegate {
 
     /// A link in the text clicked: a block's gone to; an address opened.
     func editor(_ view: EditorView, follow target: String, over: Bool) { open(target, from: view.placement, over: over) }
+    func editor(_ view: EditorView, menuForLink target: String) -> NSMenu? { linkMenu(target, from: view.placement) }
 
     /// A definition found (⌘-click): its file at its line, beside the
     /// editor — or, ⌘⌥-clicked, stacked over it.

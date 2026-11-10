@@ -231,6 +231,10 @@ extension MainWindowController: TerminalViewDelegate {
         focus(view.placement)
     }
 
+    func terminal(_ view: TerminalView, menuForLink target: String) -> NSMenu? {
+        linkMenu(target, from: view.placement)
+    }
+
     func terminalRestart(_ view: TerminalView, start: Bool) {
         guard views[view.placement] === view else { return }
         // Made again: attached afresh — its transcript, then the new shell

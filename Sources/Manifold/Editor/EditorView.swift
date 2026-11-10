@@ -18,6 +18,8 @@ protocol EditorViewDelegate: AnyObject {
     /// ⌘-clicked (an address, a file at a line); with ⌥ (`over`), what
     /// opens goes over this tile.
     func editor(_ view: EditorView, follow target: String, over: Bool)
+    /// A link ⌘-right-clicked: what can be done with it.
+    func editor(_ view: EditorView, menuForLink target: String) -> NSMenu?
     /// The block's text, as the replica has it.
     func editorText(_ view: EditorView) -> TextState?
     /// The editor's text now differs from the file's, or no longer does.
@@ -447,6 +449,24 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         switch what {
         case "pick": headingsOutline.pick(Int(arg) ?? 0); return "picked"
         case "text": return String(textView.text.string.suffix(300))
+        case "cmdmenu":
+            // "scrub cmdmenu <line> <column> [title]": the menu ⌘-right-click
+            // there shows (lines and columns from 1), or that item chosen.
+            let w = arg.split(separator: " ").map(String.init)
+            guard w.count >= 2, let l = Int(w[0]), let c = Int(w[1]) else { return "usage: scrub cmdmenu <line> <column> [title]" }
+            let at = textView.offset(line: l, column: c).start
+            guard let menu = textView(textView, commandMenuAt: at, link: nil) else { return "nothing ⌘ marks there" }
+            let title = w.dropFirst(2).joined(separator: " ")
+            if title.isEmpty {
+                return menu.items.map { i in
+                    guard !i.isSeparatorItem else { return "---" }
+                    if #available(macOS 14.4, *), let s = i.subtitle { return i.title + "  (" + s + ")" }
+                    return i.title
+                }.joined(separator: "\n")
+            }
+            guard let item = menu.items.first(where: { $0.title == title }), let action = item.action else { return "no such item" }
+            NSApp.sendAction(action, to: item.target, from: item)
+            return "chose \(title)"
         default: return "headings \(headingLines.count) offset \(Int(scroll.contentView.bounds.minY)) of \(Int(textView.frame.height))"
         }
     }

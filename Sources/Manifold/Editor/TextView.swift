@@ -25,6 +25,10 @@ protocol TextViewDelegate: AnyObject {
     /// A link in Markdown clicked: a block's pill (manifold:id), or an
     /// address; `over`: ⌥ was held, for what opens to go over this tile.
     func textView(_ view: TextView, follow target: String, over: Bool)
+    /// ⌘-right-click on a place in the text: what ⌘ marks there (a link, a
+    /// name to go to) and what can be done with it; nil, the usual menu.
+    /// `link`: a Markdown link there, if there's one.
+    func textView(_ view: TextView, commandMenuAt offset: Int, link: String?) -> NSMenu?
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
     /// The selection dragged: what it carries — its words, and a reference
@@ -2906,11 +2910,15 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
+        let p = convert(event.locationInWindow, from: nil)
+        // ⌘ held: what it marks there (a link, a name to go to), on its own.
+        if event.modifierFlags.contains(.command), let m = delegate?.textView(self, commandMenuAt: offset(at: p), link: linkTarget(at: p)) {
+            return m
+        }
         let menu = NSMenu()
         // A name in code right-clicked: what Edit ▸ Code does with a symbol,
         // first — the caret put on it (unless it's in what's selected), as
         // they act at the caret.
-        let p = convert(event.locationInWindow, from: nil)
         if syntax != nil, !markdown, let w = word(at: p) {
             let o = offset(at: p)
             if !selections.contains(where: { !$0.isCaret && $0.min <= o && o <= $0.max }) {
