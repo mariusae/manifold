@@ -560,8 +560,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         })
     }
 
-    /// The terminal's padding at its left and top (GhosttyRuntime's config).
-    static let dotsWidth: CGFloat = 10
+    /// The terminal's padding at its left and top (GhosttyRuntime's config:
+    /// room at the left for the commands' dots, clear of the tile's edge
+    /// and the text).
+    static let dotsWidth: CGFloat = 14
     static let paddingTop: CGFloat = 6
 
     private func scroll(toFraction fraction: Double) {
@@ -818,7 +820,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     func debugStrip(_ arg: String) -> String { scrubber.debug(arg) }
 
     var debugScrubber: String {
-        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor)\n" + dots.debugDots
+        "total \(scrollbar.total) offset \(scrollbar.offset) len \(scrollbar.len) commands \(commands.count) located \(located.count) agent \(isAgent) connecting \(connecting.debugState) seen \(occlusionSeen.map(String.init) ?? "?") window \(window.map { $0.occlusionState.contains(.visible) ? "visible" : "occluded" } ?? "none") hidden \(isHiddenOrHasHiddenAncestor) pad \(cellInfo.map { "\(Int($0.pad_left)),\(Int($0.pad_top))" } ?? "?")\n" + dots.debugDots
     }
 
     func debugScrub(_ what: String, _ arg: String) -> String {
