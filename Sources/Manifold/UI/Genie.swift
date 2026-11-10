@@ -45,9 +45,13 @@ enum Genie {
     /// A tile into its target or out of it, as `run`: tinted as it goes
     /// (`tint`), the way it arrives past `boundary` (an x or y, along the
     /// way it goes) returned; nil if it didn't run.
+    /// How many have run (a tile's, into its target or out), for debugging.
+    static var runs = 0
+
     @discardableResult
     static func run(_ p: GridView.Pictured, target: NSRect, restoring: Bool, in host: CALayer, scale: CGFloat,
                     tint: CGColor? = nil, boundary: CGFloat? = nil) -> Arrival? {
+        runs += 1
         guard let image = image(of: p, scale: scale) else { return nil }
         return run(image, tile: p.whole, target: target, restoring: restoring, in: host, over: duration, scale: scale, tint: tint, boundary: boundary)
     }

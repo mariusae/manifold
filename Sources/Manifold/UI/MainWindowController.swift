@@ -1040,6 +1040,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var stacked: Set<PlacementID> = []
     /// The tile over each (the $EDITOR's, by its placement), and the one under it.
     var stackTops: [PlacementID: PlacementID] = [:]
+    /// Tiles come back from under an $EDITOR's, till they're out of the
+    /// dock: they leave it, but don't pour out of it — they're simply
+    /// there again, in the editor's place.
+    var unstacked: Set<PlacementID> = []
     /// Tiles taken off for another in their place (`replace`): not seen going.
     var replacedInPlace: Set<PlacementID> = []
 

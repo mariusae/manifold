@@ -31,6 +31,10 @@ extension MainWindowController {
         let now = Set(a.docked.map(\.placement.id))
         let seen = dockSeen
         dockSeen = (selected, now)
+        // Kept till it's out of the dock (the editor's going and its
+        // coming back may be seen apart).
+        let back = unstacked
+        unstacked = unstacked.intersection(now)
         guard let space = selected, stateView == nil, !Motion.reduced, let seen, seen.space == space, seen.docked != now else { return nil }
         var f = DockFlights()
         let down = now.subtracting(seen.docked)
@@ -42,7 +46,7 @@ extension MainWindowController {
             }
         }
         dockedPictures = dockedPictures.filter { now.contains($0.key) || seen.docked.contains($0.key) }
-        for id in seen.docked.subtracting(now) where a.locate(id) != nil && !stacked.contains(id) {
+        for id in seen.docked.subtracting(now) where a.locate(id) != nil && !stacked.contains(id) && !back.contains(id) {
             f.up[id] = sidebar.organizationView.row(of: id, in: space, in: root) ?? .zero
         }
         return f.down.isEmpty && f.bars.isEmpty && f.up.isEmpty ? nil : f
@@ -99,6 +103,7 @@ extension MainWindowController {
         // over what's under it while that draws.
         if let under = stackTops.removeValue(forKey: v.placement) {
             stacked.remove(under)
+            unstacked.insert(under)
             holdPicture(of: v)
             return .flown
         }
