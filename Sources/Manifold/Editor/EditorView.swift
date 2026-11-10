@@ -125,9 +125,6 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             return zip(self.headingLines, items).map { (self.textView.top(ofLine: $0), $1.level) }
         }
         strip.strip.preview = { [weak self] i in self?.sectionLines(i) ?? [] }
-        // Over the text, whose lines may run under them: shown as the
-        // scroll bar is.
-        strip.strip.revealsOnActivity = true
         addSubview(strip.strip)
         addSubview(note)
         note.host = block.host

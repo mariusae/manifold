@@ -304,7 +304,6 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         s.onScroll = { [weak self] fraction in self?.scroll(toFraction: fraction) }
         s.preview = { [weak self] i in self?.previewLines(i) ?? [] }
         s.previewIsCode = true
-        s.revealsOnActivity = true
         return s
     }()
 

@@ -241,7 +241,6 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
     private lazy var strip: OutlineStripView = {
         let s = OutlineStripView(outline: headingsOutline, policy: .document)
         s.hasScrollBar = false
-        s.revealsOnActivity = true
         s.preview = { [weak self] i in
             guard let self, self.headingWords.indices.contains(i), !self.headingWords[i].isEmpty else { return [] }
             return [self.headingWords[i]]

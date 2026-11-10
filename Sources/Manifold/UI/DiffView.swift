@@ -136,7 +136,6 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             guard items.count == self.marks.count else { return [] }
             return zip(self.marks, items).map { (self.rowsView.rect(ofRow: $0).minY, $1.level) }
         }
-        strip.strip.revealsOnActivity = true
         strip.strip.preview = { [weak self] i in self?.markLines(i) ?? [] }
         strip.strip.previewIsCode = true
         addSubview(strip.strip)

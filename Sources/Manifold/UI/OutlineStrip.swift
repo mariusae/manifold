@@ -13,9 +13,9 @@ import ManifoldCore
 /// chevron at its top or bottom to go on. The pointer on it widens the
 /// ticks around it, as the Dock does its icons, and brightens them; the
 /// one under the pointer is previewed in a card beside it, and clicked,
-/// gone to. Over a terminal, whose cells the ticks would hide, they show
-/// as an overlay scroll bar does: while it scrolls or the pointer's on the
-/// strip, and a moment after.
+/// gone to. The ticks show as an overlay scroll bar does: while the view
+/// scrolls or the pointer's on the strip, and a moment after — so they
+/// hide nothing under them the rest of the time.
 
 /// An outline's item as the strip weighs it: its level, where it begins
 /// in the view's scroll units and how much it spans.
@@ -156,10 +156,6 @@ final class OutlineStripView: NSView {
     var preview: ((Int) -> [String])?
     /// Lines set in the code font in the card (a terminal's output).
     var previewIsCode = false
-    /// The ticks shown only while the content scrolls or the pointer's on
-    /// the strip, and a moment after, as an overlay scroll bar is (over a
-    /// terminal, whose cells they'd hide); else always.
-    var revealsOnActivity = false { didSet { column.opacity = revealsOnActivity ? 0 : 1 } }
 
     let outline: Outline
     private(set) var items: [StripItem] = []
@@ -202,6 +198,9 @@ final class OutlineStripView: NSView {
         layer?.masksToBounds = false
         addSubview(scrubber)
         layer?.addSublayer(column)
+        // Faded till the view scrolls or the pointer comes, unless scroll
+        // bars stay.
+        column.opacity = NSScroller.preferredScrollerStyle == .overlay ? 0 : 1
         for c in [up, down] {
             c.fillColor = nil
             c.lineWidth = 1.5
@@ -295,11 +294,10 @@ final class OutlineStripView: NSView {
     /// The right end of the ticks, a little left of the scroll bar.
     private var tickRight: CGFloat { Self.lane - 2 }
 
-    /// The ticks shown (over a terminal), and faded a moment after
-    /// unless the pointer's on the strip — always shown where the system's
-    /// scroll bars are the kind that stay.
+    /// The ticks shown, and faded a moment after unless the pointer's on
+    /// the strip — always shown where the system's scroll bars are the
+    /// kind that stay.
     private func reveal() {
-        guard revealsOnActivity else { return }
         fade?.invalidate()
         fade = nil
         if column.opacity != 1 {

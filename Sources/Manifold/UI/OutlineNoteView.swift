@@ -80,7 +80,6 @@ final class OutlineNoteView: NSView, PaneContent {
     private lazy var strip: ScrollStrip = {
         let s = ScrollStrip(outline: headings, scroll: scroll, ownsScrollBar: false)
         s.tops = { [weak self] in self?.itemTops() ?? [] }
-        s.strip.revealsOnActivity = true
         s.strip.preview = { [weak self] i in self?.itemWords(i) ?? [] }
         return s
     }()
