@@ -56,20 +56,25 @@ public enum ManiClient {
         }
         var channel = BlockingChannel(fd: fd)
         guard channel.hello(Mani.name) else { return absent }
-        var welcomed = false
-        let deadline = Date().addingTimeInterval(10)
+        var welcomed = false, taken = false
+        var deadline = Date().addingTimeInterval(10)
         while true {
-            // Answered at once, once asked; then as long as it takes.
-            switch channel.next(until: welcomed ? nil : deadline) {
+            // Welcomed at once; the command taken by the app (its first
+            // reply) soon after it's asked; then as long as it takes.
+            switch channel.next(until: taken ? nil : deadline) {
             case .timedOut:
-                return fail("Manifold didn't answer")
+                guard welcomed else { return fail("Manifold didn't answer") }
+                return fail("Manifold took no notice of the command in \(Int(takenWithin)) s (this was pid \(getpid())); "
+                    + "its log (~/Library/Logs/Manifold/Manifold.log) and its server's (manifoldd.log, in its data folder) say what became of it")
             case .closed:
                 return welcomed ? fail("lost the connection to Manifold") : absent
             case let .message(.welcome(version, _, _, _, _, _, _, _, _, _)):
                 if version != protocolVersion { return fail(otherVersion) }
                 welcomed = true
+                deadline = Date().addingTimeInterval(takenWithin)
                 guard channel.send(.command(id: 1, request)) else { return fail("lost the connection to Manifold") }
             case let .message(.commandReply(id, reply)) where id == 1:
+                taken = true
                 say(reply.out, to: .standardOutput)
                 say(reply.err, to: .standardError)
                 if let status = reply.status { return status }
@@ -81,6 +86,12 @@ public enum ManiClient {
                 continue
             }
         }
+    }
+
+    /// How long the app has to take a command (its first reply) before
+    /// `mani` gives up on it: 30 s, or MANI_TIMEOUT's seconds.
+    static var takenWithin: TimeInterval {
+        ProcessInfo.processInfo.environment["MANI_TIMEOUT"].flatMap(TimeInterval.init).flatMap { $0 > 0 ? $0 : nil } ?? 30
     }
 
     /// Why `mani` stopped, on stderr; status 1.

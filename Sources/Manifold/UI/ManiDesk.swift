@@ -55,12 +55,17 @@ final class ManiDesk {
     // MARK: Answering
 
     func reply(_ a: Asker, out: String = "", err: String = "", status: Int32?) {
+        if let status { NSLog("mani #%d of connection %d answered: status %d", a.id, a.client, status) }
         hosts.commandReply(ManiReply(out: out, err: err, status: status), id: a.id, asker: a.client, on: a.host)
     }
 
     /// A command, done, and answered: its output and status 0, or what
-    /// went wrong and 1 — unless it answers later itself (nil).
+    /// went wrong and 1 — unless it answers later itself (nil). Taken at
+    /// once, said so (an empty reply that doesn't end it): `mani` gives up
+    /// on a command nothing took, not on one that takes long (`watch`, a wait).
     func handle(_ request: ManiRequest, from asker: Asker) {
+        NSLog("mani %@ #%d of connection %d taken", request.verb, asker.id, asker.client)
+        reply(asker, status: nil)
         Task { @MainActor in
             do {
                 if let out = try await run(request, asker) {

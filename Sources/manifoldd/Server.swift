@@ -357,6 +357,10 @@ final class Server {
                 }
             }
             peers[me] = peer
+            if peer.isApp {
+                let others = peers.values.filter { $0.isApp && $0.instance == instance && $0 !== peer }.map(\.id).sorted()
+                log("app on \(machine ?? "?") connected: connection \(peer.id)" + (others.isEmpty ? "" : "; its connection(s) \(others.map(String.init).joined(separator: ", ")) still open"))
+            }
             peer.knownEpoch = isAttached(peer) ? attached.epoch : (epoch ?? attached.epoch)
             if peer.isApp { indexAgents() }
             conn.onFrame = { [weak self, unowned conn] frame in self?.clientFrame(frame, from: conn) }
@@ -496,6 +500,9 @@ final class Server {
     /// with it.
     private func remove(_ conn: any Channel) {
         let me = ObjectIdentifier(conn)
+        if let p = peers[me], p.isApp {
+            log("app on \(p.machine ?? "?") gone: connection \(p.id)" + (p.commandsAt.isEmpty ? "" : ", \(p.commandsAt.count) mani command(s) unanswered"))
+        }
         // (Before its machine's name is forgotten: the askers are told it.)
         commandsUnanswered(by: conn)
         commandsEnded(by: conn)
@@ -595,7 +602,9 @@ final class Server {
     /// host closes it (`closeSilent`), not by a guess at how quiet it is.
     private func actingApp() -> Peer? {
         let apps = self.apps
-        if let p = apps.first(where: { isAttached($0) }) { return p }
+        // Its newest connection: a link the app made again may be here
+        // beside its old one, not yet seen to close, which answers nothing.
+        if let p = apps.last(where: { isAttached($0) }) { return p }
         return apps.filter { !superseded($0) }.max { $0.id < $1.id }
     }
 
@@ -633,7 +642,8 @@ final class Server {
         case let .commandReply(id, client, reply)?:
             // The app's answer to a command, passed on to the client that
             // asked; the last, with its status, ends it.
-            if reply.status != nil {
+            if let status = reply.status {
+                log("mani #\(id) of connection \(client) answered by connection \(me.id): status \(status)")
                 commandsOut[client]?.remove(id)
                 for p in peers.values { p.commandsAt.remove(CommandAsked(client: client, id: id)) }
             }
@@ -653,7 +663,7 @@ final class Server {
         request.author = author(ofCaller: me.pid)
         commandsOut[me.id, default: []].insert(id)
         app.commandsAt.insert(CommandAsked(client: me.id, id: id))
-        log("mani \(request.verb) to \(app.machine ?? "the app")")
+        log("mani \(request.verb) #\(id) from pid \(me.pid.map(String.init) ?? "?") (connection \(me.id)) to \(app.machine ?? "the app") (connection \(app.id))")
         app.conn.send(.message(ServerMessage.command(id: id, client: me.id, request)))
     }
 
