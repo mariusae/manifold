@@ -149,7 +149,7 @@ final class GridView: NSView, NSDraggingSource {
     /// is, its links and status, maximize and close — and its content
     /// beneath, rounded, with room between cards and around them.
     static let barHeight: CGFloat = 30
-    static let gap: CGFloat = 8
+    static let gap: CGFloat = 6
     static let inset: CGFloat = 8
     /// A tile shrinks in steps: under this much of its content showing,
     /// its summary card stands in for it, in its body under its bar…
