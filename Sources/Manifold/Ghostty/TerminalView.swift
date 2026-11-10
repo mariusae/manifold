@@ -7,6 +7,8 @@ protocol TerminalViewDelegate: AnyObject {
     func terminalDidClose(_ view: TerminalView)
     /// A link ⌘-right-clicked: what can be done with it.
     func terminal(_ view: TerminalView, menuForLink target: String) -> NSMenu?
+    /// Its block's shell: running, exited (with its status), dormant.
+    func terminalShell(_ view: TerminalView) -> TerminalView.ShellState
     /// Its shell exited, and a new one's wanted (`start`), or started
     /// elsewhere: the view made again, attached to it.
     func terminalRestart(_ view: TerminalView, start: Bool)
@@ -121,7 +123,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// if it's back already.
     private func linkClosed(linkWent: Bool) {
         if !linkWent {
-            shellExited()
+            streamEnded()
         } else if link.linkUp {
             link.resume()
         } else {
@@ -168,6 +170,26 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         guard let s = status, s != 0 else { return "exited" }
         return s > 128 ? "ended by signal \(s - 128)" : "exited with status \(s)"
     }
+
+    /// The stream closed of itself, the link up: its shell exited (`exit`,
+    /// a crash) — shown ended, as it was, held there — or went dormant, or
+    /// the host let go of it: made again, as before. The block may say its
+    /// shell exited a moment after the stream closes: waited for a little.
+    private func streamEnded(tries: Int = 0) {
+        link.hold()
+        switch delegate?.terminalShell(self) {
+        case .exited(let status)?:
+            exitStatus = status
+            shellExited()
+        case .running? where tries < 10:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.streamEnded(tries: tries + 1) }
+        default:
+            surfaceClosed()
+        }
+    }
+
+    /// A terminal's shell, as its block says.
+    enum ShellState { case running, exited(Int32), dormant, none }
 
     private func shellExited() {
         guard !exited else { return }

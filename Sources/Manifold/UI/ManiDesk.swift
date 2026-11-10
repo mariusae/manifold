@@ -917,7 +917,12 @@ final class ManiDesk {
         if let tileID = t.tile, let outline = wc.views[tileID]?.outline, !outline.items.isEmpty {
             out["outline"] = outline.items.indices.prefix(200).map { i -> [String: Any] in
                 var o: [String: Any] = ["title": outline.items[i].title, "level": outline.items[i].level]
-                if let place = outline.placeFor?(i) { o["at"] = place }
+                // Where it is, as a reference names it: the place, and the
+                // reference to it (as `read --outline` gives them).
+                if let place = outline.placeFor?(i) {
+                    o["at"] = place.fragment
+                    o["ref"] = "manifold:" + b.id.description + "#" + place.fragment
+                }
                 return o
             }
         }
@@ -1477,7 +1482,7 @@ final class ManiDesk {
         var o = fields
         o["event"] = event
         o["at"] = ISO8601DateFormatter().string(from: Date())
-        guard let data = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
+        guard let data = PanelView.jsonData(o, options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
         let line = String(decoding: data, as: UTF8.self) + "\n"
         for (asker, only) in watchers where only?.contains(event) ?? true {
             reply(asker, out: line, status: nil)
@@ -1668,7 +1673,7 @@ final class ManiDesk {
             for (k, v) in changed { values[k] = PanelView.parse(v) ?? NSNull() }
             e["values"] = values
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: PanelView.tidy(e), options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
+        guard let data = PanelView.jsonData(e, options: [.sortedKeys, .withoutEscapingSlashes]) else { return }
         let line = String(decoding: data, as: UTF8.self)
         if let run { hosts.propose(.runPanel(block: block, command: run, event: line)) }
         tell("panel", e)
@@ -1692,7 +1697,7 @@ final class ManiDesk {
     }
 
     func json(_ object: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: PanelView.tidy(object), options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
+        guard let data = PanelView.jsonData(object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
 }

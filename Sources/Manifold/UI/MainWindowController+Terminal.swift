@@ -235,6 +235,13 @@ extension MainWindowController: TerminalViewDelegate {
         linkMenu(target, from: view.placement)
     }
 
+    func terminalShell(_ view: TerminalView) -> TerminalView.ShellState {
+        guard let t = hosts.block(view.block)?.terminal else { return .none }
+        if t.hasExited { return .exited(t.exitStatus ?? 0) }
+        if t.pid == nil, t.dormantSince != nil { return .dormant }
+        return t.pid != nil ? .running : .none
+    }
+
     func terminalRestart(_ view: TerminalView, start: Bool) {
         guard views[view.placement] === view else { return }
         // Made again: attached afresh — its transcript, then the new shell

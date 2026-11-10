@@ -55,9 +55,8 @@ final class TerminalLink {
     private var outputNoted = false
     /// On `queue`.
     private var sawOutput = false
-    /// On `lock`: its shell exited (the stream closed of itself): not
-    /// attached again — a new size, the host back — till a new shell is
-    /// asked for (`restartShell`).
+    /// On `lock`: its shell exited (`hold`): not attached again — a new
+    /// size, the host back — till a new shell is asked for (`restartShell`).
     private var holding = false
     /// On `lock`: the next attach asks for a shell, if its last exited.
     private var startShell = false
@@ -255,6 +254,10 @@ final class TerminalLink {
 
     // MARK: The stream
 
+    /// Not attached again — a new size, the host back — till a new shell
+    /// is asked for (`restartShell`): its shell exited (the view says so).
+    func hold() { lock.withLock { holding = true } }
+
     /// The next attach asks for a new shell (its last exited).
     func restartShell() {
         lock.withLock {
@@ -295,8 +298,6 @@ final class TerminalLink {
                 self?.stream = nil
                 self?.attached = false
                 self?.acceptInput = false
-                // The shell gone, not the link: held, as it was.
-                if !linkWent { self?.holding = true }
             }
             DispatchQueue.main.async { self?.onClosed?(linkWent) }
         }

@@ -425,21 +425,54 @@ final class PanelView: NSView, PaneContent {
     }
 
     static func json(_ value: Any) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: tidy(value), options: [.fragmentsAllowed, .withoutEscapingSlashes]) else { return "null" }
+        guard let data = jsonData(value, options: [.fragmentsAllowed, .withoutEscapingSlashes]) else { return "null" }
         return String(decoding: data, as: UTF8.self)
     }
 
     /// Fractions as they'd be written (0.3, not JSON's 0.29999999999999999),
     /// all the way down.
-    static func tidy(_ value: Any) -> Any {
+    /// A value as JSON can hold it: a fractional number written as it
+    /// reads; one that isn't a number at all (NaN, infinite), null; a
+    /// Swift value JSON has no form for (a substring, a date), its words —
+    /// each such said in the log, where it was. JSONSerialization raises,
+    /// not throws, on either: an exception that, through Swift's tasks on
+    /// the main actor, left the app answering no `mani` command after.
+    static func tidy(_ value: Any, at path: String = "") -> Any {
         switch value {
-        case let n as NSNumber where CFGetTypeID(n) != CFBooleanGetTypeID() && CFNumberIsFloatType(n):
+        case is NSNull, is String: return value
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n }
+            if let d = n as? NSDecimalNumber, d == NSDecimalNumber.notANumber {
+                NSLog("JSON: %@ is not a number; null", path.isEmpty ? "the value" : path)
+                return NSNull()
+            }
+            guard CFNumberIsFloatType(n) else { return n }
             let d = n.doubleValue
-            return d.isFinite && d != d.rounded() ? NSDecimalNumber(string: "\(d)") : n
-        case let a as [Any]: return a.map(tidy)
-        case let o as [String: Any]: return o.mapValues(tidy)
-        default: return value
+            guard d.isFinite else {
+                NSLog("JSON: %@ is %@; null", path.isEmpty ? "the value" : path, "\(d)")
+                return NSNull()
+            }
+            return d != d.rounded() ? NSDecimalNumber(string: "\(d)") : n
+        case let a as [Any]: return a.enumerated().map { tidy($1, at: path + "[\($0)]") }
+        case let o as [String: Any]: return Dictionary(uniqueKeysWithValues: o.map { ($0, tidy($1, at: path + "." + $0)) })
+        case let o as [AnyHashable: Any]:
+            NSLog("JSON: %@ has keys that aren't words; written as words", path.isEmpty ? "the value" : path)
+            return Dictionary(o.map { ("\($0.base)", tidy($1, at: path + "." + "\($0.base)")) }, uniquingKeysWith: { a, _ in a })
+        default:
+            NSLog("JSON: %@ is a %@, which JSON has no form for; written as words", path.isEmpty ? "the value" : path, "\(type(of: value))")
+            return "\(value)"
         }
+    }
+
+    /// JSON's bytes for a value, tidied first — never raising (nil if it
+    /// still can't be written).
+    static func jsonData(_ value: Any, options: JSONSerialization.WritingOptions = []) -> Data? {
+        let tidied = tidy(value)
+        guard JSONSerialization.isValidJSONObject(tidied) || options.contains(.fragmentsAllowed) else {
+            NSLog("JSON: not writable as JSON, even tidied: %@", "\(type(of: value))")
+            return nil
+        }
+        return try? JSONSerialization.data(withJSONObject: tidied, options: options)
     }
 
     static func string(_ v: Any?) -> String {
