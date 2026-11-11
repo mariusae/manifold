@@ -486,6 +486,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .option])
         // The space's tiles, the last seen first, and what was closed (Dia's ⇧⌘A).
         item(view, "Tiles and Recently Closed…", #selector(MainWindowController.showTilesMenu(_:)), "a", [.command, .shift])
+        // How a terminal marks its last command's outcome at the prompt
+        // after it — styles to try.
+        let marks = NSMenu(title: "Last Command's Mark")
+        marks.delegate = OutcomeStyleMenu.shared
+        let marksItem = NSMenuItem(title: "Last Command's Mark", action: nil, keyEquivalent: "")
+        marksItem.submenu = marks
+        view.addItem(marksItem)
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         // ⌘= too, the key + is on, unshifted.
