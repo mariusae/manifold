@@ -22,6 +22,9 @@ struct FinderItem {
     /// Dragged out of the list: the block (to bring; with ⇧ its path and
     /// link), or the file.
     var drag: (() -> NSPasteboardWriting?)? = nil
+    /// A file it is (found on disk, or a block's): right-clicked, the link
+    /// menu for it — its path, and its host.
+    var link: (target: String, host: HostID?)? = nil
     /// The block it is, if one: its row is its summary card.
     var block: BlockID? = nil
     /// What kinds it's found as (FindKinds): a chip narrows to them.
@@ -440,6 +443,16 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         table.selectionHighlightStyle = .regular
         table.addTableColumn(NSTableColumn(identifier: .init("item")))
         table.dataSource = self
+        // Right-clicked, a file (found, or a block's): the link menu for it.
+        LinkMenus.attach(to: table, target: { [weak self] row in
+            guard let self, self.shown.indices.contains(row) else { return nil }
+            let item = self.shown[row]
+            return item.link?.target ?? item.block.flatMap { LinkMenus.pathOf?($0) }
+        }, from: { [weak self] row in
+            guard let self, self.shown.indices.contains(row) else { return (nil, nil) }
+            let item = self.shown[row]
+            return (nil, item.link?.host ?? item.block?.host)
+        })
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
         table.target = self
@@ -971,7 +984,9 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             // On its own host (a file found on another, not this Mac's).
             else if let path = c.path, c.action < 0 { let host = c.host ?? Drags.localHost; drag = { Drags.file(path, isDirectory: false, on: host) } }
             else { drag = nil }
-            return FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
+            var item = FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
+            if let path = c.path, c.action < 0 { item.link = (path, c.host) }
+            return item
         }
         if only.isEmpty || only.contains("web"), let first = special?(query) { items.insert(first, at: 0) }
         return items

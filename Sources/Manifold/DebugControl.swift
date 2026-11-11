@@ -834,6 +834,11 @@ enum DebugControl {
         case "graphcount":
             guard let wc else { return "no window" }
             return wc.hosts.all.map { "\(wc.hosts.label(of: $0.host)): \($0.node.links($0.host).links.count) links, \($0.node.registry($0.host).trail.count) steps" }.joined(separator: "\n")
+        case "rowmenu":
+            // "rowmenu <row>": the link menu a right-click on that row of the
+            // focused tile's list would show (Find in Files, a project's search).
+            guard let v = wc?.debugFocusedView, let row = Int(arg) else { return "usage: rowmenu <row>" }
+            return LinkMenus.debugTitles(in: v, row: row)
         case "handimage":
             // "handimage <symbol> <out.png>": the pointing hand badged with it, 4×.
             let w = arg.split(separator: " ").map(String.init)

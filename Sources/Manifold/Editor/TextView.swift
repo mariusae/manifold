@@ -2918,7 +2918,9 @@ final class TextView: NSView, NSTextInputClient {
         let p = convert(event.locationInWindow, from: nil)
         // ⌘ held: what it marks there (a link, a name to go to), on its own.
         if event.modifierFlags.contains(.command), let m = delegate?.textView(self, commandMenuAt: offset(at: p), link: linkTarget(at: p)) {
-            return m
+            // Ours alone (not AppKit's AutoFill and Services after it).
+            LinkMenus.show(m, with: event, in: self)
+            return nil
         }
         let menu = NSMenu()
         // A name in code right-clicked: what Edit ▸ Code does with a symbol,

@@ -24,10 +24,10 @@ extension MainWindowController {
     /// beside it — beside the tile (a page, as a web page), over it, in the
     /// system's app — then copied, what every such menu has (`aboutItems`),
     /// and a file's Quick Look and folder.
-    func linkMenu(_ target: String, from placement: PlacementID?) -> NSMenu {
+    func linkMenu(_ target: String, from placement: PlacementID?, on given: HostID? = nil) -> NSMenu {
         let menu = NSMenu()
         let address = Self.isAddress(target)
-        let on = placement.flatMap { shown($0)?.placement.block.host } ?? host.host
+        let on = given ?? placement.flatMap { shown($0)?.placement.block.host } ?? host.host
         let local = on == host.host
         // The file it names, its line and column left off (an address: none).
         let location = address ? nil : FileLocation.split(target)
@@ -213,4 +213,86 @@ final class QuickLooker: NSObject, QLPreviewPanelDataSource {
 
     func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { url == nil ? 0 : 1 }
     func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! { url as NSURL? }
+}
+
+/// The link menu (`MainWindowController.linkMenu`) for what's right-clicked
+/// in a list or a row — a file, a file at a line, an address — as ⌘-right-
+/// click has it in a terminal or an editor: the window says how to make it.
+enum LinkMenus {
+    static var make: ((_ target: String, _ from: PlacementID?, _ on: HostID?) -> NSMenu?)?
+    /// A block's file, if it's one's (a file's text, a folder): what a row
+    /// of the block has as its link.
+    static var pathOf: ((BlockID) -> String?)?
+
+    /// A table's rows' menu: the link menu for the row right-clicked, if
+    /// `target` says what it goes to (a path, `path:line`, an address);
+    /// else none. `from`: the tile it's in and its host.
+    static func attach(to table: NSTableView, target: @escaping (Int) -> String?, from: @escaping (Int) -> (PlacementID?, HostID?)) {
+        let filler = Filler(table: table, target: target, from: from)
+        let menu = NSMenu()
+        menu.delegate = filler
+        table.menu = menu
+        objc_setAssociatedObject(table, &fillerKey, filler, .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    /// A menu of a thing's own with the link menu's items after its own
+    /// (a separator between), those it has already — by title — left out.
+    static func append(_ target: String, from: PlacementID?, on host: HostID?, to menu: NSMenu, skipping: Set<String> = []) {
+        guard let made = make?(target, from, host) else { return }
+        let have = Set(menu.items.map(\.title)).union(skipping)
+        var extra = made.items.filter { $0.isSeparatorItem || !have.contains($0.title) }
+        while extra.first?.isSeparatorItem == true { extra.removeFirst() }
+        while extra.last?.isSeparatorItem == true { extra.removeLast() }
+        guard !extra.isEmpty else { return }
+        if menu.items.last.map({ !$0.isSeparatorItem }) == true { menu.addItem(.separator()) }
+        for i in extra { made.removeItem(i); menu.addItem(i) }
+    }
+
+    /// A row view's: shown where it was right-clicked.
+    static func popUp(_ target: String?, from: PlacementID?, on host: HostID?, with event: NSEvent, for view: NSView) -> Bool {
+        guard let target, let menu = make?(target, from, host) else { return false }
+        show(menu, with: event, in: view)
+        return true
+    }
+
+    /// A menu of ours at the pointer — popped up, not as a context menu,
+    /// which AppKit adds its own to over a view that takes text (AutoFill,
+    /// Services).
+    static func show(_ menu: NSMenu, with event: NSEvent, in view: NSView) {
+        menu.popUp(positioning: nil, at: view.convert(event.locationInWindow, from: nil), in: view)
+    }
+
+    private static var fillerKey = 0
+
+    /// Debugging: the titles the menu of a table under `view` has for its
+    /// row `row`, as a right-click there would make it.
+    static func debugTitles(in view: NSView, row: Int) -> String {
+        func tables(_ v: NSView) -> [NSTableView] { ((v as? NSTableView).map { [$0] } ?? []) + v.subviews.flatMap(tables) }
+        guard let table = tables(view).first(where: { objc_getAssociatedObject($0, &fillerKey) != nil }),
+              let filler = objc_getAssociatedObject(table, &fillerKey) as? Filler else { return "no list with a link menu" }
+        guard let t = filler.target(row) else { return "row \(row): no link" }
+        let (placement, host) = filler.from(row)
+        guard let made = make?(t, placement, host) else { return "no menu" }
+        return t + "\n" + made.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n")
+    }
+
+    private final class Filler: NSObject, NSMenuDelegate {
+        weak var table: NSTableView?
+        let target: (Int) -> String?
+        let from: (Int) -> (PlacementID?, HostID?)
+
+        init(table: NSTableView, target: @escaping (Int) -> String?, from: @escaping (Int) -> (PlacementID?, HostID?)) {
+            self.table = table
+            self.target = target
+            self.from = from
+        }
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            menu.removeAllItems()
+            guard let table, table.clickedRow >= 0, let t = target(table.clickedRow) else { return }
+            let (placement, host) = from(table.clickedRow)
+            guard let made = LinkMenus.make?(t, placement, host) else { return }
+            for item in made.items { made.removeItem(item); menu.addItem(item) }
+        }
+    }
 }

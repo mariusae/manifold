@@ -198,6 +198,11 @@ extension MainWindowController {
             return client.node.blocks.first { $0.kind == .diff && $0.diff?.subject == subject }?.id ?? client.diffBlock(subject)
         }
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
+        LinkMenus.make = { [weak self] target, from, on in self?.linkMenu(target, from: from, on: on) }
+        LinkMenus.pathOf = { [weak self] id in
+            guard let b = self?.hosts.block(id), b.kind == .text || b.kind == .directory || b.kind == .pdf || b.kind == .image else { return nil }
+            return b.path
+        }
         Theme.isProject = { [weak self] b in
             guard let path = b.path, let desk = self?.hosts.client(of: b.id)?.desk else { return false }
             return desk.projects.contains { $0.root == path || $0.alias == path }

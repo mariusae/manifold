@@ -525,6 +525,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         facts = f
         strip.show(f)
         sidebar.host = block.host
+        sidebar.placement = placement
         sidebar.show(f)
     }
     private var gitAskedAt: Date?
@@ -587,6 +588,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         }
         guard on, let project else { return }
         results.host = block.host
+        results.placement = placement
         results.show(projectSearch.flatMap { delegate?.directoryView(self, block: $0)?.search }, root: project.root)
     }
 

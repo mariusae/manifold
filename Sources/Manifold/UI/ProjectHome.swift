@@ -204,6 +204,8 @@ final class ProjectSidebar: NSView {
     var onAction: ((ProjectAction) -> Void)?
     /// The host its project is on: whose files and commits its rows drag.
     var host = Drags.localHost
+    /// The tile it's in: what its rows open beside.
+    var placement: PlacementID?
     private let scroll = ClippingScrollView()
     private let stack = FlippedView()
     private var shown: ProjectFacts?
@@ -261,6 +263,7 @@ final class ProjectSidebar: NSView {
                 row.toolTip = repo.appendingPathComponent(s.path).abbreviatingHome
                 row.onClick = { [weak self] in self?.onAction?(.openChange(s, repo: repo)) }
                 row.drag = { Drags.file(repo.appendingPathComponent(s.path), isDirectory: false, on: host) }
+                row.link = (repo.appendingPathComponent(s.path), placement, host)
                 add(row)
             }
             if g.status.count > 8 { add(more("and \(g.status.count - 8) more")) }
@@ -391,6 +394,9 @@ final class HomeRow: NSView, NSDraggingSource {
     var onClick: (() -> Void)?
     /// What it is dragged out as (a change's file, a commit); nil, it isn't.
     var drag: (() -> NSPasteboardWriting?)?
+    /// What it goes to, as a link names it (a change's file), with where
+    /// it's shown and whose: right-clicked, the link menu (`LinkMenus`).
+    var link: (target: String, from: PlacementID?, on: HostID?)?
     /// ⌘- or ⇧-clicked: chosen among others, not opened.
     var onChoose: ((HomeRow, NSEvent.ModifierFlags) -> Void)?
     /// What dragging it carries: it, with the others chosen.
@@ -455,6 +461,11 @@ final class HomeRow: NSView, NSDraggingSource {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if let l = link, LinkMenus.popUp(l.target, from: l.from, on: l.on, with: event, for: self) { return }
+        super.rightMouseDown(with: event)
+    }
 
     /// Lit only if the pointer is over it now: scrolled out from under a
     /// still pointer, no exit comes, and its band stayed.

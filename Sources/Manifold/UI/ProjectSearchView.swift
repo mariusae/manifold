@@ -35,6 +35,8 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
     private var root = ""
     /// The host its project is on: whose files its rows drag.
     var host = Drags.localHost
+    /// The tile it's in: what its rows open beside.
+    var placement: PlacementID?
     /// How many of each are shown here; the tile has them all.
     static let symbolsShown = 8, filesShown = 6, hitsShown = 80
 
@@ -57,6 +59,19 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         scroll.hold(table)
         for v in [status, popOut, scroll] as [NSView] { addSubview(v) }
+        // Right-clicked: what's there, as ⌘-right-click has a link.
+        LinkMenus.attach(to: table, target: { [weak self] in self?.linkTarget($0) }, from: { [weak self] _ in (self?.placement, self?.host) })
+    }
+
+    /// What a row goes to, as a link names it: a file, at its line.
+    private func linkTarget(_ row: Int) -> String? {
+        guard rows.indices.contains(row), case let .found(f) = rows[row] else { return nil }
+        func full(_ p: String) -> String { p.hasPrefix("/") ? p : root.appendingPathComponent(p) }
+        switch f {
+        case let .symbol(h): return full(h.path) + ":\(h.line + 1)"
+        case let .file(p): return full(p)
+        case let .hit(h): return full(h.path) + ":\(h.line)"
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }

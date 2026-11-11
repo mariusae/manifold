@@ -120,6 +120,18 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         for v in [fieldBox, caseButton, regexButton, pathBox, projectButton, status, relationControl] { addSubview(v) }
 
         table.dataSource = self
+        // Right-clicked: what's there, as ⌘-right-click has a link — a
+        // file, a line in one.
+        LinkMenus.attach(to: table, target: { [weak self] row in
+            guard let self, self.rows.indices.contains(row) else { return nil }
+            switch self.rows[row] {
+            case let .file(path, _): return path
+            case .section: return nil
+            default:
+                guard let h = self.rows[row].asHit(root: self.query?.root ?? "") else { return nil }
+                return h.path + ":\(h.line)"
+            }
+        }, from: { [weak self] _ in (self?.placement, self?.block.host) })
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         table.delegate = self
         table.target = self

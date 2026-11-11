@@ -1797,7 +1797,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // copied, its folder) — not the terminal's menu, nor its program's.
         if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)),
            hit.standing != .possible, let menu = delegate?.terminal(self, menuForLink: hit.target) {
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            LinkMenus.show(menu, with: event, in: self)
             return
         }
         guard let surface,

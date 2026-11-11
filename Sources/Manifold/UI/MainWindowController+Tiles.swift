@@ -135,6 +135,8 @@ extension MainWindowController: GitViewDelegate {
             }
         }
         menu.addItem(ClosureMenuItem("Open the File", symbol: "doc") { [weak self] in self?.diffView(view, open: path, line: 1) })
+        // And what a link to the file has (copied, in a note, an agent asked).
+        LinkMenus.append(path, from: view.placement, on: view.block.host, to: menu, skipping: ["Open"])
         return menu
     }
 

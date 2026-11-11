@@ -377,6 +377,18 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
                 NSPasteboard.copy(commits.map(\.sha).joined(separator: "\n"))
             })
         }
+        // One file: the rest of what a link to it has (`LinkMenus`) — those
+        // not here already.
+        if picked.count == 1, files.count == 1, let made = LinkMenus.make?(files[0], placement, block.host) {
+            let have = Set(items.map(\.title) + ["Open", "Copy Path", "Copy Name"])
+            var extra = made.items.filter { $0.isSeparatorItem || !have.contains($0.title) }
+            while extra.first?.isSeparatorItem == true { extra.removeFirst() }
+            while extra.last?.isSeparatorItem == true { extra.removeLast() }
+            if !extra.isEmpty {
+                items.append(.separator())
+                for i in extra { made.removeItem(i); items.append(i) }
+            }
+        }
         return items
     }
 

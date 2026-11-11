@@ -312,6 +312,12 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in self?.organizationOpen(node, modifiers: [.option]) })
             menu.addItem(.separator())
         }
+        // A file's (a folder's): what a link to it has — copied, in a note,
+        // an agent asked, Quick Look, its folder — as ⌘-right-click has it.
+        if let path = LinkMenus.pathOf?(id) {
+            LinkMenus.append(path, from: node.placement, on: id.host, to: menu, skipping: ["Open", "Open Over"])
+            menu.addItem(.separator())
+        }
         menu.addItem(neighborhoodItem(id))
         menu.addItem(.separator())
         menu.addItem(hostSubmenu(id.host))
