@@ -958,7 +958,7 @@ index e882ddc..8233903 100644
      /// The point on the viewport where the mouse currently is. We use
      /// viewport points to avoid the complexity of mapping the mouse to
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
-index ff632f6..3a8dfb2 100644
+index ff632f6..27aff30 100644
 --- a/src/renderer/generic.zig
 +++ b/src/renderer/generic.zig
 @@ -18,6 +18,9 @@ const constraintWidth = cellpkg.constraintWidth;
@@ -1023,7 +1023,23 @@ index ff632f6..3a8dfb2 100644
              // const start = try std.time.Instant.now();
              // const start_micro = std.time.microTimestamp();
              // defer {
-@@ -2839,7 +2859,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2353,6 +2373,15 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                             .left = true,
+                             .right = true,
+                         };
++                        // Manifold: a shell's screen (the primary) isn't
++                        // extended to its sides — the left padding is the
++                        // app's (its commands' dots), and a selection or a
++                        // colored cell at an edge spilled into it. A full-
++                        // screen program's (the alternate) still fills them.
++                        if (self.config.padding_color == .extend and self.terminal_state.screen == .primary) {
++                            self.uniforms.padding_extend.left = false;
++                            self.uniforms.padding_extend.right = false;
++                        }
+                     },
+                 }
+             }
+@@ -2839,7 +2868,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                          bg_style,
                  };
  
@@ -1032,7 +1048,7 @@ index ff632f6..3a8dfb2 100644
                      // Our happy-path non-selection background color
                      // is our style or our configured defaults.
                      const final_bg = bg_style orelse state.colors.background;
-@@ -2874,6 +2894,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -2874,6 +2903,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                      };
                  };
  
@@ -1051,7 +1067,7 @@ index ff632f6..3a8dfb2 100644
                  // Foreground alpha for this cell.
                  const alpha: u8 = if (style.flags.faint) self.config.faint_opacity else 255;
  
-@@ -3372,3 +3404,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -3372,3 +3413,11 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
          }
      };
  }
