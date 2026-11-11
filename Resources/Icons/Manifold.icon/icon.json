@@ -22,13 +22,25 @@
     {
       "layers": [
         {
+          "image-name": "sidebar.svg",
+          "name": "Sidebar",
+          "fill-specializations": [
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.60784,0.60784,0.60784,1.00000"
+              }
+            }
+          ]
+        },
+        {
           "image-name": "tile-1.svg",
           "name": "Tile 1",
           "fill-specializations": [
             {
               "appearance": "tinted",
               "value": {
-                "solid": "srgb:0.89020,0.90196,0.92157,1.00000"
+                "solid": "srgb:0.89020,0.89020,0.89020,1.00000"
               }
             }
           ]
@@ -40,7 +52,7 @@
             {
               "appearance": "tinted",
               "value": {
-                "solid": "srgb:0.60784,0.63137,0.67059,1.00000"
+                "solid": "srgb:0.43529,0.43529,0.43529,1.00000"
               }
             }
           ]
@@ -52,7 +64,7 @@
             {
               "appearance": "tinted",
               "value": {
-                "solid": "srgb:0.76471,0.78431,0.81569,1.00000"
+                "solid": "srgb:0.92549,0.92549,0.92549,1.00000"
               }
             }
           ]
@@ -64,31 +76,7 @@
             {
               "appearance": "tinted",
               "value": {
-                "solid": "srgb:0.43529,0.45490,0.49020,1.00000"
-              }
-            }
-          ]
-        },
-        {
-          "image-name": "tile-5.svg",
-          "name": "Tile 5",
-          "fill-specializations": [
-            {
-              "appearance": "tinted",
-              "value": {
-                "solid": "srgb:0.92549,0.93333,0.94902,1.00000"
-              }
-            }
-          ]
-        },
-        {
-          "image-name": "tile-6.svg",
-          "name": "Tile 6",
-          "fill-specializations": [
-            {
-              "appearance": "tinted",
-              "value": {
-                "solid": "srgb:0.53333,0.55686,0.59608,1.00000"
+                "solid": "srgb:0.53333,0.53333,0.53333,1.00000"
               }
             }
           ]
@@ -97,6 +85,37 @@
       "name": "Tiles",
       "shadow": {
         "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "panel.svg",
+          "name": "Panel",
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.08627,0.09412,0.10980,1.00000"
+              }
+            },
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "srgb:0.28000,0.28000,0.28000,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "name": "Window",
+      "shadow": {
+        "kind": "none",
         "opacity": 0.5
       },
       "translucency": {
