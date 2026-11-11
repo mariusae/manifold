@@ -1,7 +1,6 @@
 // Draws the app icon from its SVG (Resources/Icons/manifold-tiles.svg):
-// the app in a window — its sidebar, and two columns of tiles of uneven
-// heights, as it lays out blocks, each a color of the old M's gradient — on
-// a light squircle (white, a sheen at its top, a faint
+// the app — its sidebar, and a column of tiles of uneven heights, as it
+// lays out blocks, each a color of the old M's gradient — on a light squircle (white, a sheen at its top, a faint
 // edge, a soft shadow: as the Dock's icons are drawn now); or any other. Rendered by WebKit, which draws SVG whole — its blurs
 // (the glow, the shadow beneath) as well as its gradients, masks and
 // clips — at 1024 points square, transparent around the squircle.

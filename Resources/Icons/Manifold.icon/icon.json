@@ -64,18 +64,6 @@
             {
               "appearance": "tinted",
               "value": {
-                "solid": "srgb:0.92549,0.92549,0.92549,1.00000"
-              }
-            }
-          ]
-        },
-        {
-          "image-name": "tile-4.svg",
-          "name": "Tile 4",
-          "fill-specializations": [
-            {
-              "appearance": "tinted",
-              "value": {
                 "solid": "srgb:0.53333,0.53333,0.53333,1.00000"
               }
             }
@@ -85,37 +73,6 @@
       "name": "Tiles",
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.5
-      },
-      "translucency": {
-        "enabled": false,
-        "value": 0.5
-      }
-    },
-    {
-      "layers": [
-        {
-          "image-name": "panel.svg",
-          "name": "Panel",
-          "fill-specializations": [
-            {
-              "appearance": "dark",
-              "value": {
-                "solid": "srgb:0.08627,0.09412,0.10980,1.00000"
-              }
-            },
-            {
-              "appearance": "tinted",
-              "value": {
-                "solid": "srgb:0.28000,0.28000,0.28000,1.00000"
-              }
-            }
-          ]
-        }
-      ],
-      "name": "Window",
-      "shadow": {
-        "kind": "none",
         "opacity": 0.5
       },
       "translucency": {
