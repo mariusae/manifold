@@ -591,8 +591,8 @@ final class FloatingListRow: NSView, NSDraggingSource {
 /// A shell's commands as a dot beside each one's prompt (§3.8), over the
 /// terminal's left padding: grey, red for one that failed, the accent for
 /// one still running. And, once the last has ended, its outcome at the
-/// prompt after it, where the shell waits for the next: a check, or a
-/// cross for one that failed — drawn, not a dot, as it isn't a command of
+/// prompt after it, where the shell waits for the next: a dot in a halo,
+/// green, or red for one that failed — haloed, as it isn't a command of
 /// that line but the one above it, till the next one runs (its dot then
 /// there). The pointer on a mark offers what can be done with its
 /// command (its output copied, or as a block of its own); a mark dragged
@@ -633,14 +633,6 @@ final class CommandDots: NSView, NSDraggingSource {
     private var dragged = false
     private var dots: [Dot] = []
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        NotificationCenter.default.addObserver(self, selector: #selector(styleDidChange), name: Self.styleChanged, object: nil)
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    @objc private func styleDidChange() { needsDisplay = true }
     private(set) var outcome: Outcome?
     private var hovered: Mark?
     private static let diameter: CGFloat = 5
@@ -693,105 +685,17 @@ final class CommandDots: NSView, NSDraggingSource {
         if let o = outcome { drawOutcome(o, hot: hovered?.outcome == true) }
     }
 
-    /// How the last command's outcome is marked (View ▸ Last Command's
-    /// Mark — to try them, in practice): a check or a cross; or a cousin of
-    /// the dot, in the outcome's colour — a ring (the dot open), a teardrop
-    /// pointing up at the command, a dot tethered to the command's dot, a
-    /// dot in a halo, a bar.
-    enum OutcomeStyle: String, CaseIterable {
-        case mark, ring, teardrop, tethered, halo, bar
-
-        var title: String {
-            switch self {
-            case .mark: "Check or Cross"
-            case .ring: "Ring"
-            case .teardrop: "Teardrop"
-            case .tethered: "Tethered"
-            case .halo: "Halo"
-            case .bar: "Bar"
-            }
-        }
-
-        static var current: OutcomeStyle {
-            get { UserDefaults.standard.string(forKey: "outcomeMarkStyle").flatMap(OutcomeStyle.init) ?? .mark }
-            set {
-                UserDefaults.standard.set(newValue.rawValue, forKey: "outcomeMarkStyle")
-                NotificationCenter.default.post(name: CommandDots.styleChanged, object: nil)
-            }
-        }
-    }
-
-    static let styleChanged = Notification.Name("ManifoldOutcomeStyleChanged")
-
+    /// The last command's outcome: a dot in a soft ring of its colour —
+    /// green for success, red for failure — a cousin of the commands' dots,
+    /// told from them by its halo.
     private func drawOutcome(_ o: Outcome, hot: Bool) {
         let color = o.failed ? Theme.statusError : Status.done
         let x = bounds.midX, y = o.y
-        let r: CGFloat = hot ? 3.3 : 2.6
-        switch OutcomeStyle.current {
-        case .mark:
-            // A check, or a cross: 6 points across (7 on the pointer).
-            let s: CGFloat = hot ? 3.5 : 3
-            let path = NSBezierPath()
-            if o.failed {
-                path.move(to: NSPoint(x: x - s * 0.8, y: y - s * 0.8))
-                path.line(to: NSPoint(x: x + s * 0.8, y: y + s * 0.8))
-                path.move(to: NSPoint(x: x - s * 0.8, y: y + s * 0.8))
-                path.line(to: NSPoint(x: x + s * 0.8, y: y - s * 0.8))
-            } else {
-                path.move(to: NSPoint(x: x - s, y: y + s * 0.05))
-                path.line(to: NSPoint(x: x - s * 0.3, y: y - s * 0.7))
-                path.line(to: NSPoint(x: x + s, y: y + s * 0.85))
-            }
-            path.lineWidth = hot ? 1.8 : 1.5
-            path.lineCapStyle = .round
-            path.lineJoinStyle = .round
-            color.setStroke()
-            path.stroke()
-        case .ring:
-            // The dot, open: its size, its place.
-            let ring = NSBezierPath(ovalIn: NSRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
-            ring.lineWidth = hot ? 1.6 : 1.3
-            color.setStroke()
-            ring.stroke()
-        case .teardrop:
-            // A dot drawn to a point above it: at the command it's of.
-            let tip = y + r * 2.3
-            let drop = NSBezierPath()
-            drop.move(to: NSPoint(x: x, y: tip))
-            drop.curve(to: NSPoint(x: x + r, y: y + r * 0.2), controlPoint1: NSPoint(x: x + r * 0.55, y: tip - r * 0.8), controlPoint2: NSPoint(x: x + r, y: y + r * 0.75))
-            drop.appendArc(withCenter: NSPoint(x: x, y: y), radius: r, startAngle: 4, endAngle: 176, clockwise: true)
-            drop.curve(to: NSPoint(x: x, y: tip), controlPoint1: NSPoint(x: x - r, y: y + r * 0.75), controlPoint2: NSPoint(x: x - r * 0.55, y: tip - r * 0.8))
-            drop.close()
-            color.setFill()
-            drop.fill()
-        case .tethered:
-            // A dot, a thread up to the command's own dot (or off the top,
-            // the command scrolled out of sight above).
-            let to = dot(o.id).map { $0.y - Self.diameter / 2 - 1.5 } ?? bounds.maxY
-            if to > y + r + 1.5 {
-                let thread = NSBezierPath()
-                thread.move(to: NSPoint(x: x, y: y + r + 1.5))
-                thread.line(to: NSPoint(x: x, y: to))
-                thread.lineWidth = 1
-                thread.lineCapStyle = .round
-                color.withAlphaComponent(0.55).setStroke()
-                thread.stroke()
-            }
-            color.setFill()
-            NSBezierPath(ovalIn: NSRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)).fill()
-        case .halo:
-            // A dot in a soft ring of its colour.
-            let h = r * 1.95
-            color.withAlphaComponent(0.28).setFill()
-            NSBezierPath(ovalIn: NSRect(x: x - h, y: y - h, width: 2 * h, height: 2 * h)).fill()
-            color.setFill()
-            NSBezierPath(ovalIn: NSRect(x: x - r * 0.95, y: y - r * 0.95, width: 1.9 * r, height: 1.9 * r)).fill()
-        case .bar:
-            // A short upright bar, a status light's.
-            let w: CGFloat = hot ? 3 : 2.5, hgt: CGFloat = hot ? 11 : 9
-            color.setFill()
-            NSBezierPath(roundedRect: NSRect(x: x - w / 2, y: y - hgt / 2, width: w, height: hgt), xRadius: w / 2, yRadius: w / 2).fill()
-        }
+        let r: CGFloat = hot ? 3.3 : 2.6, h = r * 1.95
+        color.withAlphaComponent(0.28).setFill()
+        NSBezierPath(ovalIn: NSRect(x: x - h, y: y - h, width: 2 * h, height: 2 * h)).fill()
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(x: x - r * 0.95, y: y - r * 0.95, width: 1.9 * r, height: 1.9 * r)).fill()
     }
 
     /// Only a mark is its own: the rest of the strip is the terminal's.
@@ -867,17 +771,3 @@ extension Outline.Item {
     }
 }
 
-
-/// View ▸ Last Command's Mark: each style, the one in use checked.
-final class OutcomeStyleMenu: NSObject, NSMenuDelegate {
-    static let shared = OutcomeStyleMenu()
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        for style in CommandDots.OutcomeStyle.allCases {
-            let item = ClosureMenuItem(style.title) { CommandDots.OutcomeStyle.current = style }
-            item.state = style == CommandDots.OutcomeStyle.current ? .on : .off
-            menu.addItem(item)
-        }
-    }
-}

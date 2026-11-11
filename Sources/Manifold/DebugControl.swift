@@ -834,10 +834,6 @@ enum DebugControl {
         case "graphcount":
             guard let wc else { return "no window" }
             return wc.hosts.all.map { "\(wc.hosts.label(of: $0.host)): \($0.node.links($0.host).links.count) links, \($0.node.registry($0.host).trail.count) steps" }.joined(separator: "\n")
-        case "outcomestyle":
-            // "outcomestyle [mark|ring|teardrop|tethered|halo|bar]": the last command's mark, as View ▸ Last Command's Mark sets it.
-            if let s = CommandDots.OutcomeStyle(rawValue: arg) { CommandDots.OutcomeStyle.current = s }
-            return CommandDots.OutcomeStyle.current.rawValue
         case "gitsync":
             // "gitsync": the focused git tile's Pull and Push; "gitsync pull|push": clicked.
             func find(_ v: NSView) -> GitView? { (v as? GitView) ?? v.subviews.lazy.compactMap(find).first }
