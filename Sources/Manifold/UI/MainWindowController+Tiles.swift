@@ -188,6 +188,19 @@ extension MainWindowController: GitViewDelegate {
         hosts.propose(.refreshGit(block: view.block))
     }
 
+    func gitView(_ view: GitView, sync push: Bool, done: @escaping (String?) -> Void) {
+        guard let client = hosts.client(of: view.block) else { return done("not connected") }
+        let branch = hosts.block(view.block)?.git?.branch ?? "the branch"
+        client.propose(.gitSync(block: view.block, push: push)) { [weak self] error in
+            done(error)
+            if let error {
+                self?.toast.say("Couldn't \(push ? "push" : "pull") \(branch): \(error)", .long)
+            } else {
+                self?.toast.say(push ? "Pushed \(branch)" : "Pulled \(branch)")
+            }
+        }
+    }
+
     func gitView(_ view: GitView, indexStatus done: @escaping (SCIPStatus?) -> Void) {
         guard let b = hosts.block(view.block), let repo = b.path else { return done(nil) }
         // A project's (§2.6): its own folder's index.

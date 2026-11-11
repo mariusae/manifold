@@ -225,6 +225,10 @@ public enum Proposal: Codable, Sendable {
     /// A folder no longer a project.
     case unproject(root: String)
     case refreshGit(block: BlockID)
+    /// The repository's branch pulled from its upstream (fast-forward only)
+    /// or pushed to it, as its host's shells would; refreshed after. What
+    /// went wrong, in the answer: the command's own words.
+    case gitSync(block: BlockID, push: Bool)
     /// An Interactive Smartlog block for the Sapling repository holding
     /// `path` (made if new): the host's `sl web` started (or the one
     /// running found), and where it serves said in the block.
@@ -325,7 +329,7 @@ public extension Proposal {
         switch self {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
-             let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
+             let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .gitSync(block, _), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
              let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),

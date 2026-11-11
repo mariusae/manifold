@@ -1351,6 +1351,8 @@ final class Server {
         case let .refreshGit(block):
             refreshGit(block)
             done()
+        case let .gitSync(block, push):
+            gitSync(block, push: push, done: done)
         case var .project(p):
             // Kept as the folder's tile names it, the host's own spelling
             // beside it where links make them differ.
@@ -1602,6 +1604,46 @@ final class Server {
         }
     }
     private var fileLists: [String: (at: Date, files: [String])] = [:]
+
+    /// Pull (fast-forward only) or push the repository's branch, with the
+    /// environment a shell here gets (its SSH agent, its credentials) and
+    /// no prompt to wait on: one wanted is a failure, said. Refreshed
+    /// after, either way. `done` on the server's queue: what went wrong,
+    /// the command's own last words.
+    private func gitSync(_ block: BlockID, push: Bool, done: @escaping (String?) -> Void) {
+        guard let b = node.block(block), b.kind == .git, let root = b.path else { return done("not a repository's tile") }
+        let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
+        let args: [String]
+        switch (vcs, push) {
+        case (.git, false): args = ["git", "-C", root, "pull", "--ff-only"]
+        case (.git, true): args = ["git", "-C", root, "push"]
+        case (_, false): args = ["sl", "--cwd", root, "pull", "--rebase"]
+        case (_, true): args = ["sl", "--cwd", root, "push"]
+        }
+        var env = ProcessInfo.processInfo.environment
+        SpawnEnvironment.apply(to: &env, scope: .shells)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_SSH_COMMAND"] = env["GIT_SSH_COMMAND"] ?? "ssh -o BatchMode=yes"
+        log("\(push ? "pushing" : "pulling") \(root)")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var failure: String?
+            do {
+                let (out, status) = try Child.run(args, timeout: 300, errorsToOutput: true, environment: env)
+                if status != 0 {
+                    let words = String(decoding: out, as: UTF8.self).split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    let said = words.suffix(3).joined(separator: " ")
+                    failure = said.isEmpty ? "\(args[0]) \(push ? "push" : "pull") failed (\(status))" : said
+                }
+            } catch {
+                failure = "couldn't run \(args[0]): \(error)"
+            }
+            let result = failure
+            self?.queue.async {
+                self?.refreshGit(block)
+                done(result)
+            }
+        }
+    }
 
     private func refreshGit(_ block: BlockID) {
         guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
