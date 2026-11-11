@@ -12,6 +12,12 @@ extension MainWindowController: WebViewDelegate {
 
     func webViewBarChanged(_ view: WebView) { content.barChanged(view.placement) }
 
+    func webView(_ view: WebView, openInBrowserAndClose address: String) {
+        // As ⇧⌘-click opens a link: a host's own localhost brought here first.
+        open(address, from: view.placement, as: .system)
+        if let space = spaceHolding(view.placement) { closeTile(view.placement, in: space) }
+    }
+
     func webView(_ view: WebView, open url: URL, over: Bool) {
         open(url.absoluteString, from: view.placement, here: true, as: over ? .over : .beside)
     }

@@ -9,6 +9,9 @@ protocol WebViewDelegate: AnyObject {
     /// A link was ⇧⌘-clicked: opened as a block of its own, beside — or,
     /// with ⌥ too (`over`), over this one.
     func webView(_ view: WebView, open url: URL, over: Bool)
+    /// The page to this Mac's browser (its address, as its host has it),
+    /// and its tile closed.
+    func webView(_ view: WebView, openInBrowserAndClose address: String)
     /// Whether it can go back or forward, or loads, changed: its bar's
     /// buttons say so.
     func webViewBarChanged(_ view: WebView)
@@ -562,12 +565,27 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
             ? BarButton(symbol: "xmark", tooltip: "Stop Loading", enabled: true) { [weak self] in self?.web.stopLoading() }
             : BarButton(symbol: "arrow.clockwise", tooltip: "Reload (⇧-click: from the Server)", enabled: true) { [weak self] in
                 if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { self?.web.reloadFromOrigin() } else { self?.web.reload() }
-            }]
+            },
+         BarButton(symbol: "safari", tooltip: "Open in \(Self.browserName) and Close", enabled: web.url != nil) { [weak self] in self?.openInBrowser() }]
         guard let remote = delegate?.webView(self, remoteHost: block.host) else { return page }
         let way = through != nil
             ? BarButton(symbol: "server.rack", tooltip: "Loaded through \(remote.label) — click to load from This Mac", enabled: true) { [weak self] in self?.loadThroughHost(false) }
             : BarButton(symbol: "laptopcomputer", tooltip: "Loaded from This Mac — click to load through \(remote.label)", enabled: true) { [weak self] in self?.loadThroughHost(true) }
         return [way] + page
+    }
+
+    /// The page in this Mac's browser, and its tile closed: an address of
+    /// a host's loaded through it, as the host has it (its port brought
+    /// here, if it's the host's own), as a ⇧⌘-click opens a link.
+    func openInBrowser() {
+        guard let url = web.url.map(kept) ?? shownURL else { return NSSound.beep() }
+        delegate?.webView(self, openInBrowserAndClose: url)
+    }
+
+    /// The browser this Mac opens pages in, by name.
+    static var browserName: String {
+        guard let app = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!) else { return "Browser" }
+        return FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
     }
 
     /// "Version/26.1 Safari/605.1.15", from the Safari that's installed.
@@ -608,6 +626,7 @@ final class WebView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
             items.append(ClosureMenuItem("Copy Address", symbol: "doc.on.doc") {
                 NSPasteboard.copy(url)
             })
+            items.append(ClosureMenuItem("Open in \(Self.browserName) and Close", symbol: "safari") { [weak self] in self?.openInBrowser() })
         }
         return items
     }
