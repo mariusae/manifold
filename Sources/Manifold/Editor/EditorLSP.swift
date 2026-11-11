@@ -379,6 +379,19 @@ extension EditorView {
         return menu
     }
 
+    /// ⌘-pressed and dragged: a link there, what it goes to; a name in
+    /// code, a reference to it here (as its name selected and dragged).
+    func textView(_ view: TextView, dragCommandAt offset: Int, link: String?) -> (writer: NSPasteboardWriting, label: String)? {
+        if let target = link ?? linkAt(offset) {
+            return LinkMenus.drag?(target, nil, block.host).map { ($0, target) }
+        }
+        guard textView.syntaxLanguage != nil, !textView.markdown else { return nil }
+        let word = textView.wordRange(at: offset)
+        guard !word.isEmpty else { return nil }
+        let name = String(textView.text[word])
+        return Drags.place?(Place(block: block, at: .range(word), name: name), name).map { ($0, name) }
+    }
+
     /// Peek Definition: where the name at `offset` is defined, a few lines
     /// of it, in a card by the name — not gone to.
     func peekDefinition(at offset: Int) {

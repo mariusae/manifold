@@ -83,6 +83,21 @@ extension MainWindowController {
         return menu
     }
 
+    /// What a link ⌘ marks carries dragged: a block's (a reference), the
+    /// block at its place; an address, the address; a file, the file at its
+    /// line — a link where links are taken, the file elsewhere (another
+    /// host's fetched as it's dropped).
+    func linkDrag(_ target: String, from placement: PlacementID?, on given: HostID?) -> NSPasteboardWriting? {
+        let on = given ?? placement.flatMap { shown($0)?.placement.block.host } ?? host.host
+        if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {
+            return Drags.place?(Place(block: b, at: fragment.flatMap { Locator(fragment: $0) }), nil)
+        }
+        if Self.isAddress(target) { return URL(string: target).map { $0 as NSURL } }
+        let location = FileLocation.split(target)
+        let path = location?.path ?? target
+        return Drags.writer(Drags.place?(Place(file: path, on: on, at: location?.line.map { .line($0) }), nil))
+    }
+
     /// A file shown chosen in a folder's tile (a project's): gone to where
     /// one shows the folder, else beside; the folders on the way opened.
     func reveal(_ path: String, in root: String, on host: HostID, from placement: PlacementID?) {
@@ -249,6 +264,20 @@ enum LinkMenus {
     /// A block's file, if it's one's (a file's text, a folder): what a row
     /// of the block has as its link.
     static var pathOf: ((BlockID) -> String?)?
+
+    /// What a link carries dragged (⌘ held, the link pressed and moved):
+    /// the window says how to make it.
+    static var drag: ((_ target: String, _ from: PlacementID?, _ on: HostID?) -> NSPasteboardWriting?)?
+
+    /// Debugging: what a drag carries — each type, and what's written as it.
+    static func describe(_ writer: NSPasteboardWriting) -> String {
+        let board = NSPasteboard(name: NSPasteboard.Name("manifold.debug.drag"))
+        return writer.writableTypes(for: board).map { type in
+            let v = writer.pasteboardPropertyList(forType: type)
+            let s = (v as? String) ?? (v as? Data).flatMap { String(data: $0, encoding: .utf8) } ?? v.map { "\($0)" } ?? "-"
+            return type.rawValue + ": " + String(s.prefix(200))
+        }.joined(separator: "\n")
+    }
 
     /// A table's rows' menu: the link menu for the row right-clicked, if
     /// `target` says what it goes to (a path, `path:line`, an address);

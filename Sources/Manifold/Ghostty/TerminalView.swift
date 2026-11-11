@@ -1045,6 +1045,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             guard let item = items.first(where: { $0.title == path[0] }), let action = item.action else { return "no such item" }
             NSApp.sendAction(action, to: item.target, from: item)
             return "chose \(title)"
+        case "linkdrag":
+            // "scrub linkdrag <row> <col>": what a ⌘-press on that cell, dragged, carries.
+            let n = arg.split(separator: " ").compactMap { Int($0) }
+            guard n.count == 2, let grid else { return "usage: scrub linkdrag <row> <col>" }
+            guard let hit = link(at: grid.point(col: Double(n[1]) + 0.5, row: Double(n[0]) + 0.5)), hit.standing != .possible else { return "no link there" }
+            guard let writer = LinkMenus.drag?(hit.target, placement, block.host) else { return hit.target + "\nnothing to drag" }
+            return hit.target + "\n" + LinkMenus.describe(writer)
         case "click":
             // "scrub click <row> <col>": a ⌘-click on that cell, as far as a link there.
             let n = arg.split(separator: " ").compactMap { Int($0) }
@@ -1831,7 +1838,19 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         sendMousePos(event)
         if window?.isKeyWindow == true { shownCursor.set() }
     }
-    override func mouseDragged(with event: NSEvent) { if pendingLink == nil { sendMousePos(event) } }
+    override func mouseDragged(with event: NSEvent) {
+        guard let (link, at, _) = pendingLink else { return sendMousePos(event) }
+        // A ⌘-pressed link moved: dragged out, what it goes to (a file at its
+        // line, an address, a block) — not opened.
+        guard hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) > 4,
+              let writer = LinkMenus.drag?(link.target, placement, block.host) else { return }
+        pendingLink = nil
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        let p = convert(event.locationInWindow, from: nil)
+        item.setDraggingFrame(NSRect(x: p.x - 6, y: p.y - 6, width: 12, height: 12), contents: nil)
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+    }
     override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
     override func otherMouseDragged(with event: NSEvent) { sendMousePos(event) }
 
@@ -2448,4 +2467,15 @@ final class ExitBanner: NSView {
     @objc private func restart() { onRestart?() }
 
     var debugText: String { label.stringValue + " | " + button.title }
+}
+
+/// A link dragged out of the terminal (⌘ held): copied or linked where it's
+/// dropped, as a link from anywhere is.
+extension TerminalView: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        [.copy, .link, .generic]
+    }
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
+    func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
 }

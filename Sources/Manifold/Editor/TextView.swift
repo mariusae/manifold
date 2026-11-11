@@ -29,6 +29,10 @@ protocol TextViewDelegate: AnyObject {
     /// name to go to) and what can be done with it; nil, the usual menu.
     /// `link`: a Markdown link there, if there's one.
     func textView(_ view: TextView, commandMenuAt offset: Int, link: String?) -> NSMenu?
+    /// ⌘-pressed on a place in the text and dragged: what ⌘ marks there (a
+    /// link, a name in code) carried out — its writer, and the words its
+    /// card shows; nil, nothing to drag (the press a click as it was).
+    func textView(_ view: TextView, dragCommandAt offset: Int, link: String?) -> (writer: NSPasteboardWriting, label: String)?
     /// ⌃Space.
     func textViewRequestsCompletion(_ view: TextView)
     /// The selection dragged: what it carries — its words, and a reference
@@ -2614,13 +2618,18 @@ final class TextView: NSView, NSTextInputClient {
             // ⇧⌘ the system's app) — the caret stays, so the pill does.
             // ⌘-click is a link's before it's go-to-definition.
             dragAnchor = nil
-            delegate?.textView(self, follow: target, over: flags.contains(.option))
+            // With ⌘: followed as it's let go, unless it's dragged out first.
+            if flags.contains(.command) {
+                pressedCommand = (event.locationInWindow, offset, target, flags.contains(.option))
+            } else {
+                delegate?.textView(self, follow: target, over: flags.contains(.option))
+            }
             return
         }
         if flags.contains(.command), event.clickCount == 1 {
             setSelections([Selection(at: offset)])
             dragAnchor = nil
-            delegate?.textView(self, commandClickAt: offset, over: flags.contains(.option))
+            pressedCommand = (event.locationInWindow, offset, nil, flags.contains(.option))
             return
         }
         if flags.contains(.shift), let last = selections.last {
@@ -2656,6 +2665,9 @@ final class TextView: NSView, NSTextInputClient {
     private var pressedInSelection: (at: NSPoint, offset: Int)?
     /// Where it went down in the gutter, and on which line.
     private var pressedInGutter: (at: NSPoint, line: Int)?
+    /// Where it went down with ⌘ (on a link, `link`): gone to as it's let
+    /// go, or what's there dragged out if it moves first.
+    private var pressedCommand: (at: NSPoint, offset: Int, link: String?, over: Bool)?
 
     /// The bar beside the definition the caret's in (drawn when it spans
     /// lines), as it's taken hold of — a little wider than it's drawn —
@@ -2740,6 +2752,15 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let pressed = pressedCommand {
+            let p = event.locationInWindow
+            guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
+            pressedCommand = nil
+            if let (writer, label) = delegate?.textView(self, dragCommandAt: pressed.offset, link: pressed.link) {
+                beginDrag(writer, showing: String(label.prefix(80)), font: font, event)
+            }
+            return
+        }
         if let pressed = pressedInGutter {
             let p = event.locationInWindow
             guard hypot(p.x - pressed.at.x, p.y - pressed.at.y) > 4 else { return }
@@ -2777,6 +2798,15 @@ final class TextView: NSView, NSTextInputClient {
     }
 
     override func mouseUp(with event: NSEvent) {
+        // ⌘-pressed and let go without dragging: the ⌘-click.
+        if let pressed = pressedCommand {
+            pressedCommand = nil
+            if let link = pressed.link {
+                delegate?.textView(self, follow: link, over: pressed.over)
+            } else {
+                delegate?.textView(self, commandClickAt: pressed.offset, over: pressed.over)
+            }
+        }
         // Pressed in the selection and let go: a click there, the caret put down.
         if let pressed = pressedInSelection { setSelections([Selection(at: pressed.offset)]) }
         pressedInSelection = nil

@@ -480,6 +480,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             guard let h = hover, h.isShown, let v = h.contentViewController?.view else { return "none shown; last peeked:\n" + debugLastPeek }
             func words(_ v: NSView) -> [String] { ((v as? NSTextField).map { [$0.stringValue] } ?? []) + ((v as? FlatButton).map { [$0.title] } ?? []) + v.subviews.flatMap(words) }
             return words(v).joined(separator: "\n")
+        case "cmddrag":
+            // "scrub cmddrag <line> <column>": what a ⌘-press there, dragged, carries.
+            let w = arg.split(separator: " ").compactMap { Int($0) }
+            guard w.count == 2 else { return "usage: scrub cmddrag <line> <column>" }
+            guard let (writer, label) = textView(textView, dragCommandAt: textView.offset(line: w[0], column: w[1]).start, link: nil) else { return "nothing to drag" }
+            return label + "\n" + LinkMenus.describe(writer)
         case "cmdmenu":
             // "scrub cmdmenu <line> <column> [title]": the menu ⌘-right-click
             // there shows (lines and columns from 1), or that item chosen.
