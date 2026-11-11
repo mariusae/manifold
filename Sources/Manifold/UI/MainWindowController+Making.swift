@@ -447,7 +447,7 @@ extension MainWindowController {
     }
 
     /// Resets a host's server, once asked: put there afresh and restarted.
-    private func resetServer(_ host: HostID) {
+    func resetServer(_ host: HostID) {
         confirm("Reset the server on \(hosts.label(of: host))?",
                 "Manifold installs its server there again, whatever is there now, and restarts it. Every shell on the host ends; its terminals start new ones, each in its folder. Blocks and spaces stay.",
                 button: "Reset") { [weak self] in self?.hosts.resetServer(host) }

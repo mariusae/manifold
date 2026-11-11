@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hosts = Hosts()
     private var host: HostClient { hosts.local }
     private var windowController: MainWindowController?
+    /// Manifold ▸ Restart Server's hosts, made as it opens.
+    private let serverMenu = MenuFiller()
     private let agentMenu = LiveMenu()
     private var createdFirst = false
     private let notifier = Notifier()
@@ -236,7 +238,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // From the menu alone: ⇧⌘K is the editor's Delete Line.
         item(app, "Attach to Host…", #selector(MainWindowController.attachToHost(_:)), "")
         app.addItem(.separator())
-        item(app, "Restart Server…", #selector(MainWindowController.restartServer(_:)), "")
+        // Restart Server ▸ This Mac, and each other host (its server put
+        // there afresh): made as it opens, the hosts as they are then.
+        let servers = NSMenu(title: "Restart Server")
+        servers.delegate = serverMenu
+        serverMenu.items = { [weak self] in self?.windowController?.serverItems() ?? [] }
+        let serversItem = NSMenuItem(title: "Restart Server", action: nil, keyEquivalent: "")
+        serversItem.submenu = servers
+        app.addItem(serversItem)
         item(app, "End All Sessions and Quit…", #selector(MainWindowController.stopServer(_:)), "")
         app.addItem(withTitle: "Quit Manifold", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -654,5 +663,14 @@ final class LiveMenu: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         for item in items() { menu.addItem(item) }
+    }
+}
+
+/// A menu whose items are made each time it opens.
+final class MenuFiller: NSObject, NSMenuDelegate {
+    var items: () -> [NSMenuItem] = { [] }
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for i in items() { menu.addItem(i) }
     }
 }

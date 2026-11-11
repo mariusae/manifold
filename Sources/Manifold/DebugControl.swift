@@ -707,6 +707,18 @@ enum DebugControl {
             for (i, title) in path.enumerated() {
                 guard let item = menu?.items.first(where: { $0.title == title }) else { return "no item \(title)" }
                 if i == path.count - 1 { found = item } else { menu = item.submenu }
+                // A menu made as it opens, made.
+                if let m = menu { m.delegate?.menuNeedsUpdate?(m) }
+            }
+            // A submenu: its items (and what they say under them).
+            if let sub = found?.submenu {
+                sub.delegate?.menuNeedsUpdate?(sub)
+                return sub.items.map { i in
+                    guard !i.isSeparatorItem else { return "---" }
+                    var line = i.title + (i.isEnabled ? "" : " (disabled)")
+                    if #available(macOS 14.4, *), let s = i.subtitle { line += "  — " + s }
+                    return line
+                }.joined(separator: "\n")
             }
             guard let item = found, let action = item.action else { return "nothing to choose" }
             let target: Any? = item.target ?? (wc?.responds(to: action) == true ? wc : nil)

@@ -106,6 +106,7 @@ extension MainWindowController {
                 guard let self, let rect, let window = self.window, let host = self.selected?.host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }
                 self.showHostCard(c, beside: rect, in: window)
             }
+            sidebar.spaceHost.onMenu = { [weak self] in self?.selected.map { self?.hostHeadingMenu($0.host) } ?? nil }
         }
     }
 

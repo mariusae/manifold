@@ -569,6 +569,14 @@ final class SpaceHostLine: NSView {
     private let sparkline = Sparkline()
     /// The pointer on it (its rect in the window), or gone.
     var onHover: ((NSRect?) -> Void)?
+    /// Its menu, right-clicked: the host's.
+    var onMenu: (() -> NSMenu?)?
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu = onMenu?() else { return super.rightMouseDown(with: event) }
+        onHover?(nil)
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)

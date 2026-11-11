@@ -1000,7 +1000,11 @@ extension MainWindowController {
             return strip.hostRuns().map { "\($0.host) \(Int($0.rect.minX)),\(Int($0.rect.minY)) \(Int($0.rect.width))" }.joined(separator: "\n")
         case "numbers": strip.showsNumbers = w.dropFirst().first != "off"
         case "host":
-            // "spaces host [hover]": the heading's host line; with hover, its card.
+            // "spaces host [hover|menu]": the heading's host line; with hover, its card; with menu, its right-click menu.
+            if w.dropFirst().first == "menu" {
+                guard let m = sidebar.spaceHost.onMenu?() else { return "no menu" }
+                return m.items.map { $0.isSeparatorItem ? "---" : $0.title }.joined(separator: "\n")
+            }
             if w.dropFirst().first == "hover" {
                 let v = sidebar.spaceHost
                 v.onHover?(v.convert(NSRect(x: 0, y: 0, width: 80, height: v.bounds.height), to: nil))

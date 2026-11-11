@@ -781,6 +781,46 @@ extension MainWindowController {
                 button: "Restart Server") { HostClient.stopServer() }
     }
 
+    /// Manifold ▸ Restart Server: this Mac's server, and each other
+    /// host's — put there afresh from this app and restarted (Reset
+    /// Server) — each said to be this app's build or not.
+    func serverItems() -> [NSMenuItem] {
+        func said(_ i: NSMenuItem, _ c: HostClient) {
+            if #available(macOS 14.4, *) { i.subtitle = Self.serverStanding(c) }
+        }
+        let here = ClosureMenuItem("This Mac…", symbol: Theme.hostSymbol(remote: false)) { [weak self] in self?.restartServer(nil) }
+        said(here, hosts.local)
+        var items: [NSMenuItem] = [here]
+        let remotes = hosts.all.filter(\.isRemote)
+        if !remotes.isEmpty { items.append(.separator()) }
+        for c in remotes {
+            let i = ClosureMenuItem("\(hosts.label(of: c.host))…", symbol: Theme.hostSymbol(remote: true)) { [weak self] in self?.resetServer(c.host) }
+            i.isEnabled = c.destination != nil
+            said(i, c)
+            items.append(i)
+        }
+        return items
+    }
+
+    /// Whether a host's server is this app's: its protocol, then its build.
+    static func serverStanding(_ c: HostClient) -> String {
+        guard c.isConnected, let v = c.serverVersion else { return "not connected" }
+        if v != protocolVersion { return "older version (protocol \(v), not \(protocolVersion))" }
+        guard let b = c.serverBuild else { return "another build" }
+        return b.revision == BuildStamp.current.revision ? "this app's build" : "another build (\(b.revisionName))"
+    }
+
+    /// The host heading's menu (right-clicked): its server restarted
+    /// (this Mac's) or reset (another's), and the host's own items.
+    func hostHeadingMenu(_ host: HostID) -> NSMenu {
+        let menu = NSMenu()
+        if hosts.client(host)?.isRemote == false {
+            menu.addItem(ClosureMenuItem("Restart Server…", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.restartServer(nil) })
+        }
+        for item in hostItems(host) { menu.addItem(item) }
+        return menu
+    }
+
     @objc func stopServer(_ sender: Any?) {
         confirm("Quit and end all sessions?",
                 "Every shell in Manifold will be closed. Everything is kept, and terminals start fresh shells next time.",

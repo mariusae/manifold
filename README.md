@@ -1697,8 +1697,10 @@ is migrated into logs on first run.
 
 - **End All Sessions and Quit** (in the app menu or the sidebar's ⋯ menu)
   stops the server; everything is kept, and terminals start fresh shells
-  next time. Manifold ▸ Restart Server… restarts it (offered when the app
-  finds a server from another version). A remote host's server from
+  next time. Manifold ▸ Restart Server ▸ This Mac… restarts it (offered
+  when the app finds a server from another version); the same menu lists
+  each other host, its server said to be this app's build or not, and
+  resets it (below). A remote host's server from
   another version is restarted on its own: the app has installed its
   own there already, so it stops the old one and comes back through a
   bridge that starts the new; its shells start again, each in its
@@ -1818,9 +1820,11 @@ is migrated into logs on first run.
   starts afresh, as on its first launch, other hosts still attached.
   Links and tiles of it on other hosts are taken off, each as it's next
   reached. Files of your own stay. On the host itself, `manifoldd erase`
-  does the same (asking first, unless `--yes`), for one no Mac reaches. Reset Server is in every menu of something on a host, under
-  the host's name: a tile's, a terminal's or an editor's right-click, a
-  space's or a block's row in the sidebar. A bridge that keeps
+  does the same (asking first, unless `--yes`), for one no Mac reaches. Reset Server is in Manifold ▸ Restart Server, and in every menu of
+  something on a host, under the host's name: a tile's, a terminal's or
+  an editor's right-click, a space's or a block's row in the sidebar; and
+  the host's own, the sidebar's host line under a space's name
+  right-clicked. A bridge that keeps
   dying before the host answers is taken as a server gone missing
   there, and the host is bootstrapped again. While a host is unreachable its
   blocks stay as last seen: each tile's bar wears the slashed ring, an
