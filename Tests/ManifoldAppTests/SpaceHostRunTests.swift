@@ -17,10 +17,10 @@ import ManifoldCore
         .init(id: BlockID(), title: "s\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
               hostBreak: first, remote: host)
     }
-    // This Mac's three, then far's four (wrapping), then near's one.
+    // This Mac's three, then far's five (more than a row: wrapping), then near's one.
     let chips = (0..<3).map { chip($0, nil, first: false) }
-        + (0..<4).map { chip(3 + $0, far, first: $0 == 0) }
-        + [chip(7, near, first: true)]
+        + (0..<5).map { chip(3 + $0, far, first: $0 == 0) }
+        + [chip(8, near, first: true)]
     s.show(chips)
     s.layoutSubtreeIfNeeded()
     let runs = s.hostRuns()
@@ -30,6 +30,37 @@ import ManifoldCore
     #expect(runs[1].rect.minY == runs[2].rect.minY)
     let colors = SpaceStripView.colors(for: [far, near])
     #expect(colors[far] != colors[near])
+}
+
+// A host's spaces that a row's end would cut begin the next row instead —
+// rows ending where hosts do — when that takes no more rows; when it
+// would (the + pushed onto another), they're cut as before.
+@MainActor
+@Test func aHostsSpacesBeginTheNextRowRatherThanBeCutIfNoRowIsAdded() {
+    let far = HostID("far")
+    func strip(perRow n: Int) -> SpaceStripView {
+        SpaceStripView(frame: NSRect(x: 0, y: 0, width: CGFloat(n) * (SpaceStripView.side + SpaceStripView.gap) + SpaceStripView.inset + 12,
+                                     height: SpaceStripView.height))
+    }
+    func chip(_ i: Int, _ host: HostID?, first: Bool) -> SpaceStripView.Chip {
+        .init(id: BlockID(), title: "s\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
+              hostBreak: first, remote: host)
+    }
+    func rows(_ s: SpaceStripView) -> Int { Int(((s.plusRect.minY - s.squareRect(0).minY) / (SpaceStripView.side + SpaceStripView.gap)).rounded(.down)) + 1 }
+    // Six to a row: this Mac's five, far's two — one would end the first row.
+    let s = strip(perRow: 6)
+    s.show((0..<5).map { chip($0, nil, first: false) } + (0..<2).map { chip(5 + $0, far, first: $0 == 0) })
+    s.layoutSubtreeIfNeeded()
+    #expect(s.hostRuns().count == 1)
+    #expect(s.squareRect(5).minX == SpaceStripView.inset)
+    #expect(rows(s) == 2)
+    // Four to a row: this Mac's three, far's four — moved whole, the + would
+    // need a third row; far's are cut.
+    let t = strip(perRow: 4)
+    t.show((0..<3).map { chip($0, nil, first: false) } + (0..<4).map { chip(3 + $0, far, first: $0 == 0) })
+    t.layoutSubtreeIfNeeded()
+    #expect(t.hostRuns().count == 2)
+    #expect(rows(t) == 2)
 }
 
 // Each host's line stands off whatever it's on — every theme's wash, its

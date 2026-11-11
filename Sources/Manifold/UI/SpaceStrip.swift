@@ -227,31 +227,54 @@ final class SpaceStripView: NSView {
     /// Where each goes at a width, the + last, a host's pill among the
     /// squares where its spaces will be: in rows from the left, another
     /// row when one's full; between hosts a little more room (none at a
-    /// row's start: there, its underline says another host's begun).
+    /// row's start: there, its underline says another host's begun). A
+    /// host's that would be cut by a row's end begins the next row
+    /// instead, if that takes no more rows — so rows end where hosts do
+    /// when they can; the + goes where it fits.
     private func place(width: CGFloat) -> (frames: [NSRect], pills: [NSRect]) {
-        var out: [NSRect] = [], pills: [NSRect] = []
-        var x = Self.inset, y = (Self.height - Self.side) / 2
-        func put(_ w: CGFloat, lead wanted: CGFloat) -> NSRect {
-            var lead = wanted
-            if x > Self.inset, x + lead + w > width - 8 {
-                x = Self.inset
-                y += Self.side + Self.gap + (hostColors.isEmpty ? 0 : Self.underlineRoom)
-                lead = 0
-            }
-            x += lead
-            let r = NSRect(x: x, y: y.rounded(), width: w, height: Self.side)
-            x += w + Self.gap
-            return r
-        }
+        // In order: each square (the + last) and pill — its width, the room
+        // before it, and whether another host's begin with it.
+        var items: [(w: CGFloat, lead: CGFloat, starts: Bool, pill: Bool)] = []
         var p = 0
         for i in 0...chips.count {
             while p < pending.count, pending[p].at <= i {
-                pills.append(put(Self.pillWidth, lead: pending[p].hostBreak ? 7 : 0))
+                items.append((Self.pillWidth, pending[p].hostBreak ? 7 : 0, pending[p].hostBreak, true))
                 p += 1
             }
-            out.append(put(Self.side, lead: i == chips.count ? 2 : chips[i].hostBreak ? 7 : 0))
+            let starts = i < chips.count && chips[i].hostBreak
+            items.append((Self.side, i == chips.count ? 2 : starts ? 7 : 0, starts, false))
         }
-        return (out, pills)
+        let rowStep = Self.side + Self.gap + (hostColors.isEmpty ? 0 : Self.underlineRoom)
+        func lay(breaking: Set<Int>) -> [NSRect] {
+            var x = Self.inset, y = (Self.height - Self.side) / 2
+            return items.enumerated().map { k, item in
+                var lead = item.lead
+                if x > Self.inset, breaking.contains(k) || x + lead + item.w > width - 8 {
+                    x = Self.inset
+                    y += rowStep
+                    lead = 0
+                }
+                x += lead
+                let r = NSRect(x: x, y: y.rounded(), width: item.w, height: Self.side)
+                x += item.w + Self.gap
+                return r
+            }
+        }
+        // Each host's run of items (the + not among them).
+        let hosts = items.indices.dropLast().filter { $0 == 0 || items[$0].starts }
+        var breaking = Set<Int>()
+        var rects = lay(breaking: breaking)
+        let rows = rects.last?.minY
+        for (n, first) in hosts.enumerated() where first > 0 {
+            let last = (n + 1 < hosts.count ? hosts[n + 1] : items.count - 1) - 1
+            // Cut by a row's end, and not at a row's start already.
+            guard rects[first].minY != rects[last].minY, rects[first].minX > Self.inset else { continue }
+            let tried = lay(breaking: breaking.union([first]))
+            if let r = tried.last?.minY, let rows, r <= rows { breaking.insert(first); rects = tried }
+        }
+        var frames: [NSRect] = [], pills: [NSRect] = []
+        for (k, item) in items.enumerated() { if item.pill { pills.append(rects[k]) } else { frames.append(rects[k]) } }
+        return (frames, pills)
     }
 
     /// The colours remote hosts are told apart by: each host's its own,
