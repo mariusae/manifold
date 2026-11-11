@@ -63,10 +63,16 @@ extension MainWindowController {
         if let path {
             menu.addItem(.separator())
             item("Quick Look", "eye") { [weak self] in self?.quickLook(path, on: on) }
-            // Its folder, here; and, this Mac's, in the Finder.
+            // Shown chosen in Manifold's folders: its own folder's, its
+            // project's (a project made, else its repository); and, this
+            // Mac's, in the Finder.
             let folder = (path as NSString).deletingLastPathComponent
             if !folder.isEmpty {
-                item("Open Enclosing Folder", "folder") { [weak self] in self?.open(folder, from: placement, as: .beside) }
+                item("Reveal in Folder", "folder") { [weak self] in self?.reveal(path, in: folder, on: on, from: placement) }
+                let project = projectRoot(from: folder, on: on)
+                if project != folder, folder.hasPrefix(project) {
+                    item("Reveal in Project", Theme.projectSymbol) { [weak self] in self?.reveal(path, in: project, on: on, from: placement) }
+                }
             }
             if local {
                 item("Reveal in Finder", "magnifyingglass") {
@@ -75,6 +81,26 @@ extension MainWindowController {
             }
         }
         return menu
+    }
+
+    /// A file shown chosen in a folder's tile (a project's): gone to where
+    /// one shows the folder, else beside; the folders on the way opened.
+    func reveal(_ path: String, in root: String, on host: HostID, from placement: PlacementID?) {
+        let block = hosts.directoryBlock(for: root, on: host)
+        // Shown already: gone to; else a tile beside (the block may be new,
+        // not known here yet — shown as it comes).
+        if isPlaced(block) {
+            goTo(block, near: placement)
+        } else {
+            show(block, lens: .directory, .besideOrHere(placement), context: "revealed \((path as NSString).lastPathComponent)")
+        }
+        // Its view made at the render (a folder new to the host, once the
+        // host has made its block): told then.
+        retry(66, every: 0.15) { [weak self] in
+            guard let v = self?.views.values.lazy.compactMap({ $0 as? DirectoryView }).first(where: { $0.block == block }) else { return false }
+            v.reveal(path)
+            return true
+        }
     }
 
     /// A menu item that runs `run`, its symbol, and the click that does the

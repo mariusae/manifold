@@ -404,7 +404,27 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         v.select(selected.map { model.absolute($0) })
         // Focused before there was anything to focus: the files now.
         if window?.firstResponder === self { window?.makeFirstResponder(v.focusView) }
+        if let p = pendingReveal { reveal(p) }
     }
+
+    /// A file revealed: the folders on the way to it fetched (and opened,
+    /// as they're listed), it chosen, the files focused — now, or once the
+    /// folder's been read.
+    private var pendingReveal: String?
+
+    func reveal(_ path: String) {
+        guard let model, let content else { return pendingReveal = path }
+        pendingReveal = nil
+        let root = model.root.hasSuffix("/") ? model.root : model.root + "/"
+        guard path.hasPrefix(root) else { return }
+        var wanted = [model.root], dir = path.deletingLastPathComponent
+        while dir.count > model.root.count { wanted.append(dir); dir = dir.deletingLastPathComponent }
+        model.prefetch(wanted)
+        content.select(path)
+        window?.makeFirstResponder(content.focusView)
+    }
+
+    var debugRevealing: String? { pendingReveal }
 
     // MARK: A project's homepage
 
@@ -1136,6 +1156,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             searchBox.stringValue = words.count > 1 ? words[1] : ""
             filterTyped()
         case "select": if words.count > 1, let model { content?.select(model.absolute(words[1])) }
+        case "reveal": if words.count > 1 { reveal(words[1]) }
         case "open": openSelected()
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
