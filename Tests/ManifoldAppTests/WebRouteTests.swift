@@ -15,6 +15,7 @@ private final class Host: WebViewDelegate {
 
     func webView(_ view: WebView, append events: [Event]) {}
     func webView(_ view: WebView, open url: URL, over: Bool) {}
+    func webView(_ view: WebView, openInBrowserAndClose address: String) {}
     func webViewBarChanged(_ view: WebView) {}
     func webView(_ view: WebView, suggestionsFor typed: String) -> [PillSuggestion] { [] }
     func webView(_ view: WebView, hostNamed name: String) -> HostID? { nil }
