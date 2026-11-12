@@ -17,12 +17,16 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String)
     /// Ask (the agent) switched for the thread shown: made the agent's, or not.
     func threadChat(_ view: ThreadChatView, asks: Bool)
+    /// Its place (the place line, the text it was written against) clicked:
+    /// gone back to, where the thread was made.
+    func threadChatGoToPlace(_ view: ThreadChatView)
 }
 
 extension ThreadChatDelegate {
     func threadChatSeen(_ view: ThreadChatView) {}
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {}
     func threadChat(_ view: ThreadChatView, asks: Bool) {}
+    func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
 /// What a chat shows: a thread, or — for one not made yet — what it will
@@ -147,6 +151,13 @@ final class ThreadChatView: NSView {
         contextView.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         tileButton.target = self
         tileButton.action = #selector(openTile)
+        // Its place, and what it was written against: clicked, gone back to.
+        for v in [placeLabel, contextView] as [NSView] {
+            let click = NSClickGestureRecognizer(target: self, action: #selector(goToPlace))
+            v.addGestureRecognizer(click)
+        }
+        placeLabel.toolTip = "Go to where it was written"
+        contextView.toolTip = "Go to where it was written"
 
         list.orientation = .vertical
         list.alignment = .leading
@@ -276,6 +287,7 @@ final class ThreadChatView: NSView {
         needsLayout = true
         layoutSubtreeIfNeeded()
         if firstShow || scrolledToEnd { scrollToEnd() }
+        window?.invalidateCursorRects(for: self)
         watchSeen()
     }
 
@@ -509,6 +521,20 @@ final class ThreadChatView: NSView {
     }
 
     @objc private func openTile() { delegate?.threadChatOpenTile(self) }
+
+    @objc private func goToPlace() {
+        guard model.thread != nil else { return }
+        delegate?.threadChatGoToPlace(self)
+    }
+
+    /// The place and the text under it take the pointing hand: they go somewhere.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard model.thread != nil else { return }
+        for v in [placeLabel, contextView] as [NSView] where !v.isHidden && v.window != nil {
+            addCursorRect(convert(v.bounds, from: v), cursor: .pointingHand)
+        }
+    }
 
     /// The keyboard to the composer.
     func focusComposer() { window?.makeFirstResponder(composer) }

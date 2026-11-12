@@ -170,6 +170,11 @@ extension MainWindowController: ThreadChatDelegate {
         AgentCatalog.agent(inCommand: desk.settings.agentCommand) ?? AgentCatalog.agent(inCommand: "claude")
     }
 
+    func threadChatGoToPlace(_ view: ThreadChatView) {
+        guard let id = view.threadID else { return }
+        goToPlace(ofThread: id)
+    }
+
     func threadChat(_ view: ThreadChatView, asks: Bool) {
         guard let id = view.threadID, let kind = askingAgent else { return }
         hosts.append(.annotate([Self.asksKey: asks ? kind.command : ""]), to: .block(id))
