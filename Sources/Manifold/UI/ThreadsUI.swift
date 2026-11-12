@@ -149,7 +149,30 @@ extension MainWindowController: ThreadChatDelegate {
             guard let a = self?.hosts.block(id)?.agent else { return nil }
             return AgentIcons.image(a.command, size: 12)
         }
+        // The agent's thread, and who Ask would make it.
+        m.askName = askingAgent?.name ?? "Claude"
+        if let kind = thread.flatMap({ asksAgent(of: $0) }) {
+            m.asks = kind.name
+            m.asksIcon = AgentIcons.image(kind.command, size: 14)
+        }
         return m
+    }
+
+    /// The agent a thread is (§3.12), if it's an agent's thread: every
+    /// comment of yours asks it, untagged. Kept as the thread's annotation.
+    func asksAgent(of thread: Block) -> AgentCatalog.Agent? {
+        thread.annotations?[Self.asksKey].flatMap { AgentCatalog.agent(inCommand: $0) }
+    }
+    static let asksKey = "asks"
+
+    /// The agent Ask makes a thread: Settings' (its agent command), else Claude Code.
+    var askingAgent: AgentCatalog.Agent? {
+        AgentCatalog.agent(inCommand: desk.settings.agentCommand) ?? AgentCatalog.agent(inCommand: "claude")
+    }
+
+    func threadChat(_ view: ThreadChatView, asks: Bool) {
+        guard let id = view.threadID, let kind = askingAgent else { return }
+        hosts.append(.annotate([Self.asksKey: asks ? kind.command : ""]), to: .block(id))
     }
 
     /// A path with the home said as ~.
@@ -341,7 +364,10 @@ extension MainWindowController: ThreadChatDelegate {
         }
         view.threadID = id
         view.newPlace = nil
-        askAgents(in: id, comment: text, author: Hosts.you)
+        // Made with Ask on: the agent's thread, and asked from the first comment.
+        let asks = view.asksNew ? askingAgent : nil
+        view.madeAsking()
+        askAgents(in: id, comment: text, author: Hosts.you, asks: asks)
         // The card's threads now this one.
         if let card = threadUI.card, card.chat === view { card.threads = [id] }
         // The overlay's: a thread now, to make a tile of at once.
@@ -545,6 +571,11 @@ extension MainWindowController {
         case "close":
             threadUI.popover?.close()
             return "closed"
+        case "ask":
+            // "threads ask [on|off]": the overlay's (else the card's) Ask switched.
+            guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
+            return chat.debugAsk(rest == "on" ? true : rest == "off" ? false : nil)
+                + " · thread asks \(chat.threadID.flatMap { hosts.block($0) }.flatMap { asksAgent(of: $0)?.name } ?? "nobody")"
         case "find":
             // "threads find <q>|next": ⌘F in the focused thread's tile.
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }

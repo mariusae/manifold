@@ -18,15 +18,21 @@ extension MainWindowController {
 
     /// A comment written in a thread (by you, or an agent through mani):
     /// the agents it asks, asked.
-    func askAgents(in id: BlockID, comment: String, author: ThreadAuthor, tries: Int = 30) {
+    /// `asks`: the thread made the agent's thread (Ask, as it was made).
+    func askAgents(in id: BlockID, comment: String, author: ThreadAuthor, asks: AgentCatalog.Agent? = nil, tries: Int = 30) {
         // A thread just made: once it's come.
-        guard let t = hosts.block(id), let th = t.thread else {
+        guard var t = hosts.block(id), t.thread != nil else {
             guard tries > 0 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.askAgents(in: id, comment: comment, author: author, tries: tries - 1)
+                self?.askAgents(in: id, comment: comment, author: author, asks: asks, tries: tries - 1)
             }
             return
         }
+        if let asks, asksAgent(of: t)?.command != asks.command {
+            hosts.append(.annotate([Self.asksKey: asks.command]), to: .block(id))
+            t.annotations = (t.annotations ?? [:]).merging([Self.asksKey: asks.command]) { $1 }
+        }
+        guard let th = t.thread else { return }
         var asked: [BlockID] = []
         var starting: [AgentCatalog.Agent] = []
         // Tagged: a pill of an agent's terminal, or a word naming one.
@@ -44,6 +50,12 @@ extension MainWindowController {
         // Following: your comment asks the agents that have written here.
         if author.isYou {
             for a in th.agents where !asked.contains(a.block) && hosts.block(a.block)?.terminal?.pid != nil { asked.append(a.block) }
+        }
+        // The agent's thread: your comment asks its agent, untagged — one
+        // of its kind near (else one started), unless one's asked already.
+        if author.isYou, let kind = asksAgent(of: t),
+           !asked.contains(where: { hosts.block($0)?.agent?.command == kind.command }), !starting.contains(where: { $0.command == kind.command }) {
+            if let a = agentFor(kind, near: th) { asked.append(a) } else { starting.append(kind) }
         }
         guard !asked.isEmpty || !starting.isEmpty else { return }
         // A loop: agents asking agents, with no word from you.

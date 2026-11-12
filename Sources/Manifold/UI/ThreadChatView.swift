@@ -14,11 +14,14 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChatSeen(_ view: ThreadChatView)
     /// A comment of yours given new words.
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String)
+    /// Ask (the agent) switched for the thread shown: made the agent's, or not.
+    func threadChat(_ view: ThreadChatView, asks: Bool)
 }
 
 extension ThreadChatDelegate {
     func threadChatSeen(_ view: ThreadChatView) {}
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {}
+    func threadChat(_ view: ThreadChatView, asks: Bool) {}
 }
 
 /// What a chat shows: a thread, or — for one not made yet — what it will
@@ -47,6 +50,12 @@ struct ThreadChatModel {
     var placeImage: NSImage?
     var placeName = ""
     var placeWhere = ""
+    /// The agent's thread (§3.12): every comment of yours asks it, untagged
+    /// — its name, and its mark; nil, a thread like any.
+    var asks: String?
+    var asksIcon: NSImage?
+    /// Who Ask would make it (Settings' agent): its name.
+    var askName = "Claude"
 }
 
 /// A thread as a chat (§3.12): at its head what it's about, and the text
@@ -74,6 +83,12 @@ final class ThreadChatView: NSView {
     private var placeholder: NSTextField { box.placeholder }
     private let resolveButton = FlatButton("Resolve", symbol: "checkmark", font: UIType.detail)
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
+    /// Ask Claude: the thread the agent's, every comment asking it untagged.
+    private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
+    /// The agent's mark in its header, while it's the agent's thread.
+    private let agentMark = NSImageView()
+    /// A new thread's Ask, before it's made.
+    private(set) var asksNew = false
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
     /// Its words' size in a tile of its own — read at length, as a
@@ -108,7 +123,11 @@ final class ThreadChatView: NSView {
         contextView.lineBreakMode = .byTruncatingTail
         contextView.wantsLayer = true
         contextView.layer?.cornerRadius = 4
-        let placeRow = NSStackView(views: [placeLabel, driftLabel, NSView(), tileButton])
+        agentMark.isHidden = true
+        agentMark.translatesAutoresizingMaskIntoConstraints = false
+        agentMark.widthAnchor.constraint(equalToConstant: 14).isActive = true
+        agentMark.heightAnchor.constraint(equalToConstant: 14).isActive = true
+        let placeRow = NSStackView(views: [agentMark, placeLabel, driftLabel, NSView(), tileButton])
         placeRow.orientation = .horizontal
         placeRow.spacing = 6
         header.orientation = .vertical
@@ -153,8 +172,10 @@ final class ThreadChatView: NSView {
         }
         resolveButton.target = self
         resolveButton.action = #selector(toggleResolved)
+        askButton.target = self
+        askButton.action = #selector(toggleAsk)
         box.onSend = { [weak self] in self?.send() }
-        box.leading = [resolveButton]
+        box.leading = [resolveButton, askButton]
         for v in [header, scroll, box] as [NSView] { addSubview(v) }
         themed { v in
             v.contextView.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
@@ -177,6 +198,13 @@ final class ThreadChatView: NSView {
         driftLabel.stringValue = m.drift ?? ""
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
         tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
+        // Ask: the agent's thread, or (a new one) as switched; its mark in the header.
+        askButton.title = "Ask \(m.asks ?? m.askName)"
+        askButton.state = (m.thread == nil ? asksNew : m.asks != nil) ? .on : .off
+        askButton.toolTip = "Every comment here asks \(m.asks ?? m.askName), without tagging it"
+        agentMark.image = m.asksIcon
+        agentMark.isHidden = m.asks == nil
+        agentMark.toolTip = m.asks.map { "\($0)'s thread: your comments here ask it" }
         // Written in a tile at the size its comments are read at.
         let size = m.inTile ? Self.tileTextSize : UIType.body.pointSize
         if composer.font?.pointSize != size { composer.font = .systemFont(ofSize: size) }
@@ -406,6 +434,24 @@ final class ThreadChatView: NSView {
         composer.clear()
         composerChanged()
         delegate?.threadChat(self, send: text)
+    }
+
+    /// Ask switched: a new thread's kept till it's made; a thread's, said.
+    @objc private func toggleAsk() {
+        if model.thread == nil {
+            asksNew = askButton.state == .on
+        } else {
+            delegate?.threadChat(self, asks: askButton.state == .on)
+        }
+    }
+
+    /// Made with Ask on: no longer a new one's to keep.
+    func madeAsking() { asksNew = false }
+
+    /// Debugging: Ask switched, as clicked; and how it stands.
+    func debugAsk(_ on: Bool?) -> String {
+        if let on, (askButton.state == .on) != on { askButton.performClick(nil) }
+        return "ask \(askButton.state == .on ? "on" : "off") · \(askButton.title) · mark \(agentMark.isHidden ? "hidden" : "shown")"
     }
 
     @objc private func toggleResolved() {
