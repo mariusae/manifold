@@ -51,3 +51,16 @@ import Testing
     ])
     #expect(CommentPieces.split("No code at all.") == [.words("No code at all.")])
 }
+
+// A comment's lines kept as written (`breaks`), as a chat's and an issue's
+// are — an agent's "• " bullets each on its line; a commit's joined, as
+// Markdown joins a paragraph's lines.
+@MainActor
+@Test func aCommentKeepsItsLineBreaks() {
+    let md = "This is the root.\n• Source and build: Sources/\n• Docs: README.md"
+    let font = NSFont.systemFont(ofSize: 13), code = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    let comment = MarkdownText.attributed(md, font: font, code: code, breaks: true).string
+    #expect(comment.components(separatedBy: CharacterSet(charactersIn: "\n\u{2028}")) == ["This is the root.", "• Source and build: Sources/", "• Docs: README.md"])
+    let commit = MarkdownText.attributed(md, font: font, code: code).string
+    #expect(commit == "This is the root. • Source and build: Sources/ • Docs: README.md")
+}

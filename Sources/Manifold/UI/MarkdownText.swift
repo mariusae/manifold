@@ -20,7 +20,7 @@ enum MarkdownText {
     /// letter spacing in points.
     static func attributed(_ markdown: String, font: NSFont, code: NSFont, color: NSColor = Theme.text,
                            secondary: NSColor = Theme.secondaryText, strong: NSColor? = nil,
-                           lineHeight: CGFloat = 0, tracking: CGFloat = 0, boxes: Bool = false) -> NSAttributedString {
+                           lineHeight: CGFloat = 0, tracking: CGFloat = 0, boxes: Bool = false, breaks: Bool = false) -> NSAttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible)
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             return NSAttributedString(string: markdown, attributes: [.font: font, .foregroundColor: color])
@@ -101,6 +101,14 @@ enum MarkdownText {
             lastWasCode = isCode
             if !isCode {
                 text = text.replacingOccurrences(of: "\n", with: " ")
+                // A line's end within a paragraph (a soft break): a space, as
+                // Markdown joins them (a commit's, wrapped at 72); `breaks`,
+                // kept — a comment's, as a chat's and an issue's keep them. A
+                // hard break (two spaces, a backslash), always kept.
+                if let inline = run.inlinePresentationIntent,
+                   inline.contains(.lineBreak) || (breaks && inline.contains(.softBreak)) {
+                    text = "\u{2028}"
+                }
             }
             var attrs: [NSAttributedString.Key: Any] = [.font: runFont, .foregroundColor: runColor, .paragraphStyle: paragraph]
             if let inline = run.inlinePresentationIntent {

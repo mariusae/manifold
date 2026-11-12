@@ -101,7 +101,8 @@ extension MainWindowController {
         let about = t.thread?.about.map { describe($0).title } ?? "the space"
         let said = comment.replacingOccurrences(of: "\n", with: " ").prefix(400)
         return "[Manifold thread \(ref), about \(about)] \(author.isYou ? "The user" : author.name) wrote: \"\(said)\" — "
-            + "read it with `mani thread read \(ref)`, and answer in the thread with `mani thread reply \(ref) \"…\"` (--resolve only if you did what it asks)."
+            + "read it with `mani thread read \(ref)`, and answer in the thread with `mani thread reply \(ref) \"…\"` (--resolve only if you did what it asks). "
+            + "The reply is Markdown, shown as GitHub shows a comment: a list as `- ` lines, code in backticks or fences."
     }
 
     /// Words typed into an agent's prompt and sent: the words, then

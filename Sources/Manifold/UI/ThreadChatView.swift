@@ -785,7 +785,7 @@ final class CommentText: NSView, NSTextViewDelegate {
         let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
         let tracking = font.map { FontTheme.current.tracking(.proportional, font: $0) } ?? 0
         attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text,
-                                                         lineHeight: lineHeight, tracking: tracking, boxes: boxes))
+                                                         lineHeight: lineHeight, tracking: tracking, boxes: boxes, breaks: true))
         super.init(frame: .zero)
         // TextKit 1: a code block's box (an NSTextBlock) is laid out only there.
         _ = text.layoutManager

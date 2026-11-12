@@ -236,7 +236,9 @@ public enum Mani {
              details: """
                  A comment on the thread (the text, else the input) — as the agent
                  whose terminal runs it, or as you. --resolve resolves it after:
-                 only when you did what it asked.
+                 only when you did what it asked. It's Markdown, shown as GitHub
+                 shows a comment: its lines as written, a list as `- ` lines,
+                 code in backticks or fences.
                  """, answeredBy: .app, readsInput: true),
         Verb(words: ["thread", "resolve"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", answeredBy: .app),
