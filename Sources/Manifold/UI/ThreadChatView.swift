@@ -79,6 +79,10 @@ final class ThreadChatView: NSView {
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
+    /// Its words' size in a tile of its own — read at length, as a
+    /// document is — and its composer's; a card's and the overlay's, the
+    /// interface's own.
+    static let tileTextSize: CGFloat = 14
     /// Debugging: whether its ↖↘ is shown.
     var debugTileButton: Bool { !tileButton.isHidden }
     /// The most it grows to, where it's fitted (a card).
@@ -94,6 +98,12 @@ final class ThreadChatView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        // Clicked anywhere in it, or its composer taken: read — however
+        // long it's been on screen, the window key or not when it was shown.
+        let click = NSClickGestureRecognizer(target: self, action: #selector(interacted))
+        click.delaysPrimaryMouseButtonEvents = false
+        addGestureRecognizer(click)
+        composer.onFocus = { [weak self] in self?.interacted() }
         driftLabel.font = UIType.footnote
         driftLabel.textColor = Theme.tertiaryText
         contextView.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular)
@@ -174,6 +184,9 @@ final class ThreadChatView: NSView {
         driftLabel.stringValue = m.drift ?? ""
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
         tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
+        // Written in a tile at the size its comments are read at.
+        let size = m.inTile ? Self.tileTextSize : UIType.body.pointSize
+        if composer.font?.pointSize != size { composer.font = .systemFont(ofSize: size) }
         if let context = place?.context, !context.isEmpty {
             contextView.isHidden = false
             contextView.attributedStringValue = Self.context(context, diff: place?.diff != nil)
@@ -226,6 +239,12 @@ final class ThreadChatView: NSView {
         scroll.reflectScrolledClipView(scroll.contentView)
     }
 
+    /// Used (clicked in, written in): its thread seen, up to the latest.
+    @objc private func interacted() {
+        guard model.thread != nil else { return }
+        delegate?.threadChatSeen(self)
+    }
+
     /// Seen once it's been on screen a moment, in a key window.
     private func watchSeen() {
         seenTimer?.invalidate()
@@ -273,7 +292,8 @@ final class ThreadChatView: NSView {
     /// A comment: its author's mark, name and when, over its words.
     private func comment(_ e: ThreadEntry, _ text: String, continued: Bool) -> NSView {
         let width = scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width - 24
-        let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: continued, width: width - 4)
+        let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: continued, width: width - 4,
+                            size: model.inTile ? Self.tileTextSize : UIType.body.pointSize)
         v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
             self.delegate?.threadChat(self, follow: MainWindowController.address(b))
@@ -463,15 +483,16 @@ final class CommentView: NSView {
     var onEdit: (() -> Void)? { didSet { body.onEdit = onEdit } }
     let body: CommentText
 
-    init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat) {
-        body = CommentText(markdown: text)
+    /// `size`: its words' (a tile's are bigger, for reading at length).
+    init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat, size: CGFloat = UIType.body.pointSize) {
+        body = CommentText(markdown: text, size: size)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         let indent = Self.avatar + Self.gap
         body.limit = max(120, width - indent)
         var views: [NSView] = []
         if !continued {
-            let name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: 12, weight: .semibold))
+            let name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: size, weight: .semibold))
             let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
             let when = NSTextField.label(e.edited == nil ? ago : ago + " · edited", font: UIType.footnote, color: Theme.tertiaryText)
             when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
@@ -607,8 +628,9 @@ final class CommentText: NSView, NSTextViewDelegate {
     private let text = NSTextView()
     private let attributed: NSAttributedString
 
-    init(markdown: String) {
-        attributed = MarkdownText.attributed(markdown, font: UIType.body, code: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular), color: Theme.text)
+    init(markdown: String, size: CGFloat = UIType.body.pointSize) {
+        attributed = MarkdownText.attributed(markdown, font: .systemFont(ofSize: size),
+                                             code: NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), color: Theme.text)
         super.init(frame: .zero)
         text.isEditable = false
         text.isSelectable = true
@@ -656,6 +678,14 @@ final class CommentText: NSView, NSTextViewDelegate {
 /// in as their links.
 final class ComposerTextView: NSTextView {
     var onSend: (() -> Void)?
+    /// Made the first responder: clicked in, tabbed to, its tile focused.
+    var onFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let took = super.becomeFirstResponder()
+        if took { onFocus?() }
+        return took
+    }
     var onChange: (() -> Void)?
     var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
     /// ⎋: what it closes (a card, the overlay).
