@@ -51,6 +51,14 @@ struct TimelineModel {
 /// Open or Unread; Mark All Read. A run chosen, the composer replies to
 /// it; none, it starts a thread about the space.
 final class ThreadTimelineView: NSView {
+    /// ⌘ over its comments: their paths and addresses, to go to.
+    private lazy var commandLinks = CommentCommandLinks(self)
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        commandLinks.watch(window)
+    }
+
     enum Filter: Int { case all, open, unread }
     weak var delegate: ThreadTimelineDelegate?
     private(set) var model = TimelineModel()
@@ -302,6 +310,10 @@ final class ThreadTimelineView: NSView {
             v.onLink = { [weak self] url in
                 guard let self else { return }
                 self.delegate?.timeline(self, follow: url.absoluteString)
+            }
+            v.body.text.onCommandLink = { [weak self] target, _ in
+                guard let self else { return }
+                self.delegate?.timeline(self, follow: target)
             }
             return v
         default:

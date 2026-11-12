@@ -239,6 +239,14 @@ final class ThreadChatView: NSView {
         scroll.reflectScrolledClipView(scroll.contentView)
     }
 
+    /// ⌘ over its comments: their paths and addresses, to go to.
+    private lazy var commandLinks = CommentCommandLinks(self)
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        commandLinks.watch(window)
+    }
+
     /// Used (clicked in, written in): its thread seen, up to the latest.
     @objc private func interacted() {
         guard model.thread != nil else { return }
@@ -301,6 +309,10 @@ final class ThreadChatView: NSView {
         v.onLink = { [weak self] url in
             guard let self else { return }
             self.delegate?.threadChat(self, follow: url.absoluteString)
+        }
+        v.body.text.onCommandLink = { [weak self] target, _ in
+            guard let self else { return }
+            self.delegate?.threadChat(self, follow: target)
         }
         if e.author.isYou { v.onEdit = { [weak self] in self?.edit(e.id) } }
         return fill(v)
@@ -625,7 +637,7 @@ final class CommentText: NSView, NSTextViewDelegate {
         menu.insertItem(.separator(), at: 1)
         return menu
     }
-    private let text = PillTextView()
+    let text = PillTextView()
     private let attributed: NSAttributedString
 
     /// A block's pill's look (the window's: its name, symbol, status), for
@@ -869,6 +881,104 @@ final class ComposerTextView: NSTextView {
 /// goes where its link does — NSTextView takes a click on an attachment
 /// for itself, not its link's.
 final class PillTextView: NSTextView {
+    /// ⌘-clicked on a path or an address in it: `over`, ⌥ held too.
+    var onCommandLink: ((_ target: String, _ over: Bool) -> Void)?
+    /// The link ⌘ marks: underlined, in the accent.
+    private var marked: NSRange?
+    /// Pressed with ⌘ on a link: followed as it's let go, dragged out if it moves.
+    private var pressed: (target: String, at: NSPoint, over: Bool)?
+
+    /// What ⌘ marks at a point (in this view): a link's (a pill's, a
+    /// Markdown link's), else a path or an address written in the words,
+    /// as a terminal finds them.
+    func commandLink(at p: NSPoint) -> (target: String, range: NSRange)? {
+        guard let lm = layoutManager, let tc = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let q = NSPoint(x: p.x - textContainerOrigin.x, y: p.y - textContainerOrigin.y)
+        let g = lm.glyphIndex(for: q, in: tc)
+        guard lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc).insetBy(dx: -1, dy: -1).contains(q) else { return nil }
+        let i = lm.characterIndexForGlyph(at: g)
+        guard i < storage.length else { return nil }
+        var linkRange = NSRange()
+        if let link = storage.attribute(.link, at: i, effectiveRange: &linkRange) {
+            let target = (link as? URL)?.absoluteString ?? (link as? String) ?? ""
+            if !target.isEmpty { return (target, linkRange) }
+        }
+        // The paragraph it's in, by Unicode scalar, as a terminal's line is.
+        let ns = storage.string as NSString
+        let para = ns.paragraphRange(for: NSRange(location: i, length: 0))
+        let line = ns.substring(with: para).trimmingCharacters(in: .newlines)
+        let before = ns.substring(with: NSRange(location: para.location, length: i - para.location))
+        let offset = before.unicodeScalars.count
+        guard let l = TerminalLinks.link(at: offset, in: line), l.standing != .possible else { return nil }
+        let scalars = Array(line.unicodeScalars)
+        let start = String(String.UnicodeScalarView(scalars[0..<l.range.lowerBound])).utf16.count
+        let length = String(String.UnicodeScalarView(scalars[l.range])).utf16.count
+        return (l.target, NSRange(location: para.location + start, length: length))
+    }
+
+    /// ⌘'s mark on a link (nil: none), as the terminal's: underlined.
+    func mark(_ range: NSRange?) {
+        guard range != marked, let lm = layoutManager else { return }
+        if let m = marked, NSMaxRange(m) <= (textStorage?.length ?? 0) {
+            lm.removeTemporaryAttribute(.underlineStyle, forCharacterRange: m)
+            lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: m)
+        }
+        marked = range
+        if let r = range {
+            lm.addTemporaryAttributes([.underlineStyle: NSUnderlineStyle.single.rawValue, .foregroundColor: Tints.accentText], forCharacterRange: r)
+        }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        // ⌘-right-click on a link: its menu, as a terminal's.
+        if event.modifierFlags.contains(.command), let (target, _) = commandLink(at: convert(event.locationInWindow, from: nil)),
+           LinkMenus.popUp(target, from: nil, on: nil, with: event, for: self) { return }
+        super.rightMouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let p = pressed else { return super.mouseDragged(with: event) }
+        guard hypot(event.locationInWindow.x - p.at.x, event.locationInWindow.y - p.at.y) > 4 else { return }
+        pressed = nil
+        guard let writer = LinkMenus.drag?(p.target, nil, nil) else { return }
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        let at = convert(event.locationInWindow, from: nil)
+        item.setDraggingFrame(NSRect(x: at.x - 6, y: at.y - 6, width: 12, height: 12), contents: nil)
+        draggingLink = true
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        DragPill.dress(session, from: self, at: NSEvent.mouseLocation)
+    }
+
+    /// A link's drag under way (not the text view's own, of its words).
+    private var draggingLink = false
+
+    override func mouseUp(with event: NSEvent) {
+        if let p = pressed {
+            pressed = nil
+            onCommandLink?(p.target, p.over)
+            return
+        }
+        super.mouseUp(with: event)
+    }
+
+    override func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        guard draggingLink else { return super.draggingSession(session, sourceOperationMaskFor: context) }
+        return [.copy, .link, .generic]
+    }
+    override func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        guard draggingLink else { return super.draggingSession(session, willBeginAt: screenPoint) }
+        DragCursor.began()
+    }
+    override func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+        guard draggingLink else { return super.draggingSession(session, movedTo: screenPoint) }
+        DragCursor.moved()
+    }
+    override func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        guard draggingLink else { return super.draggingSession(session, endedAt: screenPoint, operation: operation) }
+        draggingLink = false
+        DragCursor.ended()
+    }
+
     /// The pill's link under a point, if there's one there.
     func pillLink(at p: NSPoint) -> Any? {
         guard let lm = layoutManager, let tc = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
@@ -881,10 +991,60 @@ final class PillTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // ⌘ on a path or address: gone to as it's let go, or dragged out.
+        if event.modifierFlags.contains(.command), let (target, _) = commandLink(at: convert(event.locationInWindow, from: nil)) {
+            pressed = (target, event.locationInWindow, event.modifierFlags.contains(.option))
+            return
+        }
         if let link = pillLink(at: convert(event.locationInWindow, from: nil)) {
             _ = delegate?.textView?(self, clickedOnLink: link, at: 0)
             return
         }
         super.mouseDown(with: event)
+    }
+}
+
+/// ⌘ held over a conversation's comments (a chat's, a timeline's): the
+/// path or address under the pointer marked, as a terminal marks one, the
+/// hand badged with what it goes to; ⌘-click goes, ⌘-right-click its menu,
+/// ⌘-drag carries it (`PillTextView`).
+final class CommentCommandLinks {
+    private let watcher = CommandLinkWatcher()
+    private weak var root: NSView?
+    private weak var marked: PillTextView?
+
+    init(_ root: NSView) {
+        self.root = root
+        watcher.inside = { [weak self] in self?.root?.isUnderPointer ?? false }
+        watcher.show = { [weak self] in self?.update() }
+        watcher.update = { [weak self] _ in self?.update() }
+        watcher.hide = { [weak self] in self?.clear() }
+    }
+
+    func watch(_ window: NSWindow?) { watcher.watch(window) }
+
+    private func update() {
+        guard let root, let window = root.window, let content = window.contentView else { return clear() }
+        let at = window.mouseLocationOutsideOfEventStream
+        var v = content.superview?.hitTest(at) ?? content.hitTest(at)
+        while let x = v, !(x is PillTextView) { v = x.superview }
+        guard let text = v as? PillTextView, text.isDescendant(of: root),
+              let (target, range) = text.commandLink(at: text.convert(at, from: nil)) else {
+            clear()
+            NSCursor.pointingHand.set()
+            return
+        }
+        if marked !== text { marked?.mark(nil) }
+        marked = text
+        text.mark(range)
+        let path = FileLocation.split(target)?.path ?? target
+        let badge = LinkCursor.badge(for: target, isDirectory: path.hasPrefix("/") ? LinkCursor.isDirectory(path) : nil)
+        LinkCursor.cursor(badge).set()
+    }
+
+    private func clear() {
+        marked?.mark(nil)
+        marked = nil
+        NSCursor.arrow.set()
     }
 }
