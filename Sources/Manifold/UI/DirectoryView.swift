@@ -1002,6 +1002,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     // MARK: Layout
 
+    /// A project's sidebar shown at the right: room for less beside it.
+    var showsProjectSidebar: Bool { !sidebar.isHidden }
+
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height

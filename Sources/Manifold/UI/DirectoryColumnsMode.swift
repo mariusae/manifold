@@ -166,13 +166,17 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     }
 
     /// The columns side by side, then the preview: as wide as what's left
-    /// in view, at least `previewMin`.
+    /// in view, at least `previewMin` — past the view's edge, scrolled to;
+    /// beside a project's sidebar, none if it won't fit (what's there
+    /// now, its commits, are worth more than a preview cut off).
     private func place() {
         let h = scroll.contentSize.height
         let w = Self.columnWidth
         for (i, c) in columns.enumerated() { c.frame = NSRect(x: CGFloat(i) * w, y: 0, width: w, height: h) }
         let used = CGFloat(columns.count) * w
-        let pw = previewShown ? max(Self.previewMin, scroll.contentSize.width - used) : 0
+        let room = scroll.contentSize.width - used
+        let fits = room >= Self.previewMin || !owner.showsProjectSidebar
+        let pw = previewShown && fits ? max(Self.previewMin, room) : 0
         previewBox.isHidden = pw == 0
         previewBox.frame = NSRect(x: used, y: 0, width: pw, height: h)
         preview.frame = previewBox.bounds.insetBy(dx: 12, dy: 12)
