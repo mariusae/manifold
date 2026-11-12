@@ -95,6 +95,9 @@ final class ThreadChatView: NSView {
     /// document is — and its composer's; a card's and the overlay's, the
     /// interface's own.
     static let tileTextSize: CGFloat = 14
+    /// A tile's comments' face: the technical (as code's comments and
+    /// documentation are), the UI's font kept for the interface round them.
+    static var tileFont: NSFont { FontTheme.current.technicalFont(size: tileTextSize) }
     /// Debugging: whether its ↖↘ is shown.
     var debugTileButton: Bool { !tileButton.isHidden }
     /// The most it grows to, where it's fitted (a card).
@@ -206,8 +209,8 @@ final class ThreadChatView: NSView {
         agentMark.isHidden = m.asks == nil
         agentMark.toolTip = m.asks.map { "\($0)'s thread: your comments here ask it" }
         // Written in a tile at the size its comments are read at.
-        let size = m.inTile ? Self.tileTextSize : UIType.body.pointSize
-        if composer.font?.pointSize != size { composer.font = .systemFont(ofSize: size) }
+        let face = m.inTile ? Self.tileFont : UIType.body
+        if composer.font != face { composer.font = face }
         if let context = place?.context, !context.isEmpty {
             contextView.isHidden = false
             contextView.attributedStringValue = Self.context(context, diff: place?.diff != nil)
@@ -322,7 +325,7 @@ final class ThreadChatView: NSView {
     private func comment(_ e: ThreadEntry, _ text: String, continued: Bool) -> NSView {
         let width = scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width - 24
         let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: continued, width: width - 4,
-                            size: model.inTile ? Self.tileTextSize : UIType.body.pointSize)
+                            size: model.inTile ? Self.tileTextSize : UIType.body.pointSize, font: model.inTile ? Self.tileFont : nil)
         v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
             self.delegate?.threadChat(self, follow: MainWindowController.address(b))
@@ -568,9 +571,10 @@ final class CommentView: NSView {
     var onEdit: (() -> Void)? { didSet { body.onEdit = onEdit } }
     let body: CommentText
 
-    /// `size`: its words' (a tile's are bigger, for reading at length).
-    init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat, size: CGFloat = UIType.body.pointSize) {
-        body = CommentText(markdown: text, size: size)
+    /// `size`: its words' (a tile's are bigger, for reading at length);
+    /// `font`: their face, if not the interface's (a tile's, the technical).
+    init(_ e: ThreadEntry, text: String, icon: NSImage?, continued: Bool, width: CGFloat, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil) {
+        body = CommentText(markdown: text, size: size, font: font)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         let indent = Self.avatar + Self.gap
@@ -717,9 +721,11 @@ final class CommentText: NSView, NSTextViewDelegate {
     /// the references in comments.
     static var look: ((BlockID) -> PillLook?)?
 
-    init(markdown: String, size: CGFloat = UIType.body.pointSize) {
-        attributed = Self.pilled(MarkdownText.attributed(markdown, font: .systemFont(ofSize: size),
-                                                         code: NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), color: Theme.text))
+    init(markdown: String, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil) {
+        // In a face of its own (the technical), code in the theme's monospaced, as notes have it.
+        let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
+        let tracking = font.map { FontTheme.current.technicalTracking($0) } ?? 0
+        attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text, tracking: tracking))
         super.init(frame: .zero)
         text.isEditable = false
         text.isSelectable = true
