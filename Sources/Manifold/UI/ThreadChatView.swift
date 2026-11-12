@@ -802,7 +802,9 @@ final class ComposerTextView: NSTextView {
     override func cancelOperation(_ sender: Any?) {
         if mentions.isShown { return dismissMentions() }
         if onEscape?() == true { return }
-        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
+        // Nothing of its own to close (a tile's): up the chain — NSTextView
+        // has no cancelOperation of its own, and super's is no method at all.
+        if let onCancel { onCancel() } else { nextResponder?.tryToPerform(#selector(cancelOperation(_:)), with: sender) }
     }
 
     override func keyDown(with event: NSEvent) {

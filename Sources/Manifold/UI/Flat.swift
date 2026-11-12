@@ -126,7 +126,12 @@ final class FlatField: NSTextField {
     }
 
     override func cancelOperation(_ sender: Any?) {
-        guard !stringValue.isEmpty, let box = superview as? FlatFieldBox, box.clears else { return super.cancelOperation(sender) }
+        // Nothing to clear: up the chain (NSTextField has no cancelOperation
+        // of its own; super's would be an unrecognized selector).
+        guard !stringValue.isEmpty, let box = superview as? FlatFieldBox, box.clears else {
+            nextResponder?.tryToPerform(#selector(cancelOperation(_:)), with: sender)
+            return
+        }
         box.clearField()
     }
 }
