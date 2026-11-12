@@ -35,6 +35,8 @@ struct Shown: Equatable {
         if let a = block?.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
         // A folder that's a project's root: the project's box.
         if lens == .directory, let b = block, b.kind == .directory, Theme.isProject?(b) == true { return Theme.projectSymbol }
+        // A thread resolved: the bubble ticked, as the threads' list has it.
+        if block?.thread?.resolved == true { return Theme.resolvedThreadSymbol }
         return block?.isNote == true ? Theme.noteSymbol : Theme.symbolName(for: lens, path: block?.kind == .text ? path : nil)
     }
     /// Where it is, for subtitles: a folder, or a working directory.

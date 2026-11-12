@@ -113,8 +113,12 @@ enum Theme {
     static func symbolName(for block: Block) -> String {
         if let a = block.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
         if block.kind == .directory, isProject?(block) == true { return projectSymbol }
+        if block.thread?.resolved == true { return resolvedThreadSymbol }
         return symbolName(for: block.kind, path: block.path)
     }
+
+    /// A thread resolved: its bubble ticked, wherever it's shown.
+    static let resolvedThreadSymbol = "checkmark.bubble"
 
     /// A folder made a project's (§2.6), told from any other folder: the
     /// box its Make Project shows.

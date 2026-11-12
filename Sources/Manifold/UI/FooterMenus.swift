@@ -186,7 +186,15 @@ extension MainWindowController {
                                 trailing: unseen > 0 ? "\(unseen) new" : "", dimmed: th?.resolved == true,
                                 run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) })
         }
-        if !q.isEmpty { return [PopMenu.Section(title: "Search Results", items: all.map(item))] }
+        // The resolved, below the rest, set off as Recently Closed is in
+        // ⇧⌘A's (unless they're all that's asked for).
+        let onlyResolved = on.contains("resolved") && !on.contains("open")
+        let resolved = onlyResolved ? [] : all.filter { $0.thread?.resolved == true }
+        if !onlyResolved { all = all.filter { $0.thread?.resolved != true } }
+        let resolvedSection = PopMenu.Section(title: "Resolved", items: resolved.map(item), divided: true)
+        if !q.isEmpty {
+            return [PopMenu.Section(title: "Search Results", items: all.map(item))] + (resolved.isEmpty ? [] : [resolvedSection])
+        }
         // By day, as Dia's: Today, Yesterday, the week, then by month.
         var sections: [PopMenu.Section] = []
         for t in all {
@@ -195,6 +203,7 @@ extension MainWindowController {
             sections[sections.count - 1].items.append(item(t))
         }
         func th(_ t: Block) -> String { t.thread?.lastActivity.map { Self.dayGroup($0.date) } ?? "Earlier" }
+        if !resolved.isEmpty { sections.append(resolvedSection) }
         sections.append(PopMenu.Section(title: nil, items: [
             PopMenu.Item(symbol: "plus.bubble", title: "New Thread About This Space…", dimmed: true, run: { [weak self] in self?.newThreadAboutSpace() }),
         ], divided: true))
