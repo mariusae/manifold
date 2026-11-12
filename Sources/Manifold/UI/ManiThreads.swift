@@ -103,7 +103,7 @@ extension ManiDesk {
 
     /// A thread as text: its reference and state, where it is, what it
     /// was written against, and every entry with who made it.
-    private func threadText(_ b: Block) -> String {
+    func threadText(_ b: Block) -> String {
         guard let t = b.thread else { return "" }
         var out = [MainWindowController.address(b.id) + (t.resolved ? "  (resolved)" : "")]
         if let p = t.about {

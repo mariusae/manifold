@@ -1082,6 +1082,9 @@ final class ManiDesk {
             return a.placements.compactMap { hosts.block($0.block) }.map { $0.displayTitle + ($0.path.map { "\t" + $0 } ?? "") }.joined(separator: "\n")
         case .ui:
             return json(panelValues(b))
+        case .thread:
+            // Its place and every entry, as `mani thread read` prints it.
+            return threadText(b)
         default:
             throw Failure(message: "\(b.displayTitle) (\(b.kind.rawValue)) has no text to read")
         }
