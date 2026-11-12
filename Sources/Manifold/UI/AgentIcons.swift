@@ -5,10 +5,12 @@ import AppKit
 /// the block an agent works in shows its symbol, as `agent:<command>`
 /// (`Theme.symbol`). Each is in one color (`currentColor`), a template
 /// tinted as symbols are — their tiles and gradients don't read at a
-/// bar's size: Claude's, Amp's and Pi's as they are in one color, Codex's
-/// mark without its tile, Gemini CLI's tile with its chevron cut out, Meta
-/// AI's ring (Muse) in one. A mark that keeps colors is drawn in them.
-/// Lobe Icons' (MIT), Pi's from pi.dev; the marks are their makers'
+/// bar's size — and each the maker's plainest mark, as other tools show
+/// them: Claude's spark (not Claude Code's figure), OpenAI's blossom for
+/// Codex, Gemini's sparkle (not Gemini CLI's tile); Amp's and Pi's as they
+/// are in one color, Meta AI's ring (Muse) in one. A mark that keeps
+/// colors is drawn in them. Lobe Icons' (MIT; Gemini's arcs written out,
+/// as CoreSVG reads them), Pi's from pi.dev; the marks are their makers'
 /// trademarks.
 enum AgentIcons {
     static let prefix = "agent:"

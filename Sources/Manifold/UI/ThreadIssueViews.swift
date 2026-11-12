@@ -254,7 +254,18 @@ final class IssueEventView: NSView {
             disc.stroke()
             let side = bounds.height * 0.55
             let r = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
-            if let icon { return icon.draw(in: r) }
+            if let icon {
+                // A one-color mark (a template): in the badge's ink, as its symbols are.
+                guard icon.isTemplate else { return icon.draw(in: r) }
+                let ink = tone ?? Theme.secondaryText
+                NSImage(size: r.size, flipped: false) { rect in
+                    icon.draw(in: rect)
+                    ink.set()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }.draw(in: r)
+                return
+            }
             Theme.symbol(symbol, size: side * 0.8, weight: .medium, color: tone ?? Theme.secondaryText)?.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
     }
