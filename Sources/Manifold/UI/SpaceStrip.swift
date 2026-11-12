@@ -477,13 +477,22 @@ final class SpaceStripView: NSView {
             NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
             t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
         }
-        // What most wants you there, at its top right.
+        // What most wants you there, at its top right: a dot; something
+        // at work there (wanting nothing of you yet), an open ring — not
+        // to be taken for something to attend to.
         if let tone = Self.tone(c.status) {
             let d = NSRect(x: r.maxX - 5, y: r.minY - 2, width: 7, height: 7)
             Theme.panel.setFill()
             NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
-            tone.setFill()
-            NSBezierPath(ovalIn: d).fill()
+            if case .working = c.status {
+                let ring = NSBezierPath(ovalIn: d.insetBy(dx: 0.75, dy: 0.75))
+                ring.lineWidth = 1.5
+                tone.setStroke()
+                ring.stroke()
+            } else {
+                tone.setFill()
+                NSBezierPath(ovalIn: d).fill()
+            }
         }
     }
 

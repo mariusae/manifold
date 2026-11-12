@@ -1417,7 +1417,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let order = inboxOrder()
         guard !order.isEmpty else {
             inboxWalk = []
-            return NSSound.beep()
+            // Nothing to go to: said so, and what's at work (a space's ring
+            // in the strip), which wants nothing of you yet.
+            let working = hosts.blocks.filter { $0.statusState == .working && $0.terminal?.pid != nil }
+            if let w = working.first {
+                let more = working.count > 1 ? " and \(working.count - 1) more" : ""
+                return toast.show("Nothing needs you — \(w.displayTitle)\(more) at work", action: "Show", for: 4) { [weak self] in self?.arrive(w.id, from: nil) }
+            }
+            return toast.say("Nothing needs you", .brief)
         }
         let here = focusedShown?.placement.block
         var next = order[0]
