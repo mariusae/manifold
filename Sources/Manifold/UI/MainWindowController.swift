@@ -1986,7 +1986,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return nil }
             let q = query.trimmingCharacters(in: .whitespaces)
             let parsed = WebAddress.parse(q)
-            let domain = q.contains(".") && !q.contains(" ") && !q.contains("/") && q.split(separator: ".").last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true
+            // Each of its names something (not `.md`, `foo.`), the last letters.
+            let labels = q.split(separator: ".", omittingEmptySubsequences: false)
+            let domain = labels.count >= 2 && labels.allSatisfy { !$0.isEmpty } && !q.contains(" ") && !q.contains("/")
+                && labels.last.map({ $0.count >= 2 && $0.allSatisfy(\.isLetter) }) == true
             let local = q.range(of: #"^(localhost|\d{1,3}(\.\d{1,3}){3})([:/].*)?$"#, options: .regularExpression) != nil
             var detail = "Open as a web page"
             switch parsed {

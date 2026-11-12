@@ -996,7 +996,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func show(_ items: [FinderItem], query: String) {
         let same = items.count == shown.count && zip(items, shown).allSatisfy { $0.title == $1.title && $0.detail == $1.detail && $0.note == $1.note && $0.excerpt == $1.excerpt }
         shown = items
-        if !same { table.reloadData() }
+        if !same {
+            table.reloadData()
+            cardRow = table.selectedRow
+        }
         if !shown.isEmpty, !same || table.selectedRow < 0 {
             let row = query.isEmpty && outline != nil ? min(outlineStart ?? 0, shown.count - 1) : 0
             table.selectRowIndexes([row], byExtendingSelection: false)
@@ -1042,6 +1045,17 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
         return true
     }
 
+    /// The row whose card is shown (as tall as it): the one chosen last.
+    private var cardRow = -1
+
+    /// However the chosen row changes — a key, a click, the list shown
+    /// again — its card moves with it, and both rows take their heights.
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let now = table.selectedRow
+        cardMoved(from: cardRow, to: now)
+        cardRow = now
+    }
+
     /// The chosen row's card moved with it: the two rows made again.
     private func cardMoved(from was: Int, to now: Int) {
         let rows = IndexSet([was, now].filter { $0 >= 0 && $0 < shown.count })
@@ -1053,9 +1067,7 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func move(_ by: Int) {
         guard !shown.isEmpty else { return }
         let row = min(max(table.selectedRow + by, 0), shown.count - 1)
-        let was = table.selectedRow
         table.selectRowIndexes([row], byExtendingSelection: false)
-        cardMoved(from: was, to: row)
         table.scrollRowToVisible(row)
     }
 
