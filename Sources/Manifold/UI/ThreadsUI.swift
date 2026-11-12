@@ -9,6 +9,9 @@ final class ThreadUI {
     var popover: NSPopover?
     var card: ThreadCardView?
     var cardClosed: NSObjectProtocol?
+    /// Keeps the card up, a click elsewhere notwithstanding, while
+    /// something's written in it.
+    let cardKeeper = PopoverKeeper()
     /// Every chat on screen, held weakly: a card's, a tile's, the overlay's.
     var chats: [Weak<ThreadChatView>] = []
     /// Every timeline on screen.
@@ -287,6 +290,13 @@ extension MainWindowController: ThreadChatDelegate {
         // (the system's own switch; skipped where it hasn't one).
         if pop.responds(to: Selector(("setShouldHideAnchor:"))) { pop.setValue(true, forKey: "shouldHideAnchor") }
         pop.contentViewController = vc
+        // A click elsewhere puts it away — unless something's written in it
+        // (or a comment's being edited): that kept, until ⎋ or it's sent.
+        threadUI.cardKeeper.keep = { [weak card] in
+            guard let chat = card?.chat else { return false }
+            return chat.editing != nil || !chat.composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        pop.delegate = threadUI.cardKeeper
         threadUI.popover = pop
         threadUI.card = card
         if let o = threadUI.cardClosed { NotificationCenter.default.removeObserver(o) }
@@ -800,4 +810,12 @@ extension MainWindowController {
         let runs = m.runs.map { r in "[\(r.placeTitle)\(r.firstUnseen.map { " NEW@\($0)" } ?? "")] " + r.entries.map { e in e.author.name + ":" + (e.comment.map { String($0.prefix(30)) } ?? "\(e.kind)".prefix(20).description) }.joined(separator: ", ") }
         return "\(m.title) · scopes \(m.scopes) at \(m.scope) · filter \(t.filter) · \(m.unseen) unseen · replying to \(t.chosen.map { String($0.ulid.suffix(6)) } ?? "none")\n" + runs.joined(separator: "\n")
     }
+}
+
+/// A popover's delegate that keeps it up, against what would put it away
+/// by itself (a click elsewhere), while `keep` says so; closing it outright
+/// (⎋, `close()`) isn't asked.
+final class PopoverKeeper: NSObject, NSPopoverDelegate {
+    var keep: () -> Bool = { false }
+    func popoverShouldClose(_ popover: NSPopover) -> Bool { !keep() }
 }
