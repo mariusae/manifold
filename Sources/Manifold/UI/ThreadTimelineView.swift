@@ -17,7 +17,6 @@ protocol ThreadTimelineDelegate: AnyObject {
     func timelineChanged(_ view: ThreadTimelineView)
     /// What it shows was on screen a moment: seen.
     func timeline(_ view: ThreadTimelineView, seen threads: [BlockID])
-    func timeline(_ view: ThreadTimelineView, dropped: Dragged, done: @escaping (String?) -> Void)
     /// The open threads shown handed to an agent at once.
     func timeline(_ view: ThreadTimelineView, address threads: [BlockID])
 }
@@ -155,10 +154,6 @@ final class ThreadTimelineView: NSView {
             self.needsLayout = true
         }
         box.onSend = { [weak self] in self?.send() }
-        composer.onDrop = { [weak self] dragged, done in
-            guard let self, let d = self.delegate else { return done(nil) }
-            d.timeline(self, dropped: dragged, done: done)
-        }
         for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, box] as [NSView] { addSubview(v) }
     }
 

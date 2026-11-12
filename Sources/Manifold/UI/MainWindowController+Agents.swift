@@ -267,6 +267,7 @@ extension MainWindowController {
         guard let f = focusedShown, let v = views[f.placement.id] else { return nil }
         if let e = v as? EditorView { return e.textView }
         if let o = v as? OutlineNoteView { return o.dropTarget }
+        if let t = v as? ThreadTileView { return t.chat.composer }
         return v as? DropTaking
     }
 

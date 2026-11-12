@@ -13,7 +13,6 @@ private final class Chat: ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, resolve: Bool) {}
     func threadChat(_ view: ThreadChatView, follow address: String) {}
     func threadChatOpenTile(_ view: ThreadChatView) {}
-    func threadChat(_ view: ThreadChatView, dropped: Dragged, done: @escaping (String?) -> Void) { done(nil) }
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) { edits.append((entry, text)) }
 }
 

@@ -10,9 +10,6 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, follow address: String)
     /// Shown as a tile of its own.
     func threadChatOpenTile(_ view: ThreadChatView)
-    /// Things dropped on the composer, as the text they put in (a
-    /// reference's link), or nil.
-    func threadChat(_ view: ThreadChatView, dropped: Dragged, done: @escaping (String?) -> Void)
     /// Its entries were on screen a moment: seen, up to the latest.
     func threadChatSeen(_ view: ThreadChatView)
     /// A comment of yours given new words.
@@ -153,10 +150,6 @@ final class ThreadChatView: NSView {
             guard let self, let e = self.model.thread?.thread?.entries.last(where: { $0.author.isYou && $0.comment != nil }) else { return false }
             self.edit(e.id)
             return true
-        }
-        composer.onDrop = { [weak self] dragged, done in
-            guard let self, let delegate = self.delegate else { return done(nil) }
-            delegate.threadChat(self, dropped: dragged, done: done)
         }
         resolveButton.target = self
         resolveButton.action = #selector(toggleResolved)
@@ -785,7 +778,6 @@ final class ComposerTextView: NSTextView {
         chat.performTextFinderAction(sender)
     }
     var onChange: (() -> Void)?
-    var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
     /// ⎋: what it closes (a card, the overlay).
     var onCancel: (() -> Void)?
     /// ⎋, asked first: true if it took it (an edit left as it was).
@@ -832,8 +824,6 @@ final class ComposerTextView: NSTextView {
         if unpillBeforeCaret() { return }
         super.deleteBackward(sender)
     }
-
-    override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
 
     override func didChangeText() {
         super.didChangeText()
@@ -900,22 +890,59 @@ final class ComposerTextView: NSTextView {
 
     override var readablePasteboardTypes: [NSPasteboard.PasteboardType] { [.manifoldThing] + super.readablePasteboardTypes }
 
+    // Drops, as a note takes them (§3.11): a block's link — a pill here,
+    // its card over the composer, as `@` makes one — else the palette's
+    // other forms (a bare reference, its path, its words…); words dragged
+    // in plain, in the composer's look, not the look they had.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingSource as? NSView === self ? super.draggingEntered(sender) : Dropping.updated(self, sender)
+    }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingSource as? NSView === self ? super.draggingUpdated(sender) : Dropping.updated(self, sender)
+    }
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        Dropping.exited(self, sender)
+        super.draggingExited(sender)
+    }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let dragged = Dragged(sender.draggingPasteboard), dragged.things.contains(where: { $0.block != nil || $0.url != nil }), let onDrop else {
-            return super.performDragOperation(sender)
+        sender.draggingSource as? NSView === self ? super.performDragOperation(sender) : Dropping.perform(self, sender)
+    }
+
+    /// Pasted: plain, in the composer's look; references in it pills.
+    override func paste(_ sender: Any?) {
+        guard let words = NSPasteboard.general.string(forType: .string) else { return super.paste(sender) }
+        let r = selectedRange()
+        if r.length > 0, shouldChangeText(in: r, replacementString: "") {
+            textStorage?.replaceCharacters(in: r, with: "")
+            didChangeText()
         }
-        let at = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
-        onDrop(dragged) { [weak self] text in
+        insertReferences(words, at: r.location)
+    }
+}
+
+extension ComposerTextView: DropTaking {
+    /// As a note takes things, less pictures shown inline (a comment
+    /// keeps none).
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        Dropping.noteForms(d).filter { $0 != .inline }
+    }
+
+    func dropTrack(_ d: Dragged, at p: NSPoint) {
+        let at = characterIndexForInsertion(at: p)
+        if selectedRange() != NSRange(location: at, length: 0) { setSelectedRange(NSRange(location: at, length: 0)) }
+    }
+
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        window?.makeFirstResponder(self)
+        let at = p.map { characterIndexForInsertion(at: $0) } ?? selectedRange().location
+        d.text(form, separator: " ") { [weak self] text, _ in
             guard let self, let text else { return }
-            let range = NSRange(location: min(at, (self.string as NSString).length), length: 0)
-            let spaced = (range.location > 0 && !(self.string as NSString).substring(to: range.location).hasSuffix(" ") ? " " : "") + text + " "
-            if self.shouldChangeText(in: range, replacementString: spaced) {
-                self.replaceCharacters(in: range, with: spaced)
-                self.didChangeText()
-            }
-            self.window?.makeFirstResponder(self)
+            let all = self.string as NSString
+            let i = min(at, all.length)
+            let char = { (k: Int) -> Character? in k >= 0 && k < all.length ? Character(all.substring(with: NSRange(location: k, length: 1))) : nil }
+            let put = [.link, .reference, .path].contains(form) ? Dropping.spaced(text, after: char(i - 1), before: char(i)) : text
+            self.insertReferences(put, at: i)
         }
-        return true
     }
 }
 

@@ -239,6 +239,60 @@ extension ComposerTextView {
     /// A choice put in for the `@word` typed: a pill, or the word; a space after.
     func insertMention(_ c: MentionChoice, for token: (range: NSRange, query: String)) {
         let typed = (string as NSString).substring(with: token.range)
+        let piece = NSMutableAttributedString(attributedString: pillPiece(c, typed: typed))
+        piece.append(NSAttributedString(string: " ", attributes: plainAttributes))
+        guard shouldChangeText(in: token.range, replacementString: piece.string) else { return }
+        textStorage?.replaceCharacters(in: token.range, with: piece)
+        didChangeText()
+        setSelectedRange(NSRange(location: token.range.location + piece.length, length: 0))
+        typingAttributes = plainAttributes
+        if c.link != nil { shimmer(NSRange(location: token.range.location, length: piece.length - 1)) }
+    }
+
+    /// Markdown put in at `location` with each reference in it a pill, as
+    /// `@` makes one — a link to a block (`[name](manifold:…)`) and one
+    /// written bare — so it's sent as written and its block's card is over
+    /// the composer; the rest plain, in the composer's own look (what a
+    /// drop or a paste brought, its fonts left behind).
+    func insertReferences(_ markdown: String, at location: Int) {
+        let ns = markdown as NSString
+        let all = NSRange(location: 0, length: ns.length)
+        var found: [(NSRange, MentionChoice)] = []
+        let linkPattern = try! NSRegularExpression(pattern: #"\[((?:\\\]|[^\]\n])+)\]\((manifold:[^)\s]+)\)"#)
+        for m in linkPattern.matches(in: markdown, range: all) {
+            let address = ns.substring(with: m.range(at: 2))
+            guard let (id, _) = BlockID.link(address) else { continue }
+            let title = ns.substring(with: m.range(at: 1)).replacingOccurrences(of: "\\]", with: "]")
+            let look = CommentText.look?(id)
+            found.append((m.range, MentionChoice(symbol: look?.symbol ?? "doc", title: title, detail: "", link: ns.substring(with: m.range), block: id)))
+        }
+        for m in TextLinks.bareReference.matches(in: markdown, range: all) where !found.contains(where: { NSIntersectionRange($0.0, m.range).length > 0 }) {
+            let address = ns.substring(with: m.range)
+            guard let (id, place) = BlockID.link(address), let look = CommentText.look?(id) else { continue }
+            let title = look.title + (place.flatMap { Locator(fragment: $0)?.words }.map { " · " + $0 } ?? "")
+            found.append((m.range, MentionChoice(symbol: look.symbol, title: title, detail: "", link: address, block: id)))
+        }
+        found.sort { $0.0.location < $1.0.location }
+        let out = NSMutableAttributedString()
+        var last = 0
+        for (r, c) in found {
+            out.append(NSAttributedString(string: ns.substring(with: NSRange(location: last, length: r.location - last)), attributes: plainAttributes))
+            out.append(pillPiece(c, typed: ""))
+            last = NSMaxRange(r)
+        }
+        out.append(NSAttributedString(string: ns.substring(from: last), attributes: plainAttributes))
+        // A pill last: a space after it, as `@` leaves one, so what's typed next isn't run into it.
+        if let lastPill = found.last, NSMaxRange(lastPill.0) == ns.length { out.append(NSAttributedString(string: " ", attributes: plainAttributes)) }
+        let r = NSRange(location: min(location, (string as NSString).length), length: 0)
+        guard shouldChangeText(in: r, replacementString: out.string) else { return }
+        textStorage?.replaceCharacters(in: r, with: out)
+        didChangeText()
+        setSelectedRange(NSRange(location: r.location + out.length, length: 0))
+        typingAttributes = plainAttributes
+    }
+
+    /// A pill: its icon, then its name in grey — one piece, sent as its link.
+    func pillPiece(_ c: MentionChoice, typed: String) -> NSAttributedString {
         let piece = NSMutableAttributedString()
         if let link = c.link {
             // As Dia's: its icon, then its name in grey — one piece, sent as its link.
@@ -260,13 +314,7 @@ extension ComposerTextView {
         } else {
             piece.append(NSAttributedString(string: "@" + c.title, attributes: plainAttributes))
         }
-        piece.append(NSAttributedString(string: " ", attributes: plainAttributes))
-        guard shouldChangeText(in: token.range, replacementString: piece.string) else { return }
-        textStorage?.replaceCharacters(in: token.range, with: piece)
-        didChangeText()
-        setSelectedRange(NSRange(location: token.range.location + piece.length, length: 0))
-        typingAttributes = plainAttributes
-        if c.link != nil { shimmer(NSRange(location: token.range.location, length: piece.length - 1)) }
+        return piece
     }
 
     /// Magic text, as Dia's: a reference just resolved swept by a rainbow,

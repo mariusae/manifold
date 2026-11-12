@@ -374,11 +374,6 @@ extension MainWindowController: ThreadChatDelegate {
         popOutThread(id)
     }
 
-    func threadChat(_ view: ThreadChatView, dropped: Dragged, done: @escaping (String?) -> Void) {
-        guard dropped.offers(.link) else { return done(nil) }
-        dropped.text(.link, separator: " ") { text, _ in done(text) }
-    }
-
     func threadChatSeen(_ view: ThreadChatView) {
         guard let id = view.threadID, let t = hosts.block(id) else { return }
         hosts.markSeen(t)
@@ -772,11 +767,6 @@ extension MainWindowController: ThreadTimelineDelegate {
 
     func timeline(_ view: ThreadTimelineView, seen threads: [BlockID]) {
         hosts.markSeen(threads.compactMap { hosts.block($0) })
-    }
-
-    func timeline(_ view: ThreadTimelineView, dropped: Dragged, done: @escaping (String?) -> Void) {
-        guard dropped.offers(.link) else { return done(nil) }
-        dropped.text(.link, separator: " ") { text, _ in done(text) }
     }
 
     /// A thread's place gone to: its block, at its anchor; a space's
