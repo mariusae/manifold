@@ -367,6 +367,8 @@ extension MainWindowController {
         if let ws = selected {
             ofSpace.formUnion(pins(of: ws).map(\.to))
             for c in closedStack { if case let .tile(w, _, _, p, _) = c, w == ws { ofSpace.insert(p.block) } }
+            // Its threads (§3.12), by their titles, shown as tiles or not.
+            ofSpace.formUnion(hosts.threads(inSpace: ws).map(\.id))
         }
         // Where each block in another space is: said of it, every space looked in.
         var elsewhere: [BlockID: String] = [:]

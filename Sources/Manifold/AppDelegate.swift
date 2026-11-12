@@ -325,6 +325,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // A thread about where you are (§3.12): the selection, the rows
         // chosen, the caret's place — a comment, to yourself or an agent.
         item(edit, "Comment", #selector(MainWindowController.commentHere(_:)), "m", [.command, .option])
+        // The space's threads, by title, newest first, the resolved below (the footer's list).
+        item(edit, "Threads…", #selector(MainWindowController.showThreadsMenu(_:)), "m", [.command, .control])
         // Every thread of the space (or its project) as one timeline, a tile beside.
         item(edit, "Show Threads", #selector(MainWindowController.showThreads(_:)), "")
         edit.addItem(.separator())

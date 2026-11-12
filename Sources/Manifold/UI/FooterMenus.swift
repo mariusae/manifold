@@ -12,7 +12,7 @@ final class SidebarFooter: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        threads.toolTip = "The Space's Threads"
+        threads.toolTip = "The Space's Threads (⌃⌘M)"
         tiles.toolTip = "Tiles and Recently Closed (⇧⌘A)"
         addSubview(threads)
         addSubview(tiles)
@@ -94,6 +94,7 @@ extension MainWindowController {
         switch which {
         case .threads:
             m.placeholder = "Search threads"
+            m.hint = "⌃⌘M"
             m.empty = "No threads"
             m.chips = [.init(id: "open", title: "Open"), .init(id: "unread", title: "Unread"),
                        .init(id: "resolved", title: "Resolved"), .init(id: "everywhere", title: "Every Space")]
@@ -150,6 +151,9 @@ extension MainWindowController {
 
     /// ⇧⌘A: the space's tiles and what was closed.
     @objc func showTilesMenu(_ sender: Any?) { showFooterMenu(.tiles) }
+
+    /// ⌃⌘M: the space's threads (the footer's list), next to ⌥⌘M's Comment.
+    @objc func showThreadsMenu(_ sender: Any?) { showFooterMenu(.threads) }
 
     // MARK: Threads
 
