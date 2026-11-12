@@ -193,6 +193,7 @@ final class AppearancePane: SettingsPane {
     private var showContrast: ((ContrastCorrection) -> Void)?
     private let tints = TintPicker()
     private let colorThemes = ColorThemePicker()
+    private lazy var colorCarousel = ThemeCarousel(colorThemes)
     private let themes = FontThemeList()
     private let advanced = Flat.checkbox("Enable advanced typography")
 
@@ -206,7 +207,7 @@ final class AppearancePane: SettingsPane {
         showScheme = s
         row("Appearance", scheme)
         colorThemes.onPick = { [weak self] p in self?.source.change { (a: inout Appearance) in a.colorTheme = p.id } }
-        row("Theme", colorThemes, note: "Every colour, light and dark.")
+        row("Theme", colorCarousel, note: "Every colour, light and dark.")
         tints.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.tint = t } }
         row("Accent", tints, note: "The focus ring, the caret, selections.")
         gap()
@@ -232,6 +233,7 @@ final class AppearancePane: SettingsPane {
         let a = source.appearance()
         showScheme?(a.colorScheme)
         colorThemes.chosen = a.colorTheme
+        colorCarousel.reveal(colorThemes.chosenRect)
         tints.tint = a.tint
         themes.advanced = a.advancedTypography
         themes.theme = a.theme
@@ -387,10 +389,16 @@ final class ColorThemePicker: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
-    /// Three to a row at most, the rows as even as they can be (four: two
-    /// and two).
-    private static var rows: Int { (Palette.all.count + 2) / 3 }
-    private static var columns: Int { (Palette.all.count + rows - 1) / rows }
+    /// One row, however many there are: scrolled through sideways
+    /// (`ThemeCarousel`), so the pane's no taller for more themes.
+    private static var rows: Int { 1 }
+    private static var columns: Int { Palette.all.count }
+    /// What three cards take, side by side: the carousel's window.
+    static var threeWide: CGFloat { 3 * (card.width + spacing) - spacing + 6 }
+    /// The chosen card's rect, to scroll to.
+    var chosenRect: NSRect { Palette.all.firstIndex { $0.id == chosen }.map(rect) ?? .zero }
+    /// One card's step, sideways.
+    static var step: CGFloat { card.width + spacing }
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: CGFloat(Self.columns) * (Self.card.width + Self.spacing) - Self.spacing + 6,
@@ -701,5 +709,87 @@ final class HistoryPane: SettingsPane {
         showText?(s.textHistoryDays)
         showTranscripts?(s.terminalHistoryDays)
         showUndo?(s.undoDepth)
+    }
+}
+
+/// The colour themes, a row of cards three at a time: scrolled sideways
+/// (a trackpad's swipe, or ‹ ›, a card at a time), the chosen one brought
+/// into view. What the pane takes is one row's height, however many.
+final class ThemeCarousel: NSView {
+    private let scroll = NSScrollView()
+    private let picker: ColorThemePicker
+    private let back = IconButton("chevron.left", size: 11, tip: "Previous Themes")
+    private let next = IconButton("chevron.right", size: 11, tip: "More Themes")
+    private static let arrow: CGFloat = 22
+
+    init(_ picker: ColorThemePicker) {
+        self.picker = picker
+        super.init(frame: .zero)
+        scroll.drawsBackground = false
+        scroll.hasHorizontalScroller = true
+        scroll.hasVerticalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.verticalScrollElasticity = .none
+        picker.frame = NSRect(origin: .zero, size: picker.intrinsicContentSize)
+        scroll.documentView = picker
+        back.target = self
+        back.action = #selector(stepBack)
+        next.target = self
+        next.action = #selector(stepOn)
+        for v in [scroll, back, next] as [NSView] { addSubview(v) }
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+        scroll.contentView.postsBoundsChangedNotifications = true
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: ColorThemePicker.threeWide + 2 * (Self.arrow + 4), height: picker.intrinsicContentSize.height)
+    }
+
+    override func layout() {
+        super.layout()
+        let a = Self.arrow
+        back.frame = NSRect(x: 0, y: (bounds.height - a) / 2 + 10, width: a, height: a)
+        next.frame = NSRect(x: bounds.width - a, y: (bounds.height - a) / 2 + 10, width: a, height: a)
+        scroll.frame = NSRect(x: a + 4, y: 0, width: bounds.width - 2 * (a + 4), height: bounds.height)
+        scrolled()
+    }
+
+    /// A rect of the picker's (the chosen card) brought into view, if it isn't.
+    func reveal(_ r: NSRect) {
+        layoutSubtreeIfNeeded()
+        let clip = scroll.contentView
+        let visible = clip.documentVisibleRect
+        guard r.width > 0, !visible.contains(r) else { return }
+        let x = min(max(0, r.midX - visible.width / 2), max(0, picker.frame.width - visible.width))
+        clip.scroll(to: NSPoint(x: x, y: 0))
+        scroll.reflectScrolledClipView(clip)
+    }
+
+    @objc private func stepBack() { go(-1) }
+    @objc private func stepOn() { go(1) }
+
+    /// A card along, animated.
+    private func go(_ by: CGFloat) {
+        let clip = scroll.contentView
+        let most = max(0, picker.frame.width - clip.bounds.width)
+        let x = min(max(0, clip.bounds.minX + by * ColorThemePicker.step), most)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.fast
+            clip.animator().setBoundsOrigin(NSPoint(x: x, y: 0))
+        } completionHandler: { [weak self] in
+            guard let self else { return }
+            self.scroll.reflectScrolledClipView(clip)
+            self.scrolled()
+        }
+    }
+
+    /// ‹ and › only where there's more that way.
+    @objc private func scrolled() {
+        let clip = scroll.contentView
+        back.isEnabled = clip.bounds.minX > 1
+        next.isEnabled = clip.bounds.maxX < picker.frame.width - 1
     }
 }

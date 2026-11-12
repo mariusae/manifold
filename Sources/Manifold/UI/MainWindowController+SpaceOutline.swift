@@ -521,6 +521,13 @@ extension MainWindowController {
             let pane = words.count > 1 ? SettingsWindow.Pane.allCases.first { "\($0)".lowercased() == words[1].lowercased() } : nil
             settings().show(pane)
         case "close": settingsWindow?.close()
+        case "snapshot":
+            // "settings snapshot <path>": the Settings window's content, as a PNG.
+            guard words.count > 1, let v = settingsWindow?.window?.contentView,
+                  let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return "no settings" }
+            v.cacheDisplay(in: v.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: words[1]))
+            return "wrote \(words[1]) \(Int(v.bounds.width))x\(Int(v.bounds.height))"
         case "lsp":
             // "settings lsp [all | host <name> | <language> <column> <text> | root <markers> | clear]".
             let w = settings()
