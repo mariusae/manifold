@@ -390,6 +390,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             FontTheme.current = appearance.theme
             FontTheme.typography = appearance.typography
             for case let v as FollowsFontTheme in views.values { v.fontThemeChanged() }
+            // Threads in tiles are set in the editing face: drawn again in the new one.
+            refreshThreadChats()
         }
         settingsWindow?.refresh(tables: false)
         sidebar.pinned = pinned

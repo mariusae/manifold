@@ -249,6 +249,12 @@ extension MainWindowController: ThreadChatDelegate {
         }
     }
 
+    /// Every chat on screen drawn again from scratch (the fonts changed).
+    func refreshThreadChats() {
+        threadUI.shown.removeAll()
+        for w in threadUI.chats { if let chat = w.value { chat.clearRows(); refresh(chat) } }
+    }
+
     private func refresh(_ chat: ThreadChatView) {
         let thread = chat.threadID.flatMap { hosts.block($0) }
         // A new one not come yet: as it was.
@@ -581,6 +587,9 @@ extension MainWindowController {
             guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
             return chat.debugAsk(rest == "on" ? true : rest == "off" ? false : nil)
                 + " · thread asks \(chat.threadID.flatMap { hosts.block($0) }.flatMap { asksAgent(of: $0)?.name } ?? "nobody")"
+        case "font":
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            return t.chat.debugFont
         case "hoverpill":
             // "threads hoverpill": the pointer resting on the focused thread tile's first pill.
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }

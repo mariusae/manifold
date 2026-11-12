@@ -273,6 +273,14 @@ extension Block {
             s.lines = Array(source.dropFirst()) + (c.output ?? "").split(separator: "\n").map { Self.oneLine(String($0)) }.filter { !$0.isEmpty }.suffix(2)
             if let status = c.status, status != 0 { s.tone = .failed }
             return s
+        case let .comment(id):
+            // A thread's comment: who said it and when, its first lines.
+            guard let e = thread?.entries.first(where: { $0.id == id }), let words = e.comment else { return nil }
+            let lines = Self.firstLines(words, skipping: "", count: 4)
+            var s = BlockSummary(title: "\(e.author.name)'s comment", place: displayTitle)
+            s.lines = lines.map { Self.oneLine($0) }
+            s.note = BlockSummary.ago(e.at, now: now)
+            return s
         }
     }
 

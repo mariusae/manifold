@@ -978,7 +978,7 @@ final class ManiDesk {
         }
         // Any other place (an anchor, lines, a heading's line, a cell): what's there.
         switch t.at {
-        case .anchor?, .line?, .lines?, .range?, .cell?: return lines(try await contents(of: b, at: t.at, view: view), r.flags["lines"])
+        case .anchor?, .line?, .lines?, .range?, .cell?, .comment?: return lines(try await contents(of: b, at: t.at, view: view), r.flags["lines"])
         default: break
         }
         var pageFlag = r.flags["pages"]
@@ -1010,6 +1010,11 @@ final class ManiDesk {
             return try await contents(of: b, view: view, pages: n...n)
         case let .cell(id)?:
             if let c = b.notebook?.cells.first(where: { $0.id == id }) { return c.source + (c.output.map { "\n\n" + $0 } ?? "") }
+        case let .comment(id)?:
+            // One comment of a thread's: who, when, its words.
+            if let e = b.thread?.entries.first(where: { $0.id == id }), let words = e.comment {
+                return "\(e.author.name) (\(BlockSummary.ago(e.at, now: Date()) ?? "")):\n" + words
+            }
         case .line?, .lines?, .range?:
             guard b.kind == .text, let text = b.text, !b.needsRead else { break }
             if case let .range(r) = at!, r.end <= text.text.count { return text.text[r] }

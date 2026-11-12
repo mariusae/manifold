@@ -21,6 +21,8 @@ public enum Locator: Hashable, Codable, Sendable {
     case page(Int)
     /// A notebook's cell, by its id (kept as cells move: no anchor wanted).
     case cell(String)
+    /// One comment of a thread's, by its entry's id (§3.12).
+    case comment(String)
 
     /// A reference's fragment read: an anchor's id, or a legible place;
     /// nil for one that says neither.
@@ -51,6 +53,9 @@ public enum Locator: Hashable, Codable, Sendable {
         case "cell":
             guard !value.isEmpty else { return nil }
             self = .cell(value)
+        case "comment":
+            guard !value.isEmpty else { return nil }
+            self = .comment(value)
         default:
             return nil
         }
@@ -66,6 +71,7 @@ public enum Locator: Hashable, Codable, Sendable {
         case let .command(n): "command=\(n)"
         case let .page(n): "page=\(n)"
         case let .cell(id): "cell=\(id)"
+        case let .comment(id): "comment=\(id)"
         }
     }
 
@@ -80,6 +86,7 @@ public enum Locator: Hashable, Codable, Sendable {
         case let .command(n): "command \(n)"
         case let .page(n): "page \(n)"
         case .cell: "a cell"
+        case .comment: "a comment"
         }
     }
 

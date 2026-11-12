@@ -243,7 +243,7 @@ final class ThreadChatView: NSView {
         while i < entries.count {
             let e = entries[i]
             if !ruled, let mark = m.seenMark, e.at > mark, e.isNotable {
-                list.addArrangedSubview(rule("New"))
+                list.addArrangedSubview(fill(IssueNewView(inTile: m.inTile)))
                 ruled = true
                 previous = nil
             }
@@ -348,7 +348,7 @@ final class ThreadChatView: NSView {
 
     private func row(for e: ThreadEntry, after previous: ThreadEntry? = nil) -> NSView {
         switch e.kind {
-        case .comment(let text): return comment(e, text)
+        case .comment(let text): return comment(e, text, continued: CommentView.continues(e, after: previous))
         case .resolved: return event(who(e), "resolved this", at: e.at, symbol: "checkmark", tone: Status.done)
         case .reopened: return event(who(e), "reopened this", at: e.at, symbol: "arrow.uturn.backward")
         case let .asked(agent, name): return event(name, "was asked to look", at: e.at, symbol: "sparkle", icon: model.icon(agent))
@@ -369,11 +369,17 @@ final class ThreadChatView: NSView {
 
     /// A comment, as an issue's: its author's picture, and a card — who
     /// and when in its band, its words below.
-    private func comment(_ e: ThreadEntry, _ text: String) -> NSView {
+    private func comment(_ e: ThreadEntry, _ text: String, continued: Bool) -> NSView {
         let face = model.inTile ? Self.tileFont : nil
-        let v = IssueCommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), inTile: model.inTile,
+        let v = IssueCommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), inTile: model.inTile, continued: continued,
                                  size: face?.pointSize ?? UIType.body.pointSize, font: face,
                                  lineHeight: face.map { FontTheme.current.editorLineHeight(.proportional, font: $0) } ?? 0)
+        // Its mark, dragged: a reference to this comment; Copy Link, the same as text.
+        if let thread = model.thread?.id {
+            let title = (e.author.isYou ? "Your" : e.author.name + "'s") + " comment"
+            v.dragged = { Drags.place?(Place(block: thread, at: .comment(e.id), name: title), nil) }
+            v.link = { MainWindowController.address(thread) + "#" + Locator.comment(e.id).fragment }
+        }
         v.onQuote = { [weak self] words in self?.quote(words) }
         v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
@@ -407,15 +413,6 @@ final class ThreadChatView: NSView {
         return fill(line)
     }
 
-    private func rule(_ words: String) -> NSView {
-        let label = NSTextField.label(words, font: UIType.caption, color: Tints.accentText)
-        let left = HairlineView(), right = HairlineView()
-        let line = NSStackView(views: [left, label, right])
-        line.spacing = 6
-        left.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true
-        return fill(line)
-    }
-
     private func fill(_ v: NSView) -> NSView {
         v.translatesAutoresizingMaskIntoConstraints = false
         DispatchQueue.main.async { [weak self, weak v] in
@@ -423,6 +420,28 @@ final class ThreadChatView: NSView {
             v.widthAnchor.constraint(equalTo: self.list.widthAnchor).isActive = true
         }
         return v
+    }
+
+    /// Its rows let go of, to be made again (in new fonts) at the next show.
+    func clearRows() {
+        list.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let inTile = model.inTile
+        model = ThreadChatModel()
+        model.inTile = inTile
+    }
+
+    /// A comment gone to (a link to it followed): scrolled to the middle
+    /// and ringed, as the focused tile is, a few seconds.
+    func reveal(entry id: String) {
+        guard let v = list.arrangedSubviews.compactMap({ $0 as? IssueCommentView }).first(where: { $0.entryID == id }) else { return }
+        list.layoutSubtreeIfNeeded()
+        let clip = scroll.contentView
+        let y = max(0, min(v.frame.midY - clip.bounds.height / 2, list.frame.height - clip.bounds.height))
+        clip.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(clip)
+        list.arrangedSubviews.compactMap { $0 as? IssueCommentView }.forEach { $0.ringed = false }
+        v.ringed = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak v] in v?.ringed = false }
     }
 
     /// Quote Reply: the words quoted (`> `) into the composer, and the
@@ -781,8 +800,33 @@ final class Avatar: NSView {
         }
     }
 
-    override func mouseDown(with event: NSEvent) { onClick?() }
-    override func resetCursorRects() { if author.agentBlock != nil { addCursorRect(bounds, cursor: .pointingHand) } }
+    /// Dragged (moved a few points while pressed): what it stands for
+    /// carried out — a comment's mark, the comment.
+    var onDrag: ((NSEvent) -> Void)?
+    private var pressedAt: NSPoint?
+
+    override func mouseDown(with event: NSEvent) {
+        guard onDrag != nil else { return onClick?() ?? () }
+        pressedAt = event.locationInWindow
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let p = pressedAt, let onDrag, hypot(event.locationInWindow.x - p.x, event.locationInWindow.y - p.y) > 3 else { return }
+        pressedAt = nil
+        onDrag(event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        // Let go without dragging: a click (an agent's, its terminal).
+        if pressedAt != nil { onClick?() }
+        pressedAt = nil
+    }
+
+    override func resetCursorRects() {
+        // A handle: taken hold of; an agent's, clicked, its terminal.
+        if onDrag != nil { addCursorRect(bounds, cursor: .openHand) }
+        else if author.agentBlock != nil { addCursorRect(bounds, cursor: .pointingHand) }
+    }
 }
 
 /// A comment's words, rendered as Markdown, as wide as they want up to
@@ -1363,6 +1407,12 @@ extension ThreadChatView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) {
         let t = window?.firstResponder as? NSTextView
         done(t.flatMap { $0.selectedRange().length > 0 ? ($0.string as NSString).substring(with: $0.selectedRange()) : nil })
+    }
+
+    /// Debugging: the face its first comment's words are set in, and whether it's in a tile.
+    var debugFont: String {
+        let f = commentTexts.first?.textStorage.flatMap { $0.length > 0 ? $0.attribute(.font, at: 0, effectiveRange: nil) as? NSFont : nil }
+        return "\(f?.fontName ?? "none") \(f?.pointSize ?? 0) inTile \(model.inTile) theme \(FontTheme.current.rawValue)"
     }
 
     /// Debugging: the pointer resting on its first pill (a comment's): the block shown.

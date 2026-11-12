@@ -43,7 +43,7 @@ extension MainWindowController {
             return Anchor(id: "", at: .command(n), name: String(c.text.prefix(80)))
         case let .page(n):
             return b.kind == .pdf ? Anchor(id: "", at: .page(n), name: "Page \(n)") : nil
-        case .cell:
+        case .cell, .comment:
             return nil
         }
     }
@@ -104,7 +104,18 @@ extension MainWindowController {
             goToPlace(.line(rope.line(at: min(r.start, rope.count)) + 1), in: b)
         case let .cell(id):
             goToCell(id, in: b)
+        case let .comment(id):
+            goToComment(id, in: b)
         }
+    }
+
+    /// A thread's comment gone to: scrolled to and ringed in the chat that
+    /// shows the thread (its tile, the overlay), once one does.
+    func goToComment(_ id: String, in thread: BlockID, tries: Int = 20) {
+        let chats = threadUI.chats.compactMap(\.value).filter { $0.threadID == thread && $0.window != nil && !$0.isHiddenOrHasHiddenAncestor }
+        if let chat = chats.first { return chat.reveal(entry: id) }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.goToComment(id, in: thread, tries: tries - 1) }
     }
 
     /// A notebook's cell gone to: its tile's, once it's shown.
