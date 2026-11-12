@@ -16,6 +16,18 @@ extension MainWindowController {
 
     static let asksInARow = 3
 
+    /// Whether an agent is running in its terminal now — what an ask is
+    /// typed into: the terminal runs the agent in place of a shell, or its
+    /// shell's command running now is the agent's (`claude` typed at a
+    /// prompt). An agent that's ended, its shell back, is not asked: what's
+    /// typed would run as a command line (backticks and all).
+    static func agentRuns(_ b: Block) -> Bool {
+        guard let a = b.agent, let t = b.terminal, t.pid != nil else { return false }
+        if t.command != nil { return true }
+        guard let running = t.commands?.last, running.ended == nil, let program = CommandProgram.program(in: running.text) else { return false }
+        return program == a.command || (program as NSString).lastPathComponent == a.command
+    }
+
     /// A comment written in a thread (by you, or an agent through mani):
     /// the agents it asks, asked.
     /// `asks`: the thread made the agent's thread (Ask, as it was made).
@@ -49,7 +61,7 @@ extension MainWindowController {
         }
         // Following: your comment asks the agents that have written here.
         if author.isYou {
-            for a in th.agents where !asked.contains(a.block) && hosts.block(a.block)?.terminal?.pid != nil { asked.append(a.block) }
+            for a in th.agents where !asked.contains(a.block) && hosts.block(a.block).map(Self.agentRuns) == true { asked.append(a.block) }
         }
         // The agent's thread: your comment asks its agent, untagged — one
         // of its kind near (else one started), unless one's asked already.
@@ -81,7 +93,7 @@ extension MainWindowController {
     /// thread's space, else in the project of what it's about, else any.
     private func agentFor(_ kind: AgentCatalog.Agent, near th: ThreadState) -> BlockID? {
         let running = hosts.blocks.filter { b in
-            guard let a = b.agent, a.command == kind.command, b.terminal?.pid != nil, b.terminal?.dormantSince == nil else { return false }
+            guard let a = b.agent, a.command == kind.command, Self.agentRuns(b), b.terminal?.dormantSince == nil else { return false }
             return true
         }
         guard !running.isEmpty else { return nil }
@@ -131,7 +143,7 @@ extension MainWindowController {
     private func pressAgain(_ agent: BlockID, since: StatusRecord?, tries: Int) {
         guard tries > 0 else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self, let b = self.hosts.block(agent), b.terminal?.pid != nil, let r = b.statusRecord else { return }
+            guard let self, let b = self.hosts.block(agent), Self.agentRuns(b), let r = b.statusRecord else { return }
             // Begun (or asking something) since: taken.
             if r != since, r.state == .working || r.state == .blocked { return }
             self.hosts.propose(.input(block: agent, text: "\r"))
@@ -152,7 +164,8 @@ extension MainWindowController {
         var waiting: [PendingAsk] = []
         var byAgent: [BlockID: [PendingAsk]] = [:]
         for a in threadUI.asks {
-            guard let b = hosts.block(a.agent), b.terminal?.pid != nil else { continue }
+            // Typed only into the agent itself: not into a shell it's left.
+            guard let b = hosts.block(a.agent), Self.agentRuns(b) else { continue }
             let state = b.statusState
             if state == .working || state == .blocked { waiting.append(a); continue }
             byAgent[a.agent, default: []].append(a)
@@ -209,6 +222,6 @@ extension MainWindowController {
     private func agentForAsking(in t: Block) -> BlockID? {
         let space = t.thread?.space ?? selected
         guard let a = space.flatMap({ hosts.arrangement($0) }) else { return nil }
-        return a.placements.lazy.compactMap { self.hosts.block($0.block) }.first { $0.agent != nil && $0.terminal?.pid != nil }?.id
+        return a.placements.lazy.compactMap { self.hosts.block($0.block) }.first { Self.agentRuns($0) }?.id
     }
 }
