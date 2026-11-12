@@ -38,3 +38,16 @@ import Testing
     #expect(blocks(at: "line one").first === blocks(at: "line two").first)
     #expect(blocks(at: "Before").isEmpty && blocks(at: "After").isEmpty)
 }
+
+// A comment cut into words and code: each fenced block its own piece (laid
+// out unwrapped, scrolled sideways), the words round it pieces of their own.
+@Test func aCommentIsCutAtItsCodeBlocks() {
+    let md = "B3 crashed:\n\n```rust\npanicked at node.rs:1702\n  range end\n```\n\nNow capped at `text.len()`.\n~~~\nopen fence"
+    #expect(CommentPieces.split(md) == [
+        .words("B3 crashed:"),
+        .code("panicked at node.rs:1702\n  range end"),
+        .words("Now capped at `text.len()`."),
+        .code("open fence"),
+    ])
+    #expect(CommentPieces.split("No code at all.") == [.words("No code at all.")])
+}

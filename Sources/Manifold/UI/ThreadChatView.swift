@@ -96,9 +96,13 @@ final class ThreadChatView: NSView {
     /// document is — and its composer's; a card's and the overlay's, the
     /// interface's own.
     static let tileTextSize: CGFloat = 14
-    /// A tile's comments' face: the technical (as code's comments and
-    /// documentation are), the UI's font kept for the interface round them.
-    static var tileFont: NSFont { FontTheme.current.technicalFont(size: tileTextSize) }
+    /// A tile's comments' face: the editing one, at its own size — a thread
+    /// in a tile read and written at length, as a note is — the interface's
+    /// font kept for the chrome round them; code in the monospaced.
+    static var tileFont: NSFont {
+        let t = FontTheme.current
+        return t.font(.proportional, size: t.editorSize(.proportional))
+    }
     /// Debugging: whether its ↖↘ is shown.
     var debugTileButton: Bool { !tileButton.isHidden }
     /// The most it grows to, where it's fitted (a card).
@@ -354,8 +358,10 @@ final class ThreadChatView: NSView {
     /// A comment, as an issue's: its author's picture, and a card — who
     /// and when in its band, its words below.
     private func comment(_ e: ThreadEntry, _ text: String) -> NSView {
+        let face = model.inTile ? Self.tileFont : nil
         let v = IssueCommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), inTile: model.inTile,
-                                 size: model.inTile ? Self.tileTextSize : UIType.body.pointSize, font: model.inTile ? Self.tileFont : nil)
+                                 size: face?.pointSize ?? UIType.body.pointSize, font: face,
+                                 lineHeight: face.map { FontTheme.current.editorLineHeight(.proportional, font: $0) } ?? 0)
         v.onQuote = { [weak self] words in self?.quote(words) }
         v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
@@ -365,7 +371,7 @@ final class ThreadChatView: NSView {
             guard let self else { return }
             self.delegate?.threadChat(self, follow: url.absoluteString)
         }
-        v.body.text.onCommandLink = { [weak self] target, _ in
+        v.onCommandLink = { [weak self] target, _ in
             guard let self else { return }
             self.delegate?.threadChat(self, follow: target)
         }
@@ -772,13 +778,13 @@ final class CommentText: NSView, NSTextViewDelegate {
     /// the references in comments.
     static var look: ((BlockID) -> PillLook?)?
 
-    init(markdown: String, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil, boxes: Bool = false) {
+    init(markdown: String, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil, boxes: Bool = false, lineHeight: CGFloat = 0) {
         self.markdown = markdown
-        // In a face of its own (the technical), code in the theme's monospaced, as notes have it.
+        // In a face of its own (the editing one, a tile's), code in the theme's monospaced, as notes have it.
         let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
-        let tracking = font.map { FontTheme.current.technicalTracking($0) } ?? 0
+        let tracking = font.map { FontTheme.current.tracking(.proportional, font: $0) } ?? 0
         attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text,
-                                                         tracking: tracking, boxes: boxes))
+                                                         lineHeight: lineHeight, tracking: tracking, boxes: boxes))
         super.init(frame: .zero)
         // TextKit 1: a code block's box (an NSTextBlock) is laid out only there.
         _ = text.layoutManager

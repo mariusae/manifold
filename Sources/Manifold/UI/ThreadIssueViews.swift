@@ -46,11 +46,20 @@ final class IssueList: NSStackView {
 /// a header band (who, "commented", when, edited; its ⋯ menu), the words
 /// below, a caret from the band to the picture.
 final class IssueCommentView: NSView {
-    let body: CommentText
+    /// Its words, as written.
+    let markdown: String
+    /// Its pieces, top to bottom: its words between code blocks, and each
+    /// code block — its own view, scrolled sideways rather than wrapped.
+    private let parts: [NSView]
+    private var proses: [CommentText] { parts.compactMap { $0 as? CommentText } }
+    /// Every text in it (words and code): what ⌘ marks and ⌘F searches.
+    var texts: [PillTextView] { parts.compactMap { ($0 as? CommentText)?.text ?? ($0 as? CodeBlockView)?.text } }
     var onAuthor: (() -> Void)?
-    var onLink: ((URL) -> Void)? { didSet { body.onLink = onLink } }
+    var onLink: ((URL) -> Void)? { didSet { proses.forEach { $0.onLink = onLink } } }
     /// Yours: Edit Comment, in its ⋯ menu and its words' own.
-    var onEdit: (() -> Void)? { didSet { body.onEdit = onEdit } }
+    var onEdit: (() -> Void)? { didSet { proses.forEach { $0.onEdit = onEdit } } }
+    /// ⌘-clicked on a path or address in it.
+    var onCommandLink: ((String, Bool) -> Void)? { didSet { texts.forEach { $0.onCommandLink = onCommandLink } } }
     /// Quote Reply: its words, quoted, into the composer.
     var onQuote: ((String) -> Void)?
 
@@ -63,19 +72,31 @@ final class IssueCommentView: NSView {
     private let more = IconButton("ellipsis", size: 11, tip: "More")
     private let pad: CGFloat
     private let headerHeight: CGFloat
+    /// When it was said, in full and short (a narrow card's).
+    private let said: (full: String, short: String)
+    /// Between its pieces.
+    private static let partGap: CGFloat = 8
 
-    init(_ e: ThreadEntry, text: String, icon: NSImage?, inTile: Bool, size: CGFloat, font: NSFont?) {
+    init(_ e: ThreadEntry, text: String, icon: NSImage?, inTile: Bool, size: CGFloat, font: NSFont?, lineHeight: CGFloat = 0) {
         entry = e
+        markdown = text
         self.inTile = inTile
-        body = CommentText(markdown: text, size: size, font: font, boxes: true)
+        let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
+        parts = CommentPieces.split(text).map { piece -> NSView in
+            switch piece {
+            case let .words(md): return CommentText(markdown: md, size: size, font: font, boxes: true, lineHeight: lineHeight)
+            case let .code(lines): return CodeBlockView(lines, font: code)
+            }
+        }
         avatar = Avatar(e.author, icon: icon)
         pad = inTile ? 16 : 12
         headerHeight = inTile ? 38 : 32
         let headSize = inTile ? 13 : 12
         name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: CGFloat(headSize), weight: .semibold))
         let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
-        let said = ago == "now" ? "commented just now" : "commented \(ago) ago"
-        when = NSTextField.label(e.edited == nil ? said : said + " · edited", font: .systemFont(ofSize: CGFloat(headSize)), color: Theme.secondaryText)
+        let full = (ago == "now" ? "commented just now" : "commented \(ago) ago") + (e.edited == nil ? "" : " · edited")
+        said = (full, ago + (e.edited == nil ? "" : " · edited"))
+        when = NSTextField.label(full, font: .systemFont(ofSize: CGFloat(headSize)), color: Theme.secondaryText)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
@@ -86,10 +107,10 @@ final class IssueCommentView: NSView {
         card.caretY = headerHeight / 2
         avatar.onClick = { [weak self] in self?.onAuthor?() }
         // Laid out here, by hand, not by constraints.
-        body.translatesAutoresizingMaskIntoConstraints = true
+        for p in parts { p.translatesAutoresizingMaskIntoConstraints = true }
         more.target = self
         more.action = #selector(showMore)
-        for v in [card, avatar, name, when, more, body] as [NSView] { addSubview(v) }
+        for v in [card, avatar, name, when, more] + parts as [NSView] { addSubview(v) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -99,9 +120,18 @@ final class IssueCommentView: NSView {
     private var cardX: CGFloat { IssueLayout.avatar(inTile: inTile) + IssueLayout.gap }
     private func bodyWidth(_ width: CGFloat) -> CGFloat { max(60, width - cardX - 2 * pad) }
 
+    /// A piece's height at the card's width.
+    private func height(_ p: NSView, _ w: CGFloat) -> CGFloat {
+        (p as? CommentText)?.height(forWidth: w) ?? (p as? CodeBlockView)?.height ?? 0
+    }
+
+    private func partsHeight(_ w: CGFloat) -> CGFloat {
+        parts.reduce(0) { $0 + height($1, w) } + CGFloat(max(0, parts.count - 1)) * Self.partGap
+    }
+
     override var intrinsicContentSize: NSSize {
         let w = bounds.width > 0 ? bounds.width : 400
-        let h = headerHeight + pad + body.height(forWidth: bodyWidth(w)) + pad
+        let h = headerHeight + pad + partsHeight(bodyWidth(w)) + pad
         return NSSize(width: NSView.noIntrinsicMetric, height: max(h, IssueLayout.avatar(inTile: inTile)))
     }
 
@@ -120,19 +150,32 @@ final class IssueCommentView: NSView {
         card.inset = 7
         more.frame = NSRect(x: bounds.maxX - pad - 18, y: (headerHeight - 18) / 2, width: 18, height: 18)
         name.sizeToFit()
+        // When, in full where it fits; else short ("28m"), as an issue's does.
+        when.stringValue = said.full
         when.sizeToFit()
+        let room = more.frame.minX - 8 - (cardX + pad + name.frame.width + 5)
+        if when.frame.width > room {
+            when.stringValue = said.short
+            when.sizeToFit()
+        }
         let x = cardX + pad
         name.frame = NSRect(x: x, y: ((headerHeight - name.frame.height) / 2).rounded(), width: min(name.frame.width, bounds.width / 2), height: name.frame.height)
         when.frame = NSRect(x: name.frame.maxX + 5, y: ((headerHeight - when.frame.height) / 2).rounded(),
                             width: max(0, more.frame.minX - 8 - name.frame.maxX - 5), height: when.frame.height)
-        body.frame = NSRect(x: x, y: headerHeight + pad, width: bodyWidth(bounds.width), height: body.height(forWidth: bodyWidth(bounds.width)))
+        var y = headerHeight + pad
+        let w = bodyWidth(bounds.width)
+        for p in parts {
+            let h = height(p, w)
+            p.frame = NSRect(x: x, y: y, width: w, height: h)
+            y += h + Self.partGap
+        }
     }
 
     /// ⋯: Quote Reply, Copy Text; yours, Edit Comment.
     @objc private func showMore() {
         let menu = NSMenu()
         if let onEdit { menu.addItem(ClosureMenuItem("Edit Comment", symbol: "pencil") { onEdit() }) }
-        let words = body.markdown
+        let words = markdown
         if let onQuote { menu.addItem(ClosureMenuItem("Quote Reply", symbol: "text.quote") { onQuote(words) }) }
         menu.addItem(ClosureMenuItem("Copy Text", symbol: "doc.on.doc") { NSPasteboard.copy(words) })
         menu.popUp(positioning: nil, at: NSPoint(x: more.frame.minX, y: more.frame.maxY + 2), in: self)
@@ -268,5 +311,99 @@ final class IssueEventView: NSView {
             }
             Theme.symbol(symbol, size: side * 0.8, weight: .medium, color: tone ?? Theme.secondaryText)?.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
+    }
+}
+
+/// A comment cut into what's laid out as words and what's laid out as
+/// code: each fenced code block (```, at a line's start) its own piece.
+enum CommentPieces {
+    enum Piece: Equatable { case words(String), code(String) }
+
+    static func split(_ markdown: String) -> [Piece] {
+        var out: [Piece] = []
+        var words: [Substring] = [], code: [Substring] = []
+        var fence: String?
+        func flushWords() {
+            let w = words.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            if !w.trimmingCharacters(in: .whitespaces).isEmpty { out.append(.words(w)) }
+            words = []
+        }
+        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            let t = line.drop { $0 == " " }
+            let indent = line.count - t.count
+            if let f = fence {
+                if indent <= 3, t.hasPrefix(f), t.drop(while: { String($0) == String(f.first!) }).trimmingCharacters(in: .whitespaces).isEmpty {
+                    out.append(.code(code.joined(separator: "\n")))
+                    code = []
+                    fence = nil
+                } else {
+                    code.append(line)
+                }
+            } else if indent <= 3, t.hasPrefix("```") || t.hasPrefix("~~~") {
+                flushWords()
+                fence = String(t.prefix { $0 == t.first })
+            } else {
+                words.append(line)
+            }
+        }
+        // A fence left open: what came after it, its code.
+        if fence != nil { out.append(.code(code.joined(separator: "\n"))) }
+        flushWords()
+        return out
+    }
+}
+
+/// A comment's code block: its lines unwrapped on a tint, padded, scrolled
+/// sideways when they're wider than the card.
+final class CodeBlockView: NSView {
+    let text = PillTextView()
+    private let scroll = NSScrollView()
+    private static let pad: CGFloat = 10
+    /// Its height: its lines', and the room round them.
+    let height: CGFloat
+
+    init(_ code: String, font: NSFont) {
+        let storage = NSAttributedString(string: code, attributes: [.font: font, .foregroundColor: Theme.text])
+        _ = text.layoutManager
+        text.textStorage?.setAttributedString(storage)
+        text.isEditable = false
+        text.isSelectable = true
+        text.drawsBackground = false
+        text.textContainerInset = NSSize(width: Self.pad, height: Self.pad)
+        text.textContainer?.lineFragmentPadding = 0
+        // Unwrapped: as wide as its longest line.
+        text.isHorizontallyResizable = true
+        text.textContainer?.widthTracksTextView = false
+        text.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.layoutManager?.ensureLayout(for: text.textContainer!)
+        let used = text.layoutManager?.usedRect(for: text.textContainer!) ?? .zero
+        height = ceil(used.height) + 2 * Self.pad
+        text.frame = NSRect(x: 0, y: 0, width: ceil(used.width) + 2 * Self.pad, height: height)
+        super.init(frame: .zero)
+        scroll.drawsBackground = false
+        scroll.hasHorizontalScroller = true
+        scroll.hasVerticalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.verticalScrollElasticity = .none
+        scroll.documentView = text
+        addSubview(scroll)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        scroll.frame = bounds
+        text.frame.size.width = max(text.frame.width, bounds.width)
+        text.frame.size.height = bounds.height
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        MarkdownText.codeGround.setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }
 }
