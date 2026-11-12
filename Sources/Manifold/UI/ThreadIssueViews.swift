@@ -407,3 +407,51 @@ final class CodeBlockView: NSView {
         NSBezierPath(roundedRect: bounds, xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }
 }
+
+/// A reference's card (the block's, as its row in the sidebar shows it),
+/// the pointer resting on a reference to it: a pill in a comment or the
+/// composer, a card over the composer. The window says how to show it.
+enum ReferenceCards {
+    /// The block's card beside `rect` (window terms), after the pointer's lingered.
+    static var show: ((BlockID, NSRect, NSWindow) -> Void)?
+    static var hide: (() -> Void)?
+
+    /// The block a pill at a point stands for, and the pill's rect (the
+    /// view's terms): an attachment carrying a block's link (a comment's)
+    /// or a composer's reference.
+    static func reference(in tv: NSTextView, at p: NSPoint) -> (BlockID, NSRect)? {
+        guard let lm = tv.layoutManager, let tc = tv.textContainer, let storage = tv.textStorage, storage.length > 0 else { return nil }
+        let origin = tv.textContainerOrigin
+        let q = NSPoint(x: p.x - origin.x, y: p.y - origin.y)
+        let g = lm.glyphIndex(for: q, in: tc)
+        let i = lm.characterIndexForGlyph(at: g)
+        guard i < storage.length else { return nil }
+        var range = NSRange()
+        let id: BlockID?
+        if let mention = storage.attribute(.mentionBlock, at: i, effectiveRange: &range) as? String {
+            id = BlockID(string: mention)
+        } else if storage.attribute(.attachment, at: i, effectiveRange: nil) != nil, let link = storage.attribute(.link, at: i, effectiveRange: &range) {
+            let address = (link as? URL)?.absoluteString ?? (link as? String) ?? ""
+            id = BlockID.link(address)?.0
+        } else {
+            id = nil
+        }
+        guard let id else { return nil }
+        let rect = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil), in: tc)
+            .offsetBy(dx: origin.x, dy: origin.y)
+        return rect.insetBy(dx: -1, dy: -1).contains(p) ? (id, rect) : nil
+    }
+
+    /// The pointer moved in a text view: the card of the pill under it
+    /// shown (once), or put away as it leaves one. What's under it now.
+    static func track(_ tv: NSTextView, at p: NSPoint, was: BlockID?) -> BlockID? {
+        let now = reference(in: tv, at: p)
+        if now?.0 == was { return was }
+        if let (id, r) = now, let window = tv.window {
+            show?(id, tv.convert(r, to: nil), window)
+            return id
+        }
+        hide?()
+        return nil
+    }
+}

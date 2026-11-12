@@ -2830,7 +2830,24 @@ final class TextView: NSView, NSTextInputClient {
     /// no peek left behind.
     override func mouseExited(with event: NSEvent) {
         endPeek()
+        if hoveredReference != nil { ReferenceCards.hide?() }
+        hoveredReference = nil
         super.mouseExited(with: event)
+    }
+
+    /// The block whose card shows, the pointer resting on a reference to it.
+    private var hoveredReference: BlockID?
+
+    /// Over a reference to a block (a pill, a `manifold:` link) that's
+    /// there: its card, after the pointer's lingered; off it, put away.
+    private func hoverReference(_ target: String?, at p: NSPoint) {
+        let id = target.flatMap { $0.hasPrefix("manifold:") ? BlockID.link($0)?.0 : nil }
+        guard id != hoveredReference else { return }
+        hoveredReference = id
+        guard let id, ReferenceTip.whyMissing?(id) == nil, let window else { return ReferenceCards.hide?() ?? () }
+        let n = line(atY: p.y)
+        let r = NSRect(x: p.x - 6, y: top(ofLine: n), width: 12, height: lineHeight)
+        ReferenceCards.show?(id, convert(r, to: nil), window)
     }
 
     override func viewDidMoveToWindow() {
@@ -2849,6 +2866,7 @@ final class TextView: NSView, NSTextInputClient {
         notePeek(at: convert(event.locationInWindow, from: nil), event: event)
         let target = linkTarget(at: convert(event.locationInWindow, from: nil))
         ReferenceTip.hover(target, in: self)
+        hoverReference(target, at: convert(event.locationInWindow, from: nil))
         let over = target != nil
         let at = convert(event.locationInWindow, from: nil)
         let chip = foldChips.values.contains { $0.rect.contains(at) } || (gutterWidth > 0 && at.x < textLeft)

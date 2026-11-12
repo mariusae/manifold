@@ -456,7 +456,8 @@ final class ThreadChatView: NSView {
             return
         }
         let m = model
-        box.chips = m.thread == nil && !m.placeName.isEmpty ? [ChatBox.Chip(symbol: m.placeSymbol, image: m.placeImage, title: m.placeName, detail: m.placeWhere)] : []
+        box.chips = m.thread == nil && !m.placeName.isEmpty
+            ? [ChatBox.Chip(symbol: m.placeSymbol, image: m.placeImage, title: m.placeName, detail: m.placeWhere, block: m.place?.block)] : []
     }
 
     var debugEditing: String {
@@ -899,6 +900,29 @@ final class ComposerTextView: NSTextView {
     /// Made the first responder: clicked in, tabbed to, its tile focused.
     var onFocus: (() -> Void)?
 
+    // The pointer resting on a pill: its block's card (`ReferenceCards`).
+    private var hoverArea: NSTrackingArea?
+    private var hovering: BlockID?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let a = hoverArea { removeTrackingArea(a) }
+        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(a)
+        hoverArea = a
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        hovering = ReferenceCards.track(self, at: convert(event.locationInWindow, from: nil), was: hovering)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        if hovering != nil { ReferenceCards.hide?() }
+        hovering = nil
+    }
+
     override func becomeFirstResponder() -> Bool {
         let took = super.becomeFirstResponder()
         if took { onFocus?() }
@@ -1137,6 +1161,29 @@ final class PillTextView: NSTextView {
         chat.performTextFinderAction(sender)
     }
 
+    // The pointer resting on a pill: its block's card (`ReferenceCards`).
+    private var hoverArea: NSTrackingArea?
+    private var hovering: BlockID?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let a = hoverArea { removeTrackingArea(a) }
+        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        addTrackingArea(a)
+        hoverArea = a
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        hovering = ReferenceCards.track(self, at: convert(event.locationInWindow, from: nil), was: hovering)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        if hovering != nil { ReferenceCards.hide?() }
+        hovering = nil
+    }
+
     override func rightMouseDown(with event: NSEvent) {
         // ⌘-right-click on a link: its menu, as a terminal's.
         if event.modifierFlags.contains(.command), let (target, _) = commandLink(at: convert(event.locationInWindow, from: nil)),
@@ -1290,6 +1337,22 @@ extension ThreadChatView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) {
         let t = window?.firstResponder as? NSTextView
         done(t.flatMap { $0.selectedRange().length > 0 ? ($0.string as NSString).substring(with: $0.selectedRange()) : nil })
+    }
+
+    /// Debugging: the pointer resting on its first pill (a comment's): the block shown.
+    func debugHoverPill() -> String {
+        for t in commentTexts {
+            guard let storage = t.textStorage, let lm = t.layoutManager, let tc = t.textContainer else { continue }
+            var found: NSRange?
+            storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { v, r, stop in
+                if v != nil, storage.attribute(.link, at: r.location, effectiveRange: nil) != nil { found = r; stop.pointee = true }
+            }
+            guard let r = found else { continue }
+            let rect = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil), in: tc)
+            let p = NSPoint(x: rect.midX + t.textContainerOrigin.x, y: rect.midY + t.textContainerOrigin.y)
+            return ReferenceCards.track(t, at: p, was: nil).map { "resting on \($0)" } ?? "no pill there"
+        }
+        return "no pills"
     }
 
     /// Debugging: "find <query>" or "find next": the matches, and which.

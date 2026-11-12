@@ -576,6 +576,10 @@ extension MainWindowController {
             guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
             return chat.debugAsk(rest == "on" ? true : rest == "off" ? false : nil)
                 + " · thread asks \(chat.threadID.flatMap { hosts.block($0) }.flatMap { asksAgent(of: $0)?.name } ?? "nobody")"
+        case "hoverpill":
+            // "threads hoverpill": the pointer resting on the focused thread tile's first pill.
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            return t.chat.debugHoverPill()
         case "find":
             // "threads find <q>|next": ⌘F in the focused thread's tile.
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }

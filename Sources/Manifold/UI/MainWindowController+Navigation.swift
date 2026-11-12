@@ -200,6 +200,9 @@ extension MainWindowController {
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         LinkMenus.make = { [weak self] target, from, on in self?.linkMenu(target, from: from, on: on) }
         LinkMenus.drag = { [weak self] target, from, on in self?.linkDrag(target, from: from, on: on) }
+        // A reference rested on (a pill, a card over the composer): its block's card.
+        ReferenceCards.show = { [weak self] id, rect, window in self?.showBlockCard(id, beside: rect, in: window) }
+        ReferenceCards.hide = { HoverCard.shared.hide() }
         // A comment's references, as pills: each block's look, as its tile wears it.
         CommentText.look = { [weak self] id in
             guard let b = self?.hosts.block(id) else { return nil }

@@ -1,4 +1,5 @@
 import AppKit
+import ManifoldCore
 
 /// Where a comment is written (§3.12), as a chat app's: a rounded box
 /// that grows with what's written (up to a point, then it scrolls), what
@@ -14,6 +15,8 @@ final class ChatBox: NSView {
         var detail: String
         /// A reference in what's written (its block's id): a × takes it out.
         var mention: String? = nil
+        /// The block it stands for, if one: its card shown, the pointer resting on it.
+        var block: BlockID? = nil
 
         static func == (a: Chip, b: Chip) -> Bool { a.symbol == b.symbol && a.image === b.image && a.title == b.title && a.detail == b.detail && a.mention == b.mention }
     }
@@ -44,6 +47,7 @@ final class ChatBox: NSView {
         let made = composer.mentionedBlocks.compactMap { id -> Chip? in
             guard var c = Self.chipFor?(id) else { return nil }
             c.mention = id
+            c.block = BlockID(string: id)
             return c
         }
         guard made != mentionChips else { return }
@@ -199,7 +203,11 @@ final class ChipView: NSView {
     var onRemove: (() -> Void)? { didSet { remove.isHidden = true } }
     private let remove = IconButton.clear(tip: "Remove")
 
+    /// The block it stands for: its card shown, the pointer resting on it.
+    private let block: BlockID?
+
     init(_ chip: ChatBox.Chip) {
+        block = chip.block
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 10
@@ -233,8 +241,14 @@ final class ChipView: NSView {
         super.updateTrackingAreas()
     }
 
-    override func mouseEntered(with event: NSEvent) { if onRemove != nil { remove.isHidden = false } }
-    override func mouseExited(with event: NSEvent) { remove.isHidden = true }
+    override func mouseEntered(with event: NSEvent) {
+        if onRemove != nil { remove.isHidden = false }
+        if let block, let window { ReferenceCards.show?(block, convert(bounds, to: nil), window) }
+    }
+    override func mouseExited(with event: NSEvent) {
+        remove.isHidden = true
+        if block != nil { ReferenceCards.hide?() }
+    }
 
     var wantedWidth: CGFloat {
         title.sizeToFit()
