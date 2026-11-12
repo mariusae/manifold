@@ -351,7 +351,12 @@ final class OutlineStripView: NSView, NSDraggingSource {
         if item.running { return Theme.accent }
         if item.failed { return Status.failed }
         if item.you { return Theme.accent }
-        return tick.lit ? Theme.text : Theme.tertiaryText
+        // What's in view, the text's own colour; the rest fainter than
+        // the tertiary text, so the section shown stands out of the rest.
+        // (Drawn within the view's appearance: the colour resolved there.)
+        guard !tick.lit else { return Theme.text }
+        let t = Theme.tertiaryText.usingColorSpace(.sRGB) ?? Theme.tertiaryText
+        return t.withAlphaComponent(t.alphaComponent * 0.6)
     }
 
     private func draw(animated: Bool) {
