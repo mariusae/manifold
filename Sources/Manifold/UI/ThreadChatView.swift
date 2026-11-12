@@ -625,12 +625,16 @@ final class CommentText: NSView, NSTextViewDelegate {
         menu.insertItem(.separator(), at: 1)
         return menu
     }
-    private let text = NSTextView()
+    private let text = PillTextView()
     private let attributed: NSAttributedString
 
+    /// A block's pill's look (the window's: its name, symbol, status), for
+    /// the references in comments.
+    static var look: ((BlockID) -> PillLook?)?
+
     init(markdown: String, size: CGFloat = UIType.body.pointSize) {
-        attributed = MarkdownText.attributed(markdown, font: .systemFont(ofSize: size),
-                                             code: NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), color: Theme.text)
+        attributed = Self.pilled(MarkdownText.attributed(markdown, font: .systemFont(ofSize: size),
+                                                         code: NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular), color: Theme.text))
         super.init(frame: .zero)
         text.isEditable = false
         text.isSelectable = true
@@ -671,6 +675,48 @@ final class CommentText: NSView, NSTextViewDelegate {
         if let u = link as? URL { onLink?(u); return true }
         if let s = link as? String, let u = URL(string: s) { onLink?(u); return true }
         return false
+    }
+
+
+    /// References in a comment as their blocks' pills (§7), as the editor
+    /// draws them: a link to a block (its words naming a place in it, if
+    /// it's to one), and a reference written bare. Each still its link.
+    static func pilled(_ s: NSAttributedString) -> NSAttributedString {
+        guard let look else { return s }
+        let out = NSMutableAttributedString(attributedString: s)
+        let all = NSRange(location: 0, length: out.length)
+        var found: [(NSRange, String, PillLook)] = []
+        out.enumerateAttribute(.link, in: all) { value, range, _ in
+            let address = (value as? URL)?.absoluteString ?? (value as? String) ?? ""
+            guard address.hasPrefix("manifold:"), let (id, place) = BlockID.link(address), var l = look(id) else { return }
+            let words = (out.string as NSString).substring(with: range).trimmingCharacters(in: .whitespaces)
+            if place != nil, !words.isEmpty, words != address { l.title = words }
+            found.append((range, address, l))
+        }
+        let linked = found.map(\.0)
+        for m in TextLinks.bareReference.matches(in: out.string, range: all) where !linked.contains(where: { NSIntersectionRange($0, m.range).length > 0 }) {
+            let address = (out.string as NSString).substring(with: m.range)
+            guard let (id, place) = BlockID.link(address), var l = look(id) else { continue }
+            if let place {
+                let at = Locator(fragment: place)
+                if let anchor = at?.anchorID, let name = MarkdownStyle.placeName?(id, anchor) { l.title = name } else { l.title += " · " + (at?.words ?? place) }
+            }
+            found.append((m.range, address, l))
+        }
+        // From the end, so the ranges before stay where they were.
+        for (range, address, l) in found.sorted(by: { $0.0.location > $1.0.location }) {
+            var attrs = out.attributes(at: range.location, effectiveRange: nil)
+            let font = attrs[.font] as? NSFont ?? UIType.body
+            let h = ceil(font.ascender - font.descender) + 3
+            let a = NSTextAttachment()
+            a.image = LinkCapsule.pillImage(l, height: h)
+            // Centred on the text's middle: its lowercase letters'.
+            a.bounds = NSRect(x: 0, y: (font.xHeight - h) / 2, width: a.image!.size.width, height: h)
+            attrs[.link] = URL(string: address) ?? address
+            attrs[.attachment] = a
+            out.replaceCharacters(in: range, with: NSAttributedString(string: "\u{FFFC}", attributes: attrs))
+        }
+        return out
     }
 }
 
@@ -816,5 +862,29 @@ final class ComposerTextView: NSTextView {
             self.window?.makeFirstResponder(self)
         }
         return true
+    }
+}
+
+/// A comment's words: a pill (an attachment with a link on it) clicked
+/// goes where its link does — NSTextView takes a click on an attachment
+/// for itself, not its link's.
+final class PillTextView: NSTextView {
+    /// The pill's link under a point, if there's one there.
+    func pillLink(at p: NSPoint) -> Any? {
+        guard let lm = layoutManager, let tc = textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let q = NSPoint(x: p.x - textContainerOrigin.x, y: p.y - textContainerOrigin.y)
+        let g = lm.glyphIndex(for: q, in: tc)
+        guard lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc).contains(q) else { return nil }
+        let i = lm.characterIndexForGlyph(at: g)
+        guard i < storage.length, storage.attribute(.attachment, at: i, effectiveRange: nil) != nil else { return nil }
+        return storage.attribute(.link, at: i, effectiveRange: nil)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if let link = pillLink(at: convert(event.locationInWindow, from: nil)) {
+            _ = delegate?.textView?(self, clickedOnLink: link, at: 0)
+            return
+        }
+        super.mouseDown(with: event)
     }
 }

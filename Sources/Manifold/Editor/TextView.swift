@@ -1245,45 +1245,7 @@ final class TextView: NSView, NSTextInputClient {
 
     private func drawPill(_ look: PillLook, over run: Run, at rowTop: CGFloat, _ ctx: CGContext) {
         let r = NSRect(x: textLeft + run.x, y: rowTop + 1.5, width: run.width, height: lineHeight - 3)
-        let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        LinkCapsule.fill.setFill()
-        capsule.fill()
-        LinkCapsule.edge.setStroke()
-        capsule.lineWidth = LinkCapsule.edgeWidth
-        capsule.stroke()
-        var x = r.minX + 8
-        if let image = Self.tinted(look.symbol, size: LinkCapsule.symbolSize, color: Theme.secondaryText) {
-            image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-        }
-        x += 18
-        let title = NSAttributedString(string: look.title, attributes: [.font: MarkdownStyle.pillFont, .foregroundColor: Theme.text])
-        let size = title.size()
-        title.draw(at: NSPoint(x: x, y: r.midY - size.height / 2))
-        if let status = look.status {
-            let g = NSRect(x: r.maxX - 8 - 11, y: r.midY - 5.5, width: 11, height: 11)
-            // The glyph is drawn y up: the square flipped back for it.
-            ctx.saveGState()
-            ctx.translateBy(x: 0, y: g.minY + g.maxY)
-            ctx.scaleBy(x: 1, y: -1)
-            StatusGlyph.draw(status, in: g, phase: pillPhase)
-            ctx.restoreGState()
-        }
-    }
-
-    private static var tintedSymbols: [String: NSImage] = [:]
-    /// A symbol in a colour, for drawing by hand.
-    private static func tinted(_ name: String, size: CGFloat, color: NSColor) -> NSImage? {
-        let key = "\(name)/\(size)/\(color.description)"
-        if let i = tintedSymbols[key] { return i }
-        guard let symbol = Theme.symbol(name, size: size) else { return nil }
-        let image = NSImage(size: symbol.size, flipped: false) { rect in
-            symbol.draw(in: rect)
-            color.set()
-            rect.fill(using: .sourceAtop)
-            return true
-        }
-        tintedSymbols[key] = image
-        return image
+        LinkCapsule.drawPill(look, in: r, phase: pillPhase, ctx)
     }
 
     /// What a link under a point goes to, if the point is on one.

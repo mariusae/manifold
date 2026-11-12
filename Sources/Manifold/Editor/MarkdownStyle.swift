@@ -64,10 +64,7 @@ enum MarkdownStyle {
 
     /// The pill's font and the width it takes for a look, at a row height.
     static let pillFont = LinkCapsule.font
-    static func pillWidth(_ look: PillLook) -> CGFloat {
-        let text = ceil((look.title as NSString).size(withAttributes: [.font: pillFont]).width)
-        return 8 + 13 + 5 + text + (look.status == nil ? 0 : 4 + 11) + 8
-    }
+    static func pillWidth(_ look: PillLook) -> CGFloat { LinkCapsule.pillWidth(look) }
 
     /// Styles one line. `reveal`: the caret is on it, so markers show,
     /// dimmed, instead of hidden. `inCodeBlock`: between fences. `look`:

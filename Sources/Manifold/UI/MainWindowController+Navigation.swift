@@ -200,6 +200,11 @@ extension MainWindowController {
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         LinkMenus.make = { [weak self] target, from, on in self?.linkMenu(target, from: from, on: on) }
         LinkMenus.drag = { [weak self] target, from, on in self?.linkDrag(target, from: from, on: on) }
+        // A comment's references, as pills: each block's look, as its tile wears it.
+        CommentText.look = { [weak self] id in
+            guard let b = self?.hosts.block(id) else { return nil }
+            return PillLook(title: b.displayTitle, symbol: Theme.symbolName(for: b), status: StatusGlyph.look(of: b))
+        }
         LinkMenus.pathOf = { [weak self] id in
             guard let b = self?.hosts.block(id), b.kind == .text || b.kind == .directory || b.kind == .pdf || b.kind == .image else { return nil }
             return b.path

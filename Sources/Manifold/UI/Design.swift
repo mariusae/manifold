@@ -148,6 +148,68 @@ enum LinkCapsule {
     static var fill: NSColor { Theme.panel }
     static var edge: NSColor { EdgeColor.hairline }
     static let edgeWidth: CGFloat = 0.5
+
+    /// A block's pill (§7) in `r`, in a flipped context: its symbol, name
+    /// and status, as its tile wears them — one look wherever a reference
+    /// is drawn (the editor's Markdown, a comment's words).
+    static func drawPill(_ look: PillLook, in r: NSRect, phase: Double, _ ctx: CGContext) {
+        let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        fill.setFill()
+        capsule.fill()
+        edge.setStroke()
+        capsule.lineWidth = edgeWidth
+        capsule.stroke()
+        var x = r.minX + 8
+        if let image = tinted(look.symbol, size: symbolSize, color: Theme.secondaryText) {
+            image.draw(in: NSRect(x: x, y: r.midY - 6, width: 13, height: 12), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        x += 18
+        let title = NSAttributedString(string: look.title, attributes: [.font: font, .foregroundColor: Theme.text])
+        let size = title.size()
+        title.draw(at: NSPoint(x: x, y: r.midY - size.height / 2))
+        if let status = look.status {
+            let g = NSRect(x: r.maxX - 8 - 11, y: r.midY - 5.5, width: 11, height: 11)
+            // The glyph is drawn y up: the square flipped back for it.
+            ctx.saveGState()
+            ctx.translateBy(x: 0, y: g.minY + g.maxY)
+            ctx.scaleBy(x: 1, y: -1)
+            StatusGlyph.draw(status, in: g, phase: phase)
+            ctx.restoreGState()
+        }
+    }
+
+    /// A pill's width for a look: its symbol, its name, its status.
+    static func pillWidth(_ look: PillLook) -> CGFloat {
+        let text = ceil((look.title as NSString).size(withAttributes: [.font: font]).width)
+        return 8 + 13 + 5 + text + (look.status == nil ? 0 : 4 + 11) + 8
+    }
+
+    /// A pill as an image `height` tall (text's attachment), drawn in
+    /// whatever appearance it's drawn in.
+    static func pillImage(_ look: PillLook, height: CGFloat) -> NSImage {
+        let size = NSSize(width: min(pillWidth(look), 360), height: height)
+        return NSImage(size: size, flipped: true) { r in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            drawPill(look, in: r.insetBy(dx: 0.5, dy: 0.5), phase: 0, ctx)
+            return true
+        }
+    }
+
+    private static var tintedSymbols: [String: NSImage] = [:]
+    /// A symbol in a colour, for drawing by hand.
+    static func tinted(_ name: String, size: CGFloat, color: NSColor) -> NSImage? {
+        let key = "\(name)/\(size)/\(color.description)"
+        if let i = tintedSymbols[key] { return i }
+        guard let symbol = Theme.symbol(name, size: size) else { return nil }
+        let image = NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tintedSymbols[key] = image
+        return image
+    }
 }
 
 /// A pill: a count, an age — a few figures on a grey capsule, one look
