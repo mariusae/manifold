@@ -1,4 +1,5 @@
 import AppKit
+import Collaboration
 import ManifoldCore
 
 /// What a thread's chat asks of whoever shows it.
@@ -77,7 +78,7 @@ final class ThreadChatView: NSView {
     private let driftLabel = NSTextField(labelWithString: "")
     private let contextView = NSTextField(wrappingLabelWithString: "")
     private let scroll = NSScrollView()
-    private let list = FlippedStack()
+    private let list = IssueList()
     let composer = ComposerTextView()
     private lazy var box = ChatBox(composer: composer)
     private var placeholder: NSTextField { box.placeholder }
@@ -218,20 +219,43 @@ final class ThreadChatView: NSView {
             contextView.isHidden = true
         }
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        list.lineX = IssueLayout.lineX(inTile: m.inTile)
+        list.spacing = m.inTile ? 14 : 10
         var ruled = false
         var previous: ThreadEntry?
-        for e in t?.entries ?? [] where !e.isEmptyComment {
+        let entries = (t?.entries ?? []).filter { !$0.isEmptyComment }
+        var i = 0
+        while i < entries.count {
+            let e = entries[i]
             if !ruled, let mark = m.seenMark, e.at > mark, e.isNotable {
                 list.addArrangedSubview(rule("New"))
                 ruled = true
                 previous = nil
             }
+            // Agents asked again and again, nothing between: one row — who,
+            // each once, and how many times if it's one asked more than once.
+            if case let .asked(agent, _) = e.kind {
+                var j = i + 1
+                var names: [String] = []
+                var agents: [BlockID] = []
+                while j < entries.count, case .asked = entries[j].kind { j += 1 }
+                for k in i..<j { if case let .asked(a, n) = entries[k].kind, !agents.contains(a) { agents.append(a); if !names.contains(n) { names.append(n) } } }
+                if j - i > 1 {
+                    let who = names.count <= 2 ? names.joined(separator: " and ") : names.dropLast().joined(separator: ", ") + " and " + names.last!
+                    let words = names.count == 1 ? "was asked to look \(j - i) times" : "were asked to look"
+                    list.addArrangedSubview(event(who, words, at: entries[j - 1].at, symbol: "sparkle", icon: agents.count == 1 ? m.icon(agent) : nil))
+                    previous = entries[j - 1]
+                    i = j
+                    continue
+                }
+            }
             list.addArrangedSubview(row(for: e, after: previous))
             previous = e
+            i += 1
         }
         for agent in m.working {
             let name = t?.agents.first { $0.block == agent }?.name ?? "The agent"
-            list.addArrangedSubview(eventRow("\(name) is working on it…", icon: m.icon(agent)))
+            list.addArrangedSubview(event(name, "is working on it…", symbol: "ellipsis", icon: m.icon(agent)))
         }
         if t == nil {
             placeholder.stringValue = "Comment…"
@@ -308,24 +332,31 @@ final class ThreadChatView: NSView {
 
     private func row(for e: ThreadEntry, after previous: ThreadEntry? = nil) -> NSView {
         switch e.kind {
-        case .comment(let text): return comment(e, text, continued: CommentView.continues(e, after: previous))
-        case .resolved: return eventRow("Resolved by \(e.author.isYou ? "you" : e.author.name)", at: e.at)
-        case .reopened: return eventRow("Reopened by \(e.author.isYou ? "you" : e.author.name)", at: e.at)
-        case let .asked(agent, name): return eventRow("\(name) asked to look", at: e.at, icon: model.icon(agent))
+        case .comment(let text): return comment(e, text)
+        case .resolved: return event(who(e), "resolved this", at: e.at, symbol: "checkmark", tone: Status.done)
+        case .reopened: return event(who(e), "reopened this", at: e.at, symbol: "arrow.uturn.backward")
+        case let .asked(agent, name): return event(name, "was asked to look", at: e.at, symbol: "sparkle", icon: model.icon(agent))
         case let .edited(added, removed):
-            if case .manifold = e.author { return eventRow("Changed on disk (+\(added) −\(removed))", at: e.at) }
-            let who = e.author.isYou ? "You" : e.author.name
-            return eventRow("\(who) edited it (+\(added) −\(removed))", at: e.at, icon: e.author.agentBlock.flatMap(model.icon))
-        case .gone: return eventRow("Its lines were deleted", at: e.at, tone: .systemRed)
-        case .stopped(let why): return eventRow(why, at: e.at, tone: .systemOrange)
+            if case .manifold = e.author { return event(nil, "Changed on disk (+\(added) −\(removed))", at: e.at, symbol: "pencil") }
+            return event(who(e), "edited it (+\(added) −\(removed))", at: e.at, symbol: "pencil", icon: e.author.agentBlock.flatMap(model.icon))
+        case .gone: return event(nil, "Its lines were deleted", at: e.at, symbol: "trash", tone: .systemRed)
+        case .stopped(let why): return event(nil, why, at: e.at, symbol: "pause", tone: .systemOrange)
         }
     }
 
-    /// A comment: its author's mark, name and when, over its words.
-    private func comment(_ e: ThreadEntry, _ text: String, continued: Bool) -> NSView {
-        let width = scroll.contentSize.width > 0 ? scroll.contentSize.width : bounds.width - 24
-        let v = CommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), continued: continued, width: width - 4,
-                            size: model.inTile ? Self.tileTextSize : UIType.body.pointSize, font: model.inTile ? Self.tileFont : nil)
+    private func who(_ e: ThreadEntry) -> String { e.author.isYou ? "You" : e.author.name }
+
+    /// Something that happened, on the conversation's line.
+    private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil) -> NSView {
+        fill(IssueEventView(who: who, words: words, at: at, symbol: symbol, icon: icon, tone: tone, inTile: model.inTile))
+    }
+
+    /// A comment, as an issue's: its author's picture, and a card — who
+    /// and when in its band, its words below.
+    private func comment(_ e: ThreadEntry, _ text: String) -> NSView {
+        let v = IssueCommentView(e, text: text, icon: e.author.agentBlock.flatMap(model.icon), inTile: model.inTile,
+                                 size: model.inTile ? Self.tileTextSize : UIType.body.pointSize, font: model.inTile ? Self.tileFont : nil)
+        v.onQuote = { [weak self] words in self?.quote(words) }
         v.onAuthor = { [weak self] in
             guard let self, let b = e.author.agentBlock else { return }
             self.delegate?.threadChat(self, follow: MainWindowController.address(b))
@@ -374,6 +405,15 @@ final class ThreadChatView: NSView {
             v.widthAnchor.constraint(equalTo: self.list.widthAnchor).isActive = true
         }
         return v
+    }
+
+    /// Quote Reply: the words quoted (`> `) into the composer, and the
+    /// keyboard there, after them.
+    private func quote(_ words: String) {
+        let quoted = words.split(separator: "\n", omittingEmptySubsequences: false).map { "> " + $0 }.joined(separator: "\n") + "\n\n"
+        window?.makeFirstResponder(composer)
+        composer.insertReferences(quoted, at: (composer.string as NSString).length)
+        composerChanged()
     }
 
     // MARK: Editing a comment
@@ -667,6 +707,17 @@ final class Avatar: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
+        // Yours: this Mac's picture of you (your account's), round.
+        if author.isYou, let picture = UserPicture.image {
+            NSGraphicsContext.saveGraphicsState()
+            circle.addClip()
+            picture.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+            Theme.text.withAlphaComponent(0.12).setStroke()
+            circle.lineWidth = 0.5
+            circle.stroke()
+            return
+        }
         if author.isYou {
             Theme.accent.setFill()
             circle.fill()
@@ -721,12 +772,16 @@ final class CommentText: NSView, NSTextViewDelegate {
     /// the references in comments.
     static var look: ((BlockID) -> PillLook?)?
 
-    init(markdown: String, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil) {
+    init(markdown: String, size: CGFloat = UIType.body.pointSize, font: NSFont? = nil, boxes: Bool = false) {
+        self.markdown = markdown
         // In a face of its own (the technical), code in the theme's monospaced, as notes have it.
         let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
         let tracking = font.map { FontTheme.current.technicalTracking($0) } ?? 0
-        attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text, tracking: tracking))
+        attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text,
+                                                         tracking: tracking, boxes: boxes))
         super.init(frame: .zero)
+        // TextKit 1: a code block's box (an NSTextBlock) is laid out only there.
+        _ = text.layoutManager
         text.isEditable = false
         text.isSelectable = true
         text.drawsBackground = false
@@ -749,6 +804,26 @@ final class CommentText: NSView, NSTextViewDelegate {
     }
 
     var limit: CGFloat = 340 { didSet { if limit != oldValue { invalidateIntrinsicContentSize() } } }
+
+    /// Its height laid out at a width, as a text view lays it out (its
+    /// code blocks' boxes and all); the last asked kept.
+    func height(forWidth w: CGFloat) -> CGFloat {
+        if let last = measured, abs(last.width - w) < 0.5 { return last.height }
+        let storage = NSTextStorage(attributedString: attributed)
+        let lm = NSLayoutManager()
+        let tc = NSTextContainer(size: NSSize(width: max(40, w), height: .greatestFiniteMagnitude))
+        tc.lineFragmentPadding = 0
+        lm.addTextContainer(tc)
+        storage.addLayoutManager(lm)
+        lm.ensureLayout(for: tc)
+        let h = ceil(lm.usedRect(for: tc).height)
+        measured = (w, h)
+        return h
+    }
+    private var measured: (width: CGFloat, height: CGFloat)?
+
+    /// Its words as Markdown, as written.
+    let markdown: String
 
     override var intrinsicContentSize: NSSize { size(limit: limit) }
 
@@ -1216,4 +1291,10 @@ extension ThreadChatView: Searchable {
         if q == "next" { findNext(forward: true) } else { finder.show(query: q, fromSelection: false) }
         return "\(matches.count) matches, current \(currentMatch.map(String.init) ?? "none")"
     }
+}
+
+/// This Mac's picture of you: your account's (System Settings ▸ Users),
+/// read once; nil, none — your initial on the accent instead.
+enum UserPicture {
+    static let image: NSImage? = CBIdentity(name: NSUserName(), authority: CBIdentityAuthority.local())?.image
 }

@@ -10,13 +10,17 @@ enum MarkdownText {
     /// down from white in the dark, headings and bold brighter.
     static let readingBody = NSColor.themed { $0.text.readingBody }
     static let readingStrong = NSColor.themed { $0.text.readingStrong }
+    /// Code's ground in a comment: a faint tint of the text.
+    static let codeGround = NSColor(name: nil) { a in
+        (a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black).withAlphaComponent(0.05)
+    }
 
     /// `strong`: headings' and bold's colour (else `color`); `lineHeight`:
     /// lines as a multiple of the font's own (0, its own); `tracking`:
     /// letter spacing in points.
     static func attributed(_ markdown: String, font: NSFont, code: NSFont, color: NSColor = Theme.text,
                            secondary: NSColor = Theme.secondaryText, strong: NSColor? = nil,
-                           lineHeight: CGFloat = 0, tracking: CGFloat = 0) -> NSAttributedString {
+                           lineHeight: CGFloat = 0, tracking: CGFloat = 0, boxes: Bool = false) -> NSAttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible)
         guard let parsed = try? AttributedString(markdown: markdown, options: options) else {
             return NSAttributedString(string: markdown, attributes: [.font: font, .foregroundColor: color])
@@ -26,6 +30,22 @@ enum MarkdownText {
         // Items already marked: each its mark once, before its first words
         // (not again before a later paragraph of it, or an item in it).
         var marked = Set<Int>()
+        // `boxes`: a code block on a tint of its own, padded, as an issue's
+        // comment shows one (laid out by a text view: TextKit's blocks).
+        var lastWasCode = false
+        var codeBlockID: Int?
+        let codeBox: NSTextBlock? = boxes ? {
+            let b = NSTextBlock()
+            b.backgroundColor = Self.codeGround
+            b.setWidth(10, type: .absoluteValueType, for: .padding)
+            // As wide as the text (without a width, a block is as narrow as a letter).
+            b.setValue(100, type: .percentageValueType, for: .width)
+            // Room above and below, so its ground stays off the lines round
+            // it (an inline code's tint just under it most).
+            b.setWidth(6, type: .absoluteValueType, for: .margin, edge: .minY)
+            b.setWidth(10, type: .absoluteValueType, for: .margin, edge: .maxY)
+            return b
+        }() : nil
         for run in parsed.runs {
             var text = String(parsed[run.range].characters)
             let components = run.presentationIntent?.components ?? []
@@ -72,12 +92,22 @@ enum MarkdownText {
             }
             if isCode {
                 while text.hasSuffix("\n") { text.removeLast() }
-            } else {
+                if let codeBox { paragraph.textBlocks = [codeBox] }
+            } else if codeBox != nil, lastWasCode, block != codeBlockID {
+                // Just after a code block's box: room above, clear of its ground.
+                paragraph.paragraphSpacingBefore = font.pointSize * 0.7
+            }
+            if isCode { codeBlockID = block }
+            lastWasCode = isCode
+            if !isCode {
                 text = text.replacingOccurrences(of: "\n", with: " ")
             }
             var attrs: [NSAttributedString.Key: Any] = [.font: runFont, .foregroundColor: runColor, .paragraphStyle: paragraph]
             if let inline = run.inlinePresentationIntent {
-                if inline.contains(.code) { attrs[.font] = code }
+                if inline.contains(.code) {
+                    attrs[.font] = code
+                    if boxes { attrs[.backgroundColor] = Self.codeGround }
+                }
                 if inline.contains(.stronglyEmphasized) {
                     attrs[.font] = NSFontManager.shared.convert(attrs[.font] as! NSFont, toHaveTrait: .boldFontMask)
                     if let strong { attrs[.foregroundColor] = strong }
