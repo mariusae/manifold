@@ -94,11 +94,35 @@ extension MainWindowController {
 
     /// Words typed into an agent's prompt and sent: the words, then
     /// Return a moment after — in one write, an agent's prompt (Claude
-    /// Code's) takes it all as a paste, the Return a new line in it.
+    /// Code's) takes it all as a paste, the Return a new line in it. A
+    /// long line given longer to land. An agent that reports how it
+    /// stands (its hooks) and hasn't started on it a moment later — its
+    /// prompt still settling from the turn before, the Return taken into
+    /// the paste — is given Return again, twice at most.
     func say(_ text: String, to agent: BlockID) {
         hosts.propose(.input(block: agent, text: text))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.hosts.propose(.input(block: agent, text: "\r"))
+        let reports = hosts.block(agent)?.statusRecord != nil
+        let landed = 0.3 + min(0.7, Double(text.count) / 2000)
+        DispatchQueue.main.asyncAfter(deadline: .now() + landed) { [weak self] in
+            guard let self else { return }
+            // How it stood as Return went: a report after it, a new one.
+            let before = self.hosts.block(agent)?.statusRecord
+            self.hosts.propose(.input(block: agent, text: "\r"))
+            guard reports else { return }
+            self.pressAgain(agent, since: before, tries: 2)
+        }
+    }
+
+    /// Return again if the agent hasn't said it's started since it said
+    /// `since` (its report then; another host's clock isn't this Mac's).
+    private func pressAgain(_ agent: BlockID, since: StatusRecord?, tries: Int) {
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, let b = self.hosts.block(agent), b.terminal?.pid != nil, let r = b.statusRecord else { return }
+            // Begun (or asking something) since: taken.
+            if r != since, r.state == .working || r.state == .blocked { return }
+            self.hosts.propose(.input(block: agent, text: "\r"))
+            self.pressAgain(agent, since: since, tries: tries - 1)
         }
     }
 
