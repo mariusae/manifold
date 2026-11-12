@@ -305,13 +305,16 @@ extension MainWindowController {
         guard let a = arrangement, let (c, i) = a.locate(placement) else { return }
         let p = id.map { Placement(id: $0, block: block, lens: lens) } ?? Placement(block: block, lens: lens)
         // The column's heights as they were, the new tile in the old one's
-        // place: the remove and the place in between hand room about
-        // (to the next tile, from the one above), and the tile would
+        // place: the place and the remove in between hand room about
+        // (from the tile beside it, back to the next), and the tile would
         // otherwise come back a different size, its neighbours moved.
+        // Placed before the old one's taken away: a tile alone in its
+        // column would take the column with it, and the new one land in
+        // the next (the columns' widths made equal too).
         var heights: [PlacementID: Double] = [:]
         for t in a.columns[c] { heights[t.id == placement ? p.id : t.id] = a.height(of: t.id) }
         replacedInPlace.insert(placement)
-        appendToSelected([.remove(placement), .place(p, column: c, at: i), .heights(heights), .focus(p.id)]
+        appendToSelected([.place(p, column: c, at: i), .remove(placement), .heights(heights), .focus(p.id)]
                          + (a.full == placement ? [.full(p.id)] : []))
     }
 

@@ -93,6 +93,25 @@ private func stamp() -> Stamp { Stamp(wall: Int64(Date().timeIntervalSince1970 *
     #expect(node.block(id)?.title == nil)
 }
 
+// A tile replaced in place (a preview to its editor, ⌘↩) when it's alone
+// in its column: the new one placed before the old one's taken away, so the
+// column stays — not dropped, the new tile landing in the next one.
+@Test func aLoneTileReplacedInPlaceKeepsItsColumn() {
+    var a = ArrangementState()
+    let left = Placement(block: BlockID(), lens: .terminal)
+    let mid = Placement(block: BlockID(), lens: .preview)
+    let right = Placement(block: BlockID(), lens: .terminal)
+    a.apply(.place(left, column: 0, at: 0))
+    a.apply(.place(mid, column: 1, at: 0))
+    a.apply(.place(right, column: 2, at: 0))
+    a.apply(.fractions([0.2, 0.5, 0.3]))
+    let edit = Placement(block: mid.block, lens: .editor)
+    for ev in [Event.place(edit, column: 1, at: 0), .remove(mid.id), .heights([edit.id: 1]), .focus(edit.id)] { a.apply(ev) }
+    #expect(a.columns.map { $0.map(\.id) } == [[left.id], [edit.id], [right.id]])
+    #expect(a.fractions == [0.2, 0.5, 0.3])
+    #expect(a.focused == edit.id)
+}
+
 @Test func arrangementTilesAsAcmeDoes() {
     var a = ArrangementState()
     let t1 = Placement(block: BlockID(), lens: .terminal)
