@@ -334,6 +334,11 @@ extension MainWindowController: ThreadChatDelegate {
         askAgents(in: id, comment: text, author: Hosts.you)
         // The card's threads now this one.
         if let card = threadUI.card, card.chat === view { card.threads = [id] }
+        // The overlay's: a thread now, to make a tile of at once.
+        if let o = threadUI.overlay, o.chat === view {
+            o.hereThreads = [id] + o.hereThreads
+            o.canPopOut = true
+        }
     }
 
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {
@@ -531,7 +536,7 @@ extension MainWindowController {
         case "card":
             guard let card = threadUI.card, let pop = threadUI.popover else { return "no card" }
             let m = card.chat.model
-            return "shown \(pop.isShown) · thread \(card.chat.threadID.map { String($0.ulid.suffix(6)) } ?? "new") · \(card.threads.count) here · place “\(m.placeTitle)” drift \(m.drift ?? "none")\(m.gone ? " GONE" : "") · \(m.thread?.thread?.entries.count ?? 0) entries · new rule after \(m.seenMark.map { "\($0.wall)" } ?? "none") · size \(Int(pop.contentSize.width))x\(Int(pop.contentSize.height))"
+            return "shown \(pop.isShown) · thread \(card.chat.threadID.map { String($0.ulid.suffix(6)) } ?? "new") · \(card.threads.count) here · place “\(m.placeTitle)” drift \(m.drift ?? "none")\(m.gone ? " GONE" : "") · \(m.thread?.thread?.entries.count ?? 0) entries · new rule after \(m.seenMark.map { "\($0.wall)" } ?? "none") · size \(Int(pop.contentSize.width))x\(Int(pop.contentSize.height)) · tile button \(card.chat.debugTileButton)"
         case "close":
             threadUI.popover?.close()
             return "closed"

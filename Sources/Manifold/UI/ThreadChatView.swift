@@ -79,6 +79,8 @@ final class ThreadChatView: NSView {
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
+    /// Debugging: whether its ↖↘ is shown.
+    var debugTileButton: Bool { !tileButton.isHidden }
     /// The most it grows to, where it's fitted (a card).
     var maxHeight: CGFloat = 560
     /// Fitted to its content (a card), else filling what it's given (a tile).
