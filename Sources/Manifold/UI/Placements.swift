@@ -33,6 +33,8 @@ struct Shown: Equatable {
         // A coding agent at work in it: the agent's mark.
         if stackedOver != nil { return Marks.terminal }
         if let a = block?.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
+        // A terminal running something with a mark (git, docker, vim…): its mark, while it runs.
+        if lens == .terminal, let b = block, let p = ProgramIcons.symbol(for: b) { return p }
         // A folder that's a project's root: the project's box.
         if lens == .directory, let b = block, b.kind == .directory, Theme.isProject?(b) == true { return Theme.projectSymbol }
         // A thread resolved: the bubble ticked, as the threads' list has it.

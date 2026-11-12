@@ -112,6 +112,7 @@ enum Theme {
     /// (an agent block, a terminal running one) the agent's own mark.
     static func symbolName(for block: Block) -> String {
         if let a = block.agent, AgentIcons.has(a.command) { return AgentIcons.prefix + a.command }
+        if let p = ProgramIcons.symbol(for: block) { return p }
         if block.kind == .directory, isProject?(block) == true { return projectSymbol }
         if block.thread?.resolved == true { return resolvedThreadSymbol }
         return symbolName(for: block.kind, path: block.path)
@@ -166,6 +167,11 @@ enum Theme {
             symbols[key] = image
             return image
         }
+        // A program's mark (what runs in a terminal), drawn as a symbol would be.
+        if name.hasPrefix(ProgramIcons.prefix), let image = ProgramIcons.image(String(name.dropFirst(ProgramIcons.prefix.count)), size: size) {
+            symbols[key] = image
+            return image
+        }
         if let image = Marks.image(name, size: size, weight: weight) {
             symbols[key] = image
             return image
@@ -185,6 +191,7 @@ enum Theme {
     /// of our own (`Marks`), or an agent's mark (in its own colours).
     static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
         if name.hasPrefix(AgentIcons.prefix) { return symbol(name, size: size, weight: weight) }
+        if name.hasPrefix(ProgramIcons.prefix) { return symbol(name, size: size, weight: weight)?.tinted(color) }
         if let mark = Marks.image(name, size: size, weight: weight) { return mark.tinted(color) }
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: size, weight: weight).applying(.init(paletteColors: [color])))

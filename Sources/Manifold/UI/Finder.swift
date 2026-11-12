@@ -1178,6 +1178,7 @@ final class FileCell: NSTableCellView {
         if let i = images[name] { return i }
         // A coding agent's mark, at the size the row's symbols are.
         let i = (name.hasPrefix(AgentIcons.prefix) ? AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: 15) : nil)
+            ?? (name.hasPrefix(ProgramIcons.prefix) ? ProgramIcons.image(String(name.dropFirst(ProgramIcons.prefix.count)), size: 15) : nil)
             ?? Marks.image(name, size: UIType.symbolSize, weight: .medium)
             ?? NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
         images[name] = i
