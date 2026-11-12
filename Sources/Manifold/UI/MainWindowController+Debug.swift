@@ -55,6 +55,8 @@ extension MainWindowController {
     func openFromNotification(_ block: BlockID, command: Int?) {
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
+        // A thread's news: the thread, in the overlay, as ⌘J shows one.
+        if hosts.block(block)?.kind == .thread { return showThreadOverlay(nil, thread: block) }
         goTo(block)
         if let command { goToCommand(command, in: block) }
     }

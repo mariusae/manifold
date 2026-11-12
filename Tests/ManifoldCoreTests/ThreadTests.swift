@@ -32,9 +32,10 @@ private let claude = ThreadAuthor.agent(block: BlockID(host: .local), name: "Cla
 }
 
 @Test func whatsNotSeen() {
-    let b = thread([(1, me, .comment("Look at this")), (2, .manifold, .edited(added: 1, removed: 0)), (3, claude, .comment("Done")), (4, claude, .resolved), (5, me, .comment("Thanks"))])
+    let b = thread([(1, me, .comment("Look at this")), (2, .manifold, .edited(added: 1, removed: 0)), (3, claude, .comment("Done")),
+                    (4, claude, .comment("And this")), (5, me, .comment("Thanks"))])
     let t = b.thread!
-    // Yours aren't news, nor a place edited.
+    // An agent's comments, in a thread you're in: news. Yours aren't, nor a place edited.
     #expect(t.unseen(after: nil).map(\.at.wall) == [3, 4])
     #expect(t.unseen(after: at(3)).map(\.at.wall) == [4])
     #expect(t.unseen(after: at(5)).isEmpty)
@@ -50,6 +51,26 @@ private let claude = ThreadAuthor.agent(block: BlockID(host: .local), name: "Cla
     // Kept across a save.
     let data = try! JSONEncoder().encode(desk)
     #expect(try! JSONDecoder().decode(DeskState.self, from: data).threadsSeen[b.id] == at(9))
+}
+
+// What's news (§3.12): an agent's comment in a thread you're in, or one
+// naming you anywhere; nothing in a resolved thread; not a resolve, a
+// reopen, or asking stopped.
+@Test func onlyWhatsForYouIsNews() {
+    // Resolved: quiet, whatever came before it.
+    let done = thread([(1, me, .comment("Fix it")), (2, claude, .comment("Fixed")), (3, claude, .resolved)])
+    #expect(done.thread!.unseen(after: nil).isEmpty)
+    // Reopened by an agent: its comments news again, the reopen not.
+    let back = thread([(1, me, .comment("Fix it")), (2, claude, .resolved), (3, claude, .reopened), (4, .manifold, .stopped("Asking stopped"))])
+    #expect(back.thread!.unseen(after: nil).isEmpty)
+    // Agents asking agents, without you: not news — unless one names you.
+    let theirs = thread([(1, claude, .comment("@codex check this")), (2, claude, .comment("Looks fine to me"))])
+    #expect(theirs.thread!.unseen(after: nil).isEmpty)
+    let named = thread([(1, claude, .comment("@codex check this")), (2, claude, .comment("@user should we ship it?"))])
+    #expect(named.thread!.unseen(after: nil).map(\.at.wall) == [2])
+    // Started by an agent for you (asking no one): news.
+    let forYou = thread([(1, claude, .comment("Is this lock needed?"))])
+    #expect(forYou.thread!.unseen(after: nil).map(\.at.wall) == [1])
 }
 
 @Test func asksInARow() {

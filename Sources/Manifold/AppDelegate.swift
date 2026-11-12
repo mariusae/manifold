@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             notifier.speaksHere = { [weak hosts] b in hosts?.speaksHere(b) ?? true }
             TerminalView.ringsHere = { [weak hosts] b in hosts?.speaksHere(b) ?? true }
             notifier.onOpen = { [weak wc] b, command in wc?.openFromNotification(b, command: command) }
+            notifier.threadNews = { [weak hosts] t in hosts?.unseen(t) ?? [] }
             notifier.update(hosts.blocks)
         }
     }

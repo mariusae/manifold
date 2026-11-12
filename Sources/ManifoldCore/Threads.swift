@@ -71,15 +71,19 @@ public struct ThreadEntry: Codable, Equatable, Sendable, Identifiable {
 
     public var comment: String? { if case .comment(let t) = kind { t } else { nil } }
 
-    /// Worth telling you of: something someone else said or did to it — a
-    /// comment, a resolve or a reopen, asking stopped — not your own, and
-    /// not a place moving under it. What makes a thread unread.
+    /// Worth telling you of, as far as the entry goes: something an agent
+    /// said — a comment — not your own, not Manifold's (asking stopped, a
+    /// place moving under it), not a resolve or a reopen. Whether the
+    /// thread makes it news is its own (`ThreadState.unseen`).
     public var isNotable: Bool {
-        guard !author.isYou else { return false }
-        switch kind {
-        case .comment, .resolved, .reopened, .stopped: return true
-        default: return false
-        }
+        guard case .agent = author, case .comment = kind else { return false }
+        return true
+    }
+
+    /// Whether a comment names you: `@you`, `@me`, `@user`.
+    public var mentionsYou: Bool {
+        guard let text = comment else { return false }
+        return ThreadText.tags(in: text).contains { ["you", "me", "user"].contains($0.lowercased()) }
     }
 }
 
@@ -191,9 +195,23 @@ public struct ThreadState: Codable, Equatable, Sendable {
         return out
     }
 
-    /// The entries after a mark (all, for nil) that are worth telling you of.
+    /// The entries after a mark (all, for nil) that are news to you
+    /// (§3.12): an agent's comments in a thread you're in, or one naming
+    /// you anywhere — none once it's resolved. What the dot, ⌘J, the
+    /// Dock's count and the Mac's notifications go by.
     public func unseen(after mark: Stamp?) -> [ThreadEntry] {
-        entries.filter { e in e.isNotable && mark.map { e.at > $0 } ?? true }
+        guard !resolved else { return [] }
+        let yours = involvesYou
+        return entries.filter { e in e.isNotable && (yours || e.mentionsYou) && mark.map { e.at > $0 } ?? true }
+    }
+
+    /// Whether you're in it: you've written in it, or it was started for
+    /// you — by an agent, its first words asking no one else (no `@`), as
+    /// a question or a note left you is.
+    public var involvesYou: Bool {
+        if entries.contains(where: { $0.author.isYou && $0.comment != nil }) { return true }
+        guard let first = entries.first(where: { $0.comment != nil }), let text = first.comment else { return false }
+        return ThreadText.tags(in: text).isEmpty
     }
 
     /// Agents asked since you last wrote: how many asks in a row.

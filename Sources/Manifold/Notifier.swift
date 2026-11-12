@@ -4,7 +4,8 @@ import UserNotifications
 
 /// The Mac's notifications for what happens out of sight (§3.7): a block
 /// that comes to need you (an agent asking leave), one that finishes or
-/// fails, a terminal's command that ran a while and ended. Only while
+/// fails, a terminal's command that ran a while and ended; and, while
+/// Manifold's in the background, a thread's news to you (§3.12). Only while
 /// the block isn't in sight — Manifold not in front, its window covered,
 /// the screen locked or asleep, or the tile not showing — and only for
 /// what happens after launch. Clicked, it goes to
@@ -27,6 +28,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     var speaksHere: (BlockID) -> Bool = { _ in true }
     /// A notification clicked: the block, and a command of it if one.
     var onOpen: ((BlockID, Int?) -> Void)?
+    /// A thread's news to you (§3.12): the entries not seen that are
+    /// (an agent's comments in a thread you're in, or naming you).
+    var threadNews: (Block) -> [ThreadEntry] = { _ in [] }
+    /// Whether Manifold is in the background: only then is a thread's
+    /// news said to the Mac (in front, its dot and ⌘J say it).
+    var inBackground: () -> Bool = { !NSApp.isActive }
+    /// The latest of each thread's news said.
+    private var saidThread: [BlockID: Stamp] = [:]
 
     override init() {
         super.init()
@@ -41,6 +50,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     func update(_ blocks: [Block]) {
         defer { seeded = true }
         for b in blocks {
+            // A thread's news: said once, the latest of it, while Manifold's away.
+            if b.kind == .thread {
+                let news = threadNews(b)
+                guard let last = news.last else { continue }
+                let new = saidThread[b.id].map { last.at > $0 } ?? true
+                saidThread[b.id] = last.at
+                if seeded, new, inBackground(), speaksHere(b.id) { post(news: last, in: b) }
+                continue
+            }
             if let r = b.statusRecord {
                 let new = seenStatus[b.id].map { $0 != r.at } ?? true
                 seenStatus[b.id] = r.at
@@ -69,6 +87,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         default: (title, sound) = ("\(b.displayTitle) is done", .done)
         }
         post(id: "status-\(b.id)", title: title, body: r.msg ?? r.title ?? r.app ?? "", sound: sound, block: b.id, command: nil)
+    }
+
+    private func post(news e: ThreadEntry, in t: Block) {
+        let words = (e.comment ?? "").replacingOccurrences(of: "\n", with: " ")
+        post(id: "thread-\(t.id)-\(e.id)", title: "\(e.author.name) in “\(t.displayTitle)”", body: String(words.prefix(240)),
+             sound: .done, block: t.id, command: nil)
     }
 
     private func post(command c: ShellCommand, of b: Block, took ms: Int64) {
