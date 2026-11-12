@@ -23,7 +23,9 @@ enum MarkdownText {
         }
         let out = NSMutableAttributedString()
         var lastBlock: Int?
-        var lastItem: Int?
+        // Items already marked: each its mark once, before its first words
+        // (not again before a later paragraph of it, or an item in it).
+        var marked = Set<Int>()
         for run in parsed.runs {
             var text = String(parsed[run.range].characters)
             let components = run.presentationIntent?.components ?? []
@@ -38,6 +40,8 @@ enum MarkdownText {
             var runFont = font
             var runColor = color
             var depth = 0
+            // The innermost item this run is in: the only one it may mark.
+            let item = components.first { if case .listItem = $0.kind { true } else { false } }
             for c in components {
                 switch c.kind {
                 case let .header(level):
@@ -46,10 +50,11 @@ enum MarkdownText {
                     if level <= 2 { runFont = NSFont(descriptor: runFont.fontDescriptor, size: font.pointSize * (level == 1 ? 1.25 : 1.12)) ?? runFont }
                 case let .listItem(ordinal):
                     depth += 1
-                    // The item's mark, before its first words.
-                    if c.identity != lastItem {
-                        lastItem = c.identity
-                        let ordered = components.contains { if case .orderedList = $0.kind { true } else { false } }
+                    // The item's mark, before its first words: its own list's
+                    // kind (the list just outside it), ordered or not.
+                    if c.identity == item?.identity, marked.insert(c.identity).inserted {
+                        let list = components.drop { $0.identity != c.identity }.dropFirst().first
+                        let ordered = if case .orderedList = list?.kind { true } else { false }
                         text = (ordered ? "\(ordinal). " : "• ") + text
                     }
                 case .blockQuote:
