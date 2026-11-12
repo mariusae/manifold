@@ -213,21 +213,14 @@ extension ComposerTextView {
     /// (`[name](manifold:…)`) the pill it was written as, sent as the same
     /// link; the rest as typed.
     func fill(markdown: String) {
-        let ns = markdown as NSString
-        let out = NSMutableAttributedString()
-        let pattern = try! NSRegularExpression(pattern: #"\[((?:\\\]|[^\]\n])+)\]\((manifold:[^)\s]+)\)"#)
-        var last = 0
-        for m in pattern.matches(in: markdown, range: NSRange(location: 0, length: ns.length)) {
-            out.append(NSAttributedString(string: ns.substring(with: NSRange(location: last, length: m.range.location - last)), attributes: plainAttributes))
-            let title = ns.substring(with: m.range(at: 1)).replacingOccurrences(of: "\\]", with: "]")
-            let marks: [NSAttributedString.Key: Any] = [.foregroundColor: Theme.secondaryText, .mentionLink: ns.substring(with: m.range)]
-            out.append(NSAttributedString(string: title, attributes: plainAttributes.merging(marks) { $1 }))
-            last = NSMaxRange(m.range)
+        textStorage?.setAttributedString(NSAttributedString(string: "", attributes: plainAttributes))
+        insertReferences(markdown, at: 0)
+        // As written: no space after a pill it ended with.
+        if markdown.hasSuffix(")"), string.hasSuffix(" "), let storage = textStorage {
+            storage.deleteCharacters(in: NSRange(location: storage.length - 1, length: 1))
         }
-        out.append(NSAttributedString(string: ns.substring(from: last), attributes: plainAttributes))
-        textStorage?.setAttributedString(out)
         typingAttributes = plainAttributes
-        setSelectedRange(NSRange(location: out.length, length: 0))
+        setSelectedRange(NSRange(location: (string as NSString).length, length: 0))
         didChangeText()
     }
 
@@ -291,29 +284,24 @@ extension ComposerTextView {
         typingAttributes = plainAttributes
     }
 
-    /// A pill: its icon, then its name in grey — one piece, sent as its link.
+    /// A pill: the block's capsule, as a comment and the editor draw one
+    /// (`LinkCapsule`) — one piece, sent as its link; a word not a block's
+    /// (`@claude`), the word.
     func pillPiece(_ c: MentionChoice, typed: String) -> NSAttributedString {
-        let piece = NSMutableAttributedString()
-        if let link = c.link {
-            // As Dia's: its icon, then its name in grey — one piece, sent as its link.
-            var marks: [NSAttributedString.Key: Any] = [.foregroundColor: Theme.secondaryText, .mentionLink: link, .mentionTyped: typed]
-            if let b = c.block { marks[.mentionBlock] = b.description }
-            let attrs = plainAttributes.merging(marks) { $1 }
-            let icon = c.icon ?? Theme.symbol(c.symbol, size: 11, weight: .medium, color: Theme.secondaryText)
-            if let icon {
-                let a = NSTextAttachment()
-                a.image = icon
-                let size: CGFloat = 13, font = (attrs[.font] as? NSFont) ?? UIType.body
-                a.bounds = NSRect(x: 0, y: (font.capHeight - size) / 2, width: size, height: size)
-                let m = NSMutableAttributedString(attachment: a)
-                m.addAttributes(attrs, range: NSRange(location: 0, length: m.length))
-                piece.append(m)
-                piece.append(NSAttributedString(string: "\u{2009}", attributes: attrs))
-            }
-            piece.append(NSAttributedString(string: c.title, attributes: attrs))
-        } else {
-            piece.append(NSAttributedString(string: "@" + c.title, attributes: plainAttributes))
-        }
+        guard let link = c.link else { return NSAttributedString(string: "@" + c.title, attributes: plainAttributes) }
+        var marks: [NSAttributedString.Key: Any] = [.foregroundColor: Theme.secondaryText, .mentionLink: link, .mentionTyped: typed]
+        if let b = c.block { marks[.mentionBlock] = b.description }
+        let attrs = plainAttributes.merging(marks) { $1 }
+        let font = (attrs[.font] as? NSFont) ?? UIType.body
+        // The block's own look (its symbol, an agent's mark; its status), its name as chosen.
+        var look = c.block.flatMap { CommentText.look?($0) } ?? PillLook(title: c.title, symbol: c.symbol, status: nil)
+        look.title = c.title
+        let h = ceil(font.ascender - font.descender) + 3
+        let a = NSTextAttachment()
+        a.image = LinkCapsule.pillImage(look, height: h)
+        a.bounds = NSRect(x: 0, y: (font.xHeight - h) / 2, width: a.image!.size.width, height: h)
+        let piece = NSMutableAttributedString(attachment: a)
+        piece.addAttributes(attrs, range: NSRange(location: 0, length: piece.length))
         return piece
     }
 

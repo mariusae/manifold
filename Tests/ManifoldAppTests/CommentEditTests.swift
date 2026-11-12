@@ -42,9 +42,18 @@ private func key(_ code: UInt16, _ chars: String) -> NSEvent {
     let composer = ComposerTextView()
     let markdown = "See [Plan \\] B](manifold:h1/01ABC#a) and [the docs](https://example.org), line 2\nmore"
     composer.fill(markdown: markdown)
-    // A reference is a pill again: its name shown, its link sent.
-    #expect(composer.string.contains("Plan ] B"))
+    // A reference is a pill again — one piece, drawn as a block's capsule
+    // (its name in the picture), its link sent.
     #expect(!composer.string.contains("manifold:"))
+    let storage = composer.textStorage!
+    var pills: [String] = []
+    storage.enumerateAttribute(.mentionLink, in: NSRange(location: 0, length: storage.length)) { v, r, _ in
+        if let link = v as? String {
+            pills.append(link)
+            #expect(r.length == 1 && storage.attribute(.attachment, at: r.location, effectiveRange: nil) != nil)
+        }
+    }
+    #expect(pills == ["[Plan \\] B](manifold:h1/01ABC#a)"])
     #expect(composer.message == markdown)
 }
 
