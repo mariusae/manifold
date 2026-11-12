@@ -454,6 +454,40 @@ final class ThreadChatView: NSView {
         box.frame = NSRect(x: pad, y: pad, width: w, height: bh)
         let listBottom = box.frame.maxY + 10
         scroll.frame = NSRect(x: pad, y: listBottom, width: w, height: max(0, y - listBottom))
+        finder.layout(in: bounds)
+    }
+
+    // MARK: Find (⌘F): over every comment's words
+
+    private lazy var finder: FindHost = FindHost(view: self, target: self)
+    /// The matches, comment by comment in order, and the one gone to.
+    private var matches: [(text: PillTextView, range: NSRange)] = []
+    private var currentMatch: Int?
+
+    @objc override func performTextFinderAction(_ sender: Any?) { finder.perform(sender) }
+
+    /// Every comment's words, top to bottom.
+    private var commentTexts: [PillTextView] {
+        func all(_ v: NSView) -> [PillTextView] { (v as? PillTextView).map { [$0] } ?? v.subviews.flatMap(all) }
+        return all(list)
+    }
+
+    private func clearMatches() {
+        for t in commentTexts {
+            t.layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (t.string as NSString).length))
+        }
+    }
+
+    private func goToMatch() {
+        for (t, r) in matches { t.layoutManager?.addTemporaryAttribute(.backgroundColor, value: TextView.matchColor, forCharacterRange: r) }
+        guard let i = currentMatch, matches.indices.contains(i) else { return }
+        let (t, r) = matches[i]
+        t.layoutManager?.addTemporaryAttribute(.backgroundColor, value: SearchPreviewView.currentMatch, forCharacterRange: r)
+        if let lm = t.layoutManager, let tc = t.textContainer {
+            let rect = lm.boundingRect(forGlyphRange: lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil), in: tc)
+            t.scrollToVisible(rect.insetBy(dx: 0, dy: -40))
+        }
+        t.showFindIndicator(for: r)
     }
 
     override var isFlipped: Bool { false }
@@ -744,6 +778,12 @@ final class ComposerTextView: NSTextView {
         if took { onFocus?() }
         return took
     }
+
+    // ⌘F and the rest of Find: the chat's (its comments'), not this field's.
+    override func performTextFinderAction(_ sender: Any?) {
+        guard let chat = enclosing(ThreadChatView.self) else { return super.performTextFinderAction(sender) }
+        chat.performTextFinderAction(sender)
+    }
     var onChange: (() -> Void)?
     var onDrop: ((Dragged, @escaping (String?) -> Void) -> Void)?
     /// ⎋: what it closes (a card, the overlay).
@@ -929,6 +969,12 @@ final class PillTextView: NSTextView {
         }
     }
 
+    // ⌘F in a comment: the chat's search, over all of them.
+    override func performTextFinderAction(_ sender: Any?) {
+        guard let chat = enclosing(ThreadChatView.self) else { return super.performTextFinderAction(sender) }
+        chat.performTextFinderAction(sender)
+    }
+
     override func rightMouseDown(with event: NSEvent) {
         // ⌘-right-click on a link: its menu, as a terminal's.
         if event.modifierFlags.contains(.command), let (target, _) = commandLink(at: convert(event.locationInWindow, from: nil)),
@@ -1046,5 +1092,47 @@ final class CommentCommandLinks {
         marked?.mark(nil)
         marked = nil
         NSCursor.arrow.set()
+    }
+}
+
+extension ThreadChatView: Searchable {
+    func search(_ query: String, caseSensitive: Bool, done: @escaping (Int?) -> Void) {
+        clearMatches()
+        matches = []
+        currentMatch = nil
+        guard !query.isEmpty else { return done(nil) }
+        for t in commentTexts {
+            for r in Matching.ranges(of: query, in: t.string as NSString, options: caseSensitive ? [] : [.caseInsensitive], limit: 10_000) {
+                matches.append((t, r))
+            }
+        }
+        // The newest first, as a conversation's read from its end.
+        currentMatch = matches.isEmpty ? nil : matches.count - 1
+        goToMatch()
+        done(matches.count)
+    }
+
+    func findNext(forward: Bool) {
+        guard !matches.isEmpty else { return }
+        currentMatch = Matching.step(currentMatch, of: matches.count, forward: forward)
+        goToMatch()
+    }
+
+    func endSearch() {
+        clearMatches()
+        matches = []
+        currentMatch = nil
+        window?.makeFirstResponder(composer)
+    }
+
+    func textForFind(_ done: @escaping (String?) -> Void) {
+        let t = window?.firstResponder as? NSTextView
+        done(t.flatMap { $0.selectedRange().length > 0 ? ($0.string as NSString).substring(with: $0.selectedRange()) : nil })
+    }
+
+    /// Debugging: "find <query>" or "find next": the matches, and which.
+    func debugFind(_ q: String) -> String {
+        if q == "next" { findNext(forward: true) } else { finder.show(query: q, fromSelection: false) }
+        return "\(matches.count) matches, current \(currentMatch.map(String.init) ?? "none")"
     }
 }

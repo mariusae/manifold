@@ -550,6 +550,10 @@ extension MainWindowController {
         case "close":
             threadUI.popover?.close()
             return "closed"
+        case "find":
+            // "threads find <q>|next": ⌘F in the focused thread's tile.
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            return t.chat.debugFind(rest)
         case "tile":
             guard let chat = threadUI.card?.chat else { return "no card" }
             threadChatOpenTile(chat)
