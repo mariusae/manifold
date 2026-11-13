@@ -609,8 +609,10 @@ extension MainWindowController {
     @objc func nextTab(_ sender: Any?) { stepTab(1) }
     @objc func previousTab(_ sender: Any?) { stepTab(-1) }
 
+    /// The next or previous space, in the strip's order — one after
+    /// another, not the most recent (⌘`'s) — round from the last to the first.
     private func stepTab(_ d: Int) {
-        let order = allWorkspaces
+        let order = spaceChips().chips.map(\.id)
         guard !order.isEmpty else { return }
         let i = selected.flatMap { order.firstIndex(of: $0) } ?? 0
         show(arrangement: order[(i + d + order.count) % order.count])

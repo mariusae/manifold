@@ -543,6 +543,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         go.addItem(.separator())
         item(go, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
         item(go, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
+        // ⌃⇟ ⌃⇞ too, as a browser's next and previous tab — what a mouse's
+        // tab buttons or thumb wheel send (⌃⇥ is the tiles' switcher, below).
+        let pageDown = String(UnicodeScalar(NSPageDownFunctionKey)!), pageUp = String(UnicodeScalar(NSPageUpFunctionKey)!)
+        for (title, action, key) in [("Show Next Space", #selector(MainWindowController.nextTab(_:)), pageDown),
+                                     ("Show Previous Space", #selector(MainWindowController.previousTab(_:)), pageUp)] {
+            let alt = item(go, title, action, key, [.control])
+            alt.isHidden = true
+            alt.allowsKeyEquivalentWhenHidden = true
+        }
         // ⌘`, as macOS cycles an app's windows: here, its spaces, as cards
         // of their grids while ⌘ is held (and, with one, the windows).
         item(go, "Switch to Recent Space", #selector(MainWindowController.switchSpace(_:)), "`", [.command])
