@@ -1,7 +1,10 @@
 import Foundation
 import ManifoldCore
 
-/// How long ago something was, said shortly (a card's, a row's).
+/// How long ago something was, said shortly (a card's, a row's): within
+/// the hour, how long ("now", "4m"; "just now", "4 min. ago"); past it,
+/// when — its time (3:04PM), past a day its weekday too (Mon3:04PM), past
+/// a week its date (2Jan06). `BlockSummary.ago` is the rule.
 enum Age {
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -9,20 +12,19 @@ enum Age {
         return f
     }()
 
-    /// How long ago, in a word: now, 4m, 2h, 3d.
-    static func short(_ stamp: Stamp) -> String {
-        let s = Date().timeIntervalSince(stamp.date)
-        if s < 60 { return "now" }
-        if s < 3600 { return "\(Int(s / 60))m" }
-        if s < 86400 { return "\(Int(s / 3600))h" }
-        return "\(Int(s / 86400))d"
-    }
+    /// In a word: now, 4m; 3:04PM, Mon3:04PM, 2Jan06.
+    static func short(_ stamp: Stamp) -> String { BlockSummary.ago(stamp.date, now: Date()) }
 
-    /// How long ago, in a few words.
+    /// In a few words: just now, 4 min. ago; 3:04PM, Mon3:04PM, 2Jan06.
     static func ago(_ stamp: Stamp) -> String { ago(stamp.date) }
 
     static func ago(_ d: Date) -> String {
-        if Date().timeIntervalSince(d) < 60 { return "just now" }
-        return relative.localizedString(for: d, relativeTo: Date())
+        let now = Date()
+        if now.timeIntervalSince(d) < 60 { return "just now" }
+        guard BlockSummary.isRelative(d, now: now) else { return BlockSummary.when(d, now: now) }
+        return relative.localizedString(for: d, relativeTo: now)
     }
+
+    /// As `short`, in a phrase: just now, 4m ago; 3:04PM.
+    static func since(_ stamp: Stamp) -> String { BlockSummary.since(stamp.date, now: Date()) }
 }

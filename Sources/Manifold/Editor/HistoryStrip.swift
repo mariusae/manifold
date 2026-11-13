@@ -141,8 +141,8 @@ final class HistoryStrip: NSView {
             return
         }
         let r = revisions[i]
-        let age = Age.short(Stamp(wall: Int64(r.at * 1000)))
-        label.stringValue = "\(r.short) · \(r.author) · \(age) ago — \(r.summary)" + (loading && accent ? "  (reading…)" : "")
+        let age = Age.since(Stamp(wall: Int64(r.at * 1000)))
+        label.stringValue = "\(r.short) · \(r.author) · \(age) — \(r.summary)" + (loading && accent ? "  (reading…)" : "")
         label.textColor = accent ? Theme.accent : Theme.text
     }
 

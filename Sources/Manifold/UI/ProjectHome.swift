@@ -158,8 +158,7 @@ final class ProjectStrip: NSView {
         case .indexing:
             return ("arrow.triangle.2.circlepath", "Indexing…" + by, "Indexing\(with)…\(place)" + (whenMade.map { "\n\nThe last index was made \($0)" } ?? ""), false)
         case .current:
-            let when = s.at.map { Age.short(Stamp(wall: Int64($0.timeIntervalSince1970 * 1000))) } ?? ""
-            let indexed = "Indexed" + (when.isEmpty ? "" : when == "now" ? " just now" : " \(when) ago") + by
+            let indexed = "Indexed" + (s.at.map { " " + BlockSummary.since($0, now: Date()) } ?? "") + by
             let made = "Indexed\(with)" + (whenMade.map { ", \($0)" } ?? "") + place
             // Behind its code: said, and a click makes it again.
             if let n = s.changed, n > 0 {
@@ -270,8 +269,8 @@ final class ProjectSidebar: NSView {
         }
         add(SectionLabel(g.log.isEmpty ? "No commits" : "Recent commits"))
         for c in g.log.prefix(10) {
-            let when = Age.short(Stamp(wall: Int64(c.date * 1000)))
-            let row = HomeRow(mark: nil, markColor: nil, title: c.summary, detail: "\(c.short) · \(c.author) · \(when == "now" ? "just now" : when + " ago")")
+            let when = Age.since(Stamp(wall: Int64(c.date * 1000)))
+            let row = HomeRow(mark: nil, markColor: nil, title: c.summary, detail: "\(c.short) · \(c.author) · \(when)")
             row.toolTip = c.summary
             row.onClick = { [weak self] in self?.onAction?(.openCommit(c, repo: repo)) }
             row.drag = { Drags.commit(c.sha, summary: c.summary, in: repo, on: host) }

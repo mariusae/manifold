@@ -593,12 +593,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         return cell
     }
 
-    static let relative: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f
-    }()
-
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if case let .section(title, key) = rows[row] { return sectionCell(tableView, title: title, folded: foldedSections.contains(key)) }
         let cell = tableView.makeView(withIdentifier: .init("row"), owner: nil) as? NSTableCellView ?? {
@@ -640,7 +634,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             let technical = FontTheme.current.technicalFont(size: 12)
             a.append(NSAttributedString(string: c.summary, attributes: [.font: technical, .foregroundColor: Theme.text,
                                                                          .kern: FontTheme.current.technicalTracking(technical)]))
-            let when = Self.relative.localizedString(for: Date(timeIntervalSince1970: c.date), relativeTo: Date())
+            let when = Age.ago(Date(timeIntervalSince1970: c.date))
             a.append(NSAttributedString(string: "   \(c.author), \(when)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = a.truncatingTail()
         }

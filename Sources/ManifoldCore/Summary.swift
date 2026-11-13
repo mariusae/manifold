@@ -56,17 +56,55 @@ public struct BlockSummary: Codable, Equatable, Sendable {
         }
     }
 
-    /// How long ago, as a note says it: "now", "4m", "3h", "2d".
+    /// How long ago, as a note says it: "now", "4m"; past the hour, when
+    /// — "3:04PM", past a day "Mon3:04PM", past a week "2Jan06".
     public static func ago(_ stamp: Stamp?, now: Date) -> String? {
         guard let stamp else { return nil }
-        let s = max(0, now.timeIntervalSince1970 - Double(stamp.wall) / 1000)
+        return ago(Date(timeIntervalSince1970: Double(stamp.wall) / 1000), now: now)
+    }
+
+    public static func ago(_ date: Date, now: Date) -> String {
+        let s = max(0, now.timeIntervalSince(date))
         switch s {
         case ..<45: return "now"
-        case ..<3600: return "\(Int(s / 60))m"
-        case ..<86400: return "\(Int(s / 3600))h"
-        default: return "\(Int(s / 86400))d"
+        case ..<3600: return "\(max(1, Int(s / 60)))m"
+        default: return when(date, now: now)
         }
     }
+
+    /// As `ago`, said in a phrase: "just now", "4m ago"; past the hour,
+    /// when ("3:04PM", no "ago").
+    public static func since(_ stamp: Stamp?, now: Date) -> String? {
+        guard let stamp else { return nil }
+        return since(Date(timeIntervalSince1970: Double(stamp.wall) / 1000), now: now)
+    }
+
+    public static func since(_ date: Date, now: Date) -> String {
+        let a = ago(date, now: now)
+        return a == "now" ? "just now" : isRelative(date, now: now) ? a + " ago" : a
+    }
+
+    /// Whether `ago` says it as a while ago (within the hour), not when.
+    public static func isRelative(_ date: Date, now: Date) -> Bool { now.timeIntervalSince(date) < 3600 }
+
+    /// When something was, past the hour: its time (3:04PM); past a day,
+    /// its weekday too (Mon3:04PM); past a week, its date (2Jan06).
+    public static func when(_ date: Date, now: Date) -> String {
+        let s = now.timeIntervalSince(date)
+        let f = s > 7 * 86400 ? dateOnly : s > 86400 ? dayAndTime : timeOnly
+        return lock.withLock { f.string(from: date) }
+    }
+
+    private static let lock = NSLock()
+    private static func formatter(_ format: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = format
+        return f
+    }
+    nonisolated(unsafe) private static let timeOnly = formatter("h:mma")
+    nonisolated(unsafe) private static let dayAndTime = formatter("EEEh:mma")
+    nonisolated(unsafe) private static let dateOnly = formatter("dMMMyy")
 }
 
 extension Block {
@@ -105,7 +143,7 @@ extension Block {
                 if c.isRunning {
                     s.note = "running"
                     s.tone = .running
-                    s.lines.append("running for \(BlockSummary.ago(c.at, now: now) ?? "a moment")")
+                    s.lines.append("running for \(BlockSummary.took(from: c.at, to: Stamp(wall: Int64(now.timeIntervalSince1970 * 1000)), least: 1) ?? "a moment")")
                 } else {
                     s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
                     s.lines.append((c.outcome ?? "") + (BlockSummary.took(from: c.at, to: c.ended, least: 1).map { " · took " + $0 } ?? ""))

@@ -26,7 +26,25 @@ import Testing
     var diff = Block(id: BlockID(host: h), kind: .diff, created: at(0))
     diff.apply(.diffLoaded(oldText: nil, newText: nil, patch: "--- a/x.swift\n+++ b/x.swift\n@@ -1 +1,2 @@\n-a\n+b\n+c\n", error: nil, at: at(9000)), at: at(9000))
     #expect(diff.summary(now: now).lines == ["1 file, +2 −1", "x.swift"])
-    #expect(BlockSummary.ago(at(10_000 - 7200), now: now) == "2h")
+    // Within the hour, how long; past it, when — its time, past a day
+    // its weekday too, past a week its date (as Go's Kitchen, Mon3:04PM, 2Jan06).
+    #expect(BlockSummary.ago(at(10_000 - 30), now: now) == "now")
+    #expect(BlockSummary.ago(at(10_000 - 300), now: now) == "5m")
+    #expect(BlockSummary.since(at(10_000 - 300), now: now) == "5m ago")
+    #expect(BlockSummary.since(at(10_000 - 30), now: now) == "just now")
+    func local(_ format: String, _ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = format
+        return f.string(from: d)
+    }
+    let day = Date(timeIntervalSince1970: 1_793_000_000)   // a Wednesday
+    #expect(BlockSummary.ago(day.addingTimeInterval(-7200), now: day) == local("h:mma", day.addingTimeInterval(-7200)))
+    #expect(BlockSummary.since(day.addingTimeInterval(-7200), now: day) == local("h:mma", day.addingTimeInterval(-7200)))
+    #expect(BlockSummary.ago(day.addingTimeInterval(-3 * 86400), now: day) == local("EEEh:mma", day.addingTimeInterval(-3 * 86400)))
+    #expect(BlockSummary.ago(day.addingTimeInterval(-30 * 86400), now: day) == local("dMMMyy", day.addingTimeInterval(-30 * 86400)))
+    #expect(BlockSummary.ago(day.addingTimeInterval(-7200), now: day).range(of: #"^\d{1,2}:\d\d[AP]M$"#, options: .regularExpression) != nil)
+    #expect(BlockSummary.ago(day.addingTimeInterval(-30 * 86400), now: day).range(of: #"^\d{1,2}[A-Z][a-z]{2}\d\d$"#, options: .regularExpression) != nil)
     // How long, as briefly; a list's quick ones not at all.
     #expect(BlockSummary.took(from: at(0), to: at(0.04)) == "40 ms")
     #expect(BlockSummary.took(from: at(0), to: at(3.24)) == "3.2 s")

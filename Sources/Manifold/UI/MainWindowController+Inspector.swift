@@ -136,7 +136,8 @@ extension MainWindowController {
             s.style = .section
             sections.append(s)
         }
-        func when(_ d: Date) -> String { Self.inspectorDate.string(from: d) + " (" + Age.ago(d) + ")" }
+        // The date, and how long ago within the hour (past it, the date says when).
+        func when(_ d: Date) -> String { Self.inspectorDate.string(from: d) + (BlockSummary.isRelative(d, now: Date()) ? " (" + Age.ago(d) + ")" : "") }
 
         // What it is at a glance (open); its machine in detail (folded).
         var about: [OrgNode] = [], hardware: [OrgNode] = []

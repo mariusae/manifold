@@ -117,8 +117,7 @@ extension ManiDesk {
             }
         }
         for e in t.entries {
-            let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
-            let when = ago == "now" ? "just now" : ago + " ago"
+            let when = BlockSummary.since(e.at, now: Date())
             switch e.kind {
             case .comment(let text):
                 out.append("\(e.author.name) (\(when)\(e.edited == nil ? "" : ", edited")):")

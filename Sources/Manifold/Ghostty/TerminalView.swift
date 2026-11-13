@@ -576,7 +576,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// second or more), when — "exit 1 · 2m 13s · 4h"; or "running".
     private func detail(of c: ShellCommand, last: Int?) -> String {
         guard !(c.isRunning && c.id == last) else { return "running" }
-        let when = Age.short(c.at) == "now" ? "just now" : Age.short(c.at)
+        let when = Age.short(c.at) == "now" ? "just now" : Age.short(c.at)  // 4m; past the hour, when: 3:04PM
         return [c.status == 0 ? nil : c.outcome, BlockSummary.took(from: c.at, to: c.ended, least: 1), when]
             .compactMap { $0 }.joined(separator: " · ")
     }
