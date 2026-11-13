@@ -64,3 +64,14 @@ import Testing
     let commit = MarkdownText.attributed(md, font: font, code: code).string
     #expect(commit == "This is the root. • Source and build: Sources/ • Docs: README.md")
 }
+
+// Code made strong (**`x`**) keeps code's tint, as code does.
+@MainActor
+@Test func strongCodeKeepsItsTint() {
+    let s = MarkdownText.attributed("- **`stop_cause`** is `pub(crate)`", font: .systemFont(ofSize: 13), code: .monospacedSystemFont(ofSize: 12, weight: .regular), boxes: true)
+    let ns = s.string as NSString
+    for word in ["stop_cause", "pub(crate)"] {
+        let r = ns.range(of: word)
+        #expect(s.attribute(.backgroundColor, at: r.location, effectiveRange: nil) != nil, "\(word)")
+    }
+}

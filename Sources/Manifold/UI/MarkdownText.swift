@@ -10,9 +10,16 @@ enum MarkdownText {
     /// down from white in the dark, headings and bold brighter.
     static let readingBody = NSColor.themed { $0.text.readingBody }
     static let readingStrong = NSColor.themed { $0.text.readingStrong }
-    /// Code's ground in a comment: a faint tint of the text.
+    /// Code's ground in a comment: the card's ground a step toward the
+    /// text, opaque — drawn twice (as a text view may draw a run's ground),
+    /// the same, where a faint see-through tint came out twice as strong.
     static let codeGround = NSColor(name: nil) { a in
-        (a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black).withAlphaComponent(0.05)
+        var c = NSColor.gray
+        a.performAsCurrentDrawingAppearance {
+            let ground = Theme.panel.usingColorSpace(.sRGB) ?? .white, ink = Theme.text.usingColorSpace(.sRGB) ?? .black
+            c = ground.blended(withFraction: a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.09 : 0.06, of: ink) ?? ground
+        }
+        return c
     }
 
     /// `strong`: headings' and bold's colour (else `color`); `lineHeight`:
@@ -48,6 +55,9 @@ enum MarkdownText {
         }() : nil
         for run in parsed.runs {
             var text = String(parsed[run.range].characters)
+            // An item's mark: a run of its own, in the item's face — not the
+            // look of the words it's before (code's, bold's).
+            var mark: String?
             let components = run.presentationIntent?.components ?? []
             let block = components.first?.identity
             let isCode = components.contains { if case .codeBlock = $0.kind { true } else { false } }
@@ -75,7 +85,7 @@ enum MarkdownText {
                     if c.identity == item?.identity, marked.insert(c.identity).inserted {
                         let list = components.drop { $0.identity != c.identity }.dropFirst().first
                         let ordered = if case .orderedList = list?.kind { true } else { false }
-                        text = (ordered ? "\(ordinal). " : "• ") + text
+                        mark = ordered ? "\(ordinal). " : "• "
                     }
                 case .blockQuote:
                     depth += 1
@@ -125,6 +135,9 @@ enum MarkdownText {
             }
             if let link = run.link { attrs[.link] = link }
             if tracking != 0, !isCode, run.inlinePresentationIntent?.contains(.code) != true { attrs[.kern] = tracking }
+            if let mark {
+                out.append(NSAttributedString(string: mark, attributes: [.font: runFont, .foregroundColor: runColor, .paragraphStyle: paragraph]))
+            }
             out.append(NSAttributedString(string: text, attributes: attrs))
         }
         return out

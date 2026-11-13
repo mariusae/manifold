@@ -858,8 +858,9 @@ final class CommentText: NSView, NSTextViewDelegate {
         attributed = Self.pilled(MarkdownText.attributed(markdown, font: font ?? .systemFont(ofSize: size), code: code, color: Theme.text,
                                                          lineHeight: lineHeight, tracking: tracking, boxes: boxes, breaks: true))
         super.init(frame: .zero)
-        // TextKit 1: a code block's box (an NSTextBlock) is laid out only there.
-        _ = text.layoutManager
+        // TextKit 1: a code block's box (an NSTextBlock) is laid out only
+        // there — by one that draws inline code's ground round its letters.
+        text.textContainer?.replaceLayoutManager(CodeGroundLayoutManager())
         text.isEditable = false
         text.isSelectable = true
         text.drawsBackground = false
@@ -1443,4 +1444,28 @@ extension ThreadChatView: Searchable {
 /// read once; nil, none — your initial on the accent instead.
 enum UserPicture {
     static let image: NSImage? = CBIdentity(name: NSUserName(), authority: CBIdentityAuthority.local())?.image
+}
+
+/// Draws a text's ground colour (inline code's tint) as a small rounded box
+/// round its letters — from a little above their tops to a little below
+/// their tails — not the whole line's height, which with a reading face's
+/// line spacing ran into the lines round it.
+final class CodeGroundLayoutManager: NSLayoutManager {
+    override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int, forCharacterRange charRange: NSRange, color: NSColor) {
+        guard rectCount > 0, let storage = textStorage, charRange.location < storage.length,
+              let font = storage.attribute(.font, at: charRange.location, effectiveRange: nil) as? NSFont else {
+            return super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
+        }
+        // Its baseline, from its line's top: where the letters sit in each line.
+        let g = glyphIndexForCharacter(at: charRange.location)
+        let baseline = location(forGlyphAt: g).y
+        var boxes: [NSRect] = []
+        for i in 0..<rectCount {
+            let r = rectArray[i]
+            boxes.append(NSRect(x: r.minX - 1, y: r.minY + baseline - font.ascender - 1.5, width: r.width + 2, height: font.ascender - font.descender + 3))
+        }
+        boxes.withUnsafeBufferPointer { b in
+            super.fillBackgroundRectArray(b.baseAddress!, count: b.count, forCharacterRange: charRange, color: color)
+        }
+    }
 }
