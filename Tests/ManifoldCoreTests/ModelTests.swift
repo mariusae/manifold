@@ -2056,3 +2056,19 @@ private final class Seen: @unchecked Sendable {
     t.apply(.shell(.dormant(idleSeconds: 60)), at: stamp())
     #expect(!t.hasExited)
 }
+
+// A tile put back where it had a column to itself (⇧⌘T): the column made
+// again at its place, as wide as it was, the rest moved right, it focused.
+@Test func aTileComesBackInAColumnOfItsOwn() {
+    var a = ArrangementState()
+    let left = Placement(block: BlockID(), lens: .terminal), right = Placement(block: BlockID(), lens: .editor)
+    a.apply(.place(left, column: 0, at: 0))
+    a.apply(.place(right, column: 1, at: 0))
+    a.apply(.fractions([0.6, 0.4]))
+    let back = Placement(block: BlockID(), lens: .preview)
+    let b = a.placingInNewColumn(back, at: 1, width: 0.25)
+    #expect(b.columns.map { $0.map(\.id) } == [[left.id], [back.id], [right.id]])
+    #expect(abs(b.fractions[1] - 0.25) < 0.001)
+    #expect(abs(b.fractions.reduce(0, +) - 1) < 0.001)
+    #expect(b.focused == back.id && b.heights[back.id] == 1)
+}

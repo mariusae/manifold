@@ -1110,7 +1110,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// What was closed, latest last: a tile with where it was, or a
     /// workspace taken off the desk — ⇧⌘T brings the last one back.
     enum Closed {
-        case tile(workspace: BlockID, column: Int, index: Int, placement: Placement, height: Double?)
+        /// `ownColumn`: its column's width when it had it to itself — the
+        /// column made again for it as it comes back.
+        case tile(workspace: BlockID, column: Int, index: Int, placement: Placement, height: Double?, ownColumn: Double? = nil)
         case workspace(BlockID, index: Int)
     }
     var closedStack: [Closed] = []
@@ -1135,7 +1137,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// A tile about to be taken off: remembered, so ⇧⌘T can put it back.
     func noteClosing(_ placement: PlacementID, in workspace: BlockID) {
         guard let a = hosts.arrangement(workspace), let p = a.placement(placement), let (c, i) = a.locate(placement) else { return }
-        closedStack.append(.tile(workspace: workspace, column: c, index: i, placement: p, height: a.heights[placement]))
+        let alone = a.columns[c].count == 1
+        closedStack.append(.tile(workspace: workspace, column: c, index: i, placement: p, height: a.heights[placement],
+                                 ownColumn: alone ? (a.fractions.indices.contains(c) ? a.fractions[c] : 1 / Double(max(a.columns.count, 1))) : nil))
         if closedStack.count > 100 { closedStack.removeFirst(closedStack.count - 100) }
     }
 
@@ -1211,7 +1215,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// deletion's, under way at the same time), and no other toast touched.
     func reopenClosed(block: BlockID, tiles n: Int) {
         for _ in 0..<n {
-            guard let k = closedStack.lastIndex(where: { if case let .tile(_, _, _, p, _) = $0 { return p.block == block } else { return false } }) else { return }
+            guard let k = closedStack.lastIndex(where: { if case let .tile(_, _, _, p, _, _) = $0 { return p.block == block } else { return false } }) else { return }
             closedStack.append(closedStack.remove(at: k))
             reopenLast()
         }
@@ -1228,9 +1232,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 client.setWorkspaceOrder(order)
                 hosts.select(id)
                 return
-            case let .tile(workspace, column, index, placement, height):
+            case let .tile(workspace, column, index, placement, height, ownColumn):
                 guard let b = hosts.block(placement.block) else { continue }
                 let fresh = Placement(id: ULID.make(), block: placement.block, lens: placement.lens)
+                // It had a column to itself, and the column's gone with it: the
+                // column made again where it was, as wide as it was.
+                if let width = ownColumn, let a = hosts.arrangement(workspace), allWorkspaces.contains(workspace), !a.columns.isEmpty {
+                    hosts.select(workspace)
+                    hosts.append([.restore(a.placingInNewColumn(fresh, at: column, width: width))], to: .block(workspace))
+                    warpPointerToFocus()
+                    return
+                }
                 if let a = hosts.arrangement(workspace), allWorkspaces.contains(workspace) {
                     let c = min(column, max(a.columns.count - 1, 0))
                     let i = a.columns.isEmpty ? 0 : min(index, a.columns[c].count)
@@ -1255,7 +1267,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let reachable = hosts.reachable()
         let stack = closedStack.map { c -> String in
             switch c {
-            case let .tile(w, col, i, p, _): "tile \(hosts.block(p.block)?.displayTitle ?? "?") in \(hosts.arrangement(w).map(title(of:)) ?? "?") col \(col) at \(i)"
+            case let .tile(w, col, i, p, _, own): (own == nil ? "" : "own column · ") + "tile \(hosts.block(p.block)?.displayTitle ?? "?") in \(hosts.arrangement(w).map(title(of:)) ?? "?") col \(col) at \(i)"
             case let .workspace(id, i): "workspace \(hosts.arrangement(id).map(title(of:)) ?? "?") at \(i)"
             }
         }

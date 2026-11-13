@@ -826,6 +826,17 @@ extension ArrangementState {
 
     /// A column put in at `index` with a share `width` of the window (the
     /// rest narrowed in proportion), else a fair share, as a new one takes.
+    /// The arrangement with `p` in a column of its own at `index` (the
+    /// rest moved right), `width` of the whole, focused: a tile put back
+    /// where it had its own column (⇧⌘T), as a `.restore`.
+    public func placingInNewColumn(_ p: Placement, at index: Int, width: Double?) -> ArrangementState {
+        var a = self
+        a.insertColumn([p], at: index, width: width)
+        a.heights[p.id] = 1
+        a.focused = p.id
+        return a
+    }
+
     private mutating func insertColumn(_ column: [Placement], at index: Int, width: Double?) {
         let n = columns.count
         let i = min(max(index, 0), n)

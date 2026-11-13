@@ -186,7 +186,7 @@ extension MainWindowController {
     private func deleteNow(_ block: BlockID) {
         guard hosts.block(block) != nil, !isPlaced(block) else { return }
         // Not to be brought back by ⇧⌘T any more.
-        closedStack.removeAll { if case let .tile(_, _, _, p, _) = $0 { return p.block == block } else { return false } }
+        closedStack.removeAll { if case let .tile(_, _, _, p, _, _) = $0 { return p.block == block } else { return false } }
         // Its links, both ways, wherever they're kept.
         var links = Set<String>()
         for c in hosts.all {
