@@ -14,7 +14,7 @@ import ManifoldCore
     let s = SpaceStripView(frame: NSRect(x: 0, y: 0, width: 4 * (SpaceStripView.side + SpaceStripView.gap) + SpaceStripView.inset + 12,
                                          height: SpaceStripView.height))
     func chip(_ i: Int, _ host: HostID?, first: Bool) -> SpaceStripView.Chip {
-        .init(id: BlockID(), title: "s\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
+        .init(id: BlockID(), title: "s\(i)", mark: .letters("S"), badge: nil, color: .systemBlue, current: false, status: nil,
               hostBreak: first, remote: host)
     }
     // This Mac's three, then far's five (more than a row: wrapping), then near's one.
@@ -43,7 +43,7 @@ import ManifoldCore
                                      height: SpaceStripView.height))
     }
     func chip(_ i: Int, _ host: HostID?, first: Bool) -> SpaceStripView.Chip {
-        .init(id: BlockID(), title: "s\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
+        .init(id: BlockID(), title: "s\(i)", mark: .letters("S"), badge: nil, color: .systemBlue, current: false, status: nil,
               hostBreak: first, remote: host)
     }
     func rows(_ s: SpaceStripView) -> Int { Int(((s.plusRect.minY - s.squareRect(0).minY) / (SpaceStripView.side + SpaceStripView.gap)).rounded(.down)) + 1 }
@@ -130,7 +130,7 @@ import ManifoldCore
     let here = HostID("here"), far = HostID("far")
     let s = SpaceStripView(frame: NSRect(x: 0, y: 0, width: 400, height: SpaceStripView.height))
     func chip(_ host: HostID, _ i: Int, first: Bool) -> SpaceStripView.Chip {
-        .init(id: BlockID(host: host), title: "\(host)\(i)", symbol: nil, letter: "S", color: .systemBlue, current: false, status: nil,
+        .init(id: BlockID(host: host), title: "\(host)\(i)", mark: .letters("S"), badge: nil, color: .systemBlue, current: false, status: nil,
               hostBreak: first && host == far, remote: host == far ? far : nil)
     }
     let chips = (0..<3).map { chip(here, $0, first: $0 == 0) } + (0..<2).map { chip(far, $0, first: $0 == 0) }

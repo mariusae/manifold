@@ -761,10 +761,16 @@ marked, so the sidebar is the table of contents of the screen; clicking
 a tile row focuses it (a docked one comes back where it was). The other
 spaces are **the strip** along the top, under the window's buttons
 (as Dia's favourites are), as Arc's spaces are
-(`SpaceStripView`): a small square each in its colour, its letter or a
-symbol in it (both chosen from its menu, kept on it as annotations,
-`space.color` and `space.symbol`; unchosen, a colour by its id and its
-name's first letter); the one shown outlined; a dot at a corner for
+(`SpaceStripView`): a small square each in its colour; its mark in it,
+which space it is — a letter of its name, one no other space has (its
+first, else its words' initials, its other letters; two once single
+ones run out; the space made first keeps a letter two would have), or
+one or two letters chosen, or a symbol; its badge at its corner, what
+kind of space it is — one of a few simple shapes (an eye, a flag, a
+star), bare, the same on every space of the kind (all chosen from its
+menu or with `mani space`, kept on it as annotations, `space.color`,
+`space.mark`, `space.badge`; unchosen, a colour by its id); the one
+shown outlined; a dot at a corner for
 what most wants you in it; a hairline between one host's and the
 next's; after them a + (a new space on the shown one's host; the
 pointer on it, with more than one host, a list of them over it —

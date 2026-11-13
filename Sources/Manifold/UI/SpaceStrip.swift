@@ -2,9 +2,10 @@ import AppKit
 import ManifoldCore
 
 /// A space's square — in the strip, beside what needs you, on ⌘`'s
-/// cards — at any size alike: rounded a quarter of its height, its letter
-/// in its colour, a little darker, about half its height; its badge, if
-/// it has one (a symbol), on a disc of its colour at its lower right.
+/// cards — at any size alike: rounded a quarter of its height; its mark
+/// (a letter or two, or a symbol) in its colour, a little darker; its
+/// badge, if it has one (a simple shape, what kind of space it is), bare
+/// at its lower right, ringed in the panel's ground.
 enum SpaceSquare {
     static func radius(_ r: NSRect) -> CGFloat { r.height / 4 }
 
@@ -14,47 +15,45 @@ enum SpaceSquare {
         NSBezierPath(roundedRect: r, xRadius: radius(r), yRadius: radius(r)).fill()
     }
 
-    /// Its letter, centred; its badge (`symbol`), if one, at its lower right.
-    static func drawGlyph(in r: NSRect, color: NSColor, symbol: String?, letter: String) {
+    /// Its mark, centred; its badge, if one, at its lower right.
+    static func drawGlyph(in r: NSRect, color: NSColor, mark: SpaceMark, badge: String?) {
         let ink = color.blended(withFraction: 0.25, of: Theme.text) ?? color
-        let size = max(8.5, (r.height * 0.48 * 2).rounded() / 2)
-        let t = NSAttributedString(string: letter, attributes: [.font: NSFont.systemFont(ofSize: size, weight: r.height >= 24 ? .semibold : .bold), .foregroundColor: ink])
-        let z = t.size()
-        t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
-        if let symbol { drawBadge(symbol, on: r, color: color) }
+        switch mark {
+        case .letters(let letters):
+            // One letter about half its height; two a little smaller, to fit.
+            var size = max(8.5, (r.height * (letters.count > 1 ? 0.4 : 0.48) * 2).rounded() / 2)
+            func text(_ size: CGFloat) -> NSAttributedString {
+                NSAttributedString(string: letters, attributes: [.font: NSFont.systemFont(ofSize: size, weight: r.height >= 24 ? .semibold : .bold), .foregroundColor: ink])
+            }
+            var t = text(size)
+            while t.size().width > r.width - 4, size > 6 { size -= 0.5; t = text(size) }
+            let z = t.size()
+            t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
+        case .symbol(let name):
+            Theme.symbol(name, size: max(7, (r.height * 0.46).rounded()), weight: r.height >= 24 ? .semibold : .bold, color: ink)?
+                .draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
+        }
+        if let badge { drawBadge(badge, on: r) }
     }
 
-    /// A badge's disc and symbol colours for a space's colour: the symbol
-    /// white or dark, as stands off it more; the disc moved away from the
-    /// symbol till they're 4.5:1 apart.
-    static func badgeColors(_ color: NSColor) -> (disc: NSColor, glyph: NSColor) {
-        let solid = color.usingColorSpace(.sRGB) ?? color
-        let white = NSColor.white, dark = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
-        let onWhite = Tints.contrast(white, solid) >= Tints.contrast(dark, solid)
-        let glyph = onWhite ? white : dark
-        let disc = Tints.reaching(4.5, from: solid, on: glyph, toward: onWhite ? .black : .white)
-        return (disc, glyph)
-    }
-
-    /// A badge: its symbol, small, on a disc of the space's colour (white
-    /// on it, or dark on a light one), ringed in the panel's ground, over
-    /// the square's lower right corner — as an app's icon wears one.
-    static func drawBadge(_ symbol: String, on r: NSRect, color: NSColor) {
-        let d = max(9, (r.height * 0.5).rounded())
+    /// A badge: its shape, bare — no disc, which took half its room —
+    /// in the text's ink, ringed in the panel's ground, over the square's
+    /// lower right corner. Shape alone says what kind; its colour is the
+    /// space's square's.
+    static func drawBadge(_ name: String, on r: NSRect) {
+        guard let symbol = SpaceLook.badgeSymbol(name) else { return }
+        let size = max(7, (r.height * 0.42).rounded())
         let flipped = NSGraphicsContext.current?.isFlipped ?? false
-        let x = r.maxX - d * 0.7, y = flipped ? r.maxY - d * 0.7 : r.minY - d * 0.3
-        let disc = NSRect(x: x, y: y, width: d, height: d)
-        Theme.panel.setFill()
-        NSBezierPath(ovalIn: disc.insetBy(dx: -1.5, dy: -1.5)).fill()
-        // Its symbol white, or dark, whichever stands off the colour more;
-        // the disc deepened (or lightened) till it stands off by 4.5:1 —
-        // a bright teal's white was 2:1.
-        let (fill, glyph) = badgeColors(color)
-        fill.setFill()
-        NSBezierPath(ovalIn: disc).fill()
-        // Its filled form where it has one (star.fill for star): firmer that small.
-        let filled = symbol.hasSuffix(".fill") || NSImage(systemSymbolName: symbol + ".fill", accessibilityDescription: nil) == nil ? symbol : symbol + ".fill"
-        Theme.symbol(filled, size: (d * 0.55).rounded(), weight: .bold, color: glyph)?.draw(centeredAt: NSPoint(x: disc.midX, y: disc.midY))
+        let inset = size * 0.18
+        let at = NSPoint(x: r.maxX - inset, y: flipped ? r.maxY - inset : r.minY + inset)
+        // The ring: the shape in the panel's ground, drawn round it.
+        if let halo = Theme.symbol(symbol, size: size, weight: .heavy, color: Theme.panel) {
+            let o: CGFloat = 1.5
+            for (dx, dy) in [(-o, 0), (o, 0), (0, -o), (0, o), (-o * 0.7, -o * 0.7), (o * 0.7, -o * 0.7), (-o * 0.7, o * 0.7), (o * 0.7, o * 0.7)] {
+                halo.draw(centeredAt: NSPoint(x: at.x + dx, y: at.y + dy))
+            }
+        }
+        Theme.symbol(symbol, size: size, weight: .bold, color: Theme.text.withAlphaComponent(0.92))?.draw(centeredAt: at)
     }
 }
 
@@ -77,9 +76,10 @@ final class SpaceStripView: NSView {
     struct Chip: Equatable {
         var id: BlockID
         var title: String
-        /// An SF Symbol, else a letter or two.
-        var symbol: String?
-        var letter: String
+        /// Its letter or two, or a symbol.
+        var mark: SpaceMark
+        /// Its badge, a shape's name.
+        var badge: String?
         var color: NSColor
         var current: Bool
         var status: StatusGlyph.Look?
@@ -502,7 +502,8 @@ final class SpaceStripView: NSView {
             Theme.text.withAlphaComponent(0.7).setStroke()
             ring.stroke()
         }
-        SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
+        // ⌘ held, its number takes the badge's corner.
+        SpaceSquare.drawGlyph(in: r, color: c.color, mark: c.mark, badge: showsNumbers ? nil : c.badge)
         // ⌘ held: its number, over its bottom right, as a key's badge.
         if showsNumbers, let n = number(i) {
             let t = NSAttributedString(string: "\(n)", attributes: [.font: UIType.badge, .foregroundColor: Theme.panel])
@@ -704,7 +705,7 @@ final class SpaceStripView: NSView {
 
     /// Debugging: each, in order — the one shown starred, its status after it.
     var debugChips: String {
-        var words = chips.map { c in (c.current ? "*" : "") + (c.hostBreak ? "| " : "") + c.title + " [\(c.symbol ?? c.letter)]" + (c.status.map { " (\($0))" } ?? "") }
+        var words = chips.map { c in (c.current ? "*" : "") + (c.hostBreak ? "| " : "") + c.title + " [\(c.mark.words)\(c.badge.map { " " + $0 } ?? "")]" + (c.status.map { " (\($0))" } ?? "") }
         // Each host's pill where it stands among them, last first so the places hold.
         for p in pending.reversed() {
             words.insert((p.hostBreak ? "| " : "") + "(\(p.title): \(p.connecting ? "connecting" : "unreachable"))", at: min(p.at, words.count))
@@ -718,11 +719,31 @@ final class SpaceStripView: NSView {
     }
 }
 
-/// A space's colour and symbol (§3.6), kept on it as annotations
-/// (`space.color`, `space.symbol`), so `mani annotate` sets them too.
+/// What's in a space's square: a letter or two (its name's, else
+/// chosen), or a symbol.
+enum SpaceMark: Equatable {
+    case letters(String)
+    case symbol(String)
+
+    /// As `mani` and the debug readouts say it: the letters, or `symbol:<name>`.
+    var words: String {
+        switch self {
+        case .letters(let l): l
+        case .symbol(let s): "symbol:\(s)"
+        }
+    }
+}
+
+/// A space's look (§3.6): its colour; its mark (which space: a letter or
+/// two, its name's unless chosen, or a symbol); its badge (what kind of
+/// space: a simple shape). Kept on it as annotations (`space.color`,
+/// `space.mark`, `space.badge`), so `mani annotate` sets them too.
 enum SpaceLook {
     static let colorKey = "space.color"
-    static let symbolKey = "space.symbol"
+    static let markKey = "space.mark"
+    static let badgeKey = "space.badge"
+    /// Where a badge was kept before badges were shapes: read, if it's one.
+    static let oldBadgeKey = "space.symbol"
 
     static let colors: [(name: String, color: NSColor)] = [
         ("red", .systemRed), ("orange", .systemOrange), ("yellow", .systemYellow), ("green", .systemGreen),
@@ -730,14 +751,26 @@ enum SpaceLook {
         ("purple", .systemPurple), ("pink", .systemPink), ("brown", .systemBrown), ("gray", .systemGray),
     ]
 
-    /// Badges to choose from, as the menu offers them (`mani space --badge`
-    /// takes any of the system's symbols).
-    static let symbols: [(symbol: String, name: String)] = [
+    /// The badges: shapes that read at a square's corner (nine points or
+    /// so), filled. Only these — a symbol with any detail (a terminal, a
+    /// wrench) was a smudge that small.
+    static let badges: [(name: String, symbol: String)] = [
+        ("circle", "circle.fill"), ("square", "square.fill"), ("triangle", "triangle.fill"), ("diamond", "diamond.fill"),
+        ("star", "star.fill"), ("heart", "heart.fill"), ("bolt", "bolt.fill"), ("flame", "flame.fill"),
+        ("flag", "flag.fill"), ("bookmark", "bookmark.fill"), ("leaf", "leaf.fill"), ("drop", "drop.fill"),
+        ("moon", "moon.fill"), ("eye", "eye.fill"), ("checkmark", "checkmark"),
+    ]
+
+    static func badgeSymbol(_ name: String) -> String? { badges.first { $0.name == name }?.symbol }
+
+    /// Symbols the menu offers for a mark, in place of its letters
+    /// (`mani space --symbol` takes any of the system's).
+    static let markSymbols: [(symbol: String, name: String)] = [
         ("folder", "Folder"), ("terminal", "Terminal"), ("hammer", "Hammer"), ("wrench.and.screwdriver", "Tools"),
         ("book", "Book"), ("doc.text", "Document"), ("flask", "Flask"), ("globe", "Globe"),
         ("server.rack", "Server"), ("cpu", "Chip"), ("chart.bar", "Chart"), ("bubble.left.and.bubble.right", "Conversation"),
-        ("star", "Star"), ("bolt", "Bolt"), ("leaf", "Leaf"), ("flame", "Flame"),
-        ("paintbrush", "Brush"), ("music.note", "Music"), ("gamecontroller", "Game"), ("house", "House"),
+        ("eye", "Eye"), ("checklist", "Checklist"), ("ladybug", "Bug"), ("paintbrush", "Brush"),
+        ("music.note", "Music"), ("gamecontroller", "Game"), ("house", "House"), ("person", "Person"),
     ]
 
     /// Its colour: chosen, else one of the twelve by its name's hash, steady.
@@ -748,18 +781,76 @@ enum SpaceLook {
         return colors[Int(h % UInt32(colors.count))].color
     }
 
-    /// Its badge (a symbol), if one's chosen.
-    static func symbol(of block: Block?) -> String? {
-        guard let s = block?.annotations?[symbolKey], !s.isEmpty, NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else { return nil }
-        return s
+    /// Its badge (a shape's name), if one's chosen. One kept as a symbol,
+    /// before, that's one of the shapes (star, bolt…) still is.
+    static func badge(of block: Block?) -> String? {
+        let a = block?.annotations
+        guard let raw = a?[badgeKey] ?? a?[oldBadgeKey], !raw.isEmpty else { return nil }
+        let name = raw.hasSuffix(".fill") ? String(raw.dropLast(5)) : raw
+        return badgeSymbol(name) != nil ? name : nil
     }
 
-    /// Its letter: its name's last part's first (`~/src/manifold`, M).
-    static func letter(of title: String) -> String {
-        let last = title.split(separator: "/").last.map(String.init) ?? title
-        let word = last.trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
-        return word.first.map { String($0).uppercased() } ?? "·"
+    /// Its mark, if one's chosen: letters, or `symbol:<name>`.
+    static func chosenMark(of block: Block?) -> SpaceMark? {
+        guard let raw = block?.annotations?[markKey]?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if raw.hasPrefix("symbol:") {
+            let name = String(raw.dropFirst(7))
+            return NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil ? .symbol(name) : nil
+        }
+        return isLetters(raw) ? .letters(raw) : .letters(String(raw.prefix(2)))
     }
+
+    /// Letters a mark can be: one or two, no spaces.
+    static func isLetters(_ s: String) -> Bool {
+        (1...2).contains(s.count) && !s.contains { $0.isWhitespace || $0.isNewline }
+    }
+
+    /// Each space's mark: its chosen one; else letters from its name —
+    /// one if there's one no other space has (its first, its words'
+    /// initials, its other letters), else two — the space made first
+    /// keeping the one they'd both have, so a new space doesn't take
+    /// another's.
+    static func marks(_ spaces: [(id: BlockID, name: String, chosen: SpaceMark?)]) -> [BlockID: SpaceMark] {
+        var out: [BlockID: SpaceMark] = [:]
+        var taken = Set<String>()
+        for s in spaces {
+            guard let c = s.chosen else { continue }
+            out[s.id] = c
+            if case .letters(let l) = c { taken.insert(l.uppercased()) }
+        }
+        for s in spaces.filter({ $0.chosen == nil }).sorted(by: { $0.id.ulid < $1.id.ulid }) {
+            let candidates = letterCandidates(s.name)
+            let pick = candidates.first { !taken.contains($0.uppercased()) } ?? candidates[0]
+            taken.insert(pick.uppercased())
+            out[s.id] = .letters(pick)
+        }
+        return out
+    }
+
+    /// The letters a name could go by, the likeliest first: its first
+    /// letter; its other words' initials; its other consonants, then
+    /// vowels; then two: its first two words' initials, its first letter
+    /// with each other.
+    static func letterCandidates(_ title: String) -> [String] {
+        let last = title.split(separator: "/").last.map(String.init) ?? title
+        let words = last.split { !$0.isLetter && !$0.isNumber }.map(String.init)
+        let letters = Array(words.joined())
+        // No letters in it ("~"): its first mark, as it is.
+        guard let first = letters.first else { return [last.first { !$0.isWhitespace }.map(String.init) ?? "·"] }
+        var out: [String] = []
+        func add(_ s: String) { if !out.contains(s) { out.append(s) } }
+        add(String(first).uppercased())
+        for w in words.dropFirst() { if let c = w.first { add(String(c).uppercased()) } }
+        let vowels = Set("aeiouyAEIOUY")
+        for c in letters.dropFirst() where !vowels.contains(c) { add(String(c).uppercased()) }
+        for c in letters.dropFirst() where vowels.contains(c) { add(String(c).uppercased()) }
+        if words.count > 1, let a = words[0].first, let b = words[1].first { add((String(a) + String(b)).uppercased()) }
+        for c in letters.dropFirst() { add(String(first).uppercased() + String(c).lowercased()) }
+        return out
+    }
+
+    /// Its letter, as it'd be with no other space: its name's first.
+    static func letter(of title: String) -> String { letterCandidates(title)[0] }
 }
 
 extension MainWindowController {
@@ -770,6 +861,7 @@ extension MainWindowController {
     /// spaces will be.
     func spaceChips() -> (chips: [SpaceStripView.Chip], pending: [SpaceStripView.Pending]) {
         var out: [SpaceStripView.Chip] = [], pending: [SpaceStripView.Pending] = []
+        let marks = spaceMarks()
         for c in hosts.ordered {
             let before = !out.isEmpty || !pending.isEmpty
             if c.isRemote, !c.hasState {
@@ -783,13 +875,30 @@ extension MainWindowController {
             for id in ids {
                 guard let b = hosts.block(id), let a = hosts.arrangement(id) else { continue }
                 let name = title(of: a)
-                out.append(.init(id: id, title: name, symbol: SpaceLook.symbol(of: b), letter: SpaceLook.letter(of: name),
+                out.append(.init(id: id, title: name, mark: marks[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b),
                                  color: SpaceLook.color(of: b), current: id == selected, status: spaceStatus(a),
                                  hostBreak: first && before, remote: c.isRemote ? c.host : nil))
                 first = false
             }
         }
         return (out, pending)
+    }
+
+    /// Every space's mark: chosen, else letters its name's that no other
+    /// space's are (as can be).
+    func spaceMarks() -> [BlockID: SpaceMark] {
+        SpaceLook.marks(allWorkspaces.compactMap { id in
+            guard let b = hosts.block(id), let a = hosts.arrangement(id) else { return nil }
+            return (id, title(of: a), SpaceLook.chosenMark(of: b))
+        })
+    }
+
+    /// The mark a space would have unless one's chosen for it.
+    func automaticSpaceMark(_ id: BlockID) -> SpaceMark? {
+        SpaceLook.marks(allWorkspaces.compactMap { w in
+            guard let b = hosts.block(w), let a = hosts.arrangement(w) else { return nil }
+            return (w, title(of: a), w == id ? nil : SpaceLook.chosenMark(of: b))
+        })[id]
     }
 
     /// What most wants you in a space: needs you, then failed, then done
@@ -942,26 +1051,68 @@ extension MainWindowController {
         colorItem.setSymbol("paintpalette", size: 12)
         menu.addItem(colorItem)
 
-        let symbols = NSMenu()
-        let chosenSymbol = SpaceLook.symbol(of: b)
-        let letter = NSMenuItem(title: "None", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
-        letter.target = self
-        letter.representedObject = (id, SpaceLook.symbolKey, "")
-        letter.state = chosenSymbol == nil ? .on : .off
-        symbols.addItem(letter)
-        symbols.addItem(.separator())
-        for (s, name) in SpaceLook.symbols {
+        // Its mark: which space it is — letters, its name's or chosen, or a symbol.
+        let marks = NSMenu()
+        let chosenMark = SpaceLook.chosenMark(of: b)
+        let automatic = automaticSpaceMark(id)?.words ?? ""
+        let autoMark = NSMenuItem(title: "Automatic (\(automatic))", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
+        autoMark.target = self
+        autoMark.representedObject = (id, SpaceLook.markKey, "")
+        autoMark.state = chosenMark == nil ? .on : .off
+        marks.addItem(autoMark)
+        var chosenLetters: String?
+        if case .letters(let l) = chosenMark { chosenLetters = l }
+        let letters = NSMenuItem(title: chosenLetters.map { "Letters (\($0))…" } ?? "Letters…", action: #selector(askSpaceMark(_:)), keyEquivalent: "")
+        letters.target = self
+        letters.representedObject = (id, false)
+        letters.state = chosenLetters != nil ? .on : .off
+        letters.setSymbol("character", size: 12)
+        marks.addItem(letters)
+        marks.addItem(.separator())
+        var chosenSymbol: String?
+        if case .symbol(let n) = chosenMark { chosenSymbol = n }
+        for (sym, name) in SpaceLook.markSymbols {
             let item = NSMenuItem(title: name, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = (id, SpaceLook.symbolKey, s)
-            item.setSymbol(s, size: 13)
-            item.state = chosenSymbol == s ? .on : .off
-            symbols.addItem(item)
+            item.representedObject = (id, SpaceLook.markKey, "symbol:" + sym)
+            item.setSymbol(sym, size: 13)
+            item.state = chosenSymbol == sym ? .on : .off
+            marks.addItem(item)
         }
-        let symbolItem = NSMenuItem(title: "Badge", action: nil, keyEquivalent: "")
-        symbolItem.submenu = symbols
-        symbolItem.setSymbol("star.square", size: 12)
-        menu.addItem(symbolItem)
+        let other = NSMenuItem(title: "Other Symbol…", action: #selector(askSpaceMark(_:)), keyEquivalent: "")
+        other.target = self
+        other.representedObject = (id, true)
+        if let n = chosenSymbol, !SpaceLook.markSymbols.contains(where: { $0.symbol == n }) {
+            other.title = "Other Symbol (\(n))…"
+            other.state = .on
+        }
+        marks.addItem(other)
+        let markItem = NSMenuItem(title: "Mark", action: nil, keyEquivalent: "")
+        markItem.submenu = marks
+        markItem.setSymbol("textformat", size: 12)
+        menu.addItem(markItem)
+
+        // Its badge: what kind of space it is — a shape.
+        let badges = NSMenu()
+        let chosenBadge = SpaceLook.badge(of: b)
+        let none = NSMenuItem(title: "None", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
+        none.target = self
+        none.representedObject = (id, SpaceLook.badgeKey, "")
+        none.state = chosenBadge == nil ? .on : .off
+        badges.addItem(none)
+        badges.addItem(.separator())
+        for (name, sym) in SpaceLook.badges {
+            let item = NSMenuItem(title: name.capitalized, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = (id, SpaceLook.badgeKey, name)
+            item.setSymbol(sym, size: 12)
+            item.state = chosenBadge == name ? .on : .off
+            badges.addItem(item)
+        }
+        let badgeItem = NSMenuItem(title: "Badge", action: nil, keyEquivalent: "")
+        badgeItem.submenu = badges
+        badgeItem.setSymbol("star.square", size: 12)
+        menu.addItem(badgeItem)
         menu.addItem(.separator())
         let after = NSMenuItem(title: "New Space After “\(b.arrangement.map(title(of:)) ?? "This One")”", action: #selector(newSpaceAfterFromStrip(_:)), keyEquivalent: "")
         after.target = self
@@ -979,6 +1130,40 @@ extension MainWindowController {
         remove.setSymbol("xmark", size: 12)
         menu.addItem(remove)
         return menu
+    }
+
+    /// Its mark chosen in words: letters (one or two), or a symbol by its name.
+    @objc func askSpaceMark(_ sender: NSMenuItem) {
+        guard let (id, symbol) = sender.representedObject as? (BlockID, Bool), let window else { return }
+        let alert = NSAlert()
+        alert.messageText = symbol ? "A Symbol for This Space" : "Letters for This Space"
+        alert.informativeText = symbol
+            ? "A system symbol's name, as SF Symbols names it (hammer, ladybug, chart.pie)."
+            : "One or two, shown in its square in place of its name's."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        if let m = hosts.block(id).flatMap(SpaceLook.chosenMark(of:)) {
+            switch m {
+            case .letters(let l) where !symbol: field.stringValue = l
+            case .symbol(let n) where symbol: field.stringValue = n
+            default: break
+            }
+        }
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Choose")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let v = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if v.isEmpty { return self.setSpaceLook(id, SpaceLook.markKey, "") }
+            if symbol {
+                guard NSImage(systemSymbolName: v, accessibilityDescription: nil) != nil else { return NSSound.beep() }
+                self.setSpaceLook(id, SpaceLook.markKey, "symbol:" + v)
+            } else {
+                guard SpaceLook.isLetters(v) else { return NSSound.beep() }
+                self.setSpaceLook(id, SpaceLook.markKey, v)
+            }
+        }
     }
 
     @objc func chooseSpaceLook(_ sender: NSMenuItem) {
@@ -1005,7 +1190,7 @@ extension MainWindowController {
     }
 
     /// Debugging the strip: `spaces` its squares; `spaces hover <i>|off`;
-    /// `spaces pick <i>`; `spaces drag <i> <j>`; `spaces menu <i> [title]`; `spaces color <i> <name>`; `spaces symbol <i> <name>`.
+    /// `spaces pick <i>`; `spaces drag <i> <j>`; `spaces menu <i> [title]`; `spaces color|mark|badge <i> [value]`.
     func debugSpaces(_ arg: String) -> String {
         let w = arg.split(separator: " ").map(String.init)
         let strip = sidebar.spaces
@@ -1089,8 +1274,10 @@ extension MainWindowController {
             let square = root.convert(strip.convert(strip.squareRect(i), to: nil), from: nil)
             _ = dropOnSpace(.placement(f), space: strip.chips[i].id, copy: w.last == "copy", square: square)
         case "needspick": if let i = w.dropFirst().first.flatMap(Int.init), sidebar.needsYou.items.indices.contains(i) { sidebar.needsYou.onPick?(sidebar.needsYou.items[i]) }
-        case "color", "symbol":
-            if let id = chip(w.dropFirst().first) { setSpaceLook(id, w[0] == "color" ? SpaceLook.colorKey : SpaceLook.symbolKey, w.count > 2 ? w[2] : "") }
+        case "color", "mark", "badge":
+            // "spaces color|mark|badge <i> [value]": as the menu sets it (a mark's symbol as symbol:<name>).
+            let key = w[0] == "color" ? SpaceLook.colorKey : w[0] == "mark" ? SpaceLook.markKey : SpaceLook.badgeKey
+            if let id = chip(w.dropFirst().first) { setSpaceLook(id, key, w.count > 2 ? w[2] : "") }
         default: break
         }
         return strip.debugChips
@@ -1112,8 +1299,8 @@ final class NeedsYouView: NSView {
         var tile: PlacementID
         var title: String
         var symbol: String
-        var spaceLetter: String
-        var spaceSymbol: String?
+        var spaceMark: SpaceMark
+        var spaceBadge: String?
         var spaceColor: NSColor
         var need: String
     }
@@ -1175,7 +1362,7 @@ final class NeedsYouView: NSView {
             // Its space's square, small.
             let sq = NSRect(x: SidebarView.margin, y: r.midY - 8, width: 16, height: 16)
             SpaceSquare.fill(sq, color: item.spaceColor, alpha: 0.28)
-            SpaceSquare.drawGlyph(in: sq, color: item.spaceColor, symbol: item.spaceSymbol, letter: item.spaceLetter)
+            SpaceSquare.drawGlyph(in: sq, color: item.spaceColor, mark: item.spaceMark, badge: item.spaceBadge)
             if let image = Theme.symbol(item.symbol, size: 11, weight: .regular, color: Theme.secondaryText) {
                 let z = image.size
                 image.draw(in: NSRect(x: sq.maxX + 8, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
@@ -1224,7 +1411,7 @@ final class NeedsYouView: NSView {
     }
 
     var debugRows: String {
-        items.isEmpty ? "nothing needs you" : items.map { "\($0.spaceLetter) \($0.title) [\($0.need)]" }.joined(separator: " | ")
+        items.isEmpty ? "nothing needs you" : items.map { "\($0.spaceMark.words) \($0.title) [\($0.need)]" }.joined(separator: " | ")
     }
 }
 
@@ -1238,7 +1425,7 @@ extension MainWindowController {
             for p in a.columns.flatMap({ $0 }) + a.docked.reversed().map(\.placement) {
                 guard let b = hosts.block(p.block), StatusGlyph.look(of: b) == .needsYou else { continue }
                 out.append(.init(space: chip.id, tile: p.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
-                                 spaceLetter: chip.letter, spaceSymbol: chip.symbol, spaceColor: chip.color,
+                                 spaceMark: chip.mark, spaceBadge: chip.badge, spaceColor: chip.color,
                                  need: StatusPill.words(b.statusRecord?.kind)))
             }
         }

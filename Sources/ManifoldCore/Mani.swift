@@ -337,16 +337,23 @@ public enum Mani {
                  """, answeredBy: .app),
         Verb(words: ["space"], args: "[space]", minArgs: 0, maxArgs: 1,
              flags: [Flag(name: "color", value: "name", help: "its colour (red, orange, yellow, green, mint, teal, blue, indigo, purple, pink, brown, gray), or auto"),
-                     Flag(name: "badge", value: "symbol", help: "a badge at its corner: a system symbol's name (hammer, star, bolt…), or none"),
+                     Flag(name: "mark", value: "letters", help: "one or two letters for its square in place of its name's, or auto"),
+                     Flag(name: "symbol", value: "name", help: "a system symbol for its square in place of letters (hammer, ladybug…), or none"),
+                     Flag(name: "badge", value: "shape", help: "what kind of space: circle, square, triangle, diamond, star, heart, bolt, flame, flag, bookmark, leaf, drop, moon, eye, checkmark; or none"),
                      json],
-             summary: "A space's look: its colour, and a badge",
+             summary: "A space's look: its colour, its mark, its badge",
              details: """
                  The space shown (else the one named, by its name or id) set as its
-                 menu sets it: a colour, its square's ground; a badge, a symbol on
-                 a disc at its corner — its letter, its name's, always in it. With
-                 neither, says how it looks, and what there is to choose from.
-                   mani space --color teal --badge hammer
-                   mani space review --badge none
+                 menu sets it. Its mark says which space: a letter, its name's
+                 (one no other space has, else two), or one or two chosen, or a
+                 symbol. Its badge says what kind: a shape at its square's corner,
+                 the same for every space of the kind. With none of these, says
+                 how it looks, and what there is to choose from.
+                   mani space --color teal --badge eye
+                   mani space review --mark PR
+                   mani space --symbol hammer
+                   mani space review --badge none --mark auto
+                 `mani ls --all --json` has each space's mark and badge.
                  """, answeredBy: .app),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
              summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", answeredBy: .app),

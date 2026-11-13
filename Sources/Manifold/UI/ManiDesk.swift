@@ -209,7 +209,7 @@ final class ManiDesk {
 
     /// A space by what it's called (as the sidebar names it, or as named),
     /// its id, or @space.
-    /// `mani space`: a space's colour and badge, set; else said.
+    /// `mani space`: a space's colour, mark and badge, set; else said.
     private func spaceLook(_ r: ManiRequest, _ scope: Scope) throws -> String {
         let id: BlockID
         if let name = r.args.first { id = try space(named: name) } else {
@@ -225,10 +225,25 @@ final class ManiDesk {
             values[SpaceLook.colorKey] = name == "auto" ? "" : name
         }
         if let s = r.flags["badge"] {
-            guard s == "none" || NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else {
-                throw Failure(message: "no symbol \(s); a system symbol's name (as SF Symbols names it), or none — such as \(SpaceLook.symbols.map(\.symbol).joined(separator: ", "))", status: 2)
+            guard s == "none" || SpaceLook.badgeSymbol(s) != nil else {
+                throw Failure(message: "no badge \(s); badges: \(SpaceLook.badges.map(\.name).joined(separator: ", ")), none", status: 2)
             }
-            values[SpaceLook.symbolKey] = s == "none" ? "" : s
+            values[SpaceLook.badgeKey] = s == "none" ? "" : s
+        }
+        if r.flags["mark"] != nil, r.flags["symbol"] != nil {
+            throw Failure(message: "--mark or --symbol, not both: each is what's in its square", status: 2)
+        }
+        if let m = r.flags["mark"] {
+            guard m == "auto" || SpaceLook.isLetters(m) else {
+                throw Failure(message: "a mark is one or two letters (or digits), or auto", status: 2)
+            }
+            values[SpaceLook.markKey] = m == "auto" ? "" : m
+        }
+        if let s = r.flags["symbol"] {
+            guard s == "none" || NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else {
+                throw Failure(message: "no symbol \(s); a system symbol's name, as SF Symbols names it — such as \(SpaceLook.markSymbols.map(\.symbol).joined(separator: ", ")) — or none (its letters again)", status: 2)
+            }
+            values[SpaceLook.markKey] = s == "none" ? "" : "symbol:" + s
         }
         if !values.isEmpty {
             hosts.append(.annotate(values), to: .block(id))
@@ -236,16 +251,28 @@ final class ManiDesk {
         }
         let b = hosts.block(id)
         let title = b?.arrangement.map(wc.title(of:)) ?? b?.displayTitle ?? ""
-        let color = b?.annotations?[SpaceLook.colorKey] ?? "auto"
-        let badge = SpaceLook.symbol(of: b) ?? "none"
+        let color = b?.annotations?[SpaceLook.colorKey].flatMap { $0.isEmpty ? nil : $0 } ?? "auto"
+        let badge = SpaceLook.badge(of: b) ?? "none"
+        let chosen = SpaceLook.chosenMark(of: b)
+        let mark = chosen ?? wc.spaceMarks()[id] ?? .letters(SpaceLook.letter(of: title))
         if r.flags["json"] != nil {
-            return json(["space": MainWindowController.address(id), "name": title, "letter": SpaceLook.letter(of: title), "color": color, "badge": badge])
+            var out: [String: Any] = ["space": MainWindowController.address(id), "name": title, "color": color, "badge": badge, "automatic": chosen == nil]
+            switch mark {
+            case .letters(let l): out["mark"] = l
+            case .symbol(let n): out["symbol"] = n
+            }
+            return json(out)
+        }
+        let said: String
+        switch mark {
+        case .letters(let l): said = "mark: \(l)\(chosen == nil ? " (automatic)" : "")"
+        case .symbol(let n): said = "symbol: \(n)"
         }
         return """
             \(title) (\(MainWindowController.address(id)))
-            letter: \(SpaceLook.letter(of: title))  colour: \(color)  badge: \(badge)
+            \(said)  badge: \(badge)  colour: \(color)
+            badges: \(SpaceLook.badges.map(\.name).joined(separator: ", ")), none
             colours: \(SpaceLook.colors.map(\.name).joined(separator: ", ")), auto
-            badges: \(SpaceLook.symbols.map(\.symbol).joined(separator: ", ")) — or any system symbol's name; none
             """
     }
 
@@ -825,6 +852,9 @@ final class ManiDesk {
         let layout = ManiLayout(a)
         var out: [String: Any] = ["id": ws.description, "title": wc.title(of: a)]
         if let marks = hosts.block(ws)?.annotations { out["annotations"] = marks }
+        // Its look: its mark (letters, or symbol:<name>), its badge, its colour.
+        if let m = wc.spaceMarks()[ws] { out["mark"] = m.words }
+        if let badge = SpaceLook.badge(of: hosts.block(ws)) { out["badge"] = badge }
         if ws.host != wc.host.host { out["host"] = hosts.label(of: ws.host) }
         if let full = a.full { out["full"] = full }
         if let f = a.focused { out["focused"] = f }

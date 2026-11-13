@@ -11,7 +11,7 @@ private func strip() -> (SpaceStripView, [BlockID]) {
     let s = SpaceStripView(frame: NSRect(x: 0, y: 0, width: 300, height: SpaceStripView.height))
     let ids = [BlockID(), BlockID()]
     s.show(ids.enumerated().map { i, id in
-        SpaceStripView.Chip(id: id, title: "s\(i)", symbol: nil, letter: "S", color: .systemBlue, current: i == 0, status: nil, hostBreak: false)
+        SpaceStripView.Chip(id: id, title: "s\(i)", mark: .letters("S"), badge: nil, color: .systemBlue, current: i == 0, status: nil, hostBreak: false)
     })
     s.layoutSubtreeIfNeeded()
     return (s, ids)

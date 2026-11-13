@@ -20,8 +20,8 @@ final class SpaceSwitcherView: PopoverView {
         var id: BlockID
         var name: String
         var host: String?
-        var letter: String
-        var symbol: String?
+        var mark: SpaceMark
+        var badge: String?
         var color: NSColor
         var status: StatusGlyph.Look?
         var tiles: [Tile]
@@ -74,7 +74,7 @@ final class SpaceSwitcherView: PopoverView {
             // Its head: its square, its name, its host; what wants you there.
             let sq = NSRect(x: r.minX + 10, y: r.minY + 10, width: 20, height: 20)
             SpaceSquare.fill(sq, color: c.color, alpha: 0.3)
-            SpaceSquare.drawGlyph(in: sq, color: c.color, symbol: c.symbol, letter: c.letter)
+            SpaceSquare.drawGlyph(in: sq, color: c.color, mark: c.mark, badge: c.badge)
             var right = r.maxX - 10
             if let tone = SpaceStripView.tone(c.status) {
                 tone.setFill()
@@ -198,7 +198,7 @@ extension MainWindowController {
             x += w
         }
         return .init(id: id, name: name, host: hosts.ordered.count > 1 ? hosts.label(of: id.host) : nil,
-                     letter: SpaceLook.letter(of: name), symbol: SpaceLook.symbol(of: b), color: SpaceLook.color(of: b),
+                     mark: spaceMarks()[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b), color: SpaceLook.color(of: b),
                      status: spaceStatus(a), tiles: tiles, docked: a.docked.count)
     }
 
