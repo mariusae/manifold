@@ -284,7 +284,7 @@ final class Hosts {
         if let d = c.registry.gone[id] {
             let kind = Self.kindWord(d.kind, path: d.path)
             let what = d.title.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : "“\($0)” (\(kind))" } ?? "This \(kind)"
-            let when = Self.goneDates.string(from: Date(timeIntervalSince1970: Double(d.at.wall) / 1000))
+            let when = BlockSummary.since(d.at.date, now: Date())
             return d.deleted ? "\(what) was deleted, \(when)" : "\(what) was closed and collected, \(when)"
         }
         switch c.link {
@@ -306,16 +306,6 @@ final class Hosts {
         default: kind.rawValue
         }
     }
-
-    /// When a block went: "today at 10:41", "yesterday", "Oct 3, 2026 at…".
-    private static let goneDates: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        f.doesRelativeDateFormatting = true
-        f.formattingContext = .middleOfSentence
-        return f
-    }()
 
     // MARK: Keeping (§4), across hosts
 

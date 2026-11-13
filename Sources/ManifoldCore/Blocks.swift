@@ -1247,11 +1247,9 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
                 let first = diff?.patch?.split(separator: "\n").first(where: { $0.hasPrefix("    ") })?.trimmingCharacters(in: .whitespaces)
                 return first.map { "\(sha.prefix(7)) \($0)" } ?? String(sha.prefix(7))
             case let .versions(_, from, to):
-                let f = DateFormatter()
-                f.dateStyle = .short
-                f.timeStyle = .short
                 let name = path?.lastPathComponent ?? "Note"
-                return "\(name): \(f.string(from: from.date)) → \(to.map { f.string(from: $0.date) } ?? "now")"
+                let now = Date()
+                return "\(name): \(BlockSummary.since(from.date, now: now)) → \(to.map { BlockSummary.since($0.date, now: now) } ?? "now")"
             case let .uncommitted(repo):
                 return "Changes in \(repo.lastPathComponent)"
             case let .since(_, _, title), let .trees(_, _, _, title):

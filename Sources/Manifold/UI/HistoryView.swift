@@ -92,10 +92,7 @@ final class HistoryView: NSView {
     @objc private func scrubbed() {
         let i = index
         guard i >= 0, i < entries.count else { return }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        let note = "\(f.string(from: entries[i].at.date)) · change \(i + 1) of \(entries.count)"
+        let note = "\(BlockSummary.since(entries[i].at.date, now: Date())) · change \(i + 1) of \(entries.count)"
         textDocument.rope = Rope(texts[i])
         textDocument.version += 1
         textView.documentChanged()

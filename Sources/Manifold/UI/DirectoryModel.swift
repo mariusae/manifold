@@ -24,15 +24,8 @@ final class BrowserNode {
 
     var sizeText: String { isDirectory ? "--" : ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file) }
 
-    var modifiedText: String { BrowserNode.dates.string(from: Date(timeIntervalSince1970: entry.modified)) }
-
-    static let dates: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        f.doesRelativeDateFormatting = true
-        return f
-    }()
+    /// When it was changed, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+    var modifiedText: String { BlockSummary.since(Date(timeIntervalSince1970: entry.modified), now: Date()) }
 
     private static var icons: [String: NSImage] = [:]
 

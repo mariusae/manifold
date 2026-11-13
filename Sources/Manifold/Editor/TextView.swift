@@ -254,10 +254,7 @@ final class TextView: NSView, NSTextInputClient {
         let text: String
         if idx < 0 { text = "Not committed: changed since the last commit" } else {
             let c = b.commits[idx]
-            let f = DateFormatter()
-            f.dateStyle = .medium
-            f.timeStyle = .short
-            text = "\(c.sha.prefix(12)) · \(c.author) · \(f.string(from: Date(timeIntervalSince1970: c.at)))" + (c.summary.isEmpty ? "" : "\n\(c.summary)") + "\nClick to see the file as it left it"
+            text = "\(c.sha.prefix(12)) · \(c.author) · \(BlockSummary.since(Date(timeIntervalSince1970: c.at), now: Date()))" + (c.summary.isEmpty ? "" : "\n\(c.summary)") + "\nClick to see the file as it left it"
         }
         let r = NSRect(x: Self.insets.left, y: top(ofLine: n), width: blameWidth, height: lineHeight)
         PeekTip.shared.show(NSAttributedString(string: text, attributes: [.font: UIType.detail, .foregroundColor: Theme.text]), under: convert(r, to: nil), in: window)

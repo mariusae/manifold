@@ -172,16 +172,13 @@ extension MainWindowController {
         }
         let far = Date.distantPast
         all.sort { ($0.thread?.lastActivity?.date ?? far) > ($1.thread?.lastActivity?.date ?? far) }
-        let time = DateFormatter()
-        time.timeStyle = .short
-        time.dateStyle = .none
         func item(_ t: Block) -> PopMenu.Item {
             let th = t.thread
             let about = th?.about.flatMap { hosts.block($0.block) }
             let when = th?.lastActivity?.date
             // When first, as Dia's: the place after it, cut if it must be.
             var sub: [String] = []
-            if let when { sub.append(Self.dayWord(when) + " at " + time.string(from: when)) }
+            if let when { sub.append(BlockSummary.since(when, now: Date())) }
             sub.append(place(t))
             let unseen = hosts.unseen(t).count
             return PopMenu.Item(symbol: th?.resolved == true ? "checkmark.bubble" : "text.bubble",
@@ -216,15 +213,6 @@ extension MainWindowController {
             PopMenu.Item(symbol: "plus.bubble", title: "New Thread About This Space…", dimmed: true, run: { [weak self] in self?.newThreadAboutSpace() }),
         ], divided: true))
         return sections
-    }
-
-    static func dayWord(_ d: Date) -> String {
-        let cal = Calendar.current
-        if cal.isDateInToday(d) { return "Today" }
-        if cal.isDateInYesterday(d) { return "Yesterday" }
-        let f = DateFormatter()
-        f.setLocalizedDateFormatFromTemplate(cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "MMMd" : "yMMMd")
-        return f.string(from: d)
     }
 
     static func dayGroup(_ d: Date) -> String {

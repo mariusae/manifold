@@ -108,11 +108,8 @@ final class HostDashboard: NSView {
         return "\(s / 86400) d \(s % 86400 / 3600) h"
     }
 
-    private static let clock: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
+    /// When, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+    private static func clock(_ d: Date) -> String { BlockSummary.since(d, now: Date()) }
 
     /// How it stands, in a line: for the card's detail too.
     static func standing(_ c: HostClient) -> String {
@@ -121,7 +118,7 @@ final class HostDashboard: NSView {
             if let s = c.silenceDescription, c.silence != nil { return "Quiet: " + s }
             // Another Manifold leads it (§8.2): said first.
             if c.watching { return "Watching: \(c.fencedBy ?? "another Manifold") took over · Take Over in its menu" }
-            let since = c.connectedSince.map { "Connected \(duration(Date().timeIntervalSince($0))) (since \(clock.string(from: $0)))" } ?? "Connected"
+            let since = c.connectedSince.map { "Connected \(duration(Date().timeIntervalSince($0))) (since \(clock($0)))" } ?? "Connected"
             let last = c.pings.last?.rtt.map { " · \(ms($0))" } ?? ""
             return since + last
         case .connecting:
@@ -146,7 +143,7 @@ final class HostDashboard: NSView {
         var rows: [(String, String)] = []
         let hour = c.drops.filter { now.timeIntervalSince($0.at) <= 3600 }
         if !hour.isEmpty {
-            let list = hour.suffix(3).reversed().map { "\(Self.clock.string(from: $0.at)) \($0.why)" }.joined(separator: "; ")
+            let list = hour.suffix(3).reversed().map { "\(Self.clock($0.at)) \($0.why)" }.joined(separator: "; ")
             rows.append(("Dropped", "\(hour.count) in the last hour — " + list))
         }
         if let st = c.mux?.stats {

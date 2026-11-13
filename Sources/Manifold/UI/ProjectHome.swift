@@ -150,7 +150,7 @@ final class ProjectStrip: NSView {
         guard let s = f.index else { return ("circle.dashed", "Index…", "Asking the host how its index stands…", false) }
         let by = s.indexer.map { " · \($0)" } ?? ""
         let with = s.indexer.map { " with the \($0) indexer" } ?? ""
-        let whenMade = s.at.map { $0.formatted(date: .abbreviated, time: .shortened) }
+        let whenMade = s.at.map { BlockSummary.since($0, now: Date()) }
         let place = s.root.map { "\n" + ($0 as NSString).abbreviatingWithTildeInPath } ?? ""
         switch s.state {
         case .none:

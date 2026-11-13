@@ -136,8 +136,8 @@ extension MainWindowController {
             s.style = .section
             sections.append(s)
         }
-        // The date, and how long ago within the hour (past it, the date says when).
-        func when(_ d: Date) -> String { Self.inspectorDate.string(from: d) + (BlockSummary.isRelative(d, now: Date()) ? " (" + Age.ago(d) + ")" : "") }
+        // When, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+        func when(_ d: Date) -> String { BlockSummary.since(d, now: Date()) }
 
         // What it is at a glance (open); its machine in detail (folded).
         var about: [OrgNode] = [], hardware: [OrgNode] = []
@@ -175,7 +175,7 @@ extension MainWindowController {
         // Its server's process.
         var server: [OrgNode] = []
         if let pid = c.serverPID { server.append(row("\(pid)", "process", "gearshape.2", copies: "\(pid)")) }
-        if c.isConnected, let started = c.serverStarted { server.append(row(HostDashboard.duration(Date().timeIntervalSince(started)) + " (since " + Self.inspectorDate.string(from: started) + ")", "server up", "clock")) }
+        if c.isConnected, let started = c.serverStarted { server.append(row(HostDashboard.duration(Date().timeIntervalSince(started)) + " (since " + BlockSummary.since(started, now: Date()) + ")", "server up", "clock")) }
         if !c.features.isEmpty { server.append(row(c.features.sorted().joined(separator: ", "), "features", "puzzlepiece")) }
         if c.watching { server.append(row(c.fencedBy ?? "another Manifold", "taken over by", "eye")) }
         if let since = c.connectedSince { server.append(row(when(since), "connected", "link")) }
@@ -301,7 +301,7 @@ extension MainWindowController {
             n.block = s.purpose.block
             let pacing = s.urgent ? "paced, ahead of the others" : s.bulk ? "paced" : "not paced"
             n.tooltip = "\(what)\nStream \(s.id): \(pacing)\(s.compresses ? ", compressed" : "")"
-                + "\nOpen \(HostDashboard.duration(now.timeIntervalSince(s.opened))), since \(Self.inspectorDate.string(from: s.opened))"
+                + "\nOpen \(HostDashboard.duration(now.timeIntervalSince(s.opened))), since \(BlockSummary.since(s.opened, now: Date()))"
                 + "\nCarried \(amount(s.flow))"
                 + (s.heldForCredit ? "\nHeld: the other end hasn't taken what it was sent" : s.queued > 0 ? "\n\(bytes(s.queued)) waiting to go" : "")
             streams.append(n)
@@ -317,15 +317,6 @@ extension MainWindowController {
         f.allowsNonnumericFormatting = false
         return f
     }()
-
-
-    private static let inspectorDate: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        return f
-    }()
-
 
     /// The inspector shown again, a moment after the last change (it
     /// follows the focus).
