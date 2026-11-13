@@ -66,6 +66,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
 
     let scroll = ClippingScrollView()
     let textView = TextView()
+    /// Something added below what shows, from elsewhere: a pill at the foot.
+    private let newBelow = NewBelowButton()
     private var banner: EditorBanner?
     private lazy var finder = FindHost(view: self, target: self)
     private var matches: [TextRange] = []
@@ -188,6 +190,18 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
+        // Text added at its end from elsewhere while scrolled up: said at its
+        // foot ("New below"), clicked, scrolled there; gone once it's there.
+        addSubview(newBelow)
+        newBelow.onClick = { [weak self] in self?.textView.scrollToFoot() }
+        textView.onAddedBelow = { [weak self] in
+            guard let self else { return }
+            self.newBelow.show("New below", over: self.scroll.frame)
+        }
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.unchecked { if let self, !self.newBelow.isHidden, self.textView.isAtFoot { self.newBelow.hide() } }
+        }
         textView.cardFor = { [weak self] id, place in self?.blockCard?(id, place) }
         status.maximumNumberOfLines = 1
         statusBox.wantsLayer = true
@@ -331,6 +345,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             sidebar.frame = NSRect(x: 0, y: bottom, width: left, height: top - bottom)
         }
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
+        if !newBelow.isHidden { newBelow.show(over: scroll.frame) }
         note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
         updatePinned()
@@ -465,7 +480,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         case "view":
             // What's in view: its top line, the caret's line, and the lines there are.
             let clip = scroll.contentView.bounds
-            return "top \(String(format: "%.1f", topLine)) caret line \(textView.caretLine + 1) of \(textView.text.lineCount) · visible \(Int(clip.minY))-\(Int(clip.maxY)) of \(Int(textView.frame.height))"
+            return "top \(String(format: "%.1f", topLine)) caret line \(textView.caretLine + 1) of \(textView.text.lineCount) · visible \(Int(clip.minY))-\(Int(clip.maxY)) of \(Int(textView.frame.height)) · new below \(newBelow.isHidden ? "hidden" : "shown")"
         case "hand":
             // "scrub hand <line> <column>": the ⌘ link there, as the pointer
             // on it with ⌘ held finds it, and the hand's badge.

@@ -590,6 +590,11 @@ extension MainWindowController {
             guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
             return chat.debugAsk(rest == "on" ? true : rest == "off" ? false : nil)
                 + " · thread asks \(chat.threadID.flatMap { hosts.block($0) }.flatMap { asksAgent(of: $0)?.name } ?? "nobody")"
+        case "send", "scroll":
+            // "threads send <text>": sent from the focused thread tile's composer; "threads scroll": where it's at.
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            if words[0] == "send" { t.chat.debugSend(rest) }
+            return t.chat.debugScroll
         case "strip":
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
             return t.chat.debugStrip

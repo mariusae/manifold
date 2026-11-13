@@ -197,6 +197,13 @@ final class ThreadChatView: NSView {
         box.onSend = { [weak self] in self?.send() }
         box.leading = [resolveButton, askButton]
         for v in [header, scroll, box] as [NSView] { addSubview(v) }
+        // Others' comments come while it's scrolled up: said at its foot, not scrolled to.
+        addSubview(newBelow)
+        newBelow.onClick = { [weak self] in self?.scrollToEnd() }
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.unchecked { if let self, self.isScrolledToEnd { self.newBelow.hide() } }
+        }
         themed { v in
             v.contextView.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
         }
@@ -211,6 +218,7 @@ final class ThreadChatView: NSView {
     func show(_ m: ThreadChatModel) {
         let scrolledToEnd = isScrolledToEnd
         let firstShow = model.thread?.id != m.thread?.id || list.arrangedSubviews.isEmpty
+        let before = model.thread?.thread?.entries.count ?? 0
         model = m
         let t = m.thread?.thread
         let place = t?.about ?? m.place
@@ -287,7 +295,17 @@ final class ThreadChatView: NSView {
         composerChanged()
         needsLayout = true
         layoutSubtreeIfNeeded()
-        if firstShow || scrolledToEnd { scrollToEnd() }
+        // To its end: first shown, followed there, or what you sent come in —
+        // wherever it was scrolled. Others' come while scrolled up: said.
+        let grew = !firstShow && (t?.entries.count ?? 0) > before
+        let yoursCame = sentPending && grew && t?.entries.last(where: { $0.comment != nil })?.author.isYou == true
+        if yoursCame { sentPending = false }
+        if firstShow || scrolledToEnd || yoursCame {
+            scrollToEnd()
+            newBelow.hide()
+        } else if grew {
+            newBelow.show("New comments", over: scroll.frame)
+        }
         refillOutline()
         window?.invalidateCursorRects(for: self)
         watchSeen()
@@ -516,8 +534,14 @@ final class ThreadChatView: NSView {
         }
         composer.clear()
         composerChanged()
+        // Where it lands, scrolled to as it comes, wherever this was scrolled.
+        sentPending = true
         delegate?.threadChat(self, send: text)
     }
+
+    /// Sent, and not yet come back: shown at the end when it does.
+    private var sentPending = false
+    private let newBelow = NewBelowButton()
 
     /// Ask switched: a new thread's kept till it's made; a thread's, said.
     @objc private func toggleAsk() {
@@ -592,6 +616,7 @@ final class ThreadChatView: NSView {
         scroll.frame = NSRect(x: pad, y: listBottom, width: w, height: max(0, y - listBottom))
         finder.layout(in: bounds)
         strip.place(scroll.frame)
+        if !newBelow.isHidden { newBelow.show(over: scroll.frame) }
     }
 
     // MARK: Its outline: a tick for each comment, down its right (as a page's headings)
@@ -1461,6 +1486,16 @@ extension ThreadChatView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) {
         let t = window?.firstResponder as? NSTextView
         done(t.flatMap { $0.selectedRange().length > 0 ? ($0.string as NSString).substring(with: $0.selectedRange()) : nil })
+    }
+
+    /// Debugging: words sent from its composer, as typed and ↩; and where
+    /// it's scrolled, and whether New shows.
+    func debugSend(_ text: String) {
+        composer.string = text
+        send()
+    }
+    var debugScroll: String {
+        "at end \(isScrolledToEnd) · top \(Int(scroll.contentView.bounds.minY)) of \(Int(list.frame.height)) · new \(newBelow.isHidden ? "hidden" : "shown")"
     }
 
     /// Debugging: its strip — its items, its ticks (lit or not), its frame.

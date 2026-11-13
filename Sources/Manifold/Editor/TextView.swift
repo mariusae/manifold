@@ -337,6 +337,17 @@ final class TextView: NSView, NSTextInputClient {
     /// from elsewhere at its end is told by them.
     private var knownCount = 0
     private var knownTail: [UInt8] = []
+    /// Text added at its end from elsewhere while it's scrolled up.
+    var onAddedBelow: (() -> Void)?
+
+    /// Scrolled to its last line.
+    func scrollToFoot() { scrollToVisible(NSRect(x: 0, y: frame.height - 1, width: 1, height: 1)) }
+
+    /// Whether its last line shows.
+    var isAtFoot: Bool {
+        guard let clip = enclosingScrollView?.contentView.bounds else { return true }
+        return clip.maxY >= frame.height - lineHeight * 1.5
+    }
 
     // Undo.
     private struct UndoGroup {
@@ -408,13 +419,14 @@ final class TextView: NSView, NSTextInputClient {
             normalizeSelections()
             resizeToFit()
             needsDisplay = true
-            // Added at its end (what was there before still there): where it
-            // landed scrolled to, as new lines are followed — its foot.
+            // From elsewhere: followed, if it was at its foot (as a log is);
+            // added at its end while it's scrolled up, said (`onAddedBelow`),
+            // not scrolled to — what's being read stays where it is.
             let rope = document.rope
             let appended = n > knownCount && knownCount > 0
                 && rope.bytes(in: TextRange(knownCount - knownTail.count, knownCount)) == knownTail
-            if fromElsewhere, appended || wasAtFoot, frame.height > (enclosingScrollView?.contentSize.height ?? 0) {
-                scrollToVisible(NSRect(x: 0, y: frame.height - 1, width: 1, height: 1))
+            if fromElsewhere, frame.height > (enclosingScrollView?.contentSize.height ?? 0) {
+                if wasAtFoot { scrollToFoot() } else if appended { onAddedBelow?() }
             }
             knownCount = n
             knownTail = rope.bytes(in: TextRange(max(0, n - 48), n))
