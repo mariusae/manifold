@@ -1608,6 +1608,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     var focusedCwd: String? {
         guard let f = focusedShown else { return nil }
+        // A thread's: where what it's about is (a file's folder, a terminal's).
+        if let about = f.block?.thread?.about.flatMap({ hosts.block($0.block) }) { return about.terminal?.cwd ?? about.place }
         return f.block?.terminal?.cwd ?? f.block?.place
     }
 
