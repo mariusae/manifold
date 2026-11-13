@@ -188,7 +188,11 @@ extension MainWindowController {
                                 image: about?.web.flatMap { Favicons.image(forPage: $0.url) },
                                 title: th?.title ?? "Thread", subtitle: sub.filter { !$0.isEmpty }.joined(separator: " · "),
                                 trailing: unseen > 0 ? "\(unseen) new" : "", dimmed: th?.resolved == true,
-                                run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) })
+                                run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) },
+                                // ↖↘ on its row (⌥↩): a tile of its own, not the overlay.
+                                accessory: PopMenu.Accessory(symbol: "arrow.up.left.and.arrow.down.right", tip: "Open as a Tile") { [weak self] in
+                                    self?.popOutThread(t.id)
+                                })
         }
         // The resolved, below the rest, set off as Recently Closed is in
         // ⇧⌘A's (unless they're all that's asked for).
@@ -313,6 +317,8 @@ extension MainWindowController {
         guard let m = footerMenu.view else { return "no menu" }
         if w.count > 1, w[1] == "type" { m.debugType(w.count > 2 ? w[2] : ""); layoutFooterMenu() }
         if w.count > 2, w[1] == "chip" { m.debugChip(w[2]); layoutFooterMenu() }
+        // "footer threads accessory": the chosen row's ↖↘.
+        if w.count > 1, w[1] == "accessory" { return m.debugAccessory() }
         return "menu \(m.frame.integral)\n" + m.debugRows
     }
 }

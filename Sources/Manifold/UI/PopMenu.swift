@@ -20,6 +20,15 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         /// The menu stays (Show All: more of it).
         var keepsOpen = false
         var run: () -> Void
+        /// A second thing to do with it (a thread made a tile): a symbol at
+        /// the right of its row under the pointer, clicked; ⌥↩ chosen.
+        var accessory: Accessory? = nil
+    }
+
+    struct Accessory {
+        var symbol: String
+        var tip: String
+        var run: () -> Void
     }
 
     struct Section {
@@ -92,6 +101,10 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         list.onRun = { [weak self] item in
             if !item.keepsOpen { self?.onClose?() }
             item.run()
+        }
+        list.onAccessory = { [weak self] item in
+            self?.onClose?()
+            item.accessory?.run()
         }
         for v in [glass, field, hintLabel, clear, filterButton, scroll] as [NSView] { addSubview(v) }
     }
@@ -177,8 +190,16 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         switch sel {
         case #selector(NSResponder.moveDown(_:)): list.move(1); scrollToChosen(); return true
         case #selector(NSResponder.moveUp(_:)): list.move(-1); scrollToChosen(); return true
-        case #selector(NSResponder.insertNewline(_:)):
-            if let item = list.chosenItem { if !item.keepsOpen { onClose?() }; item.run() }
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+            guard let item = list.chosenItem else { return true }
+            // ⌥↩: its second thing (a thread made a tile), if it has one.
+            if NSApp.currentEvent?.modifierFlags.contains(.option) == true, let a = item.accessory {
+                onClose?()
+                a.run()
+                return true
+            }
+            if !item.keepsOpen { onClose?() }
+            item.run()
             return true
         case #selector(NSResponder.cancelOperation(_:)): onClose?(); return true
         default: return false
@@ -195,6 +216,13 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
 
     var debugRows: String { list.debugRows }
     func debugType(_ s: String) { field.stringValue = s; refresh() }
+    /// Debugging: the chosen row's second thing, as its symbol clicked.
+    func debugAccessory() -> String {
+        guard let item = list.chosenItem, let a = item.accessory else { return "no second thing" }
+        onClose?()
+        a.run()
+        return "ran \(a.tip)"
+    }
     func debugChip(_ id: String) { if let i = chips.firstIndex(where: { $0.id == id }) { chipsShown = true; chipButtons[i].onClick?() } }
 }
 
@@ -353,6 +381,13 @@ final class PopMenuList: NSView {
                     image.draw(centeredAt: NSPoint(x: iconRect.midX, y: iconRect.midY))
                 }
                 var right = w - 16
+                // Its second thing, on the row under the pointer: a symbol to click.
+                if lit, let a = item.accessory, let s = Theme.symbol(a.symbol, size: 11, weight: .semibold, color: Flat.onBand()) {
+                    let box = NSRect(x: right - 20, y: r.minY + (Self.row - 20) / 2, width: 20, height: 20)
+                    accessoryRect = box
+                    s.draw(centeredAt: NSPoint(x: box.midX, y: box.midY))
+                    right = box.minX - 6
+                }
                 if item.chevron, let c = Theme.symbol("chevron.right", size: 10, weight: .semibold, color: lit ? Flat.onBand(dim: true) : Theme.tertiaryText) {
                     let z = c.size
                     c.draw(in: NSRect(x: right - z.width, y: r.minY + (Self.row - z.height) / 2, width: z.width, height: z.height),
@@ -394,15 +429,24 @@ final class PopMenuList: NSView {
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
         guard let i = index(at: event), items.indices.contains(i) else { return }
+        // On the row's second thing: that.
+        if chosen == i, items[i].accessory != nil, let r = accessoryRect, r.insetBy(dx: -3, dy: -3).contains(convert(event.locationInWindow, from: nil)) {
+            return onAccessory?(items[i]) ?? ()
+        }
         onRun?(items[i])
     }
+
+    /// The chosen row's second thing, run (`Item.accessory`).
+    var onAccessory: ((PopMenu.Item) -> Void)?
+    /// Where the chosen row's second thing is drawn.
+    private var accessoryRect: NSRect?
 
     var debugRows: String {
         lines.map { l, _ -> String in
             switch l {
             case .header(let t): return "## " + t
             case .rule: return "--"
-            case .item(let i): return (chosen == i ? "> " : "  ") + items[i].title + (items[i].subtitle.isEmpty ? "" : " — " + items[i].subtitle) + (items[i].trailing.isEmpty ? "" : " [\(items[i].trailing)]") + (items[i].chevron ? " ›" : "")
+            case .item(let i): return (chosen == i ? "> " : "  ") + (items[i].accessory == nil ? "" : "[↗] ") + items[i].title + (items[i].subtitle.isEmpty ? "" : " — " + items[i].subtitle) + (items[i].trailing.isEmpty ? "" : " [\(items[i].trailing)]") + (items[i].chevron ? " ›" : "")
             }
         }.joined(separator: "\n")
     }
