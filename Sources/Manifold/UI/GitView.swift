@@ -199,7 +199,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         pull.frame = NSRect(x: push.frame.minX - 4 - lw, y: (mid - bh / 2).rounded(), width: lw, height: bh)
         branchLabel.frame = NSRect(x: 12, y: mid - 8, width: max(0, pull.frame.minX - 8 - 12), height: 16)
         split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - strip)
-        let tall = split.frame.height >= Self.paneFrom
+        // The pane only once there's a diff in it (a row chosen): till then
+        // the list has the tile, not over an empty half.
+        let tall = split.frame.height >= Self.paneFrom && pane != nil
         if paneBox.isHidden == tall {
             paneBox.isHidden = !tall
             split.adjustSubviews()
