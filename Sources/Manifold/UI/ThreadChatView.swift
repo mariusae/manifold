@@ -92,8 +92,9 @@ final class ThreadChatView: NSView {
     private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
     /// The agent's mark in its header, while it's the agent's thread.
     private let agentMark = NSImageView()
-    /// A new thread's Ask, before it's made.
-    private(set) var asksNew = false
+    /// A new thread's Ask, before it's made: on unless switched off — a
+    /// thread asks the agent from its first comment.
+    private(set) var asksNew = true
     /// Its own ↖↘ by the place (not where something round it has one: the overlay's header).
     var showsTileButton = true
     /// Its words' size in a tile of its own — read at length, as a
@@ -526,8 +527,8 @@ final class ThreadChatView: NSView {
         }
     }
 
-    /// Made with Ask on: no longer a new one's to keep.
-    func madeAsking() { asksNew = false }
+    /// Made: the next new one's Ask on again, as they start.
+    func madeAsking() { asksNew = true }
 
     /// Debugging: Ask switched, as clicked; and how it stands.
     func debugAsk(_ on: Bool?) -> String {
