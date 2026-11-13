@@ -497,7 +497,9 @@ final class SpaceStripView: NSView {
         if c.current {
             let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
             ring.lineWidth = 1.5
-            c.color.withAlphaComponent(0.85).setStroke()
+            // In the text's ink, not the space's colour: a light one's (yellow,
+            // mint) ring was lost against its own ground and the wash.
+            Theme.text.withAlphaComponent(0.7).setStroke()
             ring.stroke()
         }
         SpaceSquare.drawGlyph(in: r, color: c.color, symbol: c.symbol, letter: c.letter)
