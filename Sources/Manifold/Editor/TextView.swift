@@ -333,6 +333,10 @@ final class TextView: NSView, NSTextInputClient {
     private var layoutWidth: CGFloat = 0
     private var knownVersion = -1
     private var knownLineCount = 0
+    /// The text's length and its last words, as last known: what was added
+    /// from elsewhere at its end is told by them.
+    private var knownCount = 0
+    private var knownTail: [UInt8] = []
 
     // Undo.
     private struct UndoGroup {
@@ -384,6 +388,11 @@ final class TextView: NSView, NSTextInputClient {
     func documentChanged() {
         guard let document else { return }
         if document.version != knownVersion {
+            // Scrolled to its foot before it changed: kept there (as a log
+            // followed is), as is new text added at its end from elsewhere.
+            let clip = enclosingScrollView?.contentView.bounds
+            let wasAtFoot = clip.map { $0.maxY >= frame.height - lineHeight * 1.5 } ?? false
+            let fromElsewhere = !applyingOurs
             if !applyingOurs {
                 // Not ours: nothing is known about what moved.
                 syntax?.update(to: document.rope)
@@ -399,6 +408,16 @@ final class TextView: NSView, NSTextInputClient {
             normalizeSelections()
             resizeToFit()
             needsDisplay = true
+            // Added at its end (what was there before still there): where it
+            // landed scrolled to, as new lines are followed — its foot.
+            let rope = document.rope
+            let appended = n > knownCount && knownCount > 0
+                && rope.bytes(in: TextRange(knownCount - knownTail.count, knownCount)) == knownTail
+            if fromElsewhere, appended || wasAtFoot, frame.height > (enclosingScrollView?.contentSize.height ?? 0) {
+                scrollToVisible(NSRect(x: 0, y: frame.height - 1, width: 1, height: 1))
+            }
+            knownCount = n
+            knownTail = rope.bytes(in: TextRange(max(0, n - 48), n))
         }
     }
 

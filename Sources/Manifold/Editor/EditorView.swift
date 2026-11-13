@@ -462,6 +462,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         switch what {
         case "pick": headingsOutline.pick(Int(arg) ?? 0); return "picked"
         case "text": return String(textView.text.string.suffix(300))
+        case "view":
+            // What's in view: its top line, the caret's line, and the lines there are.
+            let clip = scroll.contentView.bounds
+            return "top \(String(format: "%.1f", topLine)) caret line \(textView.caretLine + 1) of \(textView.text.lineCount) · visible \(Int(clip.minY))-\(Int(clip.maxY)) of \(Int(textView.frame.height))"
         case "hand":
             // "scrub hand <line> <column>": the ⌘ link there, as the pointer
             // on it with ⌘ held finds it, and the hand's badge.
