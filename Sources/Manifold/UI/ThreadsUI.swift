@@ -57,6 +57,9 @@ final class ThreadTileView: NSView, PaneContent {
     }
 
     func maniText(_ options: ManiReadOptions) async -> String? { nil }
+
+    /// Its comments, one by one: the strip down its right, and ⌘/'s list.
+    var outline: Outline? { chat.commentsOutline }
 }
 
 /// A card at a place (§3.12): its threads' chat — one at a time, stepped
@@ -587,6 +590,9 @@ extension MainWindowController {
             guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
             return chat.debugAsk(rest == "on" ? true : rest == "off" ? false : nil)
                 + " · thread asks \(chat.threadID.flatMap { hosts.block($0) }.flatMap { asksAgent(of: $0)?.name } ?? "nobody")"
+        case "strip":
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            return t.chat.debugStrip
         case "font":
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
             return t.chat.debugFont

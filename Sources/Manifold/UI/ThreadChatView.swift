@@ -288,6 +288,7 @@ final class ThreadChatView: NSView {
         needsLayout = true
         layoutSubtreeIfNeeded()
         if firstShow || scrolledToEnd { scrollToEnd() }
+        refillOutline()
         window?.invalidateCursorRects(for: self)
         watchSeen()
     }
@@ -590,6 +591,57 @@ final class ThreadChatView: NSView {
         let listBottom = box.frame.maxY + 10
         scroll.frame = NSRect(x: pad, y: listBottom, width: w, height: max(0, y - listBottom))
         finder.layout(in: bounds)
+        strip.place(scroll.frame)
+    }
+
+    // MARK: Its outline: a tick for each comment, down its right (as a page's headings)
+
+    /// The comments, in order: who said each and how it begins; chosen,
+    /// scrolled to.
+    private(set) lazy var commentsOutline: Outline = {
+        let o = Outline()
+        o.onPick = { [weak self] i in
+            guard let self, let v = self.commentView(i) else { return }
+            self.scroll(to: v)
+        }
+        return o
+    }()
+    private lazy var strip: ScrollStrip = {
+        let s = ScrollStrip(outline: commentsOutline, scroll: scroll, ownsScrollBar: false)
+        s.tops = { [weak self] in self?.commentViews.map { (y: $0.frame.minY, level: 0) } ?? [] }
+        s.strip.preview = { [weak self] i in
+            guard let v = self?.commentView(i) else { return [] }
+            return v.markdown.split(separator: "\n").prefix(4).map(String.init)
+        }
+        addSubview(s.strip)
+        return s
+    }()
+    private var commentViews: [IssueCommentView] { list.arrangedSubviews.compactMap { $0 as? IssueCommentView } }
+    private func commentView(_ i: Int) -> IssueCommentView? {
+        let all = commentViews
+        return all.indices.contains(i) ? all[i] : nil
+    }
+
+    /// The outline made again from the comments shown.
+    private func refillOutline() {
+        let items = commentViews.map { v -> Outline.Item in
+            let words = v.markdown.split(whereSeparator: \.isNewline).first.map { Block.plainWords(String($0)) } ?? ""
+            return Outline.Item(title: v.authorName + ": " + String(words.prefix(70)))
+        }
+        commentsOutline.set(items)
+        commentsOutline.block = model.thread?.id
+        commentsOutline.placeFor = { [weak self] i in self?.commentView(i).map { .comment($0.entryID) } }
+        list.layoutSubtreeIfNeeded()
+        strip.refill()
+    }
+
+    /// A comment scrolled into the middle of what shows.
+    private func scroll(to v: NSView) {
+        list.layoutSubtreeIfNeeded()
+        let clip = scroll.contentView
+        let y = max(0, min(v.frame.midY - clip.bounds.height / 2, list.frame.height - clip.bounds.height))
+        clip.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(clip)
     }
 
     // MARK: Find (⌘F): over every comment's words
@@ -1409,6 +1461,12 @@ extension ThreadChatView: Searchable {
     func textForFind(_ done: @escaping (String?) -> Void) {
         let t = window?.firstResponder as? NSTextView
         done(t.flatMap { $0.selectedRange().length > 0 ? ($0.string as NSString).substring(with: $0.selectedRange()) : nil })
+    }
+
+    /// Debugging: its strip — its items, its ticks (lit or not), its frame.
+    var debugStrip: String {
+        let s = strip.strip
+        return "frame \(NSStringFromRect(s.frame)) items \(commentsOutline.items.map(\.title)) ticks \(s.ticks.map { $0.lit ? "●" : "○" }.joined())"
     }
 
     /// Debugging: the face its first comment's words are set in, and whether it's in a tile.

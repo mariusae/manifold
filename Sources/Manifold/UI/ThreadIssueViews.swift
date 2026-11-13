@@ -69,6 +69,8 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
     let markdown: String
     /// Its entry's id: what a reference to it names.
     let entryID: String
+    /// Who wrote it, as its band says.
+    let authorName: String
     /// Its pieces, top to bottom: its words between code blocks, and each
     /// code block — its own view, scrolled sideways rather than wrapped.
     private let parts: [NSView]
@@ -105,6 +107,7 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
     init(_ e: ThreadEntry, text: String, icon: NSImage?, inTile: Bool, continued: Bool, size: CGFloat, font: NSFont?, lineHeight: CGFloat = 0) {
         markdown = text
         entryID = e.id
+        authorName = e.author.isYou ? "You" : e.author.name
         self.inTile = inTile
         self.continued = continued
         let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
