@@ -226,7 +226,7 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
     <p>A space is a block too, so it has a title (<kbd>⇧⌘R</kbd> names it; an unnamed
     one is called by what it holds), and you can have as many as you like:
     <kbd>⌥⌘T</kbd> makes one with a terminal in it, <kbd>⌘1</kbd>–<kbd>⌘9</kbd> and
-    <kbd>⌘`</kbd> go between them.</p>
+    <kbd>⌘`</kbd> and <kbd>⌥⇥</kbd> go between them.</p>
     <p>The same block can be in several spaces, or twice in one, through
     different <b>lenses</b> — a Markdown file in an editor on the left and a
     preview on the right (<kbd>⌥⇧⌘P</kbd>), every keystroke showing in both.</p>
@@ -359,13 +359,13 @@ scripts/build-app.sh run     # builds build/Manifold.app and opens it</code></pr
 </template>
 
 <template data-block="navigation" data-kind="note" data-title="Back, forward, and between spaces" data-place="Guide"
-          data-summary="⌃- and ⌃⇧- along where you've been | ⌘` between spaces">
+          data-summary="⌃- and ⌃⇧- along where you've been | ⌘` and ⌥⇥ between spaces">
   <div class="doc">
     <h1>Back, forward, and between spaces</h1>
     <ul>
       <li><b>Go ▸ Back</b> and <b>Forward</b> (<kbd>⌃-</kbd>, <kbd>⌃⇧-</kbd>, or the mouse's buttons) go along every place you've been — tiles focused, a definition gone to, a found line, a heading — across spaces. In a terminal <kbd>⌃-</kbd> stays the shell's.</li>
       <li><kbd>⌘[</kbd> and <kbd>⌘]</kbd> are a tile's own history: a page's, a preview's, a listing's.</li>
-      <li><kbd>⌘`</kbd> walks the spaces most recently gone to first; <kbd>⇧⌘]</kbd> and <kbd>⇧⌘[</kbd> go in order; <kbd>⌘1</kbd>–<kbd>⌘9</kbd> pick one.</li>
+      <li><kbd>⌘`</kbd> and <kbd>⇧⌘`</kbd> go to the next and previous space, in the strip's order; <kbd>⌥⇥</kbd> walks the spaces most recently gone to first, their cards shown while <kbd>⌥</kbd> is held; <kbd>⌘1</kbd>–<kbd>⌘9</kbd> pick one.</li>
       <li><kbd>⌥⌘]</kbd> and <kbd>⌥⌘[</kbd> move the focus between tiles.</li>
       <li>The <b>Neighborhood Map</b> (<kbd>⇧⌥⌘M</kbd>) draws a block's surroundings two steps out — what it's linked to, and what you went to before and after.</li>
     </ul>
@@ -584,7 +584,7 @@ mani new terminal --at @leftmost --below --size 0.3 --run "make test"</code></pr
       <section><h3>Go</h3><dl>
         <dt>⌘O</dt><dd>Open Quickly</dd><dt>⇧⌘O</dt><dd>Find in Blocks</dd><dt>⌘P</dt><dd>Outline</dd><dt>⇧⌘P</dt><dd>Filter Outline</dd>
         <dt>⌃-</dt><dd>Back</dd><dt>⌃⇧-</dt><dd>Forward</dd><dt>⌘J</dt><dd>Next in Inbox</dd>
-        <dt>⌘`</dt><dd>Recent Space</dd><dt>⌘1–9</dt><dd>Space by number</dd></dl></section>
+        <dt>⌘`</dt><dd>Next Space</dd><dt>⌥⇥</dt><dd>Recent Space</dd><dt>⌘1–9</dt><dd>Space by number</dd></dl></section>
       <section><h3>Tile</h3><dl>
         <dt>⌘W</dt><dd>Close Tile</dd><dt>⇧⌘W</dt><dd>Delete Block</dd><dt>⇧⌘T</dt><dd>Reopen Closed</dd><dt>⌃⌘=</dt><dd>Grow</dd>
         <dt>⇧⌘↩</dt><dd>Maximize</dd><dt>⇧⌘M</dt><dd>Shrink to Summary</dd><dt>⌘M</dt><dd>Stash</dd>

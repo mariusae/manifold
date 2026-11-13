@@ -64,7 +64,7 @@ extension NSView {
     }
 }
 
-/// A modifier held (⌘ for ⌘`, ⌃ for ⌃⇥): `released` when it's let go —
+/// A modifier held (⌥ for ⌥⇥, ⌃ for ⌃⇥): `released` when it's let go —
 /// or the app's left, so its letting go won't be heard — and `escaped`
 /// for ⎋ (taken, not passed on). Watched until `stop`.
 final class ModifierHold {

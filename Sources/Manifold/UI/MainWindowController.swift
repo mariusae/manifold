@@ -24,7 +24,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// The grid for no workspace (none selected).
     lazy var blankGrid: GridView = content
     /// The content area, which the grids are clipped to as a workspace
-    /// slides (⌘`): one sliding out leaves through its edge, never under
+    /// slides (⌘`, ⌥⇥): one sliding out leaves through its edge, never under
     /// the sidebar (which is translucent, and would show it). Not at rest:
     /// the tiles' shadows fall past it, under the sidebar, as on one
     /// surface — clipped there, a column's shadow stopped in a line at
@@ -91,7 +91,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     }
     /// The places settled on in this window, the latest first: the trail
     /// as this window has it, which every switcher walks at its own scale —
-    /// ⌘` its spaces, ⌃⇥ the space's tiles (its docked ones too). Those
+    /// ⌥⇥ its spaces, ⌃⇥ the space's tiles (its docked ones too). Those
     /// only passed on a walk aren't in it, and it doesn't wait on a host to
     /// hear of a switch (the hosts' trail, which comes after, fills in the
     /// rest).
@@ -1007,12 +1007,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var footerMenu: (view: PopMenu?, which: FooterMenu) = (nil, .threads)
     var footerMonitor: Any?
     var tilesShowAll = false
-    /// ⌘`'s walk through the spaces: their order, the one chosen; its
-    /// cards, shown; what shows them, and what watches ⌘ and ⎋.
+    /// ⌥⇥'s walk through the spaces: their order, the one chosen; its
+    /// cards, shown; what shows them, and what watches ⌥ and ⎋.
     var spaceSwitch: (order: [BlockID], index: Int)?
     var spaceSwitcher: SpaceSwitcherView?
     let spaceSwitchShow = Debouncer()
-    /// ⌘ held for ⌘`'s switcher, watched.
+    /// ⌥ held for ⌥⇥'s switcher, watched.
     var spaceSwitchHold: ModifierHold?
     /// A space's card under the pointer on its square in the strip.
     var spacePeek: SpaceSwitcherView?
@@ -1472,7 +1472,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// Tells the host what's on screen, so it knows what's unseen.
     private func noteSeen(force: Bool) {
-        // A workspace seen is a step of the trail (⌘`'s order, back and
+        // A workspace seen is a step of the trail (⌥⇥'s order, back and
         // forward).
         guard window?.isVisible == true, window?.isMiniaturized == false, let a = arrangement, let id = selected else { return }
         var seen = Set(a.visible.map(\.block))
@@ -1784,7 +1784,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Kept for Making blocks (BlockKinds) — its code in MainWindowController+Making.swift
 
-    /// Debugging: the walk's key taken as held (⌘`'s, ⌃⇥'s).
+    /// Debugging: the walk's key taken as held (⌥⇥'s, ⌃⇥'s).
     var debugHeld = false
 
     // MARK: Kept for ⌃⇥ — its code in TileSwitcher.swift

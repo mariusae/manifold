@@ -601,7 +601,7 @@ destination:
    restarts and crosses hosts; ⌘[ ⌘] walk a tile's own, where it goes on
    in place (a page, a preview, a listing).
 3. **The switchers are the trail at three scales**, as ⌘⇥ and ⌘` are
-   the Mac's at two: ⌘` its spaces (cards while ⌘ is held, a picture
+   the Mac's at two: ⌥⇥ its spaces (cards while ⌥ is held, a picture
    of each space's grid: `SpaceSwitcherView`), ⌃⇥ this space's tiles — its docked tiles too, in the grid itself: the focus
    ring and the sidebar's row move as it walks, a docked one shown in its
    column where it would come back (the others parting for it, closing
@@ -2468,7 +2468,7 @@ Today's pieces map directly:
 | `Tab` | an unnamed workspace on the desk |
 | `Column` (a stack) | a column, shown by the stacks lens |
 | put-away timer | collection (§4) |
-| ⌘`'s settled order | the trail (§3.5) |
+| ⌥⇥'s settled order | the trail (§3.5) |
 | `state.json` and JSON commands | per-shard logs and entries |
 | editor drafts in `editors/` | the text block's log |
 
@@ -2896,13 +2896,15 @@ purpose — set down so a later audit reads them as choices, not slips.
   save, and the bigger thing; there's no Save As.
 - **⌃⌘T pins,** the Finder's Add to Sidebar: a pin keeps a block in its
   space's part of the sidebar, with a tile or without.
-- **⌘` walks spaces,** the app's windows; with one space it walks
-  windows.
+- **⌘` goes to the next space,** ⇧⌘` the one before, in the strip's
+  order, as the Mac's ⌘` goes round an app's windows (with one space,
+  its windows); ⇧⌘] ⇧⌘[ too, as a browser's tabs.
+- **⌥⇥ walks spaces,** the most recent first, as ⌘⇥ the Mac's apps:
+  cards while ⌥ is held, so every switcher held down and let go is a
+  ⇥ (⌥⇥ the spaces, ⌃⇥ the tiles). A terminal gives up Meta-Tab for it.
 - **⌃⇥ walks the space's tiles,** docked ones too, as a browser's tabs,
   in every view, a terminal's too — in place, the focus ring walking,
   with no switcher of its own.
-- **⌥⇥ is left unbound.** It once walked every space's tiles; ⌘`'s
-  cards and ⌃⇥ cover that, and a terminal keeps Meta-Tab.
 - **⌃- and ⌃⇧- are Back and Forward, except in a terminal,** where ⌃-
   stays readline's and Emacs's undo; the mouse's back and forward buttons
   work there. **⌘[ ⌘]** are a tile's own history.

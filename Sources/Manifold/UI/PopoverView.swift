@@ -1,7 +1,7 @@
 import AppKit
 
 /// The one look of a popover over the window — a menu (the footer's),
-/// ⌘`'s cards and a space's peek, the thread overlay, the host picker, the
+/// ⌥⇥'s cards and a space's peek, the thread overlay, the host picker, the
 /// @ list: frosted, rounded, a hairline round it, one deep shadow. What it
 /// draws itself it draws in `drawContent` (on a canvas over the frost — a
 /// view's own drawing would be under it); its subviews go over both. The

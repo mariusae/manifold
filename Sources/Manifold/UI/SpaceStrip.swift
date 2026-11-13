@@ -1,7 +1,7 @@
 import AppKit
 import ManifoldCore
 
-/// A space's square — in the strip, beside what needs you, on ⌘`'s
+/// A space's square — in the strip, beside what needs you, on ⌥⇥'s
 /// cards — at any size alike: rounded a quarter of its height; its mark
 /// (a letter or two, or a symbol) in its colour, a little darker; its
 /// badge, if it has one (a simple shape, what kind of space it is), bare
@@ -977,7 +977,7 @@ extension MainWindowController {
 
     /// A space peeked at from the strip: its name, where, and its tiles —
     /// what wants you first, each with what its status says.
-    /// The pointer on a square: the space's card, as ⌘` shows it (a picture
+    /// The pointer on a square: the space's card, as ⌥⇥ shows it (a picture
     /// of its grid), beside the square — a moment after, and at once when
     /// moving from one square to the next.
     private func peekSpace(_ id: BlockID, beside rect: NSRect, in window: NSWindow) {

@@ -541,21 +541,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
         item(go, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
         go.addItem(.separator())
-        item(go, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", [.command, .shift])
-        item(go, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift])
-        // ⌃⇟ ⌃⇞ too, as a browser's next and previous tab — what a mouse's
-        // tab buttons or thumb wheel send (⌃⇥ is the tiles' switcher, below).
+        // ⌘`, as macOS goes round an app's windows: here, its spaces, in
+        // the strip's order (and, with one, the windows).
+        item(go, "Show Next Space", #selector(MainWindowController.nextTab(_:)), "`", [.command])
+        item(go, "Show Previous Space", #selector(MainWindowController.previousTab(_:)), "`", [.command, .shift])
+        // ⇧⌘] ⇧⌘[ too, as a browser's tabs; and ⌃⇟ ⌃⇞, what a mouse's tab
+        // buttons or thumb wheel send (⌃⇥ is the tiles' switcher, below).
         let pageDown = String(UnicodeScalar(NSPageDownFunctionKey)!), pageUp = String(UnicodeScalar(NSPageUpFunctionKey)!)
-        for (title, action, key) in [("Show Next Space", #selector(MainWindowController.nextTab(_:)), pageDown),
-                                     ("Show Previous Space", #selector(MainWindowController.previousTab(_:)), pageUp)] {
-            let alt = item(go, title, action, key, [.control])
+        for (title, action, key, mods) in [("Show Next Space", #selector(MainWindowController.nextTab(_:)), "]", NSEvent.ModifierFlags([.command, .shift])),
+                                           ("Show Previous Space", #selector(MainWindowController.previousTab(_:)), "[", [.command, .shift]),
+                                           ("Show Next Space", #selector(MainWindowController.nextTab(_:)), pageDown, [.control]),
+                                           ("Show Previous Space", #selector(MainWindowController.previousTab(_:)), pageUp, [.control])] {
+            let alt = item(go, title, action, key, mods)
             alt.isHidden = true
             alt.allowsKeyEquivalentWhenHidden = true
         }
-        // ⌘`, as macOS cycles an app's windows: here, its spaces, as cards
-        // of their grids while ⌘ is held (and, with one, the windows).
-        item(go, "Switch to Recent Space", #selector(MainWindowController.switchSpace(_:)), "`", [.command])
-        item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.switchSpaceBack(_:)), "`", [.command, .shift])
+        // ⌥⇥, as ⌘⇥ the Mac's apps: the spaces gone to most recently, as
+        // cards of their grids while ⌥ is held (and, with one, the windows).
+        item(go, "Switch to Recent Space", #selector(MainWindowController.switchSpace(_:)), "\t", [.option])
+        item(go, "Switch to Recent Space, Backward", #selector(MainWindowController.switchSpaceBack(_:)), "\t", [.option, .shift])
         // ⌃⇥, as ⌃⇥ goes round a browser's tabs: this space's tiles, those
         // docked too (§3.1).
         item(go, "Switch to Recent Tile in Space", #selector(MainWindowController.walkSpaceTiles(_:)), "\t", [.control])

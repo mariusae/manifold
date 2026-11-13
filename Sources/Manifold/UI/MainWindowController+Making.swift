@@ -615,10 +615,12 @@ extension MainWindowController {
     @objc func previousTab(_ sender: Any?) { stepTab(-1) }
 
     /// The next or previous space, in the strip's order — one after
-    /// another, not the most recent (⌘`'s) — round from the last to the first.
+    /// another, not the most recent (⌥⇥'s) — round from the last to the
+    /// first: ⌘` and ⇧⌘`, ⇧⌘] and ⇧⌘[. With one space, as macOS has ⌘`,
+    /// the app's next window.
     private func stepTab(_ d: Int) {
         let order = spaceChips().chips.map(\.id)
-        guard !order.isEmpty else { return }
+        guard order.count > 1 else { return cycleWindows(back: d < 0) }
         let i = selected.flatMap { order.firstIndex(of: $0) } ?? 0
         show(arrangement: order[(i + d + order.count) % order.count])
     }

@@ -517,7 +517,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return view.bounds.intersects(shown) ? shown : nil
     }
 
-    /// Rows scrolled into view, the last one given surely (a ⌘` walk's
+    /// Rows scrolled into view, the last one given surely (a ⌥⇥ walk's
     /// space, and its focused tile under it if they fit).
     func reveal(_ ids: String?...) {
         for id in ids.compactMap({ $0 }) {

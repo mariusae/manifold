@@ -233,7 +233,8 @@ extension MainWindowController {
     /// watched before any view sees them.
     func watchNavKeys() {
         // ⌃- and ⌃⇧- go back and forward, ⌃⇥ and ⌃⇧⇥ walk the space's
-        // tiles, ⌘` and ⇧⌘` the workspaces, here, before anything
+        // tiles, ⌥⇥ and ⇧⌥⇥ the recent spaces, ⌘` and ⇧⌘` the next and
+        // previous space in the strip's order, here, before anything
         // else sees them — whatever has the keyboard, or nothing (a
         // workspace's row clicked, its tile not taking it, where AppKit's
         // own going round the views took ⌃⇥ before the menu).
@@ -244,6 +245,11 @@ extension MainWindowController {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if event.keyCode == 50 {
                 guard mods == .command || mods == [.command, .shift] else { return event }
+                if mods.contains(.shift) { self.previousTab(nil) } else { self.nextTab(nil) }
+                return nil
+            }
+            // ⌥⇥, as ⌘⇥ the Mac's apps: the spaces gone to most recently, cards while ⌥'s held.
+            if event.keyCode == 48, mods == .option || mods == [.option, .shift] {
                 if mods.contains(.shift) { self.switchSpaceBack(nil) } else { self.switchSpace(nil) }
                 return nil
             }

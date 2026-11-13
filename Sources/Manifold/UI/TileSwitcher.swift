@@ -143,7 +143,7 @@ extension MainWindowController {
         return "focused=\(here) walk=\(tileWalk.map { "\($0.index):" + $0.places.map(named).joined(separator: ",") + " in \(hosts.block($0.space)?.displayTitle ?? "?")" } ?? "-") previewing=\(walkPreview != nil) order=\(tileTrail(space: selected).prefix(8).map(named).joined(separator: ","))"
     }
 
-    /// One workspace to walk: ⌘` as macOS has it, the app's next window
+    /// One workspace to walk: ⌘` (and ⌥⇥) as macOS has it, the app's next window
     /// (or, backward, its previous) — Settings, another window.
     func cycleWindows(back: Bool) {
         let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.canBecomeKey && !$0.isMiniaturized }
