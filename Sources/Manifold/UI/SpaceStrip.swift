@@ -2,8 +2,9 @@ import AppKit
 import ManifoldCore
 
 /// A space's square — in the strip, beside what needs you, on ⌘`'s
-/// cards — at any size alike: rounded a quarter of its height, its symbol
-/// (else its letter) in its colour, a little darker, about half its height.
+/// cards — at any size alike: rounded a quarter of its height, its letter
+/// in its colour, a little darker, about half its height; its badge, if
+/// it has one (a symbol), on a disc of its colour at its lower right.
 enum SpaceSquare {
     static func radius(_ r: NSRect) -> CGFloat { r.height / 4 }
 
@@ -13,26 +14,58 @@ enum SpaceSquare {
         NSBezierPath(roundedRect: r, xRadius: radius(r), yRadius: radius(r)).fill()
     }
 
-    /// Its symbol, else its letter, centred.
+    /// Its letter, centred; its badge (`symbol`), if one, at its lower right.
     static func drawGlyph(in r: NSRect, color: NSColor, symbol: String?, letter: String) {
         let ink = color.blended(withFraction: 0.25, of: Theme.text) ?? color
         let size = max(8.5, (r.height * 0.48 * 2).rounded() / 2)
-        if let symbol, let image = Theme.symbol(symbol, size: size, weight: .semibold, color: ink) {
-            return image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
-        }
         let t = NSAttributedString(string: letter, attributes: [.font: NSFont.systemFont(ofSize: size, weight: r.height >= 24 ? .semibold : .bold), .foregroundColor: ink])
         let z = t.size()
         t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
+        if let symbol { drawBadge(symbol, on: r, color: color) }
+    }
+
+    /// A badge's disc and symbol colours for a space's colour: the symbol
+    /// white or dark, as stands off it more; the disc moved away from the
+    /// symbol till they're 4.5:1 apart.
+    static func badgeColors(_ color: NSColor) -> (disc: NSColor, glyph: NSColor) {
+        let solid = color.usingColorSpace(.sRGB) ?? color
+        let white = NSColor.white, dark = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
+        let onWhite = Tints.contrast(white, solid) >= Tints.contrast(dark, solid)
+        let glyph = onWhite ? white : dark
+        let disc = Tints.reaching(4.5, from: solid, on: glyph, toward: onWhite ? .black : .white)
+        return (disc, glyph)
+    }
+
+    /// A badge: its symbol, small, on a disc of the space's colour (white
+    /// on it, or dark on a light one), ringed in the panel's ground, over
+    /// the square's lower right corner — as an app's icon wears one.
+    static func drawBadge(_ symbol: String, on r: NSRect, color: NSColor) {
+        let d = max(9, (r.height * 0.5).rounded())
+        let flipped = NSGraphicsContext.current?.isFlipped ?? false
+        let x = r.maxX - d * 0.7, y = flipped ? r.maxY - d * 0.7 : r.minY - d * 0.3
+        let disc = NSRect(x: x, y: y, width: d, height: d)
+        Theme.panel.setFill()
+        NSBezierPath(ovalIn: disc.insetBy(dx: -1.5, dy: -1.5)).fill()
+        // Its symbol white, or dark, whichever stands off the colour more;
+        // the disc deepened (or lightened) till it stands off by 4.5:1 —
+        // a bright teal's white was 2:1.
+        let (fill, glyph) = badgeColors(color)
+        fill.setFill()
+        NSBezierPath(ovalIn: disc).fill()
+        // Its filled form where it has one (star.fill for star): firmer that small.
+        let filled = symbol.hasSuffix(".fill") || NSImage(systemSymbolName: symbol + ".fill", accessibilityDescription: nil) == nil ? symbol : symbol + ".fill"
+        Theme.symbol(filled, size: (d * 0.55).rounded(), weight: .bold, color: glyph)?.draw(centeredAt: NSPoint(x: disc.midX, y: disc.midY))
     }
 }
 
 /// The spaces, at the sidebar's top (§3.6): the sidebar shows one at
 /// a time, and here are all of them, as Arc's spaces — each a small
-/// square in its colour, its letter or symbol in it; the one shown
+/// square in its colour, its letter in it and its badge, if any, at its
+/// corner; the one shown
 /// outlined; a dot at a corner for what most wants you in it (needs you,
 /// failed, done and not read); a hairline between one host's and the
 /// next's. Clicked, a space is gone to; the pointer on one peeks at it;
-/// right-clicked, its menu (its colour, its symbol, its name). After
+/// right-clicked, its menu (its colour, its badge, its name). After
 /// them a +: clicked, a new space, on the shown one's host; the pointer
 /// on it, with more than one host, a list of them to make it on. A host
 /// whose spaces aren't here yet (its first connection under way) is a
@@ -695,7 +728,8 @@ enum SpaceLook {
         ("purple", .systemPurple), ("pink", .systemPink), ("brown", .systemBrown), ("gray", .systemGray),
     ]
 
-    /// Symbols to choose from, as the menu offers them.
+    /// Badges to choose from, as the menu offers them (`mani space --badge`
+    /// takes any of the system's symbols).
     static let symbols: [(symbol: String, name: String)] = [
         ("folder", "Folder"), ("terminal", "Terminal"), ("hammer", "Hammer"), ("wrench.and.screwdriver", "Tools"),
         ("book", "Book"), ("doc.text", "Document"), ("flask", "Flask"), ("globe", "Globe"),
@@ -712,7 +746,7 @@ enum SpaceLook {
         return colors[Int(h % UInt32(colors.count))].color
     }
 
-    /// Its symbol, if one's chosen.
+    /// Its badge (a symbol), if one's chosen.
     static func symbol(of block: Block?) -> String? {
         guard let s = block?.annotations?[symbolKey], !s.isEmpty, NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else { return nil }
         return s
@@ -876,7 +910,7 @@ extension MainWindowController {
     }
 
     /// A space's menu, from its square in the strip: its colour, its
-    /// symbol, its name; taken off the desk.
+    /// badge, its name; taken off the desk.
     private func spaceMenu(_ id: BlockID) -> NSMenu? {
         guard let b = hosts.block(id) else { return nil }
         let menu = NSMenu()
@@ -908,7 +942,7 @@ extension MainWindowController {
 
         let symbols = NSMenu()
         let chosenSymbol = SpaceLook.symbol(of: b)
-        let letter = NSMenuItem(title: "Letter (\(SpaceLook.letter(of: b.arrangement.map(title(of:)) ?? "")))", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
+        let letter = NSMenuItem(title: "None", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
         letter.target = self
         letter.representedObject = (id, SpaceLook.symbolKey, "")
         letter.state = chosenSymbol == nil ? .on : .off
@@ -922,7 +956,7 @@ extension MainWindowController {
             item.state = chosenSymbol == s ? .on : .off
             symbols.addItem(item)
         }
-        let symbolItem = NSMenuItem(title: "Symbol", action: nil, keyEquivalent: "")
+        let symbolItem = NSMenuItem(title: "Badge", action: nil, keyEquivalent: "")
         symbolItem.submenu = symbols
         symbolItem.setSymbol("star.square", size: 12)
         menu.addItem(symbolItem)

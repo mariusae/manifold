@@ -335,6 +335,19 @@ public enum Mani {
                  `'key=*'` (quoted, for the shell) names the one block with that key,
                  whatever its value. The inspector (⌥⌘I) shows them.
                  """, answeredBy: .app),
+        Verb(words: ["space"], args: "[space]", minArgs: 0, maxArgs: 1,
+             flags: [Flag(name: "color", value: "name", help: "its colour (red, orange, yellow, green, mint, teal, blue, indigo, purple, pink, brown, gray), or auto"),
+                     Flag(name: "badge", value: "symbol", help: "a badge at its corner: a system symbol's name (hammer, star, bolt…), or none"),
+                     json],
+             summary: "A space's look: its colour, and a badge",
+             details: """
+                 The space shown (else the one named, by its name or id) set as its
+                 menu sets it: a colour, its square's ground; a badge, a symbol on
+                 a disc at its corner — its letter, its name's, always in it. With
+                 neither, says how it looks, and what there is to choose from.
+                   mani space --color teal --badge hammer
+                   mani space review --badge none
+                 """, answeredBy: .app),
         Verb(words: ["rename"], args: "<name> <title>", minArgs: 2, maxArgs: 2, flags: [],
              summary: "Give a block a title", details: "Its title, as Name… in the tile's menu sets a note's, or a space's in its row's.", answeredBy: .app),
         Verb(words: ["watch"], args: "", minArgs: 0, maxArgs: 0,

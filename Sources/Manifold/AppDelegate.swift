@@ -71,7 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 wc.newTerminal(nil)
             }
             wc.showWindow(nil)
-            NSApp.activate()
+            // In front — unless it's a test instance that mustn't take the
+            // keyboard from whoever's typing elsewhere (MANIFOLD_NO_ACTIVATE).
+            if ProcessInfo.processInfo.environment["MANIFOLD_NO_ACTIVATE"] == nil { NSApp.activate() }
             if let report = CrashGuard.lastReport {
                 wc.notice("Manifold quit unexpectedly last time; a report was kept", action: "Show") {
                     NSWorkspace.shared.activateFileViewerSelecting([report])

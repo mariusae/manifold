@@ -143,6 +143,8 @@ final class ManiDesk {
             }
             hosts.append(.annotate(values), to: .block(t.block))
             return ""
+        case "space":
+            return try spaceLook(r, scope)
         case "rename":
             let t = try await target(r.args[0], scope)
             hosts.append(.title(r.args[1].isEmpty ? nil : r.args[1]), to: .block(t.block))
@@ -207,6 +209,46 @@ final class ManiDesk {
 
     /// A space by what it's called (as the sidebar names it, or as named),
     /// its id, or @space.
+    /// `mani space`: a space's colour and badge, set; else said.
+    private func spaceLook(_ r: ManiRequest, _ scope: Scope) throws -> String {
+        let id: BlockID
+        if let name = r.args.first { id = try space(named: name) } else {
+            guard let ws = scope.workspace else { throw Failure(message: "no space is shown (name one)") }
+            id = ws
+        }
+        var values: [String: String] = [:]
+        if let c = r.flags["color"] {
+            let name = c.lowercased()
+            guard name == "auto" || SpaceLook.colors.contains(where: { $0.name == name }) else {
+                throw Failure(message: "no colour \(c); colours: \(SpaceLook.colors.map(\.name).joined(separator: ", ")), auto", status: 2)
+            }
+            values[SpaceLook.colorKey] = name == "auto" ? "" : name
+        }
+        if let s = r.flags["badge"] {
+            guard s == "none" || NSImage(systemSymbolName: s, accessibilityDescription: nil) != nil else {
+                throw Failure(message: "no symbol \(s); a system symbol's name (as SF Symbols names it), or none — such as \(SpaceLook.symbols.map(\.symbol).joined(separator: ", "))", status: 2)
+            }
+            values[SpaceLook.symbolKey] = s == "none" ? "" : s
+        }
+        if !values.isEmpty {
+            hosts.append(.annotate(values), to: .block(id))
+            return ""
+        }
+        let b = hosts.block(id)
+        let title = b?.arrangement.map(wc.title(of:)) ?? b?.displayTitle ?? ""
+        let color = b?.annotations?[SpaceLook.colorKey] ?? "auto"
+        let badge = SpaceLook.symbol(of: b) ?? "none"
+        if r.flags["json"] != nil {
+            return json(["space": MainWindowController.address(id), "name": title, "letter": SpaceLook.letter(of: title), "color": color, "badge": badge])
+        }
+        return """
+            \(title) (\(MainWindowController.address(id)))
+            letter: \(SpaceLook.letter(of: title))  colour: \(color)  badge: \(badge)
+            colours: \(SpaceLook.colors.map(\.name).joined(separator: ", ")), auto
+            badges: \(SpaceLook.symbols.map(\.symbol).joined(separator: ", ")) — or any system symbol's name; none
+            """
+    }
+
     private func space(named name: String) throws -> BlockID {
         let spaces = wc.allWorkspaces
         if name == "@space", let ws = wc.selected { return ws }
