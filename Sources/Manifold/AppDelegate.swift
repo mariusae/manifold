@@ -73,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             wc.showWindow(nil)
             // In front — unless it's a test instance that mustn't take the
             // keyboard from whoever's typing elsewhere (MANIFOLD_NO_ACTIVATE).
-            if ProcessInfo.processInfo.environment["MANIFOLD_NO_ACTIVATE"] == nil { NSApp.activate() }
+            NSApp.activateUnlessTesting()
             if let report = CrashGuard.lastReport {
                 wc.notice("Manifold quit unexpectedly last time; a report was kept", action: "Show") {
                     NSWorkspace.shared.activateFileViewerSelecting([report])
@@ -686,5 +686,15 @@ final class MenuFiller: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         for i in items() { menu.addItem(i) }
+    }
+}
+
+extension NSApplication {
+    /// In front — unless it's a test instance that mustn't take the
+    /// keyboard from whoever's typing elsewhere (MANIFOLD_NO_ACTIVATE): at
+    /// launch, and as `mani` shows something.
+    func activateUnlessTesting() {
+        guard ProcessInfo.processInfo.environment["MANIFOLD_NO_ACTIVATE"] == nil else { return }
+        activate()
     }
 }

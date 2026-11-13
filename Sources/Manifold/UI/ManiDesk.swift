@@ -1307,7 +1307,7 @@ final class ManiDesk {
     /// forward for a command run elsewhere.
     private func shown(_ block: BlockID, line: String?, scope: Scope) {
         if let line, let n = Int(line) { wc.goToLine(n, in: block) }
-        if scope.here == nil { NSApp.activate() }
+        if scope.here == nil { NSApp.activateUnlessTesting() }
     }
 
     // MARK: Making
@@ -1353,7 +1353,7 @@ final class ManiDesk {
         }
         let lens = hosts.block(block).map { Lens.default(for: $0.kind, path: $0.path) } ?? .diff
         wc.show(block, lens: lens, .besideOrHere(besidePlacement?.id), context: "asked from the shell")
-        NSApp.activate()
+        NSApp.activateUnlessTesting()
         return ""
     }
 
@@ -1411,7 +1411,7 @@ final class ManiDesk {
         if let title = r.flags["title"] { hosts.append(.title(title), to: .block(ws)) }
         last = hosts.arrangement(ws)?.placements.first?.block
         if let run = r.flags["run"], let t = last { type(run, into: t) }
-        if scope.here == nil { NSApp.activate() }
+        if scope.here == nil { NSApp.activateUnlessTesting() }
         return ws.description
     }
 
