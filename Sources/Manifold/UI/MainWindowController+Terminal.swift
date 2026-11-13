@@ -242,6 +242,35 @@ extension MainWindowController: TerminalViewDelegate {
         return t.pid != nil ? .running : .none
     }
 
+    /// Tile ▸ Restart Process…: the focused terminal's shell (an agent's
+    /// program) ended — hung up on, killed if it won't go — and a new one
+    /// started under what it showed, in its folder; one that's ended
+    /// already, started again at once.
+    @objc func restartProcess(_ sender: Any?) {
+        guard let f = focusedShown, let t = views[f.placement.id] as? TerminalView, let b = hosts.block(t.block) else { return NSSound.beep() }
+        if t.exited { return t.restartShell() }
+        guard let pid = b.terminal?.pid else { return NSSound.beep() }
+        let what = b.agent.map { "\($0.name)" } ?? "the shell"
+        confirm("Restart \(what)?", "It's ended, and a new one started in the same folder, under what this terminal showed. Whatever runs in it now ends.",
+                button: "Restart", destructive: true) { [weak self] in
+            self?.endThenRestart(t, pid: pid, tries: 0)
+        }
+    }
+
+    /// Hung up on, then (still there after a while) killed; once its shell's
+    /// ended, a new one.
+    private func endThenRestart(_ t: TerminalView, pid: Int32, tries: Int) {
+        guard let client = hosts.client(of: t.block) else { return }
+        if tries == 0 { client.propose(.signal(pid: pid, signal: SIGHUP)) }
+        if tries == 12 { client.propose(.signal(pid: pid, signal: SIGKILL)) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            if t.exited || self.hosts.block(t.block)?.terminal?.pid != pid { return t.restartShell() }
+            guard tries < 24 else { return self.toast.say("The process wouldn't end", .brief) }
+            self.endThenRestart(t, pid: pid, tries: tries + 1)
+        }
+    }
+
     func terminalRestart(_ view: TerminalView, start: Bool) {
         guard views[view.placement] === view else { return }
         // Made again: attached afresh — its transcript, then the new shell

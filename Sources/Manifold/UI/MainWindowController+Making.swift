@@ -534,6 +534,11 @@ extension MainWindowController {
             return true
         case #selector(interruptTile(_:)):
             return focusedShown.map { views[$0.id] is NotebookView } ?? false
+        case #selector(restartProcess(_:)):
+            // A terminal's (an agent's), named for what it'll restart.
+            guard let f = focusedShown, let t = views[f.id] as? TerminalView else { item.title = "Restart Process…"; return false }
+            item.title = t.exited ? "Start Again" : "Restart " + (f.block?.agent?.name ?? "Shell") + "…"
+            return true
         case #selector(toggleEditPreview(_:)), #selector(editPreviewBeside(_:)):
             let primary = item.action == #selector(toggleEditPreview(_:))
             if primary, let f = focusedShown, views[f.id] is NotebookView { item.title = "Run Cell"; return true }

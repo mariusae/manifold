@@ -615,6 +615,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tile.addItem(.separator())
         // ⌘., the system's cancel: a notebook's running cell.
         item(tile, "Interrupt", #selector(MainWindowController.interruptTile(_:)), ".")
+        // A terminal's (an agent's) process ended and started again, in its folder.
+        item(tile, "Restart Process…", #selector(MainWindowController.restartProcess(_:)), "")
         tile.addItem(.separator())
         // ⌃⌘T, the Finder's Add to Sidebar: a pin keeps the block in the
         // space's part of the sidebar, tile or not.
