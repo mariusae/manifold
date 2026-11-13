@@ -117,11 +117,21 @@ final class NewBelowButton: NSView {
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseEntered(with event: NSEvent) { hovering = true; NSCursor.pointingHand.set() }
     override func mouseExited(with event: NSEvent) { hovering = false }
+    // The pointing hand over it — set again as the pointer moves, after the
+    // move's been handled, since the text it sits over (a comment's, an
+    // editor's) sets its I-beam as the pointer moves, too.
+    override func mouseMoved(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.unchecked { if self?.hovering == true, self?.isHidden == false { NSCursor.pointingHand.set() } }
+        }
+    }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {
