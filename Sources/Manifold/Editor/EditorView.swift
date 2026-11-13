@@ -196,11 +196,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         newBelow.onClick = { [weak self] in self?.textView.scrollToFoot() }
         textView.onAddedBelow = { [weak self] in
             guard let self else { return }
-            self.newBelow.show("New below", over: self.scroll.frame)
+            self.newBelow.announce("New below")
+            self.newBelow.place(over: self.scroll.frame, away: !self.textView.isAtFoot)
         }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
-            MainActor.unchecked { if let self, !self.newBelow.isHidden, self.textView.isAtFoot { self.newBelow.hide() } }
+            MainActor.unchecked { if let self, !self.newBelow.isHidden { self.newBelow.place(over: self.scroll.frame, away: !self.textView.isAtFoot) } }
         }
         textView.cardFor = { [weak self] id, place in self?.blockCard?(id, place) }
         status.maximumNumberOfLines = 1
@@ -345,7 +346,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
             sidebar.frame = NSRect(x: 0, y: bottom, width: left, height: top - bottom)
         }
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
-        if !newBelow.isHidden { newBelow.show(over: scroll.frame) }
+        if !newBelow.isHidden { newBelow.place(over: scroll.frame, away: !textView.isAtFoot) }
         note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
         updatePinned()
@@ -480,7 +481,7 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         case "view":
             // What's in view: its top line, the caret's line, and the lines there are.
             let clip = scroll.contentView.bounds
-            return "top \(String(format: "%.1f", topLine)) caret line \(textView.caretLine + 1) of \(textView.text.lineCount) · visible \(Int(clip.minY))-\(Int(clip.maxY)) of \(Int(textView.frame.height)) · new below \(newBelow.isHidden ? "hidden" : "shown")"
+            return "top \(String(format: "%.1f", topLine)) caret line \(textView.caretLine + 1) of \(textView.text.lineCount) · visible \(Int(clip.minY))-\(Int(clip.maxY)) of \(Int(textView.frame.height)) · new below \(newBelow.debugState)"
         case "hand":
             // "scrub hand <line> <column>": the ⌘ link there, as the pointer
             // on it with ⌘ held finds it, and the hand's badge.

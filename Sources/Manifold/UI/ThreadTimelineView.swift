@@ -155,15 +155,13 @@ final class ThreadTimelineView: NSView {
         }
         box.onSend = { [weak self] in self?.send() }
         for v in [titleLabel, scopeControl, filterControl, readAll, handOver, scroll, empty, replyingTo, clearReply, box] as [NSView] { addSubview(v) }
-        // Others' entries come while it's scrolled up: said at its foot, not scrolled to.
+        // Scrolled away from its end: a button at its foot back there; others'
+        // entries come meanwhile: said on it, not scrolled to.
         addSubview(newBelow)
         newBelow.onClick = { [weak self] in self?.scrollToEnd() }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
-            MainActor.unchecked {
-                guard let self else { return }
-                if self.scroll.contentView.bounds.maxY >= (self.scroll.documentView?.frame.height ?? 0) - 4 { self.newBelow.hide() }
-            }
+            MainActor.unchecked { self?.placeNewBelow() }
         }
     }
 
@@ -218,10 +216,10 @@ final class ThreadTimelineView: NSView {
             needsLayout = true
         } else if atEnd || yoursCame {
             scrollToEnd()
-            newBelow.hide()
         } else if now > before {
-            newBelow.show("New", over: scroll.frame)
+            newBelow.announce("New")
         }
+        placeNewBelow()
         watchSeen()
     }
 
@@ -234,6 +232,10 @@ final class ThreadTimelineView: NSView {
         let y = min(max(0, top), max(0, doc.frame.height - scroll.contentView.bounds.height))
         scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
         scroll.reflectScrolledClipView(scroll.contentView)
+    }
+
+    private func placeNewBelow() {
+        newBelow.place(over: scroll.frame, away: scroll.contentView.bounds.maxY < (scroll.documentView?.frame.height ?? 0) - 4)
     }
 
     func scrollToEnd() {
@@ -409,7 +411,7 @@ final class ThreadTimelineView: NSView {
 
     /// Sent, and not yet come back: scrolled to when it does.
     private var sentPending = false
-    private let newBelow = NewBelowButton()
+    private let newBelow = NewBelowButton(showsWhenAway: true)
 
     @objc private func scopeChosen() {
         model.scope = scopeControl.selectedSegment
@@ -465,7 +467,7 @@ final class ThreadTimelineView: NSView {
         replyingTo.frame.size.width = max(0, handOver.frame.minX - pad - 8)
         let bottom = replyingTo.frame.maxY + 6
         scroll.frame = NSRect(x: pad, y: bottom, width: w, height: max(0, y - bottom))
-        if !newBelow.isHidden { newBelow.show(over: scroll.frame) }
+        placeNewBelow()
         if arriving, scroll.frame.height > 40, !model.runs.isEmpty {
             arriving = false
             // After the runs' widths are set (a turn of the loop later).
