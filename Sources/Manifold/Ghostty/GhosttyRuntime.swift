@@ -151,7 +151,9 @@ final class GhosttyRuntime {
         }
         runtime.close_surface_cb = { userdata, _ in
             guard let view = TerminalView.from(userdata) else { return }
-            DispatchQueue.main.async { view.surfaceClosed() }
+            // As its stream closing: its shell ended (shown ended, kept) or
+            // gone, as the block says — not the tile closed outright.
+            DispatchQueue.main.async { view.ghosttyClosed() }
         }
         app = ghostty_app_new(&runtime, config)
         guard app != nil else { fatalError("ghostty_app_new failed") }

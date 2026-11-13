@@ -236,6 +236,14 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         delegate?.terminalDidClose(self)
     }
 
+    /// Ghostty's surface closed of itself — what fed it ended with the
+    /// shell — taken as the stream closing: an exited shell shown ended
+    /// and kept (or restarted, if that's what ended it), else closed.
+    func ghosttyClosed() {
+        guard !exited else { return }
+        streamEnded()
+    }
+
     // MARK: Size and focus
 
     override var acceptsFirstResponder: Bool { true }

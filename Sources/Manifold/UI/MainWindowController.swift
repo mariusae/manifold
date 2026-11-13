@@ -239,7 +239,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         seenTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.noteSeen(force: true)
         }
-        hosts.onTerminalEnded = { [weak self] block in self?.terminalEnded(block) }
         hosts.onHistory = { [weak self] shard, base, entries in self?.historyArrived(shard, base?.state.block, entries) }
         hosts.onCommand = { [weak self] host, id, client, request in
             self?.maniCommand(on: host, id: id, client: client, request)
@@ -1485,18 +1484,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// A terminal's shell ended (not for dormancy): its placements go, as a
-    /// closed window's would; the block stays, with its transcript.
-    private func terminalEnded(_ block: BlockID) { withdraw(block) }
-
-    /// A block's tiles taken off every workspace (its shell ended); the
-    /// workspaces stay, emptied or not, until they're removed (§4).
-    private func withdraw(_ block: BlockID) {
-        for id in allWorkspaces {
-            guard let a = hosts.arrangement(id) else { continue }
-            for p in a.placements(of: block) { hosts.append(.remove(p.id), to: .block(id)) }
-        }
-    }
 
     // MARK: Sidebar
 
