@@ -177,15 +177,29 @@ final class TextView: NSView, NSTextInputClient {
     // MARK: Blame
 
     /// Each line's commit (blame), in a column of its own left of the line
-    /// numbers: a run of lines from one commit says its author and age on
-    /// its first line, shaded darker the newer it is (in lightness, not
-    /// hue); a line not committed says so. Nil: no column.
+    /// numbers, as GitHub's blame has it: a run of lines from one commit a
+    /// band, a bar down its left in its age's heat (GitHub's orange, pale
+    /// for the oldest here, deep for the newest), its first line when and
+    /// what (the commit's summary), its second who; a hairline between
+    /// runs. A line not committed says so, its bar in the accent. Nil: no
+    /// column (unless it's `blamePending`).
     var blame: BlameLines? {
         didSet {
             blameAges = blame.map { b in
                 let ats = b.commits.map(\.at)
                 return (ats.min() ?? 0, ats.max() ?? 0)
             }
+            if blame != nil { blamePending = false }
+            invalidateAll()
+            resizeToFit()
+            needsDisplay = true
+        }
+    }
+    /// Blame asked for and not here yet: its column shown at once, saying
+    /// so (the editor's spinner over it), not nothing till it comes.
+    var blamePending = false {
+        didSet {
+            guard blamePending != oldValue else { return }
             invalidateAll()
             resizeToFit()
             needsDisplay = true
@@ -196,7 +210,13 @@ final class TextView: NSView, NSTextInputClient {
     var onBlameClick: ((Int) -> Void)?
     private var blameTipLine: Int?
 
-    var blameWidth: CGFloat { blame == nil ? 0 : (gutterDigitWidth * 22).rounded() }
+    /// GitHub's width (a summary's room) where there's room; in a narrow
+    /// tile, no more than four tenths of it, so the text keeps its lines.
+    var blameWidth: CGFloat {
+        guard blame != nil || blamePending else { return 0 }
+        let shown = enclosingScrollView?.contentView.bounds.width ?? bounds.width
+        return min(gutterDigitWidth * 34, max(gutterDigitWidth * 16, shown * 0.4)).rounded()
+    }
 
     /// A line's commit index (-1: not committed), nil past the blame's end.
     private func blameIndex(_ n: Int) -> Int? {
@@ -210,36 +230,62 @@ final class TextView: NSView, NSTextInputClient {
         return CGFloat((b.commits[i].at - a.oldest) / (a.newest - a.oldest))
     }
 
+    /// GitHub's heat, in ten steps: pale orange (the oldest) to deep (the newest).
+    private static let heatPale = NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.35, green: 0.21, blue: 0.11, alpha: 1) : NSColor(srgbRed: 1.0, green: 0.85, blue: 0.71, alpha: 1)
+    }
+    private static let heatDeep = NSColor(name: nil) { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(srgbRed: 0.94, green: 0.53, blue: 0.24, alpha: 1) : NSColor(srgbRed: 0.74, green: 0.30, blue: 0.0, alpha: 1)
+    }
+    private func heat(_ i: Int) -> NSColor {
+        guard i >= 0 else { return Theme.accent }
+        let step = (recency(i) * 9).rounded() / 9
+        return Self.heatPale.blended(withFraction: step, of: Self.heatDeep) ?? Self.heatDeep
+    }
+
     private func drawBlame(line n: Int, top lineTop: CGFloat, height: CGFloat, first: Int) {
-        guard blame != nil, let idx = blameIndex(n) else { return }
         let x0 = Self.insets.left, w = blameWidth - 8
-        Theme.text.withAlphaComponent(idx < 0 ? 0.13 : 0.025 + 0.11 * recency(idx)).setFill()
-        NSRect(x: x0, y: lineTop, width: w, height: height).fill()
-        // Its run's first line, or the first one drawn: who, and when — a
-        // hairline over it where another run ends (two runs of one author
-        // and age read as one, else).
-        guard n == first || blameIndex(n - 1) != idx, let b = blame else {
-            // A line of a run already said: a rule down its left, the run
-            // read as one, its words once.
-            (idx < 0 ? Theme.secondaryText : gutterColor).withAlphaComponent(0.45).setFill()
-            NSRect(x: x0 + 5, y: lineTop, width: 1.5, height: height).fill()
+        // Asked for, not here yet: its column, and the first line saying so
+        // (the spinner, the editor's, before it).
+        if blame == nil, blamePending {
+            guard n == first else { return }
+            let s = NSAttributedString(string: "Reading history…", attributes: [.font: gutterFont, .foregroundColor: Theme.secondaryText])
+            s.draw(at: NSPoint(x: x0 + 22, y: lineTop + (lineHeight - s.size().height) / 2))
             return
         }
-        if n > 0, n != first {
+        guard let b = blame, let idx = blameIndex(n) else { return }
+        // Where in its run: its first line (or the first drawn) says when and
+        // what; its second, who.
+        let starts = n == 0 || blameIndex(n - 1) != idx
+        let second = !starts && (n - 1 == 0 || blameIndex(n - 2) != idx || n - 1 == first)
+        if starts, n > 0 {
             Theme.divider.setFill()
             NSRect(x: x0, y: lineTop, width: w, height: 1).fill()
         }
-        let words: String
-        if idx < 0 { words = "Not committed" } else {
-            let c = b.commits[idx]
-            words = "\(c.author.split(separator: " ").first.map(String.init) ?? c.author) · \(Age.short(Stamp(wall: Int64(c.at * 1000))))"
+        heat(idx).setFill()
+        NSRect(x: x0, y: lineTop + (starts && n > 0 ? 1 : 0), width: 3, height: height - (starts && n > 0 ? 1 : 0)).fill()
+        let dateW = gutterDigitWidth * 9
+        func put(_ words: String, at x: CGFloat, width: CGFloat, color: NSColor, weight: NSFont.Weight = .regular) {
+            let font = weight == .regular ? gutterFont : NSFontManager.shared.convert(gutterFont, toHaveTrait: .boldFontMask)
+            // Cut with an ellipsis where it runs out of room.
+            let cut = NSMutableParagraphStyle()
+            cut.lineBreakMode = .byTruncatingTail
+            let s = NSAttributedString(string: words, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: cut])
+            let h = s.size().height
+            s.draw(with: NSRect(x: x, y: lineTop + (lineHeight - h) / 2, width: max(0, width), height: h),
+                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
-        let s = NSAttributedString(string: words, attributes: [.font: gutterFont, .foregroundColor: idx < 0 ? Theme.secondaryText : gutterColor])
-        let size = s.size()
-        NSGraphicsContext.current?.saveGraphicsState()
-        NSBezierPath(rect: NSRect(x: x0, y: lineTop, width: w - 4, height: lineHeight)).addClip()
-        s.draw(at: NSPoint(x: x0 + 4, y: lineTop + (lineHeight - size.height) / 2))
-        NSGraphicsContext.current?.restoreGraphicsState()
+        if idx < 0 {
+            if starts || n == first { put("Not committed yet", at: x0 + 10, width: w - 12, color: Theme.secondaryText) }
+            return
+        }
+        let c = b.commits[idx]
+        if starts || n == first {
+            put(Age.short(Stamp(wall: Int64(c.at * 1000))), at: x0 + 10, width: dateW, color: Theme.secondaryText)
+            put(c.summary.isEmpty ? String(c.sha.prefix(8)) : c.summary, at: x0 + 10 + dateW, width: w - 14 - dateW, color: Theme.text)
+        } else if second {
+            put(c.author, at: x0 + 10 + dateW, width: w - 14 - dateW, color: Theme.tertiaryText)
+        }
     }
 
     /// The pointer over a line's blame: its commit, said under it.

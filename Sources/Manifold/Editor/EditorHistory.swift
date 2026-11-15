@@ -207,15 +207,42 @@ extension EditorView {
     @objc func toggleBlame(_ sender: Any?) {
         blameShown.toggle()
         guard blameShown else {
+            blameWaiting(false)
             textView.blame = nil
             if fileHistory?.shown != true { fileHistory = nil }
             return
         }
         guard !path.isEmpty else { blameShown = false; return delegate?.editorShowsManifoldHistory(self) ?? () }
+        // Its column at once, saying it's reading, a spinner turning: not
+        // nothing till the host has blamed (a big file's takes a while).
+        blameWaiting(true)
         loadHistory { [weak self] ok in
             guard let self else { return }
-            guard ok else { self.blameShown = false; return }
+            guard ok else { self.blameShown = false; self.blameWaiting(false); return }
             self.refreshBlame()
+        }
+    }
+
+    /// The blame's column waiting on the host, or not: shown, and its spinner.
+    func blameWaiting(_ on: Bool) {
+        textView.blamePending = on && textView.blame == nil
+        if on, textView.blame == nil {
+            blameSpinner.isHidden = false
+            blameSpinner.startAnimation(nil)
+            needsLayout = true
+        } else {
+            blameSpinner.stopAnimation(nil)
+            blameSpinner.isHidden = true
+        }
+    }
+
+    /// Blame come (or not): the waiting over.
+    private func blameCame(_ b: BlameLines?) {
+        if let b { textView.blame = b }
+        blameWaiting(false)
+        if b == nil, textView.blame == nil {
+            blameShown = false
+            flash("Blame: the host couldn't say")
         }
     }
 
@@ -226,26 +253,29 @@ extension EditorView {
         textView.onBlameClick = { [weak self] i in self?.blameClicked(i) }
         if let i = h.position {
             let r = h.revisions[i]
-            if let b = h.blames[r.sha] { textView.blame = b; return }
+            if let b = h.blames[r.sha] { return blameCame(b) }
             let asked = historyAsked
             delegate?.editor(self, fileHistory: .blame(file: path, path: r.path, revision: r.sha)) { [weak self] result in
-                guard let self, case .blame(let b) = result else { return }
+                guard let self else { return }
+                guard case .blame(let b) = result else { return self.blameCame(nil) }
                 self.fileHistory?.blames[r.sha] = b
-                if asked == self.historyAsked { self.textView.blame = b }
+                if asked == self.historyAsked { self.blameCame(b) }
             }
             return
         }
         let now = rope.string
-        if let head = h.head { textView.blame = FileHistory.carry(head.blame, from: head.text, to: now); return }
+        if let head = h.head { return blameCame(FileHistory.carry(head.blame, from: head.text, to: now)) }
         let rel = path.hasPrefix(h.root + "/") ? String(path.dropFirst(h.root.count + 1)) : path
         let headName = h.vcs.headName
         delegate?.editor(self, fileHistory: .blame(file: path, path: rel, revision: headName)) { [weak self] result in
-            guard let self, case .blame(let b) = result else { return }
+            guard let self else { return }
+            guard case .blame(let b) = result else { return self.blameCame(nil) }
             self.delegate?.editor(self, fileHistory: .text(file: self.path, path: rel, revision: headName)) { [weak self] result in
-                guard let self, case .text(let text) = result else { return }
+                guard let self else { return }
+                guard case .text(let text) = result else { return self.blameCame(nil) }
                 self.fileHistory?.head = (text, b)
                 if self.blameShown, self.fileHistory?.position == nil {
-                    self.textView.blame = FileHistory.carry(b, from: text, to: self.rope.string)
+                    self.blameCame(FileHistory.carry(b, from: text, to: self.rope.string))
                 }
             }
         }

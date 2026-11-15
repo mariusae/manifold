@@ -68,6 +68,15 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     let textView = TextView()
     /// Something added below what shows, from elsewhere: a pill at the foot.
     private let newBelow = NewBelowButton()
+    /// Turning in the blame's column while the host blames the file.
+    let blameSpinner: NSProgressIndicator = {
+        let p = NSProgressIndicator()
+        p.style = .spinning
+        p.controlSize = .small
+        p.isDisplayedWhenStopped = false
+        p.isHidden = true
+        return p
+    }()
     private var banner: EditorBanner?
     private lazy var finder = FindHost(view: self, target: self)
     private var matches: [TextRange] = []
@@ -352,6 +361,12 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         }
         scroll.frame = NSRect(x: left, y: bottom, width: bounds.width - ScrubberView.width - left, height: top - bottom)
         if !newBelow.isHidden { newBelow.place(over: scroll.frame, away: !textView.isAtFoot) }
+        // The spinner at the blame column's top, before its words.
+        if !blameSpinner.isHidden {
+            if blameSpinner.superview == nil { addSubview(blameSpinner) }
+            let top = isFlipped ? scroll.frame.minY + TextView.insets.top : scroll.frame.maxY - TextView.insets.top - 16
+            blameSpinner.frame = NSRect(x: scroll.frame.minX + TextView.insets.left + 2, y: top, width: 16, height: 16)
+        }
         note.frame = scroll.frame
         textView.frame.size.width = scroll.contentSize.width
         updatePinned()
