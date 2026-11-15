@@ -159,10 +159,23 @@ extension MainWindowController: ThreadChatDelegate {
             m.asksIcon = AgentIcons.image(kind.command, size: 14)
         }
         // Which of its kind it asks, when the space has more than one.
+        let space = thread?.thread?.space ?? selected
         if let kind = thread.flatMap({ asksAgent(of: $0) }) ?? askingAgent {
-            let space = thread?.thread?.space ?? selected
             m.askAgents = agents(kind, inSpace: space).map { ThreadChatModel.AskAgent(id: $0.id, title: Self.linkTitle($0)) }
             m.asksAgent = thread.flatMap(pinnedAgent)
+        }
+        // Who's in it, and who could be brought in: the agents at work in its space.
+        if let t = thread {
+            let parts = participants(of: t)
+            m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: Self.linkTitle($0)) } }
+            m.asksAll = asksAll(t)
+            if let a = space.flatMap({ hosts.arrangement($0) }) {
+                var seen = Set(parts)
+                m.invitable = a.placements.compactMap { p in
+                    guard seen.insert(p.block).inserted, let b = hosts.block(p.block), b.agent != nil, Self.agentRuns(b) else { return nil }
+                    return ThreadChatModel.AskAgent(id: b.id, title: Self.linkTitle(b))
+                }
+            }
         }
         return m
     }
@@ -177,6 +190,46 @@ extension MainWindowController: ThreadChatDelegate {
     /// first ask, so with two of a kind in the space it asks one, not
     /// whichever comes first that time.
     static let asksAgentKey = "asks.agent"
+
+    /// A thread's participants (§3.12): the agents in it, its lead first —
+    /// those it was asked in, invited, tagged in it, started for it. Only
+    /// they are asked by a comment that tags no one. Kept on it
+    /// (`participants`); a thread from before, the one it was held to,
+    /// then those that wrote in it.
+    static let participantsKey = "participants"
+    /// "all": a comment that tags no one asks every participant; else only its lead.
+    static let addressesKey = "asks.whom"
+
+    func participants(of t: Block) -> [BlockID] {
+        if let s = t.annotations?[Self.participantsKey] {
+            return s.split(separator: ",").compactMap { BlockID(string: String($0)) }.filter { hosts.block($0)?.agent != nil }
+        }
+        var out: [BlockID] = []
+        if let p = pinnedAgent(of: t) { out.append(p) }
+        for a in t.thread?.agents ?? [] where !out.contains(a.block) && hosts.block(a.block)?.agent != nil { out.append(a.block) }
+        return out
+    }
+
+    func setParticipants(_ ids: [BlockID], of thread: BlockID) {
+        annotateThread(thread, [Self.participantsKey: ids.map(\.description).joined(separator: ","),
+                                Self.asksAgentKey: ids.first?.description ?? ""])
+    }
+
+    /// Keys kept on a thread, till they hold: a thread is its host's to
+    /// write, and one written here as the host writes it too (the comment
+    /// that asked, just sent) was lost as the host's came back — so looked
+    /// at again a moment after, and written again if it isn't there.
+    func annotateThread(_ thread: BlockID, _ values: [String: String], tries: Int = 6) {
+        hosts.append(.annotate(values), to: .block(thread))
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, let b = self.hosts.block(thread) else { return }
+            let held = values.allSatisfy { k, v in (b.annotations?[k] ?? "") == v }
+            if !held { self.annotateThread(thread, values, tries: tries - 1) }
+        }
+    }
+
+    func asksAll(_ t: Block) -> Bool { t.annotations?[Self.addressesKey] == "all" }
 
     /// The agent a thread's held to, if it's still an agent's.
     func pinnedAgent(of thread: Block) -> BlockID? {
@@ -206,13 +259,33 @@ extension MainWindowController: ThreadChatDelegate {
 
     func threadChat(_ view: ThreadChatView, asks: Bool) {
         guard let id = view.threadID, let kind = askingAgent else { return }
-        hosts.append(.annotate([Self.asksKey: asks ? kind.command : ""]), to: .block(id))
+        annotateThread(id, [Self.asksKey: asks ? kind.command : ""])
     }
 
-    /// Which agent the thread asks, chosen: held to it from now on (and Ask on).
+    /// Which agent the thread asks, chosen: its lead from now on (in it,
+    /// first), and Ask on.
     func threadChat(_ view: ThreadChatView, asksAgent agent: BlockID) {
-        guard let id = view.threadID, let command = hosts.block(agent)?.agent?.command else { return }
-        hosts.append(.annotate([Self.asksKey: command, Self.asksAgentKey: agent.description]), to: .block(id))
+        guard let id = view.threadID, let t = hosts.block(id), let command = hosts.block(agent)?.agent?.command else { return }
+        var parts = participants(of: t)
+        parts.removeAll { $0 == agent }
+        parts.insert(agent, at: 0)
+        setParticipants(parts, of: id)
+        annotateThread(id, [Self.asksKey: command])
+    }
+
+    func threadChat(_ view: ThreadChatView, invite agent: BlockID) {
+        guard let id = view.threadID else { return }
+        invite(agent, to: id)
+    }
+
+    func threadChat(_ view: ThreadChatView, remove agent: BlockID) {
+        guard let id = view.threadID, let t = hosts.block(id) else { return }
+        setParticipants(participants(of: t).filter { $0 != agent }, of: id)
+    }
+
+    func threadChat(_ view: ThreadChatView, asksAll: Bool) {
+        guard let id = view.threadID else { return }
+        annotateThread(id, [Self.addressesKey: asksAll ? "all" : ""])
     }
 
     /// A path with the home said as ~.
@@ -633,6 +706,15 @@ extension MainWindowController {
         case "strip":
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
             return t.chat.debugStrip
+        case "participants":
+            // "threads participants [lead/<title>|all|leadonly|invite/<title>|remove/<title>]": the focused thread tile's.
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            let said = t.chat.debugParticipants(rest.isEmpty ? nil : rest)
+            guard let id = t.chat.threadID, let b = hosts.block(id) else { return said }
+            func name(_ x: BlockID) -> String { hosts.block(x).map(Self.linkTitle) ?? x.description }
+            let live: [String] = participants(of: b).map(name)
+            let written: [String] = (b.thread?.agents ?? []).map { name($0.block) }
+            return said + " · live \(live) · agents \(written) · annotations \(b.annotations ?? [:])"
         case "select":
             // "threads select <from> <length>": the focused thread tile's last comment's words selected.
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }

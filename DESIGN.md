@@ -1393,8 +1393,17 @@ back what was typed for it. `@claude` alone picks one: the project's agent if th
 new one in the thread's project, the thread its first prompt. Asked, an
 agent is sent a short prompt typed into its terminal — the thread's
 reference, the comment, and `mani thread read`/`reply` — at once if
-idle, else when its turn ends (its hooks, §3.7). An agent that has
-written in a thread **follows** it: your comments there ask it again.
+idle, else when its turn ends (its hooks, §3.7). A thread has
+**participants**: the agents in it, its lead first — the one it was first
+asked of (or started for it), any tagged in it (by you, or by an agent
+bringing in another: a coordinator its worker), any invited from the Ask
+button's ⌄ (Invite; Take Out; a participant chosen made the lead).
+Shown after its place ("with …"). A comment of yours that tags no one
+asks its **lead** — the first at work — or, as the thread says (A Comment
+Asks Everyone), all of them; one that tags asks those tagged. Only
+participants are asked so: two Claudes in a space, or twenty agents, a
+thread asks the ones in it. An agent invited is told at once — read the
+thread, don't answer till asked — so it needn't be primed elsewhere.
 Agents' comments never ask another agent unless they tag it, and a
 thread asks agents at most a few times in a row without you (a loop
 stopped, said in the thread). **Ask @agent to address these**, on any

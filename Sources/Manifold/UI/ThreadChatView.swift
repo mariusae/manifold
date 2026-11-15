@@ -17,8 +17,13 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String)
     /// Ask (the agent) switched for the thread shown: made the agent's, or not.
     func threadChat(_ view: ThreadChatView, asks: Bool)
-    /// Which agent of its kind it asks, chosen (two in its space).
+    /// Which agent of its kind it asks, chosen (two in its space): its lead.
     func threadChat(_ view: ThreadChatView, asksAgent: BlockID)
+    /// An agent brought into it, or taken out.
+    func threadChat(_ view: ThreadChatView, invite agent: BlockID)
+    func threadChat(_ view: ThreadChatView, remove agent: BlockID)
+    /// A comment that tags no one: asks them all, or only the lead.
+    func threadChat(_ view: ThreadChatView, asksAll: Bool)
     /// Its place (the place line, the text it was written against) clicked:
     /// gone back to, where the thread was made.
     func threadChatGoToPlace(_ view: ThreadChatView)
@@ -29,6 +34,9 @@ extension ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {}
     func threadChat(_ view: ThreadChatView, asks: Bool) {}
     func threadChat(_ view: ThreadChatView, asksAgent: BlockID) {}
+    func threadChat(_ view: ThreadChatView, invite agent: BlockID) {}
+    func threadChat(_ view: ThreadChatView, remove agent: BlockID) {}
+    func threadChat(_ view: ThreadChatView, asksAll: Bool) {}
     func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
@@ -69,6 +77,12 @@ struct ThreadChatModel {
     struct AskAgent: Equatable { var id: BlockID; var title: String }
     var askAgents: [AskAgent] = []
     var asksAgent: BlockID?
+    /// Its participants (§3.12), its lead first; the agents at work in its
+    /// space not in it, to invite; and whether a comment that tags no one
+    /// asks them all, or only the lead.
+    var participants: [AskAgent] = []
+    var invitable: [AskAgent] = []
+    var asksAll = false
 }
 
 /// A thread as a chat (§3.12): at its head what it's about, and the text
@@ -99,7 +113,9 @@ final class ThreadChatView: NSView {
     /// Ask Claude: the thread the agent's, every comment asking it untagged.
     private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
     /// Which agent Ask asks, when the space has more than one of its kind.
-    private let askPick = IconButton("chevron.down", size: 9, tip: "Which agent this thread asks")
+    private let askPick = IconButton("chevron.down", size: 9, tip: "Who's in this thread, and who it asks")
+    /// Its participants, by name, after its place: who's in it.
+    private let participantsLabel = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText)
     /// A new thread's agent, chosen before it's made (nil: the first).
     private(set) var asksNewAgent: BlockID?
     /// The agent's mark in its header, while it's the agent's thread.
@@ -152,7 +168,9 @@ final class ThreadChatView: NSView {
         agentMark.translatesAutoresizingMaskIntoConstraints = false
         agentMark.widthAnchor.constraint(equalToConstant: 14).isActive = true
         agentMark.heightAnchor.constraint(equalToConstant: 14).isActive = true
-        let placeRow = NSStackView(views: [agentMark, placeLabel, driftLabel, NSView(), tileButton])
+        participantsLabel.lineBreakMode = .byTruncatingTail
+        participantsLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let placeRow = NSStackView(views: [agentMark, placeLabel, driftLabel, participantsLabel, NSView(), tileButton])
         placeRow.orientation = .horizontal
         placeRow.spacing = 6
         header.orientation = .vertical
@@ -253,11 +271,21 @@ final class ThreadChatView: NSView {
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
         tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
         // Ask: the agent's thread, or (a new one) as switched; its mark in the header.
-        // More than one of its kind in the space: which, by its tile's name.
-        let chosenAgent = m.askAgents.count > 1
-            ? (m.askAgents.first { $0.id == (m.thread == nil ? asksNewAgent : m.asksAgent) } ?? m.askAgents[0]) : nil
-        askButton.title = "Ask \(m.asks ?? m.askName)" + (chosenAgent.map { " · " + Self.short($0.title) } ?? "")
-        askPick.isHidden = m.askAgents.count < 2
+        // Who it asks: a new thread's, which of its kind (more than one in
+        // the space); a thread's, its lead by name, or all of them.
+        if m.thread == nil {
+            let chosenAgent = m.askAgents.count > 1 ? (m.askAgents.first { $0.id == asksNewAgent } ?? m.askAgents[0]) : nil
+            askButton.title = "Ask \(m.askName)" + (chosenAgent.map { " · " + Self.short($0.title) } ?? "")
+            askPick.isHidden = m.askAgents.count < 2
+        } else {
+            let lead = m.participants.first.map { Self.short($0.title) } ?? m.asks ?? m.askName
+            askButton.title = m.asksAll && m.participants.count > 1 ? "Ask All \(m.participants.count)" : "Ask \(lead)"
+            askPick.isHidden = m.participants.isEmpty && m.invitable.isEmpty
+        }
+        participantsLabel.stringValue = m.participants.isEmpty ? "" : "· with " + m.participants.enumerated()
+            .map { i, p in Self.short(p.title) + (i == 0 && m.participants.count > 1 && !m.asksAll ? " (lead)" : "") }.joined(separator: ", ")
+        participantsLabel.toolTip = m.participants.isEmpty ? nil
+            : "In this thread: " + m.participants.map(\.title).joined(separator: ", ") + (m.asksAll ? " — a comment asks them all" : " — a comment asks the first; tag the others")
         askButton.state = (m.thread == nil ? asksNew : m.asks != nil) ? .on : .off
         askButton.toolTip = "Every comment here asks \(m.asks ?? m.askName), without tagging it"
         agentMark.image = m.asksIcon
@@ -608,9 +636,12 @@ final class ThreadChatView: NSView {
     /// A tile's name, short enough for a button.
     private static func short(_ s: String) -> String { s.count > 24 ? String(s.prefix(23)) + "…" : s }
 
-    /// The agents of its kind in the space, to choose which it asks.
+    /// A new thread's: the agents of its kind in the space, to choose which
+    /// it asks. A thread's: who's in it (the lead chosen), who a comment
+    /// asks, and agents to invite or take out.
     @objc private func pickAskAgent() {
         let m = model
+        if m.thread != nil { return participantsMenu() }
         guard m.askAgents.count > 1 else { return }
         let current = m.thread == nil ? asksNewAgent ?? m.askAgents.first?.id : m.asksAgent
         let menu = NSMenu()
@@ -620,6 +651,81 @@ final class ThreadChatView: NSView {
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: askPick.bounds.maxY + 4), in: askPick)
+    }
+
+    private func participantsMenu() {
+        let m = model
+        let menu = NSMenu()
+        if !m.participants.isEmpty {
+            menu.addItem(.sectionHeader(title: "In This Thread"))
+            for (i, p) in m.participants.enumerated() {
+                let item = ClosureMenuItem(p.title, symbol: nil) { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.threadChat(self, asksAgent: p.id)
+                }
+                item.state = i == 0 ? .on : .off
+                item.toolTip = i == 0 ? "The lead: asked by a comment that tags no one" : "Make it the lead"
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+            let lead = ClosureMenuItem("A Comment Asks the Lead", symbol: nil) { [weak self] in
+                guard let self else { return }
+                self.delegate?.threadChat(self, asksAll: false)
+            }
+            lead.state = m.asksAll ? .off : .on
+            menu.addItem(lead)
+            let all = ClosureMenuItem("A Comment Asks Everyone", symbol: nil) { [weak self] in
+                guard let self else { return }
+                self.delegate?.threadChat(self, asksAll: true)
+            }
+            all.state = m.asksAll ? .on : .off
+            menu.addItem(all)
+        }
+        if !m.invitable.isEmpty {
+            menu.addItem(.separator())
+            let invite = NSMenu()
+            for a in m.invitable {
+                invite.addItem(ClosureMenuItem(a.title, symbol: nil) { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.threadChat(self, invite: a.id)
+                })
+            }
+            let item = NSMenuItem(title: "Invite", action: nil, keyEquivalent: "")
+            item.submenu = invite
+            menu.addItem(item)
+        }
+        if !m.participants.isEmpty {
+            let remove = NSMenu()
+            for p in m.participants {
+                remove.addItem(ClosureMenuItem(p.title, symbol: nil) { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.threadChat(self, remove: p.id)
+                })
+            }
+            let item = NSMenuItem(title: "Take Out", action: nil, keyEquivalent: "")
+            item.submenu = remove
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: askPick.bounds.maxY + 4), in: askPick)
+    }
+
+    /// Debugging: the participants' menu as it would show, an item chosen
+    /// by its title ("Invite/<title>", "Take Out/<title>").
+    func debugParticipants(_ pick: String?) -> String {
+        let m = model
+        if let pick, !pick.isEmpty {
+            let parts = pick.split(separator: "/", maxSplits: 1).map(String.init)
+            switch parts[0] {
+            case "lead": if let p = m.participants.first(where: { $0.title.hasPrefix(parts.dropFirst().first ?? "") }) { delegate?.threadChat(self, asksAgent: p.id) }
+            case "all": delegate?.threadChat(self, asksAll: true)
+            case "leadonly": delegate?.threadChat(self, asksAll: false)
+            case "invite": if let a = m.invitable.first(where: { $0.title.hasPrefix(parts.dropFirst().first ?? "") }) { delegate?.threadChat(self, invite: a.id) }
+            case "remove": if let p = m.participants.first(where: { $0.title.hasPrefix(parts.dropFirst().first ?? "") }) { delegate?.threadChat(self, remove: p.id) }
+            default: return "lead|all|leadonly|invite/<title>|remove/<title>"
+            }
+            return "done"
+        }
+        return "participants \(m.participants.map(\.title)) · asks \(m.asksAll ? "all" : "lead") · invitable \(m.invitable.map(\.title)) · button “\(askButton.title)” · “\(participantsLabel.stringValue)”"
     }
 
     private func chooseAskAgent(_ id: BlockID) {

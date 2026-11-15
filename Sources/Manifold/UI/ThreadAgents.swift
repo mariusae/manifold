@@ -42,49 +42,49 @@ extension MainWindowController {
             return
         }
         if let asks, asksAgent(of: t)?.command != asks.command {
-            hosts.append(.annotate([Self.asksKey: asks.command]), to: .block(id))
+            annotateThread(id, [Self.asksKey: asks.command])
             t.annotations = (t.annotations ?? [:]).merging([Self.asksKey: asks.command]) { $1 }
         }
         if let chosen, t.annotations?[Self.asksAgentKey] != chosen.description {
-            hosts.append(.annotate([Self.asksAgentKey: chosen.description]), to: .block(id))
+            annotateThread(id, [Self.participantsKey: chosen.description, Self.asksAgentKey: chosen.description])
             t.annotations = (t.annotations ?? [:]).merging([Self.asksAgentKey: chosen.description]) { $1 }
         }
         guard let th = t.thread else { return }
-        // The one it's held to, if it's at work: no other of its kind asked.
-        let pinned = pinnedAgent(of: t).flatMap { p in hosts.block(p).map(Self.agentRuns) == true ? p : nil }
-        let pinnedCommand = pinned.flatMap { hosts.block($0)?.agent?.command }
         var asked: [BlockID] = []
         var starting: [AgentCatalog.Agent] = []
-        // Tagged: a pill of an agent's terminal, or a word naming one.
+        // Tagged: a pill of an agent's terminal, or a word naming one — a
+        // participant of that kind first, else one near.
+        var parts = participants(of: t)
         for m in Mention.find(in: comment) {
-            if case .block(let b) = m.target, hosts.block(b)?.agent != nil, b != author.agentBlock { asked.append(b) }
+            if case .block(let b) = m.target, hosts.block(b)?.agent != nil, b != author.agentBlock, !asked.contains(b) { asked.append(b) }
         }
         for word in ThreadText.tags(in: comment) {
             guard let kind = Self.agentKind(word, usual: desk.settings.agentCommand) else { continue }
-            if let a = agentFor(kind, near: th), a != author.agentBlock {
+            let mine = parts.first { hosts.block($0)?.agent?.command == kind.command && hosts.block($0).map(Self.agentRuns) == true }
+            if let a = mine ?? agentFor(kind, near: th), a != author.agentBlock {
                 if !asked.contains(a) { asked.append(a) }
             } else if author.isYou {
                 starting.append(kind)
             }
         }
-        // Following: your comment asks the agents that have written here.
-        if author.isYou {
-            for a in th.agents where !asked.contains(a.block) && hosts.block(a.block).map(Self.agentRuns) == true {
-                // Another of the kind it's held to (two Claudes in a space): not it.
-                if let pinned, a.block != pinned, hosts.block(a.block)?.agent?.command == pinnedCommand { continue }
-                asked.append(a.block)
-            }
+        // Tagged, they're in it from now on (by you, or by an agent bringing
+        // in another — a coordinator its worker).
+        let invited = asked.filter { !parts.contains($0) }
+        if !invited.isEmpty {
+            parts += invited
+            setParticipants(parts, of: id)
         }
-        // The agent's thread: your comment asks its agent, untagged — one
-        // of its kind near (else one started), unless one's asked already.
-        if author.isYou, let kind = asksAgent(of: t),
-           !asked.contains(where: { hosts.block($0)?.agent?.command == kind.command }), !starting.contains(where: { $0.command == kind.command }) {
-            if let pinned, pinnedCommand == kind.command {
-                asked.append(pinned)
+        // Untagged, yours: the thread's participants asked — its lead (the
+        // first of them at work), or all of them, as it says — else one of
+        // its kind near, made its lead, else one started.
+        if author.isYou, asked.isEmpty, starting.isEmpty, let kind = asksAgent(of: t) {
+            let working = parts.filter { hosts.block($0).map(Self.agentRuns) == true }
+            if !working.isEmpty {
+                asked = asksAll(t) ? working : [working[0]]
             } else if let a = agentFor(kind, near: th) {
-                // Held to it from now on.
-                asked.append(a)
-                hosts.append(.annotate([Self.asksAgentKey: a.description]), to: .block(id))
+                asked = [a]
+                parts.insert(a, at: 0)
+                setParticipants(parts, of: id)
             } else {
                 starting.append(kind)
             }
@@ -125,6 +125,28 @@ extension MainWindowController {
             if let b = running.first(where: { g.project(of: $0.id) == root }) { return b.id }
         }
         return running.first?.id
+    }
+
+    // MARK: Participants (§3.12)
+
+    /// An agent brought into a thread (its participants' ⌄, a tile dropped
+    /// on it): in it from now on, and told — the thread read for what it's
+    /// about, not answered till it's asked — so it needn't be primed apart.
+    func invite(_ agent: BlockID, to thread: BlockID) {
+        guard let t = hosts.block(thread), hosts.block(agent)?.agent != nil else { return }
+        var parts = participants(of: t)
+        guard !parts.contains(agent) else { return }
+        parts.append(agent)
+        setParticipants(parts, of: thread)
+        // Ask on: an invited agent is there to be talked to.
+        if asksAgent(of: t) == nil, let command = hosts.block(agent)?.agent?.command {
+            annotateThread(thread, [Self.asksKey: command])
+        }
+        let ref = Self.address(thread)
+        let about = t.thread?.about.map { describe($0).title } ?? "the space"
+        let line = "[Manifold thread \(ref), about \(about)] You've been added to this thread: read it with `mani thread read \(ref)` for what it's about and where it stands. "
+            + "Don't answer now — you'll be asked in it when you're addressed, and answer then with `mani thread reply \(ref) \"…\"`."
+        ask(agent, threads: [thread], prompt: line)
     }
 
     /// The line typed into an agent's terminal: which thread, about what,
@@ -214,8 +236,12 @@ extension MainWindowController {
         let base = kind.command == AgentCatalog.agent(inCommand: desk.settings.agentCommand)?.command ? desk.settings.agentCommand : kind.command
         let command = base + " " + prompt.shellQuoted
         let agent = client.newAgent(cwd: cwd, command: command)
-        // The thread held to the one it started.
-        if asksAgent(of: t)?.command == kind.command { hosts.append(.annotate([Self.asksAgentKey: agent.description]), to: .block(t.id)) }
+        // In the thread from now on: its lead, if it had none at work.
+        var parts = participants(of: t)
+        if !parts.contains(agent) {
+            if parts.contains(where: { hosts.block($0).map(Self.agentRuns) == true }) { parts.append(agent) } else { parts.insert(agent, at: 0) }
+            setParticipants(parts, of: t.id)
+        }
         show(agent, lens: .agent, .here, context: "asked in a thread")
         hosts.addToThread(t.id, .asked(agent: agent, name: kind.name), author: .manifold)
     }
