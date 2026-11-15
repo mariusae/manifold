@@ -1313,6 +1313,22 @@ final class PillTextView: NSTextView {
         chat.performTextFinderAction(sender)
     }
 
+    // The arrow over a comment's words, not the I-beam — it's read, not
+    // typed in (its words still select); the hand over a link and a pill.
+    override func resetCursorRects() {
+        addCursorRect(visibleRect, cursor: .arrow)
+        guard let lm = layoutManager, let tc = textContainer, let storage = textStorage, storage.length > 0 else { return }
+        let origin = textContainerOrigin
+        storage.enumerateAttribute(.link, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            guard value != nil else { return }
+            let glyphs = lm.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            lm.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: tc) { r, _ in
+                let rect = r.offsetBy(dx: origin.x, dy: origin.y).intersection(self.visibleRect)
+                if !rect.isEmpty { self.addCursorRect(rect, cursor: .pointingHand) }
+            }
+        }
+    }
+
     // The pointer resting on a pill: its block's card (`ReferenceCards`).
     private var hoverArea: NSTrackingArea?
     private var hovering: BlockID?
@@ -1320,7 +1336,7 @@ final class PillTextView: NSTextView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let a = hoverArea { removeTrackingArea(a) }
-        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
+        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect], owner: self)
         addTrackingArea(a)
         hoverArea = a
     }
@@ -1328,6 +1344,25 @@ final class PillTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         hovering = ReferenceCards.track(self, at: convert(event.locationInWindow, from: nil), was: hovering)
+        // NSTextView sets its I-beam as the pointer moves: the arrow again
+        // (or the hand, over a link), unless ⌘'s marking one.
+        if !event.modifierFlags.contains(.command) {
+            (linkOrPill(at: convert(event.locationInWindow, from: nil)) ? NSCursor.pointingHand : NSCursor.arrow).set()
+        }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        (linkOrPill(at: convert(event.locationInWindow, from: nil)) ? NSCursor.pointingHand : NSCursor.arrow).set()
+    }
+
+    /// Whether a link (a Markdown link's words, a pill) is under a point.
+    private func linkOrPill(at p: NSPoint) -> Bool {
+        guard let lm = layoutManager, let tc = textContainer, let storage = textStorage, storage.length > 0 else { return false }
+        let q = NSPoint(x: p.x - textContainerOrigin.x, y: p.y - textContainerOrigin.y)
+        let g = lm.glyphIndex(for: q, in: tc)
+        guard lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc).contains(q) else { return false }
+        let i = lm.characterIndexForGlyph(at: g)
+        return i < storage.length && storage.attribute(.link, at: i, effectiveRange: nil) != nil
     }
 
     override func mouseExited(with event: NSEvent) {
