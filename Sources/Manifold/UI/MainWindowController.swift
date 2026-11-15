@@ -975,7 +975,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// others' views (a web view, say) don't, so clicks are watched here.
     private func watchClicks() {
         clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, event.window === self.window, self.emptyState == nil else { return event }
+            guard let self, event.window === self.window else { return event }
+            // The thread's overlay up: a click outside it puts it away, and
+            // goes no further (it's modal, as a sheet is).
+            if let o = self.threadUI.overlay, o.superview != nil,
+               !o.frame.contains(o.superview!.convert(event.locationInWindow, from: nil)) {
+                self.closeThreadOverlay()
+                return nil
+            }
+            guard self.emptyState == nil else { return event }
             // Not clicks on the sidebar, floating over the placements.
             if self.sidebarShown && self.sidebar.frame.contains(self.root.convert(event.locationInWindow, from: nil)) {
                 return event
