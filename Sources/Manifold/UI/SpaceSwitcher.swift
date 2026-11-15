@@ -26,6 +26,11 @@ final class SpaceSwitcherView: PopoverView {
         var status: StatusGlyph.Look?
         var tiles: [Tile]
         var docked: Int
+        /// What wants you there, under its grid: each tile that needs you,
+        /// failed or is done (not yet seen) — its symbol, its name, its
+        /// pill, how long since.
+        struct Want { var symbol: String; var title: String; var pill: StatusPill.Kind; var age: String? }
+        var wants: [Want] = []
     }
 
     var cards: [Card] = [] { didSet { needsLayout = true; needsDisplay = true } }
@@ -33,6 +38,14 @@ final class SpaceSwitcherView: PopoverView {
     var onPick: ((Int) -> Void)?
 
     static let cardSize = NSSize(width: 236, height: 176)
+    /// A row of what wants you, under a card's grid; three at most.
+    static let wantRow: CGFloat = 20
+    static let mostWants = 3
+    /// The cards' height: room for the most wants any of them shows.
+    private var cardHeight: CGFloat {
+        let n = min(cards.map(\.wants.count).max() ?? 0, Self.mostWants)
+        return Self.cardSize.height + (n > 0 ? CGFloat(n) * Self.wantRow + 6 : 0)
+    }
     static let gap: CGFloat = 14
     static let pad: CGFloat = 18
     static let perRow = 4
@@ -48,14 +61,14 @@ final class SpaceSwitcherView: PopoverView {
         let n = max(cards.count, 1)
         let cols = min(n, Self.perRow), rows = min((n + Self.perRow - 1) / Self.perRow, 3)
         return NSSize(width: Self.pad * 2 + CGFloat(cols) * Self.cardSize.width + CGFloat(cols - 1) * Self.gap,
-                      height: Self.pad * 2 + CGFloat(rows) * Self.cardSize.height + CGFloat(rows - 1) * Self.gap)
+                      height: Self.pad * 2 + CGFloat(rows) * cardHeight + CGFloat(rows - 1) * Self.gap)
     }
 
     private func cardRect(_ i: Int) -> NSRect {
         let col = i % Self.perRow, row = i / Self.perRow
         return NSRect(x: Self.pad + CGFloat(col) * (Self.cardSize.width + Self.gap),
-                      y: Self.pad + CGFloat(row) * (Self.cardSize.height + Self.gap),
-                      width: Self.cardSize.width, height: Self.cardSize.height)
+                      y: Self.pad + CGFloat(row) * (cardHeight + Self.gap),
+                      width: Self.cardSize.width, height: cardHeight)
     }
 
     override func drawContent(_ dirtyRect: NSRect) {
@@ -83,9 +96,10 @@ final class SpaceSwitcherView: PopoverView {
             }
             let name = NSAttributedString(string: c.name, attributes: [.font: UIType.title, .foregroundColor: Theme.text])
             name.draw(with: NSRect(x: sq.maxX + 8, y: sq.minY + 1, width: max(0, right - sq.maxX - 8), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-            // The grid, in miniature.
+            // The grid, in miniature; under it what wants you, row by row.
             let foot: CGFloat = c.docked > 0 || c.host != nil ? 18 : 6
-            let map = NSRect(x: r.minX + 10, y: sq.maxY + 8, width: r.width - 20, height: r.maxY - sq.maxY - 8 - 10 - foot)
+            let wantsHeight = cardHeight - Self.cardSize.height
+            let map = NSRect(x: r.minX + 10, y: sq.maxY + 8, width: r.width - 20, height: r.maxY - sq.maxY - 8 - 10 - foot - wantsHeight)
             drawMap(c, in: map)
             var words: [String] = []
             if let h = c.host { words.append(h) }
@@ -94,6 +108,36 @@ final class SpaceSwitcherView: PopoverView {
                 NSAttributedString(string: words.joined(separator: " · "), attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])
                     .draw(with: NSRect(x: map.minX, y: map.maxY + 4, width: map.width, height: 14), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             }
+            drawWants(c.wants, from: map.maxY + foot + 4, in: r)
+        }
+    }
+
+    /// What wants you there: a row each — the tile's symbol and name, how
+    /// long since, and its pill (Done, Needs you, Failed), as the sidebar has them.
+    private func drawWants(_ wants: [Card.Want], from top: CGFloat, in r: NSRect) {
+        var y = top
+        for w in wants.prefix(Self.mostWants) {
+            let row = NSRect(x: r.minX + 10, y: y, width: r.width - 20, height: Self.wantRow)
+            let size = StatusPill.size(w.pill)
+            let pill = NSRect(x: row.maxX - size.width, y: row.midY - size.height / 2, width: size.width, height: size.height)
+            StatusPill.draw(w.pill, in: pill)
+            var right = pill.minX - 6
+            if let age = w.age {
+                let a = NSAttributedString(string: age, attributes: [.font: UIType.footnote, .foregroundColor: Theme.tertiaryText])
+                let z = a.size()
+                a.draw(at: NSPoint(x: right - z.width, y: row.midY - z.height / 2))
+                right -= z.width + 6
+            }
+            if let image = Theme.symbol(w.symbol, size: 10, weight: .regular, color: Theme.secondaryText) {
+                let z = image.size
+                image.draw(in: NSRect(x: row.minX, y: row.midY - z.height / 2, width: z.width, height: z.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            let t = NSAttributedString(string: w.title, attributes: [.font: UIType.detail, .foregroundColor: Theme.text])
+            let h = t.size().height
+            t.draw(with: NSRect(x: row.minX + 16, y: row.midY - h / 2, width: max(0, right - row.minX - 16), height: h),
+                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            y += Self.wantRow
         }
     }
 
@@ -197,9 +241,24 @@ extension MainWindowController {
             }
             x += w
         }
+        // What wants you there: needs you, then failed, then done, not seen.
+        var wants: [(rank: Int, want: SpaceSwitcherView.Card.Want)] = []
+        var seen = Set<BlockID>()
+        for p in a.placements + a.docked.map(\.placement) {
+            guard seen.insert(p.block).inserted, let tb = hosts.block(p.block) else { continue }
+            let pill: StatusPill.Kind, rank: Int
+            switch StatusGlyph.look(of: tb) {
+            case .needsYou?: (pill, rank) = (.needs(StatusPill.words(tb.statusRecord?.kind)), 0)
+            case .failed(read: false)?: (pill, rank) = (.failed, 1)
+            case .done(read: false)?: (pill, rank) = (.done, 2)
+            default: continue
+            }
+            wants.append((rank, .init(symbol: Theme.symbolName(for: tb), title: Self.linkTitle(tb), pill: pill, age: StatusGlyph.at(of: tb).map(Age.short))))
+        }
         return .init(id: id, name: name, host: hosts.ordered.count > 1 ? hosts.label(of: id.host) : nil,
                      mark: spaceMarks()[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b), color: SpaceLook.color(of: b),
-                     status: spaceStatus(a), tiles: tiles, docked: a.docked.count)
+                     status: spaceStatus(a), tiles: tiles, docked: a.docked.count,
+                     wants: wants.sorted { $0.rank < $1.rank }.map(\.want))
     }
 
     /// ⌥⇥ (⇧⌥⇥ back), as ⌘⇥ the Mac's apps: a step through the spaces,
