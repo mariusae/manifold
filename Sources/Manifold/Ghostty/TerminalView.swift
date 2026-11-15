@@ -1576,7 +1576,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
             }
         }
         for (a, b) in zip(lines, lines.dropFirst()) {
-            guard let joined = joined(a, b) else { continue }
+            guard let joined = joined(a, b, cols: cols) else { continue }
             out.removeAll { $0.overlaps(joined) }
             out.append(joined)
         }
@@ -1584,8 +1584,11 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// The path broken at the end of one line and going on at the start of
-    /// the next (past its indent), as one link, if it's there.
-    private func joined(_ a: ScreenLine, _ b: ScreenLine) -> ScreenLink? {
+    /// the next (past its indent), as one link, if it's there — or an
+    /// address so broken: a program that wraps its own lines (Claude
+    /// Code's list items, their rest indented under them) broke it at the
+    /// right edge, and what starts the next line is the rest of one.
+    private func joined(_ a: ScreenLine, _ b: ScreenLine, cols: Int) -> ScreenLink? {
         let at = Array(a.text.unicodeScalars), bt = Array(b.text.unicodeScalars)
         let space = CharacterSet.whitespaces
         guard let last = at.last, !space.contains(last) else { return nil }
@@ -1603,9 +1606,27 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         let base = base(ofRow: a.rows.lowerBound)
         guard let l = TerminalLinks.links(in: candidate, exists: exists(from: base)).first(where: {
             $0.range.lowerBound < split && $0.range.upperBound > split
-        }), l.path != nil, l.standing == .sure else { return nil }
+        }) else { return nil }
+        if l.path == nil {
+            // An address: broken where the line met the edge, and its rest
+            // one (not a word that happens to follow one that ended there).
+            let edge = (a.cells.last.map { $0.col + max(1, $0.width) } ?? 0) >= cols - 2
+            guard l.target.contains("://"), edge, Self.continuesAddress(String(String.UnicodeScalarView(bt[head..<headEnd]))) else { return nil }
+        } else {
+            guard l.standing == .sure else { return nil }
+        }
         return ScreenLink(link: l.from(base),
                           runs: Self.runs(a, (tail + l.range.lowerBound)..<at.count) + Self.runs(b, head..<(head + l.range.upperBound - split)))
+    }
+
+    /// Whether what starts a line could be the rest of an address broken
+    /// before it: only an address's characters, and something only an
+    /// address's middle has (a slash, a dot, a query's or a fragment's
+    /// mark, a dash, a digit — a UUID broken in two).
+    static func continuesAddress(_ head: String) -> Bool {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/?#[]@!$&'()*+,;=%")
+        guard !head.isEmpty, head.unicodeScalars.allSatisfy(allowed.contains) else { return false }
+        return head.contains { "/.?#=&%-_".contains($0) || $0.isNumber }
     }
 
     /// What ghostty says of the grid now; nil with no surface.
