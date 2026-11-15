@@ -354,6 +354,7 @@ final class GridView: NSView, NSDraggingSource {
                         return b
                     }()
                     badge.cards = tile.links
+                    badge.onFocusedBar = tile.shown.id == focused
                     pill.linkWanted = badge.capsuleWantedWidth
                     // The bar's buttons or the links' room changed without
                     // the grid laying out (a status come or gone): placed

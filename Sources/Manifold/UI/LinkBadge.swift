@@ -126,11 +126,19 @@ final class LinkBadge: NSView {
 
     // MARK: Faces
 
+    /// On the focused tile's bar: its faces in that bar's ground, not
+    /// another's (each as the bar it sits on, the theme's).
+    var onFocusedBar = false {
+        didSet { if onFocusedBar != oldValue { for c in chips + [stackFront] + stackBack { c.ground = barGround } } }
+    }
+    private var barGround: NSColor { onFocusedBar ? Theme.tileBarFocused : Theme.tileBar }
+
     private func rebuild() {
         hidePreview()
         for c in chips { c.removeFromSuperview() }
         chips = cards.prefix(Self.mostShown).map { card in
             let c = Chip()
+            c.ground = barGround
             dress(c, card)
             c.onClick = { [weak self] mods in self?.open(card.block, mods) }
             c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
@@ -453,6 +461,8 @@ final class LinkBadge: NSView {
         var onDragStart: ((NSEvent) -> Void)?
         var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 12) } }
         var outbound = true { didSet { chevron.image = Self.chevron(outbound); needsLayout = true } }
+        /// The ground of the bar it's on.
+        var ground: NSColor = Theme.tileBar { didSet { colour() } }
         private static func chevron(_ outbound: Bool) -> NSImage? { Theme.symbol(outbound ? "chevron.right" : "chevron.left", size: 8, weight: .bold) }
         /// Folded behind the front one (1, 2), only its edge showing: nothing
         /// on it, a step darker than the front for each one back, so the
@@ -467,7 +477,9 @@ final class LinkBadge: NSView {
         }
         private func colour() {
             effectiveAppearance.performAsCurrentDrawingAppearance {
-                layer?.backgroundColor = (depth > 0 ? Self.behind(depth) : LinkCapsule.fill).cgColor
+                // The bar's own ground (a warm theme's bar isn't its panel's
+                // white); those behind, a step darker for each.
+                layer?.backgroundColor = (depth > 0 ? (ground.blended(withFraction: 0.05 * CGFloat(depth), of: Theme.text) ?? Self.behind(depth)) : ground).cgColor
                 layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : LinkCapsule.edge).cgColor
             }
         }
