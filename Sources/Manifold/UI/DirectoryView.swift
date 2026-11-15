@@ -1209,6 +1209,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             if let shown = content?.shownFolders { model?.refresh(shown) }
         case "focusfilter": performTextFinderAction(nil)
         case "readme": toggleReadme()
+        case "readmelink":
+            // "readmelink <n>": the README's nth link clicked, as a reader would.
+            readme.page?.debugClickLink(Int(words.count > 1 ? words[1] : "0") ?? 0)
+            return "clicked"
         case "choose":
             // "choose <path> <path>…" (from the root): those entries chosen together.
             let paths = words.count > 1 ? words[1].split(separator: " ").map { model?.absolute(String($0)) ?? String($0) } : []
