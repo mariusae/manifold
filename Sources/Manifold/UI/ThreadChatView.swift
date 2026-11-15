@@ -196,9 +196,19 @@ final class ThreadChatView: NSView {
             self.stopEditing()
             return true
         }
-        // ↑ with nothing written: your last comment, to edit (as Slack's).
+        // ↑ with nothing written: your last comment, to edit (as Slack's) —
+        // the one just sent, though it's not back yet.
         composer.onUpWhenEmpty = { [weak self] in
-            guard let self, let e = self.model.thread?.thread?.entries.last(where: { $0.author.isYou && $0.comment != nil }) else { return false }
+            guard let self else { return false }
+            if self.sentPending, let words = self.lastSent {
+                self.editing = Self.justSent
+                self.composer.fill(markdown: words)
+                self.updateBoxChips()
+                self.composerChanged()
+                self.focusComposer()
+                return true
+            }
+            guard let e = self.model.thread?.thread?.entries.last(where: { $0.author.isYou && $0.comment != nil }) else { return false }
             self.edit(e.id)
             return true
         }
@@ -308,7 +318,7 @@ final class ThreadChatView: NSView {
         }
         resolveButton.isHidden = t == nil
         // The comment being edited gone (another Mac's undo, a log reset): left.
-        if let id = editing, t?.entries.contains(where: { $0.id == id && $0.comment != nil }) != true { stopEditing() }
+        if let id = editing, id != Self.justSent, t?.entries.contains(where: { $0.id == id && $0.comment != nil }) != true { stopEditing() }
         updateBoxChips()
         resolveButton.title = t?.resolved == true ? "Reopen" : "Resolve"
         resolveButton.symbolName = t?.resolved == true ? "arrow.uturn.backward" : "checkmark"
@@ -320,6 +330,15 @@ final class ThreadChatView: NSView {
         let grew = !firstShow && (t?.entries.count ?? 0) > before
         let yoursCame = sentPending && grew && t?.entries.last(where: { $0.comment != nil })?.author.isYou == true
         if yoursCame { sentPending = false }
+        // What you sent, come back: the edit begun on it (↑ before it came) now its.
+        if yoursCame, lastSent != nil, let mine = t?.entries.last(where: { $0.author.isYou && $0.comment != nil }) {
+            if editing == Self.justSent { editing = mine.id }
+            if let text = editAfterSent {
+                editAfterSent = nil
+                if text != mine.comment { delegate?.threadChat(self, edit: mine.id, text: text) }
+            }
+            lastSent = nil
+        }
         if firstShow || scrolledToEnd || yoursCame {
             scrollToEnd()
         } else if grew {
@@ -552,17 +571,26 @@ final class ThreadChatView: NSView {
         guard !text.isEmpty else { return }
         if let id = editing {
             stopEditing()
+            // The one just sent, not back yet: changed once it is.
+            if id == Self.justSent { editAfterSent = text; return }
             return delegate?.threadChat(self, edit: id, text: text) ?? ()
         }
         composer.clear()
         composerChanged()
         // Where it lands, scrolled to as it comes, wherever this was scrolled.
         sentPending = true
+        lastSent = text
         delegate?.threadChat(self, send: text)
     }
 
     /// Sent, and not yet come back: shown at the end when it does.
     private var sentPending = false
+    /// Its words, till it's back: ↑ before then edits it, not the one before.
+    private var lastSent: String?
+    /// Its new words, saved before it came back: given it when it does.
+    private var editAfterSent: String?
+    /// `editing` while what's being edited is what was just sent, not back yet.
+    private static let justSent = "\u{0}sent"
     private let newBelow = NewBelowButton(showsWhenAway: true)
 
     /// Ask switched: a new thread's kept till it's made; a thread's, said.
