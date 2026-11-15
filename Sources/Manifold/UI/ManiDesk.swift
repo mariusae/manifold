@@ -438,7 +438,7 @@ final class ManiDesk {
         }
         // A path, as the command's directory has it.
         if s.contains("/") || s.contains(".") || s.hasPrefix("~") {
-            var path = s.expandingTildeInPath
+            var path = hosts.expandingTilde(s, on: scope.host)
             if !path.hasPrefix("/") { path = scope.request.cwd.appendingPathComponent(path) }
             path = URL(fileURLWithPath: path).standardizedFileURL.path
             let blocks = hosts.blocks.filter { $0.id.host == scope.host && ($0.path == path || $0.path == path + "/") }
@@ -472,7 +472,7 @@ final class ManiDesk {
             id = try resolve(name, scope).block
         } catch {
             guard name.contains("/") || name.contains("."), !name.hasPrefix("manifold:") else { throw error }
-            var path = name.expandingTildeInPath
+            var path = hosts.expandingTilde(name, on: scope.host)
             if !path.hasPrefix("/") { path = scope.request.cwd.appendingPathComponent(path) }
             path = URL(fileURLWithPath: path).standardizedFileURL.path
             if scope.host == hosts.local.host, !FileManager.default.fileExists(atPath: path) { throw Failure(message: "no file \(name)") }
@@ -556,7 +556,7 @@ final class ManiDesk {
     /// no longer.
     private func project(_ r: ManiRequest, _ scope: Scope) async throws -> String {
         guard let client = hosts.client(scope.host) else { throw Failure(message: "that host isn't attached") }
-        var path = (r.args.first ?? ".").expandingTildeInPath
+        var path = hosts.expandingTilde(r.args.first ?? ".", on: scope.host)
         if !path.hasPrefix("/") { path = r.cwd.appendingPathComponent(path) }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         func propose(_ p: Proposal) async throws {
@@ -607,7 +607,7 @@ final class ManiDesk {
 
     /// `mani index`: the project a file (or this folder) is in indexed.
     private func index(_ r: ManiRequest, _ scope: Scope) async throws -> String {
-        var path = (r.args.first ?? ".").expandingTildeInPath
+        var path = hosts.expandingTilde(r.args.first ?? ".", on: scope.host)
         if !path.hasPrefix("/") { path = r.cwd.appendingPathComponent(path) }
         path = URL(fileURLWithPath: path).standardizedFileURL.path
         var isDir: ObjCBool = false

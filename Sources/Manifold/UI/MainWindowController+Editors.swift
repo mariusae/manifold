@@ -171,7 +171,7 @@ extension MainWindowController: EditorViewDelegate {
             if scheme == "data" { return picture(key: source) { done in done(try? Data(contentsOf: url)) } }
             if scheme.count > 1 { return nil }
         }
-        let path = (source.removingPercentEncoding ?? source).expandingTildeInPath
+        let path = hosts.expandingTilde(source.removingPercentEncoding ?? source, on: note.host)
         if path.hasPrefix("/") { return picture(file: path, on: note.host) }
         guard let folder = hosts.block(note)?.path?.deletingLastPathComponent, !folder.isEmpty else { return nil }
         return picture(file: folder.appendingPathComponent(path), on: note.host)

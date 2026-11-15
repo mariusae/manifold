@@ -431,6 +431,8 @@ extension MainWindowController {
             column = loc.column
         }
         var path = text.hasPrefix("file://") ? (URL(string: text)?.path ?? text) : text
+        // ~ as the host has it: its home there, not this Mac's.
+        path = hosts.expandingTilde(path, on: on)
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
             follow(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, from: from, d, context: target)
@@ -439,9 +441,7 @@ extension MainWindowController {
         } else if line == nil, let client = hosts.client(on) {
             // No slash: a folder if the host can list it (/home/marius), else
             // a file — as when it can't be asked.
-            var asked = path
-            if asked == "~" || asked.hasPrefix("~/"), let home = client.home { asked = home + asked.dropFirst() }
-            client.listFolder(asked) { [weak self] entries in
+            client.listFolder(path) { [weak self] entries in
                 guard let self else { return }
                 if entries != nil {
                     self.follow(self.hosts.directoryBlock(for: path, on: on), lens: .directory, from: from, d, context: target)

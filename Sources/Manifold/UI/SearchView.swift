@@ -381,8 +381,9 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         let typed = pathField.stringValue.trimmingCharacters(in: .whitespaces)
         guard !typed.isEmpty else { return }
         folders.add(typed)
-        var root = (typed as NSString).expandingTildeInPath
-        if !root.hasPrefix("/"), let old = query?.root { root = (old as NSString).appendingPathComponent(root) }
+        // ~ left for the search's host to say (its home, not this Mac's).
+        var root = typed
+        if !root.hasPrefix("/"), !root.hasPrefix("~"), let old = query?.root { root = (old as NSString).appendingPathComponent(root) }
         search(under: root)
         window?.makeFirstResponder(field)
     }

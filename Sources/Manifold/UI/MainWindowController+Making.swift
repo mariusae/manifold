@@ -34,7 +34,7 @@ extension MainWindowController {
         case "search":
             return (client.newSearch(SearchQuery(text: what ?? "", root: here)), .search, false)
         case "folder":
-            let path = what.map { ($0 as NSString).expandingTildeInPath }.map { $0.hasPrefix("/") ? $0 : (here as NSString).appendingPathComponent($0) } ?? here
+            let path = what.map { hosts.expandingTilde($0, on: h) }.map { $0.hasPrefix("/") ? $0 : (here as NSString).appendingPathComponent($0) } ?? here
             return (hosts.directoryBlock(for: path, on: h), .directory, false)
         case "notebook":
             let id = BlockID(host: client.host)

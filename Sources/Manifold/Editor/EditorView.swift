@@ -191,7 +191,8 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.showsLineNumbers = !isMarkdownOutline
         textView.pillLook = { [weak self] id in self?.blockLook?(id) }
         textView.selectionTarget = { [weak self] words in
-            guard !words.contains("://"), !words.hasPrefix("manifold:") else { return words }
+            // ~ left for the file's host to say (opening expands it there).
+            guard !words.contains("://"), !words.hasPrefix("manifold:"), !words.hasPrefix("~") else { return words }
             return Mention.resolve(words, from: self?.path.isEmpty == false ? self?.path : nil) ?? words
         }
         // Text added at its end from elsewhere while scrolled up: said at its

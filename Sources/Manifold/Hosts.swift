@@ -471,6 +471,16 @@ final class Hosts {
         (client(host) ?? local).newTerminal(cwd: cwd)
     }
 
+    /// A path with `~` as its host has it: that host's home, not this
+    /// Mac's (a remote terminal's `~/work/x.sh` is the devserver's). Left
+    /// as it is when the host hasn't said where its home is.
+    func expandingTilde(_ path: String, on host: HostID) -> String {
+        guard path == "~" || path.hasPrefix("~/") else { return path }
+        guard host != local.host else { return path.expandingTildeInPath }
+        guard let home = client(host)?.home, !home.isEmpty else { return path }
+        return home + path.dropFirst()
+    }
+
     func textBlock(for path: String, on host: HostID) -> BlockID {
         (client(host) ?? local).textBlock(for: path)
     }

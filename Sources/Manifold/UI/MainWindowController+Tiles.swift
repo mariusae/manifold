@@ -258,6 +258,9 @@ extension MainWindowController: DiffViewDelegate {
 
 extension MainWindowController: SearchViewDelegate {
     func searchView(_ view: SearchView, run query: SearchQuery) {
+        // Its folder's ~ as the search's host has it.
+        var query = query
+        query.root = hosts.expandingTilde(query.root, on: view.block.host)
         if query.relation != nil { return runRelation(query, in: view.block) }
         if query.symbol != nil, let client = hosts.client(of: view.block) {
             client.append([.title("“\(query.text)”")], to: .block(view.block))
