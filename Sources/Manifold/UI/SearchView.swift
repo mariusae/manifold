@@ -11,6 +11,8 @@ protocol SearchViewDelegate: AnyObject {
     func searchView(_ view: SearchView, read path: String, done: @escaping (String?) -> Void)
     /// A file opened at a line, beside the results.
     func searchView(_ view: SearchView, open path: String, line: Int)
+    /// A folder's entries on the search's host (its folder field's picker).
+    func searchView(_ view: SearchView, list folder: String, done: @escaping ([DirectoryEntry]?) -> Void)
 }
 
 /// The search lens (DESIGN.md §7.5): the query along the top (text, Aa
@@ -108,7 +110,12 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         pathField.cell?.sendsActionOnEndEditing = false
         pathField.target = self
         pathField.action = #selector(pathEntered)
-        pathField.toolTip = "The folder searched under: edit it and press Return"
+        pathField.toolTip = "The folder searched under: click for its folders, or edit it and press Return"
+        // Clicked: its folders brought down, to go into and choose (apex's
+        // path editor), not the field to type in.
+        let pick = NSClickGestureRecognizer(target: self, action: #selector(pickFolder))
+        pick.delaysPrimaryMouseButtonEvents = true
+        pathField.addGestureRecognizer(pick)
         projectButton.target = self
         projectButton.action = #selector(expandToProject)
         projectButton.isHidden = true
@@ -378,6 +385,24 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         if !root.hasPrefix("/"), let old = query?.root { root = (old as NSString).appendingPathComponent(root) }
         search(under: root)
         window?.makeFirstResponder(field)
+    }
+
+    /// The folder picker, under the folder's field, on the folder searched.
+    @objc private func pickFolder() {
+        guard let window else { return }
+        let start = query?.root ?? (pathField.stringValue as NSString).expandingTildeInPath
+        FolderPicker.show(at: start, under: pathBox.convert(pathBox.bounds, to: nil), in: window,
+                          list: { [weak self] path, done in
+                              guard let self, let d = self.delegate else { return done(nil) }
+                              d.searchView(self, list: path, done: done)
+                          },
+                          choose: { [weak self] path, _ in
+                              guard let self else { return }
+                              self.pathBox.stringValue = path.abbreviatingHome
+                              self.folders.add(path.abbreviatingHome)
+                              self.search(under: path)
+                              self.window?.makeFirstResponder(self.field)
+                          })
     }
 
     /// Expand to Project: the search under the repository's root.

@@ -1602,6 +1602,15 @@ enum DebugControl {
             return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
         case "state":
             return wc?.debugDescribe() ?? "no window"
+        case "folderpicker":
+            // "folderpicker place": the focused tile's place clicked (its folder brought
+            // down); "folderpicker [type <text>|up|into|down|choose]": keys in the one shown.
+            if arg == "place" {
+                guard let wc, let f = wc.arrangement?.focused, let window = wc.window else { return "nothing focused" }
+                wc.gridPickPlace(f, under: NSRect(x: 200, y: window.contentLayoutRect.height - 60, width: 200, height: 20))
+                return "brought down"
+            }
+            return FolderPicker.debug(arg)
         case "attach":
             guard let dest = Destination(arg) else { return "usage: attach user@host | provider:name" }
             wc?.attach(dest)

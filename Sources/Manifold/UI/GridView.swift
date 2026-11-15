@@ -47,6 +47,9 @@ protocol GridDelegate: AnyObject {
     func gridSqueeze(_ placement: PlacementID)
     /// ⌥-click: the block's path, folder by folder, each going there.
     func gridPathMenu(for placement: PlacementID) -> NSMenu?
+    /// Its place on its bar (a folder, after the name) clicked: its
+    /// folders and files brought down under it (`rect`, the window's), to go to.
+    func gridPickPlace(_ placement: PlacementID, under rect: NSRect)
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -320,6 +323,11 @@ final class GridView: NSView, NSDraggingSource {
                     guard let self else { return }
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
+                }
+                pill.onPlaceClick = { [weak self] rect in
+                    guard let self else { return }
+                    self.delegate?.gridFocus(id)
+                    self.delegate?.gridPickPlace(id, under: rect)
                 }
                 // Right-clicked, the title calls up the tile's menu.
                 pill.onRightClick = { [weak self] _ in
@@ -2104,6 +2112,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onIconClick: ((NSEvent.ModifierFlags) -> Void)?
     /// ⌥-clicked: the path menu.
     var onPathClick: (() -> Void)?
+    /// Its place (a folder, not an address to edit) clicked: where it is,
+    /// in the window's coordinates, to bring its folder down under.
+    var onPlaceClick: ((NSRect) -> Void)?
     /// Dragged: the tile, or (from the icon) the thing it stands for.
     var onDragStart: ((NSEvent, _ thing: Bool) -> Void)?
     private let glass = NSView()
@@ -2845,6 +2856,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the place to edit.
     func isOnPlace(_ p: NSPoint) -> Bool { placeRect?.contains(p) ?? false }
 
+    /// The place, where it's a folder to go elsewhere from (a terminal's,
+    /// a file's, a folder's own): as far as its text goes.
+    private var folderPlaceRect: NSRect? {
+        guard !editsPlace, onPlaceClick != nil, !isEditing, !subtitle.isHidden, !subtitle.stringValue.isEmpty,
+              subtitle.stringValue.hasPrefix("/") || subtitle.stringValue.hasPrefix("~") else { return nil }
+        let f = subtitle.frame
+        let w = min(f.width, ceil(subtitle.intrinsicContentSize.width) + 4)
+        return NSRect(x: f.minX - 2, y: 0, width: w + 4, height: bounds.height)
+    }
+
     /// Where the icon takes the pointer: clicked, its menu; dragged, the
     /// thing the tile stands for.
     private var iconSpot: NSRect { icon.frame.insetBy(dx: -8, dy: -6) }
@@ -2906,6 +2927,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         if let r = placeRect { spots.append((r, .iBeam)) }
+        if let r = folderPlaceRect { spots.append((r, .pointingHand)) }
         return spots.sorted { $0.0.minX < $1.0.minX }
     }
 
@@ -2953,6 +2975,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
             if event.modifierFlags.contains(.shift) { onPathClick?() }
+            else if let r = folderPlaceRect, r.contains(p), event.modifierFlags.isDisjoint(with: [.command, .option]) {
+                onPlaceClick?(convert(subtitle.frame, to: nil))
+            }
             else if iconSpot.contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil

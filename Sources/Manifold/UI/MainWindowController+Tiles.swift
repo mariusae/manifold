@@ -319,6 +319,11 @@ extension MainWindowController: SearchViewDelegate {
         }
     }
 
+    func searchView(_ view: SearchView, list folder: String, done: @escaping ([DirectoryEntry]?) -> Void) {
+        guard let client = hosts.client(of: view.block) else { return done(nil) }
+        client.listFolder(folder, done: done)
+    }
+
     func searchView(_ view: SearchView, open path: String, line: Int) {
         open(path: path, line: line, column: 1, on: view.block.host, from: view.placement, kind: .opened, context: nil)
     }

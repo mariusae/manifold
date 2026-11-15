@@ -498,6 +498,25 @@ extension MainWindowController: GridDelegate {
         return menu
     }
 
+    /// Its place on its bar clicked: its folder brought down (apex's path
+    /// editor) — into its folders, up past it — a folder chosen shown as
+    /// one (in a folder's tile, gone to there), a file opened beside.
+    func gridPickPlace(_ placement: PlacementID, under rect: NSRect) {
+        guard let window, let p = arrangement?.placement(placement), let b = hosts.block(p.block),
+              let client = hosts.client(of: b.id), let start = b.place, start.hasPrefix("/") else { return }
+        FolderPicker.show(at: start, filesToo: true, under: rect, in: window,
+                          list: { path, done in client.listFolder(path, done: done) },
+                          choose: { [weak self] path, isFolder in
+                              guard let self else { return }
+                              if isFolder {
+                                  if let d = self.views[placement] as? DirectoryView { d.navigate(to: path) }
+                                  else { self.show(client.directoryBlock(for: path), lens: .directory, .here) }
+                              } else {
+                                  self.open(path, from: placement, as: .beside)
+                              }
+                          })
+    }
+
     /// A tile's pill ⌃- or right-clicked, or its symbol clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu? {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
