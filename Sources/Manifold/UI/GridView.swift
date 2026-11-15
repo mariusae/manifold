@@ -513,7 +513,8 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// Debugging: the line under column `c`'s `r`th shown tile dragged
-    /// down past the next one's least height, and let go.
+    /// down past the next one's least height, and let go — the tiles below
+    /// made as short as they go, none docked.
     func debugPushDown(column c: Int, row r: Int) -> String {
         guard c < columns.count else { return "no such column" }
         let shown = shownTiles(c)
@@ -1454,15 +1455,36 @@ final class GridView: NSView, NSDraggingSource {
         CATransaction.commit()
     }
 
+    /// The line between two columns dragged: the column it's moved
+    /// toward made narrower, down to its least; on past it, the next one
+    /// over, and so on — each made room for, none pushed off.
     private func dragColumnDivider(_ i: Int, to x: CGFloat) {
         let frames = columnFrames()
+        guard i + 1 < frames.count else { return }
         let minWidth: CGFloat = 120
-        let left = frames[i].minX, right = frames[i + 1].maxX
-        let split = min(max(x, left + minWidth), right - minWidth)
+        var widths = frames.map(\.width)
+        let delta = x - (frames[i].maxX + frames[i + 1].minX) / 2
+        if delta > 0 {
+            // Right: column i wider, those after it narrower, nearest first.
+            var want = delta
+            for j in (i + 1)..<widths.count where want > 0 {
+                let take = min(want, max(0, widths[j] - minWidth))
+                widths[j] -= take
+                want -= take
+                widths[i] += take
+            }
+        } else if delta < 0 {
+            var want = -delta
+            for j in stride(from: i, through: 0, by: -1) where want > 0 {
+                let take = min(want, max(0, widths[j] - minWidth))
+                widths[j] -= take
+                want -= take
+                widths[i + 1] += take
+            }
+        }
         let usable = bounds.width - CGFloat(columns.count - 1) * Self.gap
-        let pair = fractions[i] + fractions[i + 1]
-        fractions[i] = (split - left) / usable
-        fractions[i + 1] = pair - fractions[i]
+        guard usable > 0, widths.count == fractions.count else { return }
+        fractions = widths.map { Double($0 / usable) }
         needsLayout = true
     }
 
@@ -1563,42 +1585,42 @@ final class GridView: NSView, NSDraggingSource {
         RunLoop.main.add(timer, forMode: .common)
     }
 
-    /// The line between two tiles dragged: the two share their room by
-    /// where it is. Pushed past a tile's least height, that tile is pushed
-    /// out (its room to the other side; a share of 0, docked when the drag
-    /// ends, §3.1), and the line goes on against the next, until all above
-    /// or below are out and the tile that grew has the column.
+    /// The line between two tiles dragged: the tile it's moved toward
+    /// made shorter, down to its least; on past it, the next one, and so on
+    /// to the column's end — each made room for, none pushed out (a tile
+    /// isn't eaten by its neighbour's growing).
     private func dragRowDivider(column c: Int, above a0: PlacementID, below b0: PlacementID, to y: CGFloat) {
         guard c < columns.count else { return }
-        let column = columns[c]
-        guard let ia = column.firstIndex(where: { $0.shown.id == a0 }), let ib = column.firstIndex(where: { $0.shown.id == b0 }) else { return }
-        let aboves = column[...ia].filter { !pushedOut($0.shown.id) }
-        let belows = column[ib...].filter { !pushedOut($0.shown.id) }
-        guard let a = aboves.last?.shown.id, let b = belows.first?.shown.id else { return }
-        let f = columnFrames()[c]
-        let frames = tileFrames(column: c, in: f)
-        guard let ra = column.firstIndex(where: { $0.shown.id == a }), let rb = column.firstIndex(where: { $0.shown.id == b }) else { return }
-        let minHeight: CGFloat = 24
-        let top = frames[ra].maxY, bottom = frames[rb].minY
-        let n = Double(max(shownTiles(c).count, 1))
-        func share(_ id: PlacementID) -> Double { heights[id] ?? 1 / n }
-        if y > top - minHeight {
-            heights[b] = share(b) + share(a)
-            heights[a] = 0
-            needsLayout = true
-            return dragRowDivider(column: c, above: a0, below: b0, to: y)
+        let shown = shownTiles(c)
+        guard let ka = shown.firstIndex(where: { $0.shown.id == a0 }), let kb = shown.firstIndex(where: { $0.shown.id == b0 }), kb == ka + 1 else { return }
+        let frames = tileFramesShown(column: c, in: columnFrames()[c])
+        guard frames.count == shown.count else { return }
+        // As short as a tile goes: its bar alone (its ladder's last step).
+        let minHeight = Self.barHeight
+        var hs = frames.map(\.height)
+        // From the line (the gap's middle) to where it's dragged; down is less.
+        let delta = (frames[ka].minY + frames[kb].maxY) / 2 - y
+        if delta > 0 {
+            // Down: the one above taller, those below shorter, nearest first.
+            var want = delta
+            for j in kb..<hs.count where want > 0 {
+                let take = min(want, max(0, hs[j] - minHeight))
+                hs[j] -= take
+                want -= take
+                hs[ka] += take
+            }
+        } else if delta < 0 {
+            var want = -delta
+            for j in stride(from: ka, through: 0, by: -1) where want > 0 {
+                let take = min(want, max(0, hs[j] - minHeight))
+                hs[j] -= take
+                want -= take
+                hs[kb] += take
+            }
         }
-        if y < bottom + minHeight {
-            heights[a] = share(a) + share(b)
-            heights[b] = 0
-            needsLayout = true
-            return dragRowDivider(column: c, above: a0, below: b0, to: y)
-        }
-        let split = min(max(y, bottom + minHeight), top - minHeight)
-        let pair = share(a) + share(b)
-        let total = top - bottom
-        heights[a] = pair * Double((top - split) / total)
-        heights[b] = pair - heights[a]!
+        let total = hs.reduce(0, +)
+        guard total > 0 else { return }
+        for (j, t) in shown.enumerated() { heights[t.shown.id] = Double(hs[j] / total) }
         needsLayout = true
     }
 

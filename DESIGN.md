@@ -418,8 +418,9 @@ title is cut.
 A tile **shrinks along one ladder**, by the room it has, not by a state:
 its content; then, under a few lines' room, its **summary card** (the
 block in a few lines, §3.5, shaped as the tile, joined to its bar); then
-its bar alone, rounded all round; pushed past that (a divider dragged
-over it), docked. Shrink to Summary (⇧⌘M) only sets a height on that
+its bar alone, rounded all round — no further: a divider dragged on
+past it pushes the next tile, and the next, each made as short as it
+goes, none eaten (columns the same, each as narrow as it goes). Shrink to Summary (⇧⌘M) only sets a height on that
 ladder, and every step comes back by resizing; Maximize stands apart.
 The content runs beneath the bar, never under it, with room between
 tiles and the window's wash — a few pools of colour placed afresh each
