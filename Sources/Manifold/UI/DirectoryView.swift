@@ -208,7 +208,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         up.target = self
         up.action = #selector(goUp)
         search.delegate = self
-        searchBox.onChange = { [weak self] in self?.filterTyped() }
+        searchBox.onChange = { [weak self] in self?.queryHistory.typed(); self?.filterTyped() }
         modes.setToolTip("As a Tree", forSegment: 0)
         modes.setToolTip("As Columns", forSegment: 1)
         modes.onChange = { [weak self] i in self?.setMode(i == 1 ? .columns : .tree) }
@@ -881,6 +881,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// "?text": the files' insides to be searched (on ⏎), not their names.
     private var searchingContents: Bool { search.stringValue.hasPrefix("?") }
 
+    /// A project's searches (and "?text" ones) asked before: ↑ ↓ in its field.
+    private let queryHistory = SearchHistory("project")
+
+    /// A search asked before, in the field, asked again.
+    private func recall(_ q: String) {
+        searchBox.stringValue = q
+        search.showRecalled(q)
+        filterTyped()
+    }
+
     @objc private func filterTyped() {
         searchBox.update()
         if home { return projectQueryTyped() }
@@ -896,17 +906,29 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     func controlTextDidEndEditing(_ obj: Notification) { searchBox.needsDisplay = true }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        // ↑ (in a project's search, or a "?text" one): what was asked before;
+        // ↓ back toward what was typed.
+        if home || searchingContents || search.stringValue.isEmpty, selector == #selector(NSResponder.moveUp(_:)) {
+            if let q = queryHistory.step(older: true, from: search.stringValue) { recall(q) }
+            return true
+        }
+        if queryHistory.walking, selector == #selector(NSResponder.moveDown(_:)) {
+            if let q = queryHistory.step(older: false, from: search.stringValue) { recall(q) }
+            return true
+        }
         // A project's search (§2.6): ↓ into what's found, ⏎ the best (or
         // the one chosen) gone to; ⎋ as the filter's.
         if searchingProject {
             switch selector {
             case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.insertTab(_:)):
                 guard results.hasFound else { return true }
+                queryHistory.add(search.stringValue)
                 window?.makeFirstResponder(results.focusView)
                 results.selectFirst()
                 return true
             case #selector(NSResponder.insertNewline(_:)):
                 searchSoon.flush()
+                queryHistory.add(search.stringValue)
                 results.openChosen()
                 return true
             default: break
@@ -925,7 +947,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case #selector(NSResponder.insertNewline(_:)) where searchingContents:
             // "?text" ⏎: a search of the files under the folder, beside.
             let text = search.stringValue.dropFirst().trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty { delegate?.directoryView(self, searchContents: text) }
+            if !text.isEmpty { queryHistory.add(search.stringValue); delegate?.directoryView(self, searchContents: text) }
             return true
         case #selector(NSResponder.insertNewline(_:)) where model?.filtering == true:
             // ⏎ in the filter: its best match opened.

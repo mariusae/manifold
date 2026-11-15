@@ -178,15 +178,28 @@ final class FindPill: CapsulePill {
 
     // MARK: Finding
 
+    /// What was found before (⌘F's, in any tile): ↑ ↓ in its field.
+    private static let history = SearchHistory("find-in-tile")
+
     func controlTextDidChange(_ obj: Notification) {
-        if (obj.object as? NSTextField) === field { refresh() }
+        if (obj.object as? NSTextField) === field { Self.history.typed(); refresh() }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if control === field, selector == #selector(NSResponder.moveUp(_:)) || (Self.history.walking && selector == #selector(NSResponder.moveDown(_:))) {
+            if let q = Self.history.step(older: selector == #selector(NSResponder.moveUp(_:)), from: field.stringValue) {
+                field.showRecalled(q)
+                refresh()
+            }
+            return true
+        }
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
+            if control !== replaceField { Self.history.add(field.stringValue) }
             if control === replaceField { replaceClicked() } else { target?.findNext(forward: !NSEvent.modifierFlags.contains(.shift)) }
         case #selector(NSResponder.cancelOperation(_:)):
+            // Put away having found it: kept, though ⏎ wasn't pressed.
+            Self.history.add(field.stringValue)
             onClose?()
         default:
             return false

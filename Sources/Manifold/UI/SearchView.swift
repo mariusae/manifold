@@ -332,6 +332,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        (obj.object as AnyObject? === pathField ? folders : queries).typed()
         keeper.note(["draft": field.stringValue == query?.text ? "" : field.stringValue])
     }
 
@@ -365,9 +366,14 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
 
     /// A folder typed: the search asked again under it (`~` as home, a
     /// relative path from the folder it was under).
+    /// What was searched for, and under where, before: ↑ ↓ in the fields.
+    private let queries = SearchHistory("find")
+    private let folders = SearchHistory("findFolder")
+
     @objc private func pathEntered() {
         let typed = pathField.stringValue.trimmingCharacters(in: .whitespaces)
         guard !typed.isEmpty else { return }
+        folders.add(typed)
         var root = (typed as NSString).expandingTildeInPath
         if !root.hasPrefix("/"), let old = query?.root { root = (old as NSString).appendingPathComponent(root) }
         search(under: root)
@@ -389,6 +395,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     @objc private func fieldEntered() {
         let q = currentQuery
         guard !q.text.isEmpty else { return }
+        queries.add(q.text)
         delegate?.searchView(self, run: q)
     }
 
@@ -397,10 +404,20 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        // ↑ ↓: what was asked before (the folder's field, where it was asked).
+        let history = control === pathField ? folders : control === field ? queries : nil
+        if let history, selector == #selector(NSResponder.moveUp(_:)) {
+            if let q = history.step(older: true, from: control.stringValue) { (control as? NSTextField)?.showRecalled(q) }
+            return true
+        }
+        if let history, history.walking, selector == #selector(NSResponder.moveDown(_:)) {
+            if let q = history.step(older: false, from: control.stringValue) { (control as? NSTextField)?.showRecalled(q) }
+            return true
+        }
         switch selector {
         case #selector(NSResponder.moveDown(_:)):
             // Down from the field: to the hits.
-            guard !rows.isEmpty else { return true }
+            guard control === field, !rows.isEmpty else { return true }
             window?.makeFirstResponder(table)
             if table.selectedRow < 0 { select(row: 0, forward: true) }
             return true
