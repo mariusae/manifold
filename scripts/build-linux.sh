@@ -57,6 +57,8 @@ sdk=$("$SWIFTLY" run +"$V" swift sdk list 2>/dev/null | grep "^swift-$V-RELEASE_
 # stripped: the symbols and debug info are most of the binary (148 MB of
 # it, 58 without), and every host it's installed on gets it over the wire.
 # The unstripped one stays where it was built, for symbolicating.
+# libmanifoldvt, built again when the Ghostty it's made of changes.
+scripts/ghostty-stamp.sh | cmp -s - Frameworks/ghostty.stamp || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/linux-x86_64/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
 # What it's made from, for the server to say (as the app's).
 scripts/stamp-build.sh

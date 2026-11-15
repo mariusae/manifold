@@ -71,3 +71,6 @@ echo "built $out"
 
 # The host's terminal emulator, from the same source.
 scripts/build-manifold-vt.sh
+
+# What it was all built from, for build-app.sh to see when it's out of date.
+scripts/ghostty-stamp.sh > Frameworks/ghostty.stamp

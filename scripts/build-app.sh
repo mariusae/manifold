@@ -6,9 +6,9 @@
 set -e
 cd "$(dirname "$0")/.."
 
-[ -d Frameworks/GhosttyKit.xcframework ] || scripts/build-ghostty.sh
-[ -f Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h ] || scripts/build-ghostty.sh
-grep -q 'ghostty_surface_manifold_links' Frameworks/GhosttyKit.xcframework/macos-arm64/Headers/ghostty.h || scripts/build-ghostty.sh
+# Built again when the pinned Ghostty or the patch changes (and when
+# missing, or made before the stamp was).
+scripts/ghostty-stamp.sh | cmp -s - Frameworks/ghostty.stamp || scripts/build-ghostty.sh
 [ -f Frameworks/manifold-vt/macos/libmanifoldvt.a ] || scripts/build-manifold-vt.sh
 # Tree-sitter's runtime and grammars (fetched again when its list changes).
 scripts/fetch-tree-sitter.sh
