@@ -1621,6 +1621,17 @@ extension ThreadChatView: Searchable {
     }
 
     /// Debugging: its strip — its items, its ticks (lit or not), its frame.
+    /// Debugging: the last comment's first words selected, `from` for
+    /// `length` characters (as a drag across its lines would).
+    func debugSelect(from: Int, length: Int) -> String {
+        guard let c = list.arrangedSubviews.compactMap({ $0 as? IssueCommentView }).last, let t = c.texts.first else { return "no comment" }
+        let n = (t.string as NSString).length
+        let r = NSRange(location: min(from, n), length: max(0, min(length, n - min(from, n))))
+        t.setSelectedRange(r)
+        t.needsDisplay = true
+        return "selected \(r.location)+\(r.length) of \(n): “\((t.string as NSString).substring(with: r).prefix(80))”"
+    }
+
     var debugStrip: String {
         let s = strip.strip
         return "frame \(NSStringFromRect(s.frame)) items \(commentsOutline.items.map(\.title)) ticks \(s.ticks.map { $0.lit ? "●" : "○" }.joined())"

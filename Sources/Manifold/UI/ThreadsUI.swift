@@ -633,6 +633,11 @@ extension MainWindowController {
         case "strip":
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
             return t.chat.debugStrip
+        case "select":
+            // "threads select <from> <length>": the focused thread tile's last comment's words selected.
+            guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
+            let n = rest.split(separator: " ").compactMap { Int($0) }
+            return t.chat.debugSelect(from: n.first ?? 0, length: n.dropFirst().first ?? 100)
         case "font":
             guard let f = arrangement?.focused, let t = views[f] as? ThreadTileView else { return "no thread tile focused" }
             return t.chat.debugFont
