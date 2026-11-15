@@ -902,8 +902,10 @@ means beside** — below the tile clicked in, taking its lower half; **⌥
 means over** — the block goes over the tile clicked in, which is
 docked under it until it's taken off (`showOver`), as ⌥-drag puts a
 tile over another;
-**⇧⌘** gives it to the system's app. ⇧ alone is about the path: ⇧-click
-a bar for where the block is, ⇧-drag a bar to link. One `Disposition`
+**⇧⌘** gives it to the system's app. On a bar, as Finder's title:
+⌘-click for where the block is (its own folder under the pointer, so
+letting go there goes to it), ⇧-click to fill the column; ⇧-drag a bar
+to link. One `Disposition`
 carries each, read off the click (or ⏎) wherever a view opens, and
 `follow` does it (a terminal's link needs ⌘ to be a link at all, so
 there ⌘⌥ is over and ⌘ alone beside).
@@ -2930,8 +2932,9 @@ purpose — set down so a later audit reads them as choices, not slips.
   a plain click — the tile keeps a trail, ⌘[ ⌘] along it. ⌘ still
   opens beside.
 - **The bar:** a click grows the tile a step (acme's colgrow — clicks
-  build up; no double-click), ⌘-click fills the column, ⌃-click or the icon
-  opens the tile's menu, ⇧-click the path menu.
+  build up; no double-click), ⇧-click fills the column, ⌃-click or the icon
+  opens the tile's menu, ⌘-click the path menu (as Finder's title, its
+  own folder under the pointer).
 - **A docked tile's row** clicked puts it back where it was.
 - **The map** is a graph browser: a click re-centres, double-click or ↩
   goes.

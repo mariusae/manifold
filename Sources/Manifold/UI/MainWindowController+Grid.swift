@@ -469,13 +469,16 @@ extension MainWindowController: GridDelegate {
     /// folder, then each folder up to the root (a terminal's working
     /// directory likewise); choosing one browses that folder here, as
     /// ⌘-clicking a document's title does in the Finder.
-    func gridPathMenu(for placement: PlacementID) -> NSMenu? {
+    func gridPathMenu(for placement: PlacementID) -> (menu: NSMenu, here: NSMenuItem?)? {
         guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block) else { return nil }
         let on = b.id.host
         guard let start = b.path ?? b.terminal?.cwd ?? b.home, start.hasPrefix("/") else { return nil }
         let menu = NSMenu()
         var path = start
         var first = true
+        // The tile's own folder: a folder's itself, a file's the one it's in,
+        // a terminal's where it is — held under the pointer.
+        var own: NSMenuItem?
         while true {
             let name = path == "/" ? "/" : path.lastPathComponent
             let isFolder = !first || b.path == nil || b.kind == .directory
@@ -490,31 +493,13 @@ extension MainWindowController: GridDelegate {
             }
             item.indentationLevel = 0
             menu.addItem(item)
+            if own == nil, isFolder { own = item }
             if path == "/" { break }
             path = path.deletingLastPathComponent
             if path.isEmpty { path = "/" }
             first = false
         }
-        return menu
-    }
-
-    /// Its place on its bar clicked: its folder brought down (apex's path
-    /// editor) — into its folders, up past it — a folder chosen shown as
-    /// one (in a folder's tile, gone to there), a file opened beside.
-    func gridPickPlace(_ placement: PlacementID, under rect: NSRect) {
-        guard let window, let p = arrangement?.placement(placement), let b = hosts.block(p.block),
-              let client = hosts.client(of: b.id), let start = b.place, start.hasPrefix("/") else { return }
-        FolderPicker.show(at: start, filesToo: true, under: rect, in: window,
-                          list: { path, done in client.listFolder(path, done: done) },
-                          choose: { [weak self] path, isFolder in
-                              guard let self else { return }
-                              if isFolder {
-                                  if let d = self.views[placement] as? DirectoryView { d.navigate(to: path) }
-                                  else { self.show(client.directoryBlock(for: path), lens: .directory, .here) }
-                              } else {
-                                  self.open(path, from: placement, as: .beside)
-                              }
-                          })
+        return (menu, own)
     }
 
     /// A tile's pill ⌃- or right-clicked, or its symbol clicked: its menu.

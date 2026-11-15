@@ -46,10 +46,9 @@ protocol GridDelegate: AnyObject {
     /// A bar ⌥-clicked: its tile all the column but the others' bars.
     func gridSqueeze(_ placement: PlacementID)
     /// ⌥-click: the block's path, folder by folder, each going there.
-    func gridPathMenu(for placement: PlacementID) -> NSMenu?
-    /// Its place on its bar (a folder, after the name) clicked: its
-    /// folders and files brought down under it (`rect`, the window's), to go to.
-    func gridPickPlace(_ placement: PlacementID, under rect: NSRect)
+    /// The tile's path menu (its folder and those above), and the item
+    /// to hold under the pointer (its own folder), to open as Finder's.
+    func gridPathMenu(for placement: PlacementID) -> (menu: NSMenu, here: NSMenuItem?)?
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
@@ -293,20 +292,20 @@ final class GridView: NSView, NSDraggingSource {
                     // The address in a page's pill, clicked, becomes its field;
                     // the tile is focused, not grown. The rest of the bar is
                     // the bar.
-                    if let pill, !pill.isEditing, pill.isOnPlace(at), let edit = tile.view.pillEdit, !mods.contains(.command) {
+                    if let pill, !pill.isEditing, pill.isOnPlace(at), let edit = tile.view.pillEdit, !mods.contains(.shift) {
                         self.delegate?.gridFocus(id)
                         pill.beginEditing(edit)
                         return
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused — clicked again, a step more; ⌘-clicked, it
+                    // focused — clicked again, a step more; ⇧-clicked, it
                     // fills its column, the others docked; ⌥-clicked, all
                     // its column but the others' bars, they staying (Maximize
                     // is the corner's). The pointer follows the bar to
                     // where it was clicked, once the tile has grown and moved
                     // it, so a click again grows again.
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.command) { self.delegate?.gridFill(id); return }
+                    if mods.contains(.shift) { self.delegate?.gridFill(id); return }
                     if mods.contains(.option) { self.delegate?.gridSqueeze(id); return }
                     self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
@@ -314,20 +313,17 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onPathClick = { [weak self] in
                     guard let self else { return }
                     self.delegate?.gridFocus(id)
-                    if let menu = self.delegate?.gridPathMenu(for: id), let pill = self.pills[id] {
+                    if let (menu, here) = self.delegate?.gridPathMenu(for: id), let pill = self.pills[id] {
+                        // Its own folder under the pointer (as Finder's ⌘-clicked
+                        // title): let go there, it's gone to.
                         let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
-                        menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
+                        menu.popUp(positioning: here, at: NSPoint(x: at.x - 24, y: at.y + (pill.isFlipped ? -10 : 10)), in: pill)
                     }
                 }
                 pill.onIconClick = { [weak self] _ in
                     guard let self else { return }
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
-                }
-                pill.onPlaceClick = { [weak self] rect in
-                    guard let self else { return }
-                    self.delegate?.gridFocus(id)
-                    self.delegate?.gridPickPlace(id, under: rect)
                 }
                 // Right-clicked, the title calls up the tile's menu.
                 pill.onRightClick = { [weak self] _ in
@@ -2111,11 +2107,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// not whatever event the app last saw).
     var onClick: ((NSPoint, NSEvent.ModifierFlags) -> Void)?
     var onIconClick: ((NSEvent.ModifierFlags) -> Void)?
-    /// ⌥-clicked: the path menu.
+    /// ⌘-clicked (as it goes down): the path menu.
     var onPathClick: (() -> Void)?
-    /// Its place (a folder, not an address to edit) clicked: where it is,
-    /// in the window's coordinates, to bring its folder down under.
-    var onPlaceClick: ((NSRect) -> Void)?
     /// Dragged: the tile, or (from the icon) the thing it stands for.
     var onDragStart: ((NSEvent, _ thing: Bool) -> Void)?
     private let glass = NSView()
@@ -2857,16 +2850,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the place to edit.
     func isOnPlace(_ p: NSPoint) -> Bool { placeRect?.contains(p) ?? false }
 
-    /// The place, where it's a folder to go elsewhere from (a terminal's,
-    /// a file's, a folder's own): as far as its text goes.
-    private var folderPlaceRect: NSRect? {
-        guard !editsPlace, onPlaceClick != nil, !isEditing, !subtitle.isHidden, !subtitle.stringValue.isEmpty,
-              subtitle.stringValue.hasPrefix("/") || subtitle.stringValue.hasPrefix("~") else { return nil }
-        let f = subtitle.frame
-        let w = min(f.width, ceil(subtitle.intrinsicContentSize.width) + 4)
-        return NSRect(x: f.minX - 2, y: 0, width: w + 4, height: bounds.height)
-    }
-
     /// Where the icon takes the pointer: clicked, its menu; dragged, the
     /// thing the tile stands for.
     private var iconSpot: NSRect { icon.frame.insetBy(dx: -8, dy: -6) }
@@ -2928,7 +2911,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         if let r = placeRect { spots.append((r, .iBeam)) }
-        if let r = folderPlaceRect { spots.append((r, .pointingHand)) }
         return spots.sorted { $0.0.minX < $1.0.minX }
     }
 
@@ -2952,6 +2934,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // ⌘ down on the bar: the path menu, as Finder's title has it — held
+        // and let go over a folder, gone to; the tile's own under the pointer.
+        if event.modifierFlags.contains(.command), !event.modifierFlags.contains(.option), let onPathClick {
+            downAt = nil
+            return onPathClick()
+        }
         downAt = event.locationInWindow
         downOnIcon = iconSpot.contains(convert(event.locationInWindow, from: nil))
     }
@@ -2975,11 +2963,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let p = convert(event.locationInWindow, from: nil)
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
-            if event.modifierFlags.contains(.shift) { onPathClick?() }
-            else if let r = folderPlaceRect, r.contains(p), event.modifierFlags.isDisjoint(with: [.command, .option]) {
-                onPlaceClick?(convert(subtitle.frame, to: nil))
-            }
-            else if iconSpot.contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
+            if iconSpot.contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
         }
         downAt = nil
     }
