@@ -5,7 +5,10 @@ import Quartz
 /// A file as the Finder previews it (§7.4): Quick Look's view of it over
 /// its name, its kind and size, and when it changed; a folder, its icon.
 /// Markdown is rendered as a preview tile renders it, not by Quick Look
-/// (whose page didn't scroll, its lines broken where the text's are).
+/// (whose page didn't scroll, its lines broken where the text's are); and
+/// a file Quick Look doesn't know (an extension the system's never heard
+/// of: .thrift, .bzl) that's text all the same — no NULs, UTF-8 — shown
+/// as its text, not an icon.
 /// A file on another host is fetched to a local copy first, when it's
 /// small enough to (else its icon stands in).
 final class FilePreviewView: NSView {
@@ -18,6 +21,8 @@ final class FilePreviewView: NSView {
     /// (the tile's, so its links go as a preview's); nil: Quick Look's.
     var makePage: ((String, @escaping () -> (text: String, version: Int)?) -> MarkdownView?)?
     private var page: MarkdownView?
+    /// A text file's words, where Quick Look would show only its icon.
+    private var plain: NSScrollView?
     private var pageText: (text: String, version: Int)?
     private let icon = NSImageView()
     private let name = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
@@ -59,6 +64,7 @@ final class FilePreviewView: NSView {
         icon.isHidden = n == nil
         quickLook?.isHidden = true
         page?.isHidden = true
+        plain?.isHidden = true
         cancel?()
         cancel = nil
         let now = Date(), passing = now.timeIntervalSince(lastShown) < 0.25
@@ -74,6 +80,7 @@ final class FilePreviewView: NSView {
                 self.cancel = nil
                 guard let url else { return }
                 if Lens.isMarkdown(n.path), self.makePage != nil, n.entry.size <= 4_000_000 { return self.showPage(url, for: n, token: t) }
+                if !Self.quickLookKnows(url) { return self.showPlainIfText(url, token: t) }
                 let q = self.quickLook ?? self.makeQuickLook()
                 q.previewItem = url as NSURL
                 q.isHidden = false
@@ -106,9 +113,76 @@ final class FilePreviewView: NSView {
         }
     }
 
+    /// Whether Quick Look has something to show for it beyond its icon:
+    /// a type the system knows as text, code, a picture, a document.
+    static func quickLookKnows(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension), !type.isDynamic else { return false }
+        return [.text, .sourceCode, .image, .movie, .audio, .pdf, .compositeContent, .presentation, .spreadsheet, .archive, .font, .threeDContent]
+            .contains { type.conforms(to: $0) }
+    }
+
+    /// Whether the start of some bytes is text: no NULs, and UTF-8 but
+    /// for a character cut off at its end.
+    static func looksLikeText(_ data: Data) -> Bool {
+        guard !data.contains(0) else { return false }
+        if String(data: data, encoding: .utf8) != nil { return true }
+        // Cut mid-character at the end: what's before it.
+        for cut in 1...3 where data.count > cut {
+            if String(data: data.dropLast(cut), encoding: .utf8) != nil { return true }
+        }
+        return false
+    }
+
+    /// Its words, if it's text (its first 512 KB); else Quick Look's icon.
+    private func showPlainIfText(_ url: URL, token t: Int) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let handle = try? FileHandle(forReadingFrom: url)
+            let data = (try? handle?.read(upToCount: 512 * 1024)) ?? nil
+            try? handle?.close()
+            let text = data.flatMap { Self.looksLikeText($0.prefix(8192)) ? String(decoding: $0, as: UTF8.self) : nil }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.token == t else { return }
+                guard let text else {
+                    let q = self.quickLook ?? self.makeQuickLook()
+                    q.previewItem = url as NSURL
+                    q.isHidden = false
+                    self.icon.isHidden = true
+                    self.needsLayout = true
+                    return
+                }
+                let scroll = self.plain ?? self.makePlain()
+                let tv = scroll.documentView as! NSTextView
+                tv.string = text
+                tv.font = FontTheme.current.technicalFont(size: 11.5)
+                tv.textColor = Theme.text
+                tv.scroll(.zero)
+                scroll.isHidden = false
+                self.icon.isHidden = true
+                self.needsLayout = true
+            }
+        }
+    }
+
+    private func makePlain() -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        let tv = scroll.documentView as! NSTextView
+        tv.isEditable = false
+        tv.isSelectable = true
+        tv.drawsBackground = false
+        tv.isRichText = false
+        tv.textContainerInset = NSSize(width: 4, height: 6)
+        addSubview(scroll)
+        plain = scroll
+        return scroll
+    }
+
     /// Debugging: what Quick Look was given, and whether it shows.
     var debugState: String {
         if let page, !page.isHidden { return "page \(page.path.lastPathComponent)" }
+        if let plain, !plain.isHidden { return "text \((plain.documentView as? NSTextView)?.string.count ?? 0) characters" }
         guard let q = quickLook else { return "no quick look" }
         return "quick look \((q.previewItem?.previewItemURL)?.lastPathComponent ?? "nothing")\(q.isHidden ? " hidden" : "")"
     }
@@ -133,6 +207,7 @@ final class FilePreviewView: NSView {
         let area = NSRect(x: pad, y: pad + infoHeight, width: w, height: max(0, bounds.height - infoHeight - 2 * pad))
         quickLook?.frame = area
         page?.frame = area
+        plain?.frame = area
         let side = min(area.width, area.height, 128)
         icon.frame = NSRect(x: area.midX - side / 2, y: area.midY - side / 2, width: side, height: side)
     }
