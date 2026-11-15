@@ -17,6 +17,8 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String)
     /// Ask (the agent) switched for the thread shown: made the agent's, or not.
     func threadChat(_ view: ThreadChatView, asks: Bool)
+    /// Which agent of its kind it asks, chosen (two in its space).
+    func threadChat(_ view: ThreadChatView, asksAgent: BlockID)
     /// Its place (the place line, the text it was written against) clicked:
     /// gone back to, where the thread was made.
     func threadChatGoToPlace(_ view: ThreadChatView)
@@ -26,6 +28,7 @@ extension ThreadChatDelegate {
     func threadChatSeen(_ view: ThreadChatView) {}
     func threadChat(_ view: ThreadChatView, edit entry: String, text: String) {}
     func threadChat(_ view: ThreadChatView, asks: Bool) {}
+    func threadChat(_ view: ThreadChatView, asksAgent: BlockID) {}
     func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
@@ -61,6 +64,11 @@ struct ThreadChatModel {
     var asksIcon: NSImage?
     /// Who Ask would make it (Settings' agent): its name.
     var askName = "Claude"
+    /// The agents of that kind at work in its space (more than one: which
+    /// is asked shown, and chosen), and the one it's held to.
+    struct AskAgent: Equatable { var id: BlockID; var title: String }
+    var askAgents: [AskAgent] = []
+    var asksAgent: BlockID?
 }
 
 /// A thread as a chat (§3.12): at its head what it's about, and the text
@@ -90,6 +98,10 @@ final class ThreadChatView: NSView {
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     /// Ask Claude: the thread the agent's, every comment asking it untagged.
     private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
+    /// Which agent Ask asks, when the space has more than one of its kind.
+    private let askPick = IconButton("chevron.down", size: 9, tip: "Which agent this thread asks")
+    /// A new thread's agent, chosen before it's made (nil: the first).
+    private(set) var asksNewAgent: BlockID?
     /// The agent's mark in its header, while it's the agent's thread.
     private let agentMark = NSImageView()
     /// A new thread's Ask, before it's made: on unless switched off — a
@@ -194,8 +206,11 @@ final class ThreadChatView: NSView {
         resolveButton.action = #selector(toggleResolved)
         askButton.target = self
         askButton.action = #selector(toggleAsk)
+        askPick.target = self
+        askPick.action = #selector(pickAskAgent)
+        askPick.isHidden = true
         box.onSend = { [weak self] in self?.send() }
-        box.leading = [resolveButton, askButton]
+        box.leading = [resolveButton, askButton, askPick]
         for v in [header, scroll, box] as [NSView] { addSubview(v) }
         // Scrolled away from its end: a button at its foot back there; others'
         // comments come meanwhile: said on it, not scrolled to.
@@ -228,7 +243,11 @@ final class ThreadChatView: NSView {
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
         tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
         // Ask: the agent's thread, or (a new one) as switched; its mark in the header.
-        askButton.title = "Ask \(m.asks ?? m.askName)"
+        // More than one of its kind in the space: which, by its tile's name.
+        let chosenAgent = m.askAgents.count > 1
+            ? (m.askAgents.first { $0.id == (m.thread == nil ? asksNewAgent : m.asksAgent) } ?? m.askAgents[0]) : nil
+        askButton.title = "Ask \(m.asks ?? m.askName)" + (chosenAgent.map { " · " + Self.short($0.title) } ?? "")
+        askPick.isHidden = m.askAgents.count < 2
         askButton.state = (m.thread == nil ? asksNew : m.asks != nil) ? .on : .off
         askButton.toolTip = "Every comment here asks \(m.asks ?? m.askName), without tagging it"
         agentMark.image = m.asksIcon
@@ -556,7 +575,34 @@ final class ThreadChatView: NSView {
     }
 
     /// Made: the next new one's Ask on again, as they start.
-    func madeAsking() { asksNew = true }
+    func madeAsking() { asksNew = true; asksNewAgent = nil }
+
+    /// A tile's name, short enough for a button.
+    private static func short(_ s: String) -> String { s.count > 24 ? String(s.prefix(23)) + "…" : s }
+
+    /// The agents of its kind in the space, to choose which it asks.
+    @objc private func pickAskAgent() {
+        let m = model
+        guard m.askAgents.count > 1 else { return }
+        let current = m.thread == nil ? asksNewAgent ?? m.askAgents.first?.id : m.asksAgent
+        let menu = NSMenu()
+        for a in m.askAgents {
+            let item = ClosureMenuItem(a.title, symbol: nil) { [weak self] in self?.chooseAskAgent(a.id) }
+            item.state = a.id == current ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: askPick.bounds.maxY + 4), in: askPick)
+    }
+
+    private func chooseAskAgent(_ id: BlockID) {
+        if model.thread == nil {
+            asksNewAgent = id
+            asksNew = true
+            show(model)
+        } else {
+            delegate?.threadChat(self, asksAgent: id)
+        }
+    }
 
     /// Debugging: Ask switched, as clicked; and how it stands.
     func debugAsk(_ on: Bool?) -> String {

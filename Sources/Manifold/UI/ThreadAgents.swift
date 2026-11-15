@@ -31,12 +31,13 @@ extension MainWindowController {
     /// A comment written in a thread (by you, or an agent through mani):
     /// the agents it asks, asked.
     /// `asks`: the thread made the agent's thread (Ask, as it was made).
-    func askAgents(in id: BlockID, comment: String, author: ThreadAuthor, asks: AgentCatalog.Agent? = nil, tries: Int = 30) {
+    /// `agent`: which of its kind it asks, chosen as it was made.
+    func askAgents(in id: BlockID, comment: String, author: ThreadAuthor, asks: AgentCatalog.Agent? = nil, agent chosen: BlockID? = nil, tries: Int = 30) {
         // A thread just made: once it's come.
         guard var t = hosts.block(id), t.thread != nil else {
             guard tries > 0 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.askAgents(in: id, comment: comment, author: author, asks: asks, tries: tries - 1)
+                self?.askAgents(in: id, comment: comment, author: author, asks: asks, agent: chosen, tries: tries - 1)
             }
             return
         }
@@ -44,7 +45,14 @@ extension MainWindowController {
             hosts.append(.annotate([Self.asksKey: asks.command]), to: .block(id))
             t.annotations = (t.annotations ?? [:]).merging([Self.asksKey: asks.command]) { $1 }
         }
+        if let chosen, t.annotations?[Self.asksAgentKey] != chosen.description {
+            hosts.append(.annotate([Self.asksAgentKey: chosen.description]), to: .block(id))
+            t.annotations = (t.annotations ?? [:]).merging([Self.asksAgentKey: chosen.description]) { $1 }
+        }
         guard let th = t.thread else { return }
+        // The one it's held to, if it's at work: no other of its kind asked.
+        let pinned = pinnedAgent(of: t).flatMap { p in hosts.block(p).map(Self.agentRuns) == true ? p : nil }
+        let pinnedCommand = pinned.flatMap { hosts.block($0)?.agent?.command }
         var asked: [BlockID] = []
         var starting: [AgentCatalog.Agent] = []
         // Tagged: a pill of an agent's terminal, or a word naming one.
@@ -61,13 +69,25 @@ extension MainWindowController {
         }
         // Following: your comment asks the agents that have written here.
         if author.isYou {
-            for a in th.agents where !asked.contains(a.block) && hosts.block(a.block).map(Self.agentRuns) == true { asked.append(a.block) }
+            for a in th.agents where !asked.contains(a.block) && hosts.block(a.block).map(Self.agentRuns) == true {
+                // Another of the kind it's held to (two Claudes in a space): not it.
+                if let pinned, a.block != pinned, hosts.block(a.block)?.agent?.command == pinnedCommand { continue }
+                asked.append(a.block)
+            }
         }
         // The agent's thread: your comment asks its agent, untagged — one
         // of its kind near (else one started), unless one's asked already.
         if author.isYou, let kind = asksAgent(of: t),
            !asked.contains(where: { hosts.block($0)?.agent?.command == kind.command }), !starting.contains(where: { $0.command == kind.command }) {
-            if let a = agentFor(kind, near: th) { asked.append(a) } else { starting.append(kind) }
+            if let pinned, pinnedCommand == kind.command {
+                asked.append(pinned)
+            } else if let a = agentFor(kind, near: th) {
+                // Held to it from now on.
+                asked.append(a)
+                hosts.append(.annotate([Self.asksAgentKey: a.description]), to: .block(id))
+            } else {
+                starting.append(kind)
+            }
         }
         guard !asked.isEmpty || !starting.isEmpty else { return }
         // A loop: agents asking agents, with no word from you.
@@ -97,8 +117,9 @@ extension MainWindowController {
             return true
         }
         guard !running.isEmpty else { return nil }
+        // In the space, the first in its grid's order — the same each time.
         if let space = th.space, let a = hosts.arrangement(space) {
-            if let b = running.first(where: { r in a.placements.contains { $0.block == r.id } }) { return b.id }
+            if let b = a.placements.lazy.compactMap({ p in running.first { $0.id == p.block } }).first { return b.id }
         }
         if let about = th.about?.block, let g = hosts.client(about.host)?.node.graph, let root = g.project(of: about) {
             if let b = running.first(where: { g.project(of: $0.id) == root }) { return b.id }
@@ -193,6 +214,8 @@ extension MainWindowController {
         let base = kind.command == AgentCatalog.agent(inCommand: desk.settings.agentCommand)?.command ? desk.settings.agentCommand : kind.command
         let command = base + " " + prompt.shellQuoted
         let agent = client.newAgent(cwd: cwd, command: command)
+        // The thread held to the one it started.
+        if asksAgent(of: t)?.command == kind.command { hosts.append(.annotate([Self.asksAgentKey: agent.description]), to: .block(t.id)) }
         show(agent, lens: .agent, .here, context: "asked in a thread")
         hosts.addToThread(t.id, .asked(agent: agent, name: kind.name), author: .manifold)
     }

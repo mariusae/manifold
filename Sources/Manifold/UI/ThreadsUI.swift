@@ -158,6 +158,12 @@ extension MainWindowController: ThreadChatDelegate {
             m.asks = kind.name
             m.asksIcon = AgentIcons.image(kind.command, size: 14)
         }
+        // Which of its kind it asks, when the space has more than one.
+        if let kind = thread.flatMap({ asksAgent(of: $0) }) ?? askingAgent {
+            let space = thread?.thread?.space ?? selected
+            m.askAgents = agents(kind, inSpace: space).map { ThreadChatModel.AskAgent(id: $0.id, title: Self.linkTitle($0)) }
+            m.asksAgent = thread.flatMap(pinnedAgent)
+        }
         return m
     }
 
@@ -167,6 +173,26 @@ extension MainWindowController: ThreadChatDelegate {
         thread.annotations?[Self.asksKey].flatMap { AgentCatalog.agent(inCommand: $0) }
     }
     static let asksKey = "asks"
+    /// The agent (its tile's block) an agent's thread asks: kept from its
+    /// first ask, so with two of a kind in the space it asks one, not
+    /// whichever comes first that time.
+    static let asksAgentKey = "asks.agent"
+
+    /// The agent a thread's held to, if it's still an agent's.
+    func pinnedAgent(of thread: Block) -> BlockID? {
+        guard let s = thread.annotations?[Self.asksAgentKey], let id = BlockID(string: s), hosts.block(id)?.agent != nil else { return nil }
+        return id
+    }
+
+    /// The agents of a kind at work in a space, in its grid's order.
+    func agents(_ kind: AgentCatalog.Agent, inSpace space: BlockID?) -> [Block] {
+        guard let a = space.flatMap({ hosts.arrangement($0) }) else { return [] }
+        var seen = Set<BlockID>()
+        return a.placements.compactMap { p in
+            guard seen.insert(p.block).inserted, let b = hosts.block(p.block), b.agent?.command == kind.command, Self.agentRuns(b) else { return nil }
+            return b
+        }
+    }
 
     /// The agent Ask makes a thread: Settings' (its agent command), else Claude Code.
     var askingAgent: AgentCatalog.Agent? {
@@ -181,6 +207,12 @@ extension MainWindowController: ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, asks: Bool) {
         guard let id = view.threadID, let kind = askingAgent else { return }
         hosts.append(.annotate([Self.asksKey: asks ? kind.command : ""]), to: .block(id))
+    }
+
+    /// Which agent the thread asks, chosen: held to it from now on (and Ask on).
+    func threadChat(_ view: ThreadChatView, asksAgent agent: BlockID) {
+        guard let id = view.threadID, let command = hosts.block(agent)?.agent?.command else { return }
+        hosts.append(.annotate([Self.asksKey: command, Self.asksAgentKey: agent.description]), to: .block(id))
     }
 
     /// A path with the home said as ~.
@@ -378,10 +410,12 @@ extension MainWindowController: ThreadChatDelegate {
         }
         view.threadID = id
         view.newPlace = nil
-        // Made with Ask on: the agent's thread, and asked from the first comment.
+        // Made with Ask on: the agent's thread, and asked from the first comment
+        // (the agent chosen for it, if one was).
         let asks = view.asksNew ? askingAgent : nil
+        let agent = view.asksNew ? view.asksNewAgent : nil
         view.madeAsking()
-        askAgents(in: id, comment: text, author: Hosts.you, asks: asks)
+        askAgents(in: id, comment: text, author: Hosts.you, asks: asks, agent: agent)
         // The card's threads now this one.
         if let card = threadUI.card, card.chat === view { card.threads = [id] }
         // The overlay's: a thread now, to make a tile of at once.
