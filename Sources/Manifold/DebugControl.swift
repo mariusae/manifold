@@ -1602,6 +1602,9 @@ enum DebugControl {
             return "line \(line) column \(before.contains("\n") ? column : loc + 1)"
         case "state":
             return wc?.debugDescribe() ?? "no window"
+        case "symbols":
+            // "symbols [query]": what the symbols' palette finds for it.
+            return SymbolPalette.debug(arg)
         case "folderpicker":
             // "folderpicker [type <text>|up|into|down|choose]": keys in the one shown.
             return FolderPicker.debug(arg)

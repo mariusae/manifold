@@ -1024,6 +1024,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     var spaceSwitchHold: ModifierHold?
     /// A space's card under the pointer on its square in the strip.
     var spacePeek: SpaceSwitcherView?
+    /// The symbols' palette, open from a space's menu.
+    var symbolPopover: NSPopover?
     let spacePeekWork = Debouncer()
     /// ⌘ held a moment: the strip's numbers shown, till it's let go.
     let commandHeld = Debouncer()

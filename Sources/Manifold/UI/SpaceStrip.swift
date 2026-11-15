@@ -1128,6 +1128,8 @@ extension MainWindowController {
     /// Its mark chosen in words: letters (one or two), or a symbol by its name.
     @objc func askSpaceMark(_ sender: NSMenuItem) {
         guard let (id, symbol) = sender.representedObject as? (BlockID, Bool), let window else { return }
+        // A symbol: from the palette of them all, as the Mac's emoji picker.
+        if symbol { return showSymbolPalette(for: id) }
         let alert = NSAlert()
         alert.messageText = symbol ? "A Symbol for This Space" : "Letters for This Space"
         alert.informativeText = symbol
@@ -1157,6 +1159,24 @@ extension MainWindowController {
                 self.setSpaceLook(id, SpaceLook.markKey, v)
             }
         }
+    }
+
+    /// The palette of the system's symbols, over the space's square in the
+    /// strip; one chosen, its mark.
+    func showSymbolPalette(for id: BlockID) {
+        let strip = sidebar.spaces
+        guard let i = strip.chips.firstIndex(where: { $0.id == id }) else { return }
+        let palette = SymbolPalette()
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentViewController = palette
+        pop.contentSize = SymbolPalette.size
+        palette.onChoose = { [weak self, weak pop] name in
+            pop?.close()
+            self?.setSpaceLook(id, SpaceLook.markKey, "symbol:" + name)
+        }
+        pop.show(relativeTo: strip.squareRect(i), of: strip, preferredEdge: .maxY)
+        symbolPopover = pop
     }
 
     @objc func chooseSpaceLook(_ sender: NSMenuItem) {
