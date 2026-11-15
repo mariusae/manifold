@@ -5,7 +5,7 @@ import ManifoldCore
 /// cards — at any size alike: rounded a quarter of its height; its mark
 /// (a letter or two, or a symbol) in its colour, a little darker; its
 /// badge, if it has one (a simple shape, what kind of space it is), bare
-/// at its lower right, ringed in the panel's ground.
+/// at its lower right.
 enum SpaceSquare {
     static func radius(_ r: NSRect) -> CGFloat { r.height / 4 }
 
@@ -36,9 +36,9 @@ enum SpaceSquare {
         if let badge { drawBadge(badge, on: r) }
     }
 
-    /// A badge: its shape, bare — no disc, which took half its room —
-    /// in the text's ink, ringed in the panel's ground, over the square's
-    /// lower right corner. Shape alone says what kind; its colour is the
+    /// A badge: its shape, bare — no disc, which took half its room, and
+    /// no ring round it — in the text's ink, over the square's lower right
+    /// corner. Shape alone says what kind; its colour is the
     /// space's square's.
     static func drawBadge(_ name: String, on r: NSRect) {
         guard let symbol = SpaceLook.badgeSymbol(name) else { return }
@@ -46,13 +46,6 @@ enum SpaceSquare {
         let flipped = NSGraphicsContext.current?.isFlipped ?? false
         let inset = size * 0.18
         let at = NSPoint(x: r.maxX - inset, y: flipped ? r.maxY - inset : r.minY + inset)
-        // The ring: the shape in the panel's ground, drawn round it.
-        if let halo = Theme.symbol(symbol, size: size, weight: .heavy, color: Theme.panel) {
-            let o: CGFloat = 1.5
-            for (dx, dy) in [(-o, 0), (o, 0), (0, -o), (0, o), (-o * 0.7, -o * 0.7), (o * 0.7, -o * 0.7), (-o * 0.7, o * 0.7), (o * 0.7, o * 0.7)] {
-                halo.draw(centeredAt: NSPoint(x: at.x + dx, y: at.y + dy))
-            }
-        }
         Theme.symbol(symbol, size: size, weight: .bold, color: Theme.text.withAlphaComponent(0.92))?.draw(centeredAt: at)
     }
 }
