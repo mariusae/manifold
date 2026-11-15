@@ -2603,6 +2603,16 @@ final class TextView: NSView, NSTextInputClient {
             delegate?.textView(self, follow: c.target, over: flags.contains(.option))
             return
         }
+        // ⌘ on the selection (part of a path, picked out): what it says,
+        // followed as it's let go — from the file's folder, if it's a name.
+        if event.clickCount == 1, flags.contains(.command), let sel = selections.first(where: { !$0.isCaret && $0.min <= offset && offset < $0.max }) {
+            let words = text[TextRange(sel.min, sel.max)].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !words.isEmpty, !words.contains("\n") {
+                dragAnchor = nil
+                pressedCommand = (event.locationInWindow, offset, selectionTarget?(words) ?? words, flags.contains(.option))
+                return
+            }
+        }
         if event.clickCount == 1, !flags.contains(.shift) || flags.contains(.command), let target = linkTarget(at: p) {
             // A link, clicked: followed by the one rule (⌘ beside, ⌥ over,
             // ⇧⌘ the system's app) — the caret stays, so the pill does.
@@ -2658,6 +2668,8 @@ final class TextView: NSView, NSTextInputClient {
     /// Where it went down with ⌘ (on a link, `link`): gone to as it's let
     /// go, or what's there dragged out if it moves first.
     private var pressedCommand: (at: NSPoint, offset: Int, link: String?, over: Bool)?
+    /// What ⌘-clicked selected words go to: a name, from the file's folder.
+    var selectionTarget: ((String) -> String)?
 
     /// The bar beside the definition the caret's in (drawn when it spans
     /// lines), as it's taken hold of — a little wider than it's drawn —

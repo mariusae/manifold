@@ -1264,6 +1264,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // off (it underlined them under the pointer); a program's own
         // links (OSC 8) are still its.
         pendingLink = nil
+        pendingSelection = nil
+        // ⌘ on the selection (part of a path, picked out): what it says,
+        // opened on the way up, from where the command it's in ran.
+        if event.modifierFlags.contains(.command), let sel = selection(containing: convert(event.locationInWindow, from: nil)) {
+            pendingSelection = (sel.text, sel.row, event.locationInWindow, event.modifierFlags.contains(.option))
+            return
+        }
         if event.modifierFlags.contains(.command), let hit = link(at: convert(event.locationInWindow, from: nil)), hit.standing != .possible {
             pendingLink = (hit, event.locationInWindow, event.modifierFlags.contains(.option))
             return
@@ -1296,11 +1303,43 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
 
     /// Where a ⌘-click went down, until it comes up.
     private var commandClickAt: NSPoint?
+    /// A ⌘-click on the selection, until the button comes up: its words,
+    /// the row it starts on, where it went down, ⌥ held.
+    private var pendingSelection: (text: String, row: Int, at: NSPoint, over: Bool)?
+
+    /// The selection, if a point's cell is in it and it's on one line:
+    /// its words, and the row of the viewport it's on.
+    private func selection(containing p: NSPoint) -> (text: String, row: Int)? {
+        guard let surface, let grid, let (col, row) = grid.cell(at: p), ghostty_surface_has_selection(surface) else { return nil }
+        var t = ghostty_text_s()
+        guard ghostty_surface_read_selection(surface, &t) else { return nil }
+        defer { ghostty_surface_free_text(surface, &t) }
+        let cols = Int(grid.info.cols)
+        guard cols > 0, let ptr = t.text else { return nil }
+        // The offsets count the viewport's cells; the length, first to last.
+        let start = Int(t.offset_start), end = start + Int(t.offset_len) + 1
+        let i = row * cols + col
+        guard i >= start, i < end else { return nil }
+        let text = String(decoding: UnsafeRawBufferPointer(start: ptr, count: Int(t.text_len)), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !text.contains("\n") else { return nil }
+        return (text, start / cols)
+    }
     /// Ghostty opened a link in the click under way (its patterns knew it).
     var linkOpened = false
 
     override func mouseUp(with event: NSEvent) {
         guard let surface else { return }
+        if let (text, row, at, over) = pendingSelection {
+            pendingSelection = nil
+            guard hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) < 4 else { return }
+            var target = text
+            if !target.hasPrefix("/"), !target.hasPrefix("~"), !target.contains("://"), let base = base(ofRow: row) {
+                target = (base as NSString).appendingPathComponent(target)
+            }
+            delegate?.terminal(self, open: target, over: over)
+            return
+        }
         if let (link, at, over) = pendingLink {
             pendingLink = nil
             if hypot(event.locationInWindow.x - at.x, event.locationInWindow.y - at.y) < 4 { open(link, over: over) }

@@ -1350,6 +1350,12 @@ final class PillTextView: NSTextView {
         guard lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc).insetBy(dx: -1, dy: -1).contains(q) else { return nil }
         let i = lm.characterIndexForGlyph(at: g)
         guard i < storage.length else { return nil }
+        // In the selection (part of a path, picked out): what it says.
+        let sel = selectedRange()
+        if sel.length > 0, NSLocationInRange(i, sel) {
+            let words = (storage.string as NSString).substring(with: sel).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !words.isEmpty, !words.contains("\n") { return (words, sel) }
+        }
         var linkRange = NSRange()
         if let link = storage.attribute(.link, at: i, effectiveRange: &linkRange) {
             let target = (link as? URL)?.absoluteString ?? (link as? String) ?? ""
