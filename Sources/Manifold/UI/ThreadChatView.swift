@@ -1667,7 +1667,11 @@ enum UserPicture {
 /// line spacing ran into the lines round it.
 final class CodeGroundLayoutManager: NSLayoutManager {
     override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int, forCharacterRange charRange: NSRange, color: NSColor) {
+        // Only a run's own ground (inline code's): the selection's highlight
+        // comes through here too, and boxed to its first letter's line it
+        // was cut and shifted on every other line (a few list items chosen).
         guard rectCount > 0, let storage = textStorage, charRange.location < storage.length,
+              let ground = storage.attribute(.backgroundColor, at: charRange.location, effectiveRange: nil) as? NSColor, ground == color,
               let font = storage.attribute(.font, at: charRange.location, effectiveRange: nil) as? NSFont else {
             return super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
         }
