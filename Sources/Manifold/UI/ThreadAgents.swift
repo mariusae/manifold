@@ -24,7 +24,12 @@ extension MainWindowController {
     static func agentRuns(_ b: Block) -> Bool {
         guard let a = b.agent, let t = b.terminal, t.pid != nil else { return false }
         if t.command != nil { return true }
-        guard let running = t.commands?.last, running.ended == nil, let program = CommandProgram.program(in: running.text) else { return false }
+        // Agent prompts are recorded as commands too, nested inside the
+        // shell command that launched the agent. A completed turn doesn't
+        // mean the agent exited; inspect the latest shell command instead.
+        let turns = Set(t.turns?.map(\.id) ?? [])
+        guard let running = t.commands?.last(where: { !turns.contains($0.id) }), running.isRunning,
+              let program = CommandProgram.program(in: running.text) else { return false }
         return program == a.command || (program as NSString).lastPathComponent == a.command
     }
 

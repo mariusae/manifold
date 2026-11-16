@@ -34,3 +34,42 @@ import ManifoldCore
     // No shell at all.
     #expect(!MainWindowController.agentRuns(terminal { $0.pid = nil; $0.command = "claude" }))
 }
+
+// A Claude started at a shell prompt keeps running between conversation
+// turns. Those prompts share the command log with its outer shell command.
+@MainActor
+@Test func agentTurnsDoNotHideTheShellCommand() {
+    let t0 = Stamp(wall: 1), t1 = Stamp(wall: 2), t2 = Stamp(wall: 3)
+    var b = Block(id: BlockID(host: .local), kind: .terminal, created: t0)
+    var t = TerminalState()
+    t.pid = 42
+    t.commands = [ShellCommand(id: 1, text: "claude --resume", at: t0),
+                  ShellCommand(id: 2, text: "[Manifold thread …] Test reply", at: t1)]
+    t.turns = [AgentTurn(id: 2, agent: "claude", prompt: "Test reply", began: t1)]
+    b.status = [rootStatusID: StatusRecord(state: .working, app: "claude", at: t1)]
+    b.terminal = t
+    #expect(MainWindowController.agentRuns(b))
+
+    // Finished answering, waiting for another prompt: still Claude.
+    t.commands?[1].ended = t2
+    t.commands?[1].status = 0
+    t.turns?[0].ended = t2
+    b.terminal = t
+    b.status = [rootStatusID: StatusRecord(state: .done, app: "claude", at: t2)]
+    #expect(MainWindowController.agentRuns(b))
+
+    // Claude really exited: don't type the next ask into its shell.
+    t.commands?[0].ended = t2
+    t.commands?[0].status = 0
+    b.terminal = t
+    #expect(!MainWindowController.agentRuns(b))
+
+    // A stale earlier running entry must not override a newer shell command.
+    t.commands?[0].ended = nil
+    t.commands?.append(ShellCommand(id: 3, text: "vim notes.md", at: t2))
+    b.terminal = t
+    #expect(!MainWindowController.agentRuns(b))
+    t.commands?[2].ended = t2
+    b.terminal = t
+    #expect(!MainWindowController.agentRuns(b))
+}
