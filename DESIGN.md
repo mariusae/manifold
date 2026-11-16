@@ -1836,12 +1836,15 @@ the file, in the column's folder, or where the chosen entry is; a path
 a folder's name left empty is "untitled folder" (or "… 2"). The folder is
 `makeFolder`; the file an empty one written as a dropped one is (`writeTree`,
 not over one there), then opened. Either is chosen once the listing has
-it. Rename (⌃⌘R, an entry's menu) asks the new name in a sheet, its stem
-chosen as the Finder's is, and moves it beside itself (`movePath`, not over
+it. Rename is in the row, as the Finder's: the chosen entry's name clicked
+again and lingered on (no drag, no second click; in the tree, the chosen
+folder's name so clicked isn't opened or closed), ⌃⌘R, or its menu's
+Rename — a field over the name, its stem chosen; ⏎ or a click away renames,
+esc doesn't (a sheet when the row isn't shown). It moves it beside itself (`movePath`, not over
 another; a change of case alone is no other in the way); Move to Trash
 (⌘⌫, the chosen entries) is `trashPaths`, the host's trash — the Finder's
 on a Mac, elsewhere the freedesktop one with its .trashinfo — never a
-removal, the entry after them chosen. Still to come: renaming in the row itself, drag to and from the
+removal, the entry after them chosen. Still to come: drag to and from the
 Finder and other placements, and git status badges.
 
 A project's folder (§2.6) shows its homepage round the files, in

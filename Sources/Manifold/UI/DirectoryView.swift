@@ -24,6 +24,9 @@ protocol DirectoryMode: NSView, DebugDescribing {
     func selectFirst()
     /// A folder opened here: in place, or in the next column.
     func toggle(_ n: BrowserNode)
+    /// The chosen entry renamed in its row (`renameInline`); false if it
+    /// isn't shown, or several are chosen.
+    func renameInRow() -> Bool
     /// The folder a drop at a point goes into, if any is under it.
     func folder(at point: NSPoint) -> String?
 }
@@ -788,7 +791,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             let chosen = content?.selectedPaths ?? []
             let them = chosen.count > 1 && chosen.contains(node.path) ? chosen : [node.path]
             if them.count == 1 {
-                let rename = ClosureMenuItem("Rename…", symbol: "pencil", key: "r") { [weak self] in self?.askRename(node.path) }
+                let rename = ClosureMenuItem("Rename…", symbol: "pencil", key: "r") { [weak self] in
+                    // In its row when it's the one chosen (as ⌃⌘R), else in a sheet.
+                    guard let self else { return }
+                    if self.content?.selectedPaths == [node.path], self.content?.renameInRow() == true { return }
+                    self.askRename(node.path)
+                }
                 rename.keyEquivalentModifierMask = [.command, .control]
                 menu.addItem(rename)
             }
@@ -844,11 +852,56 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     // MARK: Renaming and throwing away
 
-    /// ⌃⌘R: the chosen entry renamed.
+    /// ⌃⌘R: the chosen entry renamed — in its row, as a name lingered on
+    /// is; not shown there, in a sheet.
     @objc func renameChosen(_ sender: Any?) {
         guard let p = content?.selectedPaths, p.count == 1 else { return NSSound.beep() }
-        askRename(p[0])
+        if content?.renameInRow() != true { askRename(p[0]) }
     }
+
+    /// The field a name's being renamed in, in its row; the entry's path.
+    private var nameEditor: (field: NSTextField, path: String)?
+
+    /// An entry's name made editable where it's drawn (`frame`, in
+    /// `list`'s coordinates), its stem chosen: ⏎ or a click away renames
+    /// it, esc leaves it as it was, as the Finder's.
+    func renameInline(_ path: String, in list: NSView, at frame: NSRect) {
+        endRenaming(keep: false)
+        let name = path.lastPathComponent
+        let field = NSTextField(frame: frame)
+        field.stringValue = name
+        field.font = UIType.row
+        field.isBordered = true
+        field.isBezeled = true
+        field.bezelStyle = .squareBezel
+        field.focusRingType = .exterior
+        field.drawsBackground = true
+        field.backgroundColor = Theme.panel
+        field.textColor = Theme.text
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
+        field.delegate = self
+        list.addSubview(field)
+        nameEditor = (field, path)
+        window?.makeFirstResponder(field)
+        field.currentEditor()?.selectedRange = NSRange(location: 0, length: (Self.stem(name) as NSString).length)
+    }
+
+    /// The row's field taken away: what was typed made the name (`keep`),
+    /// or not; the keys back to the list.
+    private func endRenaming(keep: Bool) {
+        guard let (field, path) = nameEditor else { return }
+        nameEditor = nil
+        let typed = field.stringValue
+        let list = field.superview
+        field.delegate = nil
+        let hadKeys = field.currentEditor() != nil
+        field.removeFromSuperview()
+        if hadKeys, let list { window?.makeFirstResponder(list) }
+        if keep, typed.trimmingCharacters(in: .whitespacesAndNewlines) != path.lastPathComponent { rename(path, to: typed) }
+    }
+
+    var debugRenaming: String? { nameEditor.map { "\($0.path.lastPathComponent) → \($0.field.stringValue)" } }
 
     /// ⌘⌫: the chosen entries to the host's trash.
     @objc func trashChosen(_ sender: Any?) {
@@ -1095,9 +1148,20 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     // The box's hairline in the accent while the filter has the keyboard
     // (from when it takes it, `FlatField`, to when it lets it go).
-    func controlTextDidEndEditing(_ obj: Notification) { searchBox.needsDisplay = true }
+    func controlTextDidEndEditing(_ obj: Notification) {
+        // The name's field left (a click away, ⇥): renamed as typed.
+        if let e = nameEditor, obj.object as? NSTextField === e.field { return endRenaming(keep: true) }
+        searchBox.needsDisplay = true
+    }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if let e = nameEditor, control === e.field {
+            switch selector {
+            case #selector(NSResponder.insertNewline(_:)): endRenaming(keep: true); return true
+            case #selector(NSResponder.cancelOperation(_:)): endRenaming(keep: false); return true
+            default: return false
+            }
+        }
         // ↑ (in a project's search, or a "?text" one): what was asked before;
         // ↓ back toward what was typed.
         if home || searchingContents || search.stringValue.isEmpty, selector == #selector(NSResponder.moveUp(_:)) {
@@ -1378,6 +1442,16 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "renamerow":
+            // "renamerow": the chosen entry's row made editable (⌃⌘R); "renamerow type <text>|enter|esc" in it.
+            let rest = words.count > 1 ? words[1].split(separator: " ", maxSplits: 1).map(String.init) : []
+            switch rest.first {
+            case "type": nameEditor?.field.stringValue = rest.count > 1 ? rest[1] : ""
+            case "enter": endRenaming(keep: true)
+            case "esc": endRenaming(keep: false)
+            default: renameChosen(nil)
+            }
+            return "renaming: \(debugRenaming ?? "none")"
         case "rename":
             // "rename <new name>": the chosen entry, as ⌃⌘R's sheet would.
             guard words.count > 1, let p = content?.selectedPaths, p.count == 1 else { return "rename <name>, one entry chosen" }

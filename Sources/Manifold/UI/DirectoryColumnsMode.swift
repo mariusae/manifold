@@ -142,6 +142,10 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         c.table.delegate = self
         c.table.target = self
         c.table.doubleAction = #selector(doubleClicked(_:))
+        c.table.linger.fire = { [weak self, weak c] row, p in
+            guard let self, let c else { return }
+            self.lingered(c, row, p)
+        }
         c.table.menu = NSMenu()
         c.table.menu?.delegate = self
         // ← and → between columns; / (or ⇥) to the filter.
@@ -367,6 +371,22 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
         owner.selectionChanged(chosen)
     }
 
+    /// The chosen entry's name lingered on: renamed in its row.
+    private func lingered(_ c: Column, _ row: Int, _ p: NSPoint) {
+        guard let n = c.node(row), let cell = c.table.view(atColumn: 0, row: row, makeIfNecessary: false) as? ColumnCell,
+              cell.nameFrame.insetBy(dx: -3, dy: -3).contains(cell.convert(p, from: c.table)) else { return }
+        owner.renameInline(n.path, in: c.table, at: c.table.convert(cell.editorFrame, from: cell))
+    }
+
+    /// The chosen entry renamed in its row (⌃⌘R's, here), if it's shown.
+    func renameInRow() -> Bool {
+        guard several == nil, let path = chosen, let c = columns.first(where: { $0.row(of: path) != nil }), let row = c.row(of: path) else { return false }
+        c.table.scrollRowToVisible(row)
+        guard let cell = c.table.view(atColumn: 0, row: row, makeIfNecessary: false) as? ColumnCell else { return false }
+        owner.renameInline(path, in: c.table, at: c.table.convert(cell.editorFrame, from: cell))
+        return true
+    }
+
     /// Double-clicked, a file or a folder opens, as its menu's Open does
     /// (a folder in this tile; ⌘ beside, ⌥ over).
     @objc private func doubleClicked(_ sender: NSTableView) {
@@ -531,7 +551,14 @@ final class ColumnCell: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    private var nameWidth: CGFloat = 0
+
+    /// Where its name is drawn, and where it's edited (renamed in the row).
+    var nameFrame: NSRect { NSRect(x: label.frame.minX, y: label.frame.minY, width: min(label.frame.width, nameWidth), height: label.frame.height) }
+    var editorFrame: NSRect { NSRect(x: label.frame.minX - 3, y: (bounds.height - 20) / 2, width: max(60, bounds.width - label.frame.minX - 6), height: 20) }
+
     func show(_ n: BrowserNode, bold: [Int]) {
+        nameWidth = ceil((n.name as NSString).size(withAttributes: [.font: UIType.row]).width) + 2
         let fade: CGFloat = n.isMuted ? 0.5 : 1
         let g = n.glyph
         icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))

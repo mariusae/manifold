@@ -62,6 +62,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         outline.target = self
         outline.action = #selector(clicked)
         outline.doubleAction = #selector(doubleClicked)
+        outline.linger.fire = { [weak self] row, p in self?.lingered(row, p) }
         // An entry right-clicked: its menu, made then.
         outline.menu = NSMenu()
         outline.menu?.delegate = self
@@ -186,7 +187,33 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         guard row >= 0, let n = outline.item(atRow: row) as? BrowserNode, n.isDirectory, !model.filtering else { return }
         let p = outline.convert(NSApp.currentEvent?.locationInWindow ?? .zero, from: nil)
         if outline.frameOfOutlineCell(atRow: row).insetBy(dx: -4, dy: 0).contains(p) { return }
+        // The chosen folder's name clicked again: for renaming, as it
+        // lingers — not opened or closed.
+        if outline.linger.candidate, onName(row, p) { return }
         toggle(n)
+    }
+
+    /// Whether a point of the outline's is on a row's name.
+    private func onName(_ row: Int, _ p: NSPoint) -> Bool {
+        guard let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? TreeCell else { return false }
+        return cell.nameFrame.insetBy(dx: -3, dy: -3).contains(cell.convert(p, from: outline))
+    }
+
+    /// The chosen entry's name lingered on: renamed in its row.
+    private func lingered(_ row: Int, _ p: NSPoint) {
+        guard onName(row, p), let n = outline.item(atRow: row) as? BrowserNode,
+              let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? TreeCell else { return }
+        owner.renameInline(n.path, in: outline, at: outline.convert(cell.editorFrame, from: cell))
+    }
+
+    /// The chosen entry renamed in its row (⌃⌘R's, here), if it's shown.
+    func renameInRow() -> Bool {
+        let row = outline.selectedRow
+        guard row >= 0, outline.numberOfSelectedRows == 1, let n = outline.item(atRow: row) as? BrowserNode else { return false }
+        outline.scrollRowToVisible(row)
+        guard let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? TreeCell else { return false }
+        owner.renameInline(n.path, in: outline, at: outline.convert(cell.editorFrame, from: cell))
+        return true
     }
 
     /// Double-clicked, a file or a folder opens, as its menu's Open does
@@ -392,7 +419,14 @@ final class TreeCell: NSTableCellView {
     private var isFolder = false
     private var chevron: CGFloat = 16
 
+    private var nameWidth: CGFloat = 0
+
+    /// Where its name is drawn, and where it's edited (renamed in the row).
+    var nameFrame: NSRect { NSRect(x: label.frame.minX, y: label.frame.minY, width: min(label.frame.width, nameWidth), height: label.frame.height) }
+    var editorFrame: NSRect { NSRect(x: label.frame.minX - 3, y: (bounds.height - 20) / 2, width: max(60, bounds.width - label.frame.minX - 2), height: 20) }
+
     func show(_ n: BrowserNode, bold: [Int], folder: String?, chevron: CGFloat) {
+        nameWidth = ceil((n.name as NSString).size(withAttributes: [.font: UIType.row]).width) + 2
         isFolder = n.isDirectory
         self.chevron = chevron
         let fade: CGFloat = n.isMuted ? 0.5 : 1
