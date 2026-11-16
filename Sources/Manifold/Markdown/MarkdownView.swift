@@ -89,7 +89,8 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     private var renderWork: DispatchWorkItem?
     /// The page's script, sent once a load (not with every render).
     private var scriptSent = false
-    /// Mermaid given to the page (once a page has a diagram; again after a load).
+    /// Pele (Mermaid's diagrams) given to the page (once a page has a
+    /// diagram; again after a load).
     private var mermaidSent = false
     /// Renders asked for: one made on another thread is shown only if
     /// none has been asked for since.
@@ -470,11 +471,11 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
         js += " window.manifoldPendingDiagrams || 0;"
         web.evaluateJavaScript(script + MarkdownPage.themeScript(theme) + js) { [weak self] result, _ in
             self?.scheduleOutline()
-            // Diagrams waiting on Mermaid: given it (the page's scripts are
+            // Diagrams waiting on Pele: given it (the page's scripts are
             // off; this is ours), then drawn.
-            guard let self, (result as? Int ?? 0) > 0, !self.mermaidSent, let mermaid = Self.mermaid else { return }
+            guard let self, (result as? Int ?? 0) > 0, !self.mermaidSent, let pele = Self.pele else { return }
             self.mermaidSent = true
-            self.web.evaluateJavaScript(mermaid + ";0") { [weak self] _, _ in
+            self.web.evaluateJavaScript(pele + ";0") { [weak self] _, _ in
                 self?.web.evaluateJavaScript("manifoldDiagrams();") { [weak self] _, _ in self?.scheduleOutline() }
             }
         }
@@ -514,8 +515,9 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             """
     }
 
-    /// Mermaid, from the app's resources, read once (some 2.5 MB).
-    private static let mermaid: String? = Bundle.main.url(forResource: "mermaid.min", withExtension: "js", subdirectory: "Mermaid")
+    /// Pele (pele.run: Mermaid's diagrams drawn as SVG, at once), from the
+    /// app's resources, read once (some 730 kB).
+    private static let pele: String? = Bundle.main.url(forResource: "pele.global", withExtension: "js", subdirectory: "Pele")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
 
     /// Where a block's image is, for the page: this Mac's file, or another

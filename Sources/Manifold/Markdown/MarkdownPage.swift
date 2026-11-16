@@ -62,19 +62,25 @@ enum MarkdownPage {
           window.scrollTo(0, toTop ? 0 : y);
         };
         // Mermaid's diagrams (```mermaid, or a block that starts with a
-        // diagram's kind, as `flowchart LR`) drawn in place of their code,
-        // once Mermaid's here: how many wait on it, else 0. Each drawing
-        // kept by its source, so typing elsewhere doesn't draw it again.
-        var manifoldDiagramKinds = ['flowchart', 'graph', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'stateDiagram-v2',
-          'erDiagram', 'journey', 'gantt', 'pie', 'quadrantChart', 'requirementDiagram', 'gitGraph', 'mindmap', 'timeline',
-          'sankey-beta', 'xychart-beta', 'block-beta', 'packet-beta', 'kanban', 'architecture-beta',
+        // diagram's kind, as `flowchart LR`) drawn in place of their code by
+        // Pele, once it's here: how many wait on it, else 0. Pele draws in
+        // a fraction of a millisecond, at once, so each is drawn again with
+        // the page — mounted, so it fits its tile's width as that changes.
+        var manifoldDiagramKinds = ['flowchart', 'flowchart-elk', 'graph', 'sequenceDiagram', 'classDiagram', 'classDiagram-v2',
+          'stateDiagram', 'stateDiagram-v2', 'erDiagram', 'journey', 'gantt', 'pie', 'quadrantChart', 'requirementDiagram', 'gitGraph',
+          'mindmap', 'timeline', 'sankey', 'sankey-beta', 'xychart', 'xychart-beta', 'block', 'block-beta', 'packet', 'packet-beta',
+          'kanban', 'architecture', 'architecture-beta', 'radar-beta', 'treemap', 'treemap-beta', 'venn-beta', 'ishikawa-beta',
+          'wardley-beta', 'cynefin-beta', 'swimlane', 'swimlane-beta', 'usecase', 'usecase-beta', 'eventmodeling', 'treeView-beta',
+          'railroad-beta', 'railroad-ebnf-beta', 'railroad-abnf-beta', 'railroad-peg-beta', 'agentflow-beta',
           'C4Context', 'C4Container', 'C4Component', 'C4Dynamic', 'C4Deployment'];
         function manifoldDiagramSource(code) {
           var cls = code.className || '', text = code.textContent;
           if (cls.indexOf('language-mermaid') >= 0) return text;
           if (cls) return null;
           var first = text.trim().split(/\\s/)[0];
-          return manifoldDiagramKinds.indexOf(first) >= 0 ? text : null;
+          if (manifoldDiagramKinds.indexOf(first) < 0) return null;
+          // A block that only looks like one (a word that starts some prose) left as code.
+          return !window.pele || pele.supports(text) ? text : null;
         }
         window.manifoldDiagrams = function () {
           var found = [];
@@ -83,42 +89,61 @@ enum MarkdownPage {
             var src = code && manifoldDiagramSource(code);
             if (src) found.push([wrap, pre, src]);
           });
+          // Those drawn before, gone with the page they were on, let go.
+          window.manifoldMounted = (window.manifoldMounted || []).filter(function (m) {
+            if (m.el.isConnected) return true;
+            m.mounted.destroy();
+            return false;
+          });
           if (!found.length) return 0;
-          if (!window.mermaid) return found.length;
-          var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          if (window.manifoldMermaidDark !== dark) {
-            mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'neutral',
-              fontFamily: getComputedStyle(document.body).fontFamily });
-            window.manifoldMermaidDark = dark;
-            window.manifoldDiagramCache = {};
-          }
-          var cache = window.manifoldDiagramCache;
+          if (!window.pele) return found.length;
           found.forEach(function (f) {
             var wrap = f[0], pre = f[1], src = f[2];
-            var div = document.createElement('div');
-            div.className = 'diagram';
-            var pos = pre.getAttribute('data-sourcepos');
-            if (pos) div.setAttribute('data-sourcepos', pos);
-            function place(svg) { div.innerHTML = svg; if (wrap.parentNode) wrap.parentNode.replaceChild(div, wrap); }
-            if (cache[src]) return place(cache[src]);
-            var id = 'manifold-diagram-' + (window.manifoldDiagramCount = (window.manifoldDiagramCount || 0) + 1);
             // Typed with smart punctuation (curly quotes, a dash for an
             // arrow's shaft), it's tried again as plain, if it didn't parse.
             var plain = src.replace(/[\\u201C\\u201D]/g, '"').replace(/[\\u2018\\u2019]/g, "'").replace(/[\\u2014\\u2013]/g, '--');
-            mermaid.render(id, src).catch(function (err) {
-              if (plain === src) throw err;
-              var stray = document.getElementById('d' + id);
-              if (stray) stray.remove();
-              return mermaid.render(id + '-plain', plain).catch(function () { throw err; });
-            }).then(function (r) { cache[src] = r.svg; place(r.svg); }, function (err) {
-              // Left as code, with why it couldn't be drawn.
-              var stray = document.getElementById('d' + id);
-              if (stray) stray.remove();
-              var note = document.createElement('div');
-              note.className = 'diagram-error';
-              note.textContent = 'Not drawn: ' + String((err && err.message) || err).split('\\n')[0];
-              wrap.appendChild(note);
-            });
+            var text = src;
+            try {
+              pele.parse(src);
+            } catch (err) {
+              try { pele.parse(plain); text = plain; } catch (_) {
+                // Left as code, with why it couldn't be drawn (once: the
+                // page is drawn again as it's typed in).
+                var note = wrap.querySelector('.diagram-error') || wrap.appendChild(document.createElement('div'));
+                note.className = 'diagram-error';
+                // Pele's message: where, the line with a caret, then why.
+                var said = String((err && err.message) || err).split('\\n').filter(function (l) { return l.trim(); });
+                var why = said.length > 1 ? said[said.length - 1] : said[0];
+                note.textContent = 'Not drawn: ' + why + (err && err.line ? ' (line ' + err.line + ')' : '');
+                return;
+              }
+            }
+            // Its kind, as its first line says it (`flowchart LR`), past
+            // any front matter and comments — pele.run's card's label.
+            var lines = text.split('\\n'), i = 0, kind = '';
+            if (lines[0] && lines[0].trim() === '---') { i = 1; while (i < lines.length && lines[i].trim() !== '---') i++; i++; }
+            for (; i < lines.length; i++) { var l = lines[i].trim(); if (l && l.indexOf('%%') !== 0) { kind = l; break; } }
+            // On a card, as pele.run shows them: its kind, then it.
+            var card = document.createElement('figure');
+            card.className = 'diagram';
+            var pos = pre.getAttribute('data-sourcepos');
+            if (pos) card.setAttribute('data-sourcepos', pos);
+            var label = document.createElement('figcaption');
+            label.className = 'diagram-kind';
+            label.textContent = kind;
+            var el = document.createElement('div');
+            el.className = 'diagram-figure';
+            card.appendChild(label);
+            card.appendChild(el);
+            if (wrap.parentNode) wrap.parentNode.replaceChild(card, wrap);
+            try {
+              window.manifoldMounted.push({ el: el, mounted: pele.mount(el, text) });
+            } catch (err) {
+              card.parentNode.replaceChild(wrap, card);
+              var note2 = wrap.querySelector('.diagram-error') || wrap.appendChild(document.createElement('div'));
+              note2.className = 'diagram-error';
+              note2.textContent = 'Not drawn: ' + String((err && err.message) || err).split('\\n')[0];
+            }
           });
           return 0;
         };
@@ -334,8 +359,34 @@ enum MarkdownPage {
           cursor: pointer; opacity: 0; transition: opacity 0.12s; user-select: none; -webkit-user-select: none; padding: 0;
         }
         .codeblock:hover .copy, .copy.done { opacity: 1; }
-        .diagram { margin: var(--read-gap, 1rem) 0; text-align: center; overflow-x: auto; }
-        .diagram svg { max-width: 100%; height: auto; }
+        /* Diagrams as pele.run shows them: on a card, in Flexoki's colours
+           (its dark; light, the same steps of Flexoki's light), in the
+           system's face and its monospace. */
+        .diagram {
+          margin: var(--read-gap, 1rem) 0; padding: 0 16px 24px; border-radius: 12px; overflow: hidden;
+          background: var(--pele-bg); position: relative;
+          --pele-font: -apple-system, BlinkMacSystemFont, "Inter Variable", Inter, "Segoe UI", Helvetica, Arial, sans-serif;
+          --pele-font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "IBM Plex Mono", "Roboto Mono", "DejaVu Sans Mono", "Liberation Mono", Menlo, Monaco, Consolas, "Source Code Pro", monospace;
+          --pele-radius: 6px;
+          --pele-bg: #f2f0e5; --pele-fg: #100f0f; --pele-muted: #6f6e69; --pele-line: #100f0f;
+          --pele-surface: #e6e4d9; --pele-surface-alt: #dad8ce; --pele-border: #cecdc3;
+          --pele-accent: #205ea6; --pele-critical: #af3029;
+          --pele-series-1: #af3029; --pele-series-2: #bc5215; --pele-series-3: #ad8301; --pele-series-4: #66800b;
+          --pele-series-5: #24837b; --pele-series-6: #205ea6; --pele-series-7: #5e409d; --pele-series-8: #a02f6f;
+        }
+        @media (prefers-color-scheme: dark) {
+          .diagram {
+            --pele-bg: #1c1b1a; --pele-fg: #cecdc3; --pele-muted: #878580; --pele-line: #cecdc3;
+            --pele-surface: #282726; --pele-surface-alt: #343331; --pele-border: #403e3c;
+            --pele-accent: #4385be; --pele-critical: #d14d41;
+            --pele-series-1: #d14d41; --pele-series-2: #da702c; --pele-series-3: #d0a215; --pele-series-4: #879a39;
+            --pele-series-5: #3aa99f; --pele-series-6: #4385be; --pele-series-7: #8b7ec8; --pele-series-8: #ce5d97;
+          }
+        }
+        .diagram-kind { font: 14px/33.7px var(--pele-font-mono); color: var(--pele-muted); margin: 0 0 8px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .diagram-figure { position: relative; display: grid; justify-items: center; }
+        .diagram-figure svg { max-width: 100%; height: auto; }
         .diagram-error { margin-top: 0.4em; font-size: 0.85em; color: var(--page-diagram-error); }
         .copy:hover { color: var(--page-copy-hover-text); border-color: var(--page-copy-hover-edge); }
         .copy.done { color: var(--page-copy-done); }

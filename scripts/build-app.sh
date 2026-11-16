@@ -68,9 +68,10 @@ mkdir -p "$app/Contents/Resources/AgentIcons"
 cp Resources/AgentIcons/*.svg Resources/AgentIcons/*LICENSE* "$app/Contents/Resources/AgentIcons/"
 mkdir -p "$app/Contents/Resources/ProgramIcons"
 cp Resources/ProgramIcons/*.svg Resources/ProgramIcons/*LICENSE* "$app/Contents/Resources/ProgramIcons/"
-# Mermaid, for diagrams in Markdown previews (MIT; its licence beside it).
-mkdir -p "$app/Contents/Resources/Mermaid"
-cp Resources/Mermaid/mermaid.min.js Resources/Mermaid/LICENSE "$app/Contents/Resources/Mermaid/"
+# Pele (pele.run), drawing Mermaid's diagrams in Markdown previews (MIT; its licence beside it).
+rm -rf "$app/Contents/Resources/Mermaid"
+mkdir -p "$app/Contents/Resources/Pele"
+cp Resources/Pele/pele.global.js Resources/Pele/LICENSE "$app/Contents/Resources/Pele/"
 # Notification sounds: Notifier plays them from the top of Resources.
 cp Resources/Sounds/*.caf "$app/Contents/Resources/"
 # Ghostty looks for terminfo next to its resources directory.
