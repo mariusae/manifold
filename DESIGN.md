@@ -1828,7 +1828,15 @@ the way to them, and all of a folder that matched. The mode, the
 selection (a path, shared by the modes), the open folders, the sort, the
 filter and whether hidden files show are the placement's view state
 (§3.5). Opening an entry places its block beside the listing and links it;
-a folder replaces the listing in its tile. Still to come: inline rename, drag to and from the
+a folder replaces the listing in its tile. New File (⌃⌘N) and New Folder
+(⇧⌘N, the Finder's), in File and in an entry's menu (the empty space's
+too), ask for a name in a sheet: made in the folder right-clicked, beside
+the file, in the column's folder, or where the chosen entry is; a path
+(a/b/name) makes the folders on the way, one ending in / is a folder, and
+a folder's name left empty is "untitled folder" (or "… 2"). The folder is
+`makeFolder`; the file an empty one written as a dropped one is (`writeTree`,
+not over one there), then opened. Either is chosen once the listing has
+it. Still to come: inline rename, drag to and from the
 Finder and other placements, and git status badges.
 
 A project's folder (§2.6) shows its homepage round the files, in

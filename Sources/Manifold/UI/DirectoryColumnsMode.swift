@@ -250,7 +250,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         let c = columns.first { $0.table.menu === menu }
-        owner.fill(menu, for: c?.node(c?.table.clickedRow ?? -1))
+        owner.fill(menu, for: c?.node(c?.table.clickedRow ?? -1), in: c?.folder)
     }
 
     func folder(at point: NSPoint) -> String? {

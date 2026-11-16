@@ -48,6 +48,9 @@ protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, download path: String, isDirectory: Bool, to url: URL, done: @escaping (String?) -> Void)
     /// An entry right-clicked: what can be done with it.
     func directoryView(_ view: DirectoryView, menuFor path: String, isDirectory: Bool) -> NSMenu?
+    /// A new file (empty, then opened) or folder made on the host at
+    /// `path`; `done` with what went wrong ("exists": something's there).
+    func directoryView(_ view: DirectoryView, make path: String, isDirectory: Bool, done: @escaping (String?) -> Void)
     /// Several entries chosen, one of them right-clicked: what can be done
     /// with them all.
     func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu?
@@ -769,12 +772,99 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         return delegate?.directoryView(self, menuFor: node.path, isDirectory: node.isDirectory)
     }
 
-    /// A mode's menu made for the entry right-clicked (nothing, if none):
-    /// `menu(for:)`'s items handed over to it.
-    func fill(_ menu: NSMenu, for node: BrowserNode?) {
+    /// A mode's menu made for the entry right-clicked: `menu(for:)`'s
+    /// items handed over to it, then New File and New Folder — in the
+    /// folder clicked, beside the file, or (nothing clicked) in `folder`,
+    /// a column's, else the listing's.
+    func fill(_ menu: NSMenu, for node: BrowserNode?, in folder: String? = nil) {
         menu.removeAllItems()
-        guard let node, let m = self.menu(for: node) else { return }
-        for item in m.items { m.removeItem(item); menu.addItem(item) }
+        if let node, let m = self.menu(for: node) {
+            for item in m.items { m.removeItem(item); menu.addItem(item) }
+            menu.addItem(.separator())
+        }
+        guard let model, let place = placeForNew(node, in: folder) else { return }
+        let named = place == model.root ? "" : " in “\(place.lastPathComponent)”"
+        menu.addItem(ClosureMenuItem("New File\(named)…", symbol: "doc.badge.plus") { [weak self] in self?.askNew(folder: false, in: place) })
+        menu.addItem(ClosureMenuItem("New Folder\(named)…", symbol: "folder.badge.plus") { [weak self] in self?.askNew(folder: true, in: place) })
+    }
+
+    // MARK: Making files and folders
+
+    /// Where what's new goes for an entry: in it, a folder; beside it, a
+    /// file; none, in `folder`, else the listing's.
+    func placeForNew(_ node: BrowserNode?, in folder: String? = nil) -> String? {
+        if let node { return node.isDirectory ? node.path : node.path.deletingLastPathComponent }
+        return folder ?? model?.root
+    }
+
+    /// File ▸ New File (⌃⌘N), New Folder (⇧⌘N): where the chosen entry is
+    /// (in it, a folder), else in the listing's folder.
+    @objc func newFile(_ sender: Any?) { placeForNew(content?.selectedNode).map { askNew(folder: false, in: $0) } }
+    @objc func newFolder(_ sender: Any?) { placeForNew(content?.selectedNode).map { askNew(folder: true, in: $0) } }
+
+    /// Its name asked (a sheet on the window), then made.
+    func askNew(folder: Bool, in place: String) {
+        guard let window, let model else { return NSSound.beep() }
+        let alert = NSAlert()
+        let shown = place == model.root ? place.lastPathComponent : model.relative(place)
+        alert.messageText = (folder ? "New folder in “" : "New file in “") + (shown.isEmpty ? place : shown) + "”"
+        alert.informativeText = folder
+            ? "A path (a/b/c) makes the folders on the way too."
+            : "A path (a/b/name) makes the folders on the way too; one ending in / is a folder."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = folder ? Self.untitledFolder : "name"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] r in
+            guard r == .alertFirstButtonReturn else { return }
+            self?.makeNew(field.stringValue, folder: folder, in: place)
+        }
+    }
+
+    static let untitledFolder = "untitled folder"
+
+    /// What's typed, as a path under `place`: its folders on the way, a
+    /// folder if it ends in /; nil if it's no name (empty, or . or .. in it).
+    static func newPath(_ typed: String, folder: Bool, in place: String) -> (path: String, isDirectory: Bool)? {
+        let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = name.split(separator: "/").map(String.init)
+        guard !parts.isEmpty, !parts.contains(where: { $0 == "." || $0 == ".." }) else { return nil }
+        return (parts.reduce(place) { $0.appendingPathComponent($1) }, folder || name.hasSuffix("/"))
+    }
+
+    /// Made on the host, then chosen in the listing (a file, opened too —
+    /// by the delegate — and so not focused here).
+    private func makeNew(_ typed: String, folder: Bool, in place: String) {
+        var typed = typed
+        if folder, typed.trimmingCharacters(in: .whitespaces).isEmpty {
+            // Nothing typed: "untitled folder" (or "… 2"), as the Finder's.
+            let taken = Set((model?.children(of: place) ?? []).map(\.path.lastPathComponent))
+            typed = MainWindowController.freeName(Self.untitledFolder, taken: taken)
+        }
+        guard let made = Self.newPath(typed, folder: folder, in: place) else { return NSSound.beep() }
+        delegate?.directoryView(self, make: made.path, isDirectory: made.isDirectory) { [weak self] error in
+            guard error == nil || error == "exists" else { return }
+            self?.choose(made.path, focus: made.isDirectory)
+        }
+    }
+
+    /// A path just made chosen once the listing has it: listed again now,
+    /// then looked for a few times while the host's answer comes.
+    private func choose(_ path: String, focus: Bool, tries: Int = 12) {
+        guard let model, let content else { return }
+        if tries == 12 {
+            delegate?.directoryViewRefresh(self)
+            model.refresh(content.shownFolders)
+            model.prefetch(model.ancestors(of: path))
+        }
+        if model.children(of: path.deletingLastPathComponent)?.contains(where: { $0.path == path }) == true {
+            if focus { return reveal(path) }
+            return content.select(path)
+        }
+        guard tries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.choose(path, focus: focus, tries: tries - 1) }
     }
 
     // MARK: Going places
@@ -1186,6 +1276,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "new":
+            // "new file|folder <name>": made where the chosen entry is, as ⌃⌘N/⇧⌘N's sheet would.
+            let rest = words.count > 1 ? words[1].split(separator: " ", maxSplits: 1).map(String.init) : []
+            guard let kind = rest.first, let place = placeForNew(content?.selectedNode) else { return "new file|folder <name>" }
+            makeNew(rest.count > 1 ? rest[1] : "", folder: kind == "folder", in: place)
+            return "making in \(place)"
         case "groups": toggleGroups(nil)
         case "tree": setMode(.tree)
         case "columns": setMode(.columns)

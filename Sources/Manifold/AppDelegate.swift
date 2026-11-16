@@ -273,6 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let newItem = NSMenuItem(title: "New", action: nil, keyEquivalent: "")
         newItem.submenu = new
         file.addItem(newItem)
+        // In a folder's listing: a file or folder made there (the Finder's ⇧⌘N).
+        item(file, "New File…", #selector(DirectoryView.newFile(_:)), "n", [.command, .control])
+        item(file, "New Folder…", #selector(DirectoryView.newFolder(_:)), "n", [.command, .shift])
         file.addItem(.separator())
         item(file, "New Note from Selection", #selector(MainWindowController.newNoteFromSelection(_:)), "")
         item(file, "New Note from Clipboard", #selector(MainWindowController.newNoteFromClipboard(_:)), "")

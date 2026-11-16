@@ -243,6 +243,28 @@ extension MainWindowController: DirectoryViewDelegate {
         return menu
     }
 
+    func directoryView(_ view: DirectoryView, make path: String, isDirectory: Bool, done: @escaping (String?) -> Void) {
+        guard let c = hosts.client(of: view.block) else { toast.say("The host isn't attached."); return done("not attached") }
+        let said = { [weak self] (error: String?) in
+            if error == "exists" { self?.toast.say("“\(path.lastPathComponent)” is there already.") } else if let error { self?.toast.say(error) }
+            done(error)
+        }
+        if isDirectory {
+            // (Made with those on the way; one there already, left as it is.)
+            return c.propose(.makeFolder(path: path)) { error in DispatchQueue.main.async { said(error) } }
+        }
+        // A file: an empty one sent up, made only if there's none there
+        // (as a dropped one is), then opened to be written in.
+        let empty = FileManager.default.temporaryDirectory.appendingPathComponent("manifold-new-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: empty.path, contents: nil) else { return said("couldn't make a file here to send") }
+        Transfer.upload(empty, to: path, on: c, replace: false) { [weak self, weak view] error in
+            try? FileManager.default.removeItem(at: empty)
+            said(error)
+            guard error == nil, let self, let view else { return }
+            self.open(path, from: view.placement)
+        }
+    }
+
     func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu? {
         let on = view.block.host, n = entries.count
         let menu = NSMenu()
