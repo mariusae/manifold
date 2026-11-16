@@ -51,6 +51,10 @@ protocol DirectoryViewDelegate: AnyObject {
     /// A new file (empty, then opened) or folder made on the host at
     /// `path`; `done` with what went wrong ("exists": something's there).
     func directoryView(_ view: DirectoryView, make path: String, isDirectory: Bool, done: @escaping (String?) -> Void)
+    /// An entry renamed on the host (`to`, beside it), not over one there.
+    func directoryView(_ view: DirectoryView, rename path: String, to: String, done: @escaping (String?) -> Void)
+    /// Entries moved to the host's trash.
+    func directoryView(_ view: DirectoryView, trash paths: [String], done: @escaping (String?) -> Void)
     /// Several entries chosen, one of them right-clicked: what can be done
     /// with them all.
     func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu?
@@ -781,6 +785,19 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if let node, let m = self.menu(for: node) {
             for item in m.items { m.removeItem(item); menu.addItem(item) }
             menu.addItem(.separator())
+            let chosen = content?.selectedPaths ?? []
+            let them = chosen.count > 1 && chosen.contains(node.path) ? chosen : [node.path]
+            if them.count == 1 {
+                let rename = ClosureMenuItem("Rename…", symbol: "pencil", key: "r") { [weak self] in self?.askRename(node.path) }
+                rename.keyEquivalentModifierMask = [.command, .control]
+                menu.addItem(rename)
+            }
+            let trash = ClosureMenuItem(them.count == 1 ? "Move to Trash" : "Move \(them.count) Items to Trash", symbol: "trash", key: "\u{8}") { [weak self] in
+                self?.trash(them)
+            }
+            trash.keyEquivalentModifierMask = [.command]
+            menu.addItem(trash)
+            menu.addItem(.separator())
         }
         guard let model, let place = placeForNew(node, in: folder) else { return }
         let named = place == model.root ? "" : " in “\(place.lastPathComponent)”"
@@ -824,6 +841,85 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     }
 
     static let untitledFolder = "untitled folder"
+
+    // MARK: Renaming and throwing away
+
+    /// ⌃⌘R: the chosen entry renamed.
+    @objc func renameChosen(_ sender: Any?) {
+        guard let p = content?.selectedPaths, p.count == 1 else { return NSSound.beep() }
+        askRename(p[0])
+    }
+
+    /// ⌘⌫: the chosen entries to the host's trash.
+    @objc func trashChosen(_ sender: Any?) {
+        guard let p = content?.selectedPaths, !p.isEmpty else { return NSSound.beep() }
+        trash(p)
+    }
+
+    /// Its new name asked (a sheet, the name there to change, its stem
+    /// chosen as the Finder's is), then renamed.
+    func askRename(_ path: String) {
+        guard let window else { return NSSound.beep() }
+        let name = path.lastPathComponent
+        let alert = NSAlert()
+        alert.messageText = "Rename “\(name)”"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = name
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] r in
+            guard r == .alertFirstButtonReturn else { return }
+            self?.rename(path, to: field.stringValue)
+        }
+        DispatchQueue.main.async {
+            alert.window.makeFirstResponder(field)
+            field.currentEditor()?.selectedRange = NSRange(location: 0, length: (Self.stem(name) as NSString).length)
+        }
+    }
+
+    /// A name's part before its extension (all of a dotfile's, a folder's
+    /// with dots in it too, if it has none past the first).
+    static func stem(_ name: String) -> String {
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty, name.count > ext.count + 1 else { return name }
+        return String(name.dropLast(ext.count + 1))
+    }
+
+    /// The name typed for an entry, checked: one name (no /, not . or ..),
+    /// nil if it isn't; the same name, nothing to do.
+    static func renamed(_ path: String, to typed: String) -> String? {
+        let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return nil }
+        return path.deletingLastPathComponent.appendingPathComponent(name)
+    }
+
+    private func rename(_ path: String, to typed: String) {
+        guard let to = Self.renamed(path, to: typed) else { return NSSound.beep() }
+        guard to != path else { return }
+        delegate?.directoryView(self, rename: path, to: to) { [weak self] error in
+            guard error == nil else { return }
+            self?.choose(to, focus: true)
+        }
+    }
+
+    /// Thrown away: the chosen entry after them (else before) chosen once
+    /// they're gone, so the keys go on from there.
+    private func trash(_ paths: [String]) {
+        guard let model, let content else { return }
+        let gone = Set(paths)
+        let parent = paths[0].deletingLastPathComponent
+        let siblings = (model.children(of: parent) ?? []).map(\.path)
+        let at = siblings.firstIndex { gone.contains($0) } ?? 0
+        let next = siblings[at...].first { !gone.contains($0) } ?? siblings[..<at].last
+        delegate?.directoryView(self, trash: paths) { [weak self] error in
+            guard let self else { return }
+            self.delegate?.directoryViewRefresh(self)
+            model.refresh(content.shownFolders)
+            if error == nil { content.select(next ?? (parent == model.root ? nil : parent)) }
+        }
+    }
 
     /// What's typed, as a path under `place`: its folders on the way, a
     /// folder if it ends in /; nil if it's no name (empty, or . or .. in it).
@@ -911,7 +1007,13 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // ⇧⌘.: hidden and ignored files shown, or not (the Finder's key).
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        // ⌘⌫ (the Finder's) and ⌃⌘R, the entries' — not the filter's,
+        // where ⌘⌫ is the line's to delete.
+        if let r = window?.firstResponder as? NSView, r.isDescendant(of: self), !(r is NSText), content != nil {
+            if mods == [.command], event.keyCode == 51 { trashChosen(nil); return true }
+            if mods == [.command, .control], event.charactersIgnoringModifiers?.lowercased() == "r" { renameChosen(nil); return true }
+        }
         if mods == [.command, .shift], event.charactersIgnoringModifiers == "." || event.charactersIgnoringModifiers == ">",
            let r = window?.firstResponder as? NSView, r.isDescendant(of: self) {
             toggleHidden()
@@ -1276,6 +1378,15 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         case "up": goUp()
         case "go": if words.count > 1 { navigate(to: words[1]) }
         case "hidden": toggleHidden()
+        case "rename":
+            // "rename <new name>": the chosen entry, as ⌃⌘R's sheet would.
+            guard words.count > 1, let p = content?.selectedPaths, p.count == 1 else { return "rename <name>, one entry chosen" }
+            rename(p[0], to: words[1])
+            return "renaming \(p[0].lastPathComponent)"
+        case "trash":
+            guard let p = content?.selectedPaths, !p.isEmpty else { return "nothing chosen" }
+            trash(p)
+            return "trashing \(p.map(\.lastPathComponent).joined(separator: " "))"
         case "new":
             // "new file|folder <name>": made where the chosen entry is, as ⌃⌘N/⇧⌘N's sheet would.
             let rest = words.count > 1 ? words[1].split(separator: " ", maxSplits: 1).map(String.init) : []

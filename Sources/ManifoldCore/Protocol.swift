@@ -267,6 +267,9 @@ public enum Proposal: Codable, Sendable {
     case fileHistory(FileHistoryRequest)
     /// A folder made, with those on the way.
     case makeFolder(path: String)
+    /// Files and folders moved to the host's trash (the Finder's, or the
+    /// freedesktop one), not removed: there to be put back.
+    case trashPaths(paths: [String])
     /// A file as a revision (a commit, a tree) has it, as a block of its own
     /// to read: made if new.
     case showRevision(block: BlockID, repo: String, path: String, revision: String, title: String)
@@ -340,7 +343,7 @@ public extension Proposal {
             return request.block
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .seen, .hold, .release, .link, .unlink, .resetGraph,
              .history, .languageServers, .scip, .editFile, .editing, .project, .unproject, .signal, .machine,
-             .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath, .threadSeen:
+             .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath, .threadSeen:
             return nil
         }
     }
@@ -369,7 +372,7 @@ public extension Proposal {
         // A project's said to its own host's client (`HostClient.propose`);
         // here, this Mac's.
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .scip, .editFile, .project, .unproject,
-             .signal, .machine, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .showRevision, .movePath:
+             .signal, .machine, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath:
             return .local
         // The rest, each for its block's host.
         default:

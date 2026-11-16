@@ -265,6 +265,29 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
+    func directoryView(_ view: DirectoryView, rename path: String, to: String, done: @escaping (String?) -> Void) {
+        guard let c = hosts.client(of: view.block) else { toast.say("The host isn't attached."); return done("not attached") }
+        c.propose(.movePath(from: path, to: to, replace: false)) { [weak self] error in
+            DispatchQueue.main.async {
+                if error == "exists" { self?.toast.say("There's a “\(to.lastPathComponent)” there already.") } else if let error { self?.toast.say(error) }
+                done(error)
+            }
+        }
+    }
+
+    func directoryView(_ view: DirectoryView, trash paths: [String], done: @escaping (String?) -> Void) {
+        guard let c = hosts.client(of: view.block) else { toast.say("The host isn't attached."); return done("not attached") }
+        let on = view.block.host
+        let trash = on == host.host ? "the Trash" : hosts.label(of: on) + "'s trash"
+        let what = paths.count == 1 ? "“\(paths[0].lastPathComponent)”" : "\(paths.count) items"
+        c.propose(.trashPaths(paths: paths)) { [weak self] error in
+            DispatchQueue.main.async {
+                if let error { self?.toast.say(error) } else { self?.toast.say("Moved \(what) to \(trash).") }
+                done(error)
+            }
+        }
+    }
+
     func directoryView(_ view: DirectoryView, menuFor entries: [(path: String, isDirectory: Bool)]) -> NSMenu? {
         let on = view.block.host, n = entries.count
         let menu = NSMenu()

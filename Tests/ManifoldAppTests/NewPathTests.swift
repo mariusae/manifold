@@ -30,3 +30,24 @@ import Testing
         #expect(DirectoryView.newPath("a/./b", folder: true, in: "/r") == nil)
     }
 }
+
+// A name typed for an entry renamed; the part of it chosen to type over.
+@Suite struct RenameTests {
+    @Test func renamedBeside() {
+        #expect(DirectoryView.renamed("/r/a/old.txt", to: " new.md ") == "/r/a/new.md")
+        #expect(DirectoryView.renamed("/r/a/old.txt", to: "old.txt") == "/r/a/old.txt")
+    }
+
+    @Test func notAName() {
+        #expect(DirectoryView.renamed("/r/a", to: "") == nil)
+        #expect(DirectoryView.renamed("/r/a", to: "b/c") == nil)
+        #expect(DirectoryView.renamed("/r/a", to: "..") == nil)
+    }
+
+    @Test func stem() {
+        #expect(DirectoryView.stem("View.swift") == "View")
+        #expect(DirectoryView.stem("archive.tar.gz") == "archive.tar")
+        #expect(DirectoryView.stem(".gitignore") == ".gitignore")
+        #expect(DirectoryView.stem("Makefile") == "Makefile")
+    }
+}

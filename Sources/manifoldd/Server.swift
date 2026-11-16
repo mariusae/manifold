@@ -1161,7 +1161,15 @@ final class Server {
         case let .movePath(from, to, replace):
             let fm = FileManager.default
             do {
-                if fm.fileExists(atPath: to) {
+                // (What's there the same file — a name's case changed, on a
+                // disk that ignores case — is no other in the way.)
+                func identity(_ p: String) -> [AnyHashable]? {
+                    guard let a = try? fm.attributesOfItem(atPath: p), let n = a[.systemFileNumber] as? AnyHashable,
+                          let d = a[.systemNumber] as? AnyHashable else { return nil }
+                    return [n, d]
+                }
+                let same = identity(to).map { $0 == identity(from) } ?? false
+                if fm.fileExists(atPath: to), !same {
                     guard replace else { return done("exists") }
                     try fm.removeItem(atPath: to)
                 }
@@ -1171,6 +1179,8 @@ final class Server {
             } catch {
                 done(error.localizedDescription)
             }
+        case let .trashPaths(paths):
+            done(paths.compactMap(Trash.put).first)
         case let .makeFolder(path):
             do {
                 try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
