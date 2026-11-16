@@ -294,7 +294,7 @@ enum MarkdownPage {
 
     /// Script that sets the page in the theme's colours.
     static var paletteScript: String {
-        let data = try! JSONSerialization.data(withJSONObject: [Palette.current.page.css])
+        let data = try! JSONSerialization.data(withJSONObject: [Palette.current.pageCSS])
         let json = String(decoding: data, as: UTF8.self).dropFirst().dropLast()
         return "document.getElementById('palette').textContent = \(json);"
     }
@@ -305,7 +305,7 @@ enum MarkdownPage {
         <html><head><meta charset="utf-8"><base href="file:///">
         <style>
         :root { color-scheme: light dark; \(themeVariables(.apple)) }
-        </style><style id="palette">\(Palette.current.page.css)</style><style>
+        </style><style id="palette">\(Palette.current.pageCSS)</style><style>
         /* Set as go.dev sets its docs (the Go spec): its colors, sizes and
            spacing and its links; the theme's fonts for its text and its
            code (Menlo where a theme has none of its own). */
@@ -359,31 +359,33 @@ enum MarkdownPage {
           cursor: pointer; opacity: 0; transition: opacity 0.12s; user-select: none; -webkit-user-select: none; padding: 0;
         }
         .codeblock:hover .copy, .copy.done { opacity: 1; }
-        /* Diagrams as pele.run shows them: on a card, in Flexoki's colours
-           (its dark; light, the same steps of Flexoki's light), in the
-           system's face and its monospace. */
+        /* Diagrams on a card as a code block's ground is, in the theme:
+           its text, its link for an accent, its failed for what's
+           critical, shades between its text and that ground for surfaces
+           and borders, its terminal's colours for a chart's series; its
+           fonts, the page's and its code's. */
         .diagram {
-          margin: var(--read-gap, 1rem) 0; padding: 0 16px 24px; border-radius: 12px; overflow: hidden;
+          margin: var(--read-gap, 1rem) 0; padding: 0 16px 20px; border-radius: 8px; overflow: hidden;
           background: var(--pele-bg); position: relative;
-          --pele-font: -apple-system, BlinkMacSystemFont, "Inter Variable", Inter, "Segoe UI", Helvetica, Arial, sans-serif;
-          --pele-font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "IBM Plex Mono", "Roboto Mono", "DejaVu Sans Mono", "Liberation Mono", Menlo, Monaco, Consolas, "Source Code Pro", monospace;
-          --pele-radius: 6px;
-          --pele-bg: #f2f0e5; --pele-fg: #100f0f; --pele-muted: #6f6e69; --pele-line: #100f0f;
-          --pele-surface: #e6e4d9; --pele-surface-alt: #dad8ce; --pele-border: #cecdc3;
-          --pele-accent: #205ea6; --pele-critical: #af3029;
-          --pele-series-1: #af3029; --pele-series-2: #bc5215; --pele-series-3: #ad8301; --pele-series-4: #66800b;
-          --pele-series-5: #24837b; --pele-series-6: #205ea6; --pele-series-7: #5e409d; --pele-series-8: #a02f6f;
+          --pele-font: var(--sans), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          --pele-font-mono: var(--mono), Menlo, monospace;
+          --pele-radius: 4px;
+          --pele-bg: var(--page-code);
+          --pele-fg: var(--page-text);
+          --pele-muted: color-mix(in srgb, var(--page-text) 60%, var(--page-code));
+          --pele-line: color-mix(in srgb, var(--page-text) 85%, var(--page-code));
+          --pele-surface: color-mix(in srgb, var(--page-text) 7%, var(--page-code));
+          --pele-surface-alt: color-mix(in srgb, var(--page-text) 13%, var(--page-code));
+          --pele-border: color-mix(in srgb, var(--page-text) 24%, var(--page-code));
+          --pele-accent: var(--page-link);
+          --pele-critical: var(--page-failed);
+          --pele-series-1: var(--page-series-1); --pele-series-2: var(--page-series-2);
+          --pele-series-3: var(--page-series-3); --pele-series-4: var(--page-series-4);
+          --pele-series-5: var(--page-series-5); --pele-series-6: var(--page-series-6);
+          --pele-series-7: var(--page-series-7); --pele-series-8: var(--page-series-8);
         }
-        @media (prefers-color-scheme: dark) {
-          .diagram {
-            --pele-bg: #1c1b1a; --pele-fg: #cecdc3; --pele-muted: #878580; --pele-line: #cecdc3;
-            --pele-surface: #282726; --pele-surface-alt: #343331; --pele-border: #403e3c;
-            --pele-accent: #4385be; --pele-critical: #d14d41;
-            --pele-series-1: #d14d41; --pele-series-2: #da702c; --pele-series-3: #d0a215; --pele-series-4: #879a39;
-            --pele-series-5: #3aa99f; --pele-series-6: #4385be; --pele-series-7: #8b7ec8; --pele-series-8: #ce5d97;
-          }
-        }
-        .diagram-kind { font: 14px/33.7px var(--pele-font-mono); color: var(--pele-muted); margin: 0 0 8px;
+        .diagram-kind { font-family: var(--pele-font-mono); font-size: calc(0.78rem * var(--mono-scale, 1)); line-height: 2.4;
+          color: var(--pele-muted); margin: 0 0 6px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .diagram-figure { position: relative; display: grid; justify-items: center; }
         .diagram-figure svg { max-width: 100%; height: auto; }

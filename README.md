@@ -726,10 +726,11 @@ around it, and comes back with its history.
   fixed-width one (as are a terminal's commands in its outline, and a
   commit's hash). A **Mermaid** diagram (a ```` ```mermaid ```` block, or
   one that starts with a diagram's kind, as `flowchart LR`) is drawn in
-  its place by [Pele](https://pele.run), on a card as pele.run shows
-  them — its kind above it, Flexoki's colours light or dark as the page
-  is, the system's face and its monospace — fitted to the tile's width
-  as it changes; tried again with plain quotes and dashes if smart ones
+  its place by [Pele](https://pele.run), on a card as a code block's
+  ground is, its first line above it — in the theme, light or dark as
+  the page is: its text, its link for an accent, its terminal's colours
+  for a chart's series, its fonts — fitted to the tile's width as it
+  changes; tried again with plain quotes and dashes if smart ones
   kept it from parsing, else left as code with why. (Pele 1.13.0 is
   bundled, MIT; the page's own scripts still don't run.) Code is set in
   the fixed-width font when edited too, unless the tile's menu says

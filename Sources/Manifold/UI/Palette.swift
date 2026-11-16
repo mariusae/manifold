@@ -314,6 +314,18 @@ struct Palette {
 }
 
 extension Palette {
+    /// The page's colours as CSS (`Page.css`), and a chart's series —
+    /// `--page-series-1`…8 — from the theme's terminal colours: red,
+    /// yellow, green, cyan, blue, magenta, then the bright red and yellow.
+    var pageCSS: String {
+        func series(_ t: TerminalPalette) -> String {
+            [1, 3, 2, 6, 4, 5, 9, 11].enumerated().compactMap { i, c in
+                t.colorsHex.indices.contains(c) ? "--page-series-\(i + 1): \(t.colorsHex[c]);" : nil
+            }.joined(separator: " ")
+        }
+        return page.css + "\n:root { \(series(terminal.light)) }\n@media (prefers-color-scheme: dark) { :root { \(series(terminal.dark)) } }"
+    }
+
     /// The theme in use.
     private(set) static var current: Palette = .paper
 
