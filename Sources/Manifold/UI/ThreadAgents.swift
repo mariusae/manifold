@@ -160,7 +160,7 @@ extension MainWindowController {
         let ref = Self.address(t.id)
         let about = t.thread?.about.map { describe($0).title } ?? "the space"
         let said = comment.replacingOccurrences(of: "\n", with: " ").prefix(400)
-        return "[Manifold thread \(ref), about \(about)] \(author.isYou ? "The user" : author.name) wrote: \"\(said)\" — "
+        return "[Manifold thread \(ref), about \(about)] \(author.isYou ? "The user" : author.shownName) wrote: \"\(said)\" — "
             + "read it with `mani thread read \(ref)`, and answer in the thread with `mani thread reply \(ref) \"…\"` (--resolve only if you did what it asks). "
             + "The reply is Markdown, shown as GitHub shows a comment: a list as `- ` lines, code in backticks or fences."
     }
@@ -221,8 +221,10 @@ extension MainWindowController {
         threadUI.asks = waiting
         for (agent, asks) in byAgent {
             let text = asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: ")
-            say(text, to: agent)
-            let name = hosts.block(agent)?.agent?.name ?? "The agent"
+            // Its name, as the threads call it: with other agents in them, which one it is.
+            let name = hosts.block(agent).map { AgentIdentity.color(of: $0) != nil ? $0.displayTitle : $0.agent?.name ?? "The agent" } ?? "The agent"
+            let who = hosts.block(agent).flatMap { AgentIdentity.color(of: $0) != nil ? "(You are \(name) in these threads.) " : nil } ?? ""
+            say(who + text, to: agent)
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }
         }
     }

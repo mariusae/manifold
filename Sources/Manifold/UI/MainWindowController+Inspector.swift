@@ -784,7 +784,7 @@ extension MainWindowController {
                             detail: notes.joined(separator: " · "))
             n.dirty = b?.text?.isDirty == true
             n.stale = b?.text?.stale == true
-            n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) }
+            n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) } ?? b.flatMap { AgentLook.face(of: $0, size: 13) }
             n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
             n.trailing = StatusGlyph.at(of: b).map(Age.short)
             if isDock {

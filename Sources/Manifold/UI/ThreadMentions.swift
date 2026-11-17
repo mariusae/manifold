@@ -398,9 +398,9 @@ extension MainWindowController {
             for b in running {
                 guard let a = b.agent, matches([b.displayTitle, a.command, a.name]) else { continue }
                 listed.insert(b.id)
-                out.append(MentionChoice(symbol: "sparkle", title: b.displayTitle, detail: a.name + (here.contains(b.id) ? " · here" : " · running"),
+                out.append(MentionChoice(symbol: "sparkle", title: b.displayTitle, detail: AgentLook.description(of: b) + (here.contains(b.id) ? " · here" : ""),
                                          link: "[\(b.displayTitle.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(b.id)))",
-                                         icon: AgentIcons.image(a.command, size: 14), category: "Agents", block: b.id))
+                                         icon: AgentLook.face(of: b, size: 14) ?? AgentIcons.image(a.command, size: 14), category: "Agents", block: b.id))
             }
             // The words that ask one (the nearest at work, or one started):
             // with nothing typed, only those at work and the one Settings

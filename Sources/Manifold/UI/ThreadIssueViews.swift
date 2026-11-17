@@ -107,7 +107,7 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
     init(_ e: ThreadEntry, text: String, icon: NSImage?, inTile: Bool, continued: Bool, size: CGFloat, font: NSFont?, lineHeight: CGFloat = 0) {
         markdown = text
         entryID = e.id
-        authorName = e.author.isYou ? "You" : e.author.name
+        authorName = e.author.shownName
         self.inTile = inTile
         self.continued = continued
         let code = font == nil ? NSFont.monospacedSystemFont(ofSize: size - 1, weight: .regular) : FontTheme.current.font(.monospaced, size: size - 1)
@@ -122,7 +122,7 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
         band = IssueLayout.band(inTile: inTile)
         let headSize: CGFloat = inTile ? 12.5 : 11.5
         // As a tile's bar says its name: the interface's font, quiet ink.
-        name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: headSize, weight: .semibold))
+        name = NSTextField.label(e.author.shownName, font: .systemFont(ofSize: headSize, weight: .semibold))
         let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
         let said = (ago == "now" ? "now" : ago) + (e.edited == nil ? "" : " · edited")
         when = NSTextField.label(continued ? said : "· " + said, font: .systemFont(ofSize: headSize), color: Theme.tertiaryText)
@@ -135,7 +135,7 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
         avatar.isHidden = continued
         avatar.onClick = { [weak self] in self?.onAuthor?() }
         avatar.onDrag = { [weak self] event in self?.dragOut(event) }
-        avatar.toolTip = (e.author.isYou ? "You" : e.author.name) + " — drag to refer to this comment"
+        avatar.toolTip = e.author.shownName + " — drag to refer to this comment"
         more.target = self
         more.action = #selector(showMore)
         more.isHidden = true

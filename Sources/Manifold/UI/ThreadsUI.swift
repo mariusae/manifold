@@ -665,7 +665,7 @@ extension MainWindowController {
                 case .comment(let c): what = "“\(c.prefix(60))”"
                 default: what = "\(e.kind)".prefix(40).description
                 }
-                return "\(e.author.name): \(what)"
+                return "\(e.author.shownName): \(what)"
             }.joined(separator: " | ") ?? ""
             return "\(t.id.ulid.suffix(6)) [\(th?.resolved == true ? "resolved" : "open")\(hosts.unseen(t).isEmpty ? "" : ", \(hosts.unseen(t).count) unseen")] about \(about) in \(th?.space.map { String($0.ulid.suffix(6)) } ?? "-"): \(entries)"
         }
@@ -983,7 +983,7 @@ extension MainWindowController {
         default: break
         }
         let m = t.model
-        let runs = m.runs.map { r in "[\(r.placeTitle)\(r.firstUnseen.map { " NEW@\($0)" } ?? "")] " + r.entries.map { e in e.author.name + ":" + (e.comment.map { String($0.prefix(30)) } ?? "\(e.kind)".prefix(20).description) }.joined(separator: ", ") }
+        let runs = m.runs.map { r in "[\(r.placeTitle)\(r.firstUnseen.map { " NEW@\($0)" } ?? "")] " + r.entries.map { e in e.author.shownName + ":" + (e.comment.map { String($0.prefix(30)) } ?? "\(e.kind)".prefix(20).description) }.joined(separator: ", ") }
         return "\(m.title) · scopes \(m.scopes) at \(m.scope) · filter \(t.filter) · \(m.unseen) unseen · replying to \(t.chosen.map { String($0.ulid.suffix(6)) } ?? "none")\n" + runs.joined(separator: "\n")
     }
 }

@@ -449,7 +449,7 @@ final class ThreadChatView: NSView {
         }
     }
 
-    private func who(_ e: ThreadEntry) -> String { e.author.isYou ? "You" : e.author.name }
+    private func who(_ e: ThreadEntry) -> String { e.author.shownName }
 
     /// Something that happened, on the conversation's line.
     private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil) -> NSView {
@@ -465,7 +465,7 @@ final class ThreadChatView: NSView {
                                  lineHeight: face.map { FontTheme.current.editorLineHeight(.proportional, font: $0) } ?? 0)
         // Its mark, dragged: a reference to this comment; Copy Link, the same as text.
         if let thread = model.thread?.id {
-            let title = (e.author.isYou ? "Your" : e.author.name + "'s") + " comment"
+            let title = (e.author.isYou ? "Your" : e.author.shownName + "'s") + " comment"
             v.dragged = { Drags.place?(Place(block: thread, at: .comment(e.id), name: title), nil) }
             v.link = { MainWindowController.address(thread) + "#" + Locator.comment(e.id).fragment }
         }
@@ -934,7 +934,7 @@ final class CommentView: NSView {
         body.limit = max(120, width - indent)
         var views: [NSView] = []
         if !continued {
-            let name = NSTextField.label(e.author.isYou ? "You" : e.author.name, font: .systemFont(ofSize: size, weight: .semibold))
+            let name = NSTextField.label(e.author.shownName, font: .systemFont(ofSize: size, weight: .semibold))
             let ago = BlockSummary.ago(e.at, now: Date()) ?? ""
             let when = NSTextField.label(e.edited == nil ? ago : ago + " · edited", font: UIType.footnote, color: Theme.tertiaryText)
             when.toolTip = DateFormatter.localizedString(from: e.at.date, dateStyle: .medium, timeStyle: .short)
@@ -1013,12 +1013,17 @@ final class Avatar: NSView {
         self.author = author
         self.icon = icon ?? (author.agentBlock != nil ? NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) : nil)
         super.init(frame: .zero)
-        toolTip = author.isYou ? nil : author.name
+        toolTip = author.isYou ? nil : author.shownName
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
+        // An agent with a colour of its own: its face, its initial on its colour.
+        if let b = author.agentNow, AgentLook.color(of: b) != nil {
+            AgentLook.drawFace(of: b, in: bounds.insetBy(dx: 0.5, dy: 0.5))
+            return
+        }
         let circle = NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
         // Yours: this Mac's picture of you (your account's), round.
         if author.isYou, let picture = UserPicture.image {

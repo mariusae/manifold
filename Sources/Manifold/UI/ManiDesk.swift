@@ -1085,7 +1085,7 @@ final class ManiDesk {
         case let .comment(id)?:
             // One comment of a thread's: who, when, its words.
             if let e = b.thread?.entries.first(where: { $0.id == id }), let words = e.comment {
-                return "\(e.author.name) (\(BlockSummary.ago(e.at, now: Date()) ?? "")):\n" + words
+                return "\(e.author.shownName) (\(BlockSummary.ago(e.at, now: Date()) ?? "")):\n" + words
             }
         case .line?, .lines?, .range?:
             guard b.kind == .text, let text = b.text, !b.needsRead else { break }

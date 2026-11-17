@@ -334,7 +334,7 @@ final class ThreadTimelineView: NSView {
             }
             return v
         default:
-            let who = e.author.isYou ? "you" : e.author.name
+            let who = e.author.isYou ? "you" : e.author.shownName
             let words: String
             switch e.kind {
             case .resolved: words = "Resolved by \(who)"

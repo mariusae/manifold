@@ -2293,6 +2293,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.borderWidth = 0
         glass.themed { [weak self] _ in self?.paintGlass() }
         addSubview(glass)
+        // An agent's: a dot of its colour before its name, a strip of it along the bar's foot.
+        for v in [agentDot, agentStrip] {
+            v.wantsLayer = true
+            v.isHidden = true
+            v.themed { [weak self] _ in self?.paintAgent() }
+        }
+        agentDot.layer?.cornerRadius = 3.5
+        glass.addSubview(agentStrip)
+        addSubview(agentDot)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
         name.textColor = Theme.text
@@ -2552,6 +2561,27 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The symbol the icon shows, so it's set only when it changes.
     private var symbolName = ""
 
+    /// An agent's colour (`AgentLook`), shown by its name and along the bar.
+    private let agentDot = NSView()
+    private let agentStrip = NSView()
+    private var agentColor: NSColor? {
+        didSet {
+            guard agentColor != oldValue else { return }
+            agentDot.isHidden = agentColor == nil
+            agentStrip.isHidden = agentColor == nil
+            paintAgent()
+            needsLayout = true
+        }
+    }
+
+    private func paintAgent() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let c = agentColor?.cgColor
+            agentDot.layer?.backgroundColor = c
+            agentStrip.layer?.backgroundColor = c
+        }
+    }
+
     /// Shown afresh on every render (each keystroke in a note is one):
     /// only what differs is touched, or the images and labels would be
     /// redone each time and seen to blink.
@@ -2578,6 +2608,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: IconHandle.markSize)
         }
+        agentColor = AgentLook.color(of: shown.block)
+        agentDot.toolTip = shown.block.flatMap(AgentIdentity.color(of:)).map { "\(shown.title), the \(AgentLook.colorNames[$0]) agent" }
         let title = shown.title + (shown.isDormant ? "  (dormant)" : shown.exitedWords.map { "  (\($0))" } ?? "")
         // Edited and unsaved: a dot after the name, amber when the file
         // changed on disk under the edits (the menu says what to do).
@@ -2712,6 +2744,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
+        if agentColor != nil {
+            agentDot.frame = NSRect(x: x - 2, y: ((h - 7) / 2).rounded(), width: 7, height: 7)
+            x += 11
+        }
+        agentStrip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 2)
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
         // order, so the name keeps at least a little room — the place
         // goes first (below), then the links' pill shrinks to its arrow

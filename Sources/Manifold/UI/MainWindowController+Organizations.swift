@@ -130,7 +130,7 @@ extension MainWindowController {
                         symbol: Theme.symbolName(for: block), detail: detail ?? "", age: Self.age(seen))
         n.dirty = block.text?.isDirty == true
         n.stale = block.text?.stale == true
-        n.image = block.web.flatMap { Favicons.image(forPage: $0.url) }
+        n.image = block.web.flatMap { Favicons.image(forPage: $0.url) } ?? AgentLook.face(of: block, size: 13)
         n.look = StatusGlyph.look(of: block)
         n.blocked = block.statusRecord?.kind
         n.tooltip = StatusGlyph.tooltip(block)

@@ -91,7 +91,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     private func post(news e: ThreadEntry, in t: Block) {
         let words = (e.comment ?? "").replacingOccurrences(of: "\n", with: " ")
-        post(id: "thread-\(t.id)-\(e.id)", title: "\(e.author.name) in “\(t.displayTitle)”", body: String(words.prefix(240)),
+        post(id: "thread-\(t.id)-\(e.id)", title: "\(e.author.shownName) in “\(t.displayTitle)”", body: String(words.prefix(240)),
              sound: .done, block: t.id, command: nil)
     }
 

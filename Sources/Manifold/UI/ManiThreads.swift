@@ -59,7 +59,7 @@ extension ManiDesk {
             let e: ThreadEntry
             if let id = r.flags["entry"] {
                 guard let found = t.thread?.entries.first(where: { $0.id == id && $0.comment != nil }) else { throw Failure(message: "no comment \(id) in that thread") }
-                guard found.author.same(as: author) else { throw Failure(message: "that comment is \(found.author.name)'s: only whoever wrote it changes it") }
+                guard found.author.same(as: author) else { throw Failure(message: "that comment is \(found.author.shownName)'s: only whoever wrote it changes it") }
                 e = found
             } else {
                 guard let last = mine.last else { throw Failure(message: "you haven't written in that thread") }
@@ -120,13 +120,13 @@ extension ManiDesk {
             let when = BlockSummary.since(e.at.date, now: Date())
             switch e.kind {
             case .comment(let text):
-                out.append("\(e.author.name) (\(when)\(e.edited == nil ? "" : ", edited")):")
+                out.append("\(e.author.shownName) (\(when)\(e.edited == nil ? "" : ", edited")):")
                 out += text.split(separator: "\n", omittingEmptySubsequences: false).map { "    " + $0 }
-            case .resolved: out.append("— resolved by \(e.author.name) (\(when))")
-            case .reopened: out.append("— reopened by \(e.author.name) (\(when))")
+            case .resolved: out.append("— resolved by \(e.author.shownName) (\(when))")
+            case .reopened: out.append("— reopened by \(e.author.shownName) (\(when))")
             case let .asked(_, name): out.append("— \(name) asked (\(when))")
             case let .edited(a, r):
-                let who: String = if case .manifold = e.author { "changed on disk" } else { "edited by \(e.author.name)" }
+                let who: String = if case .manifold = e.author { "changed on disk" } else { "edited by \(e.author.shownName)" }
                 out.append("— \(who), +\(a) −\(r) (\(when))")
             case .gone: out.append("— its lines were deleted (\(when))")
             case .stopped(let why): out.append("— \(why) (\(when))")
@@ -148,7 +148,7 @@ extension ManiDesk {
             o["line"] = p.line ?? NSNull()
         }
         o["entries"] = t.entries.map { e -> [String: Any] in
-            var x: [String: Any] = ["id": e.id, "author": e.author.name, "you": e.author.isYou, "at": e.at.date.timeIntervalSince1970]
+            var x: [String: Any] = ["id": e.id, "author": e.author.shownName, "you": e.author.isYou, "at": e.at.date.timeIntervalSince1970]
             if let edited = e.edited { x["edited"] = edited.date.timeIntervalSince1970 }
             if let a = e.author.agentBlock { x["agent"] = MainWindowController.address(a) }
             switch e.kind {
