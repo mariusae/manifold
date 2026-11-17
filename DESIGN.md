@@ -1427,8 +1427,9 @@ part of it (a file, a block, a place in one, a page). Anything dropped
 on the shelf goes on it — an agent's tile or pill joins the conversation,
 anything else is a reference — and + offers the agents at work; a chip's
 × or its menu takes it off, an agent's menu makes it the lead; a chip
-clicked is gone to, an agent's pointed at rings its tile; an agent not
-running stays, dimmed. Only what's dropped on the shelf is on it: a
+clicked is gone to, an agent's pointed at rings its tile, a
+reference's shows its card (a file's block made for it, if there's none);
+a long name is cut, "…" at its end; an agent not running stays, dimmed. Only what's dropped on the shelf is on it: a
 reference in a comment is that comment's. Each change is an event in the
 thread ("You added Readme.md to its context"), so its history says who
 was in the room when (`ThreadContext`: the annotations `participants`,

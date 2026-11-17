@@ -142,6 +142,16 @@ final class ThreadShelfView: NSView {
         return true
     }
 
+    /// The pointer onto chip `n` (the others left), or off them all (-1):
+    /// as a tracking area would say, which a posted move doesn't stir.
+    func debugHover(_ n: Int) -> String {
+        guard let e = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+                                             windowNumber: window?.windowNumber ?? 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) else { return "no event" }
+        for (i, c) in chips.enumerated() where i != n { c.mouseExited(with: e) }
+        if chips.indices.contains(n) { chips[n].mouseEntered(with: e) }
+        return chips.indices.contains(n) ? "hovering \(chips[n].item.title) (\(chips[n].frame.width) wide)" : "off"
+    }
+
     var debugState: String {
         items.map { ($0.isLead ? "*" : "") + ($0.agent != nil ? "agent " : "") + $0.title }.joined(separator: " | ")
     }
@@ -170,15 +180,18 @@ final class ThreadShelfView: NSView {
             close.action = #selector(closeClicked)
             for v in [icon, label, close] as [NSView] { addSubview(v) }
             if item.quiet { icon.alphaValue = 0.45; label.textColor = Theme.tertiaryText }
+            // An agent's says what it is; a reference shows its card instead.
             toolTip = item.agent != nil
                 ? "\(item.title)\(item.isLead ? ", the lead — asked by a comment that names no one" : "")\(item.detail.isEmpty ? "" : " · " + item.detail) — click to go to it"
-                : "\(item.title) — part of this thread's context; click to open"
+                : nil
         }
 
         required init?(coder: NSCoder) { fatalError() }
 
-        /// Its icon's room, its name whole, and room for × at its end.
-        var wanted: CGFloat { 27 + ceil(label.intrinsicContentSize.width) + 4 + 18 }
+        /// Its icon's room, its name — whole, up to a point, then cut with
+        /// "…" (a commit's subject, a long title) — and room for × at its end.
+        var wanted: CGFloat { 27 + min(ceil(label.intrinsicContentSize.width), Self.longest) + 4 + 18 }
+        static let longest: CGFloat = 200
 
         override func layout() {
             super.layout()
@@ -204,14 +217,27 @@ final class ThreadShelfView: NSView {
         override func mouseEntered(with event: NSEvent) {
             hovering = true
             if let a = item.agent { AgentLook.spotlight?(a) }
+            // A reference's card (§7): a block's, a file's or a folder's, a page's.
+            if item.agent == nil, let window { ReferenceCards.showAddress?(item.address, convert(bounds, to: nil), window) }
+        }
+
+        /// Taken off (the shelf redrawn, the tile closed) under the pointer: its card goes too.
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil, hovering {
+                if item.agent != nil { AgentLook.spotlight?(nil) }
+                if item.agent == nil { ReferenceCards.hide?() }
+            }
+            super.viewWillMove(toWindow: newWindow)
         }
 
         override func mouseExited(with event: NSEvent) {
             hovering = false
             if item.agent != nil { AgentLook.spotlight?(nil) }
+            if item.agent == nil { ReferenceCards.hide?() }
         }
 
         override func mouseUp(with event: NSEvent) {
+            if item.agent == nil { ReferenceCards.hide?() }
             if bounds.contains(convert(event.locationInWindow, from: nil)) { onOpen?() }
         }
 

@@ -469,6 +469,10 @@ enum ReferenceCards {
     /// The block's card beside `rect` (window terms), after the pointer's lingered.
     static var show: ((BlockID, NSRect, NSWindow) -> Void)?
     static var hide: (() -> Void)?
+    /// A reference by its address (a block's, a file's, a page's): the
+    /// card of what it names, beside `rect` — a file's block made, if
+    /// there isn't one, to show it.
+    static var showAddress: ((String, NSRect, NSWindow) -> Void)?
 
     /// The block a pill at a point stands for, and the pill's rect (the
     /// view's terms): an attachment carrying a block's link (a comment's)

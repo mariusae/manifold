@@ -415,6 +415,8 @@ enum DebugControl {
             guard let wc, let v = wc.debugFocusedView, let t = find(v) else { return "no thread tile focused" }
             if arg.hasPrefix("send ") { wc.threadChat(t.chat, send: String(arg.dropFirst(5))) }
             let shelf = t.chat.shelf
+            // "threadtile hover <n>|off": the pointer onto the shelf's n-th chip (from 0), or off it.
+            if arg.hasPrefix("hover ") { return shelf.debugHover(Int(arg.dropFirst(6)) ?? -1) }
             return t.chat.debugAsk(nil) + "\nshelf \(shelf.isHidden ? "hidden" : "shown") \(shelf.frame) in window \(shelf.window != nil): \(shelf.debugState)"
         case "diffview":
             // "diffview fold <file>": a file folded or unfolded; "diffview select

@@ -205,6 +205,21 @@ extension MainWindowController {
         // A reference rested on (a pill, a card over the composer): its block's card.
         ReferenceCards.show = { [weak self] id, rect, window in self?.showBlockCard(id, beside: rect, in: window) }
         ReferenceCards.hide = { HoverCard.shared.hide() }
+        ReferenceCards.showAddress = { [weak self] address, rect, window in
+            guard let self else { return }
+            var id: BlockID?
+            // A file's address first: a block's reading of it is a wrong block.
+            if case let .file(host, path, _)? = ManifoldAddress.parse(address) {
+                guard let client = self.hosts.client(host) else { return HoverCard.shared.hide() }
+                id = path.hasSuffix("/") ? client.directoryBlock(for: path) : client.textBlock(path: path)?.id ?? client.textBlock(for: path)
+            } else if let (b, _) = BlockID.link(address) {
+                id = b
+            } else if address.hasPrefix("http") {
+                id = self.hosts.local.node.blocks.first { $0.web?.url == address }?.id
+            }
+            guard let id else { return HoverCard.shared.hide() }
+            self.showBlockCard(id, beside: rect, in: window)
+        }
         // A comment's references, as pills: each block's look, as its tile wears it.
         CommentText.look = { [weak self] id in
             guard let b = self?.hosts.block(id) else { return nil }
