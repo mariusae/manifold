@@ -47,15 +47,27 @@ enum AgentLook {
         String(name(of: block).first(where: \.isLetter) ?? "A").uppercased()
     }
 
-    /// Its face: a disc of its colour, its initial on it.
+    /// The face's letter: rounded and heavy, to stay whole at a sidebar's
+    /// size (a thin bold one broke up at 13 points).
+    static func initialFont(_ size: CGFloat) -> NSFont {
+        let base = NSFont.systemFont(ofSize: size, weight: .heavy)
+        return base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+    }
+
+    /// Its face: a disc of its colour, its initial on it — centred by the
+    /// capital's height, not the line's (which sat it low).
     static func drawFace(of block: Block, in r: NSRect) {
         guard let color = color(of: block) else { return }
         color.setFill()
         NSBezierPath(ovalIn: r).fill()
-        let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: r.height * 0.52, weight: .bold), .foregroundColor: ink(on: block)]
+        let font = initialFont((r.height * 0.6).rounded())
+        let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink(on: block)]
         let s = initial(of: block) as NSString
-        let size = s.size(withAttributes: a)
-        s.draw(at: NSPoint(x: r.midX - size.width / 2, y: r.midY - size.height / 2), withAttributes: a)
+        let width = s.size(withAttributes: a).width
+        let flipped = NSGraphicsContext.current?.isFlipped ?? false
+        // The baseline under the capital's middle at the disc's.
+        let baseline = flipped ? r.midY + font.capHeight / 2 : r.midY - font.capHeight / 2
+        s.draw(at: NSPoint(x: r.midX - width / 2, y: flipped ? baseline - font.ascender : baseline + font.descender), withAttributes: a)
     }
 
     /// What it is and what it's doing, in a line, to tell it from another

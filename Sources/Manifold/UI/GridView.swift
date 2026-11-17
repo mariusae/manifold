@@ -2301,8 +2301,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             v.themed { [weak self] _ in self?.paintAgent() }
         }
         agentPill.layer?.cornerRadius = 8
-        agentPill.addSubview(agentName)
-        agentName.font = .systemFont(ofSize: 11, weight: .semibold)
         glass.addSubview(agentStrip)
         addSubview(agentPill)
         icon.contentTintColor = Theme.secondaryText
@@ -2565,8 +2563,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var symbolName = ""
 
     /// An agent's name (`AgentLook`) in a pill of its colour, and its colour along the bar.
-    private let agentPill = NSView()
-    private let agentName = NSTextField(labelWithString: "")
+    private let agentPill = AgentNamePill()
     private let agentStrip = NSView()
     private var agentColor: NSColor? {
         didSet {
@@ -2586,7 +2583,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             agentPill.layer?.backgroundColor = c
             agentStrip.layer?.backgroundColor = c
         }
-        agentName.textColor = agentInk
+        agentPill.ink = agentInk
     }
 
     /// Shown afresh on every render (each keystroke in a note is one):
@@ -2617,7 +2614,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         if let b = shown.block, AgentLook.color(of: b) != nil {
             let name = AgentLook.name(of: b)
-            if agentName.stringValue != name { agentName.stringValue = name; needsLayout = true }
+            if agentPill.name != name { agentPill.name = name; needsLayout = true }
             agentInk = AgentLook.ink(on: b)
             agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent" }
         }
@@ -2758,10 +2755,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
-            let nw = ceil(agentName.intrinsicContentSize.width), nh = ceil(agentName.intrinsicContentSize.height)
-            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded(), width: nw + 14, height: 16)
-            agentName.frame = NSRect(x: 7, y: ((16 - nh) / 2).rounded(), width: nw, height: nh)
-            x += nw + 14 + 6
+            let pw = agentPill.wantedWidth
+            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded(), width: pw, height: 16)
+            x += pw + 6
         }
         agentStrip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 2)
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
@@ -3494,5 +3490,29 @@ extension GridView: DropTaking {
             guard let slot = dropTarget(at: p, dragged: nil) else { return NSSound.beep() }
             delegate?.gridOpen(d, column: slot.column, at: slot.at, newColumn: slot.newColumn)
         }
+    }
+}
+
+
+/// An agent's name in a pill of its colour, on its tile's bar: the name
+/// drawn, centred, the same room either side of it (a label's own inset
+/// had it off centre).
+final class AgentNamePill: NSView {
+    var name = "" { didSet { if name != oldValue { needsDisplay = true } } }
+    var ink: NSColor = .white { didSet { needsDisplay = true } }
+    private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let pad: CGFloat = 7
+
+    private var attributes: [NSAttributedString.Key: Any] { [.font: Self.font, .foregroundColor: ink] }
+    var wantedWidth: CGFloat { ceil((name as NSString).size(withAttributes: attributes).width) + Self.pad * 2 }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let s = name as NSString
+        let w = s.size(withAttributes: attributes).width
+        // The baseline under the capitals' middle at the pill's.
+        let font = Self.font
+        let baseline = bounds.midY - font.capHeight / 2
+        s.draw(at: NSPoint(x: ((bounds.width - w) / 2).rounded(), y: (isFlipped ? bounds.midY + font.capHeight / 2 - font.ascender : baseline + font.descender).rounded()),
+               withAttributes: attributes)
     }
 }
