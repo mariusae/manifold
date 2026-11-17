@@ -184,8 +184,9 @@ extension MainWindowController: GitViewDelegate {
         open(path: path, line: 1, column: nil, on: view.block.host, from: view.placement, context: path.lastPathComponent)
     }
 
-    func gitViewRefresh(_ view: GitView) {
-        hosts.propose(.refreshGit(block: view.block))
+    func gitViewRefresh(_ view: GitView, done: @escaping () -> Void) {
+        guard let client = hosts.client(of: view.block) else { return done() }
+        client.propose(.refreshGit(block: view.block)) { _ in done() }
     }
 
     func gitView(_ view: GitView, sync push: Bool, done: @escaping (String?) -> Void) {

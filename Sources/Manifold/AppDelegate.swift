@@ -294,6 +294,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // file against its last commit, the file's history.
         let source = NSMenu(title: "Source Control")
         // (The project's and its smartlog are New ▸'s, ⌥⌘G and ⌥⌘L.)
+        // A Source Control tile's repository read again (its strip's ↻).
+        item(source, "Refresh", #selector(GitView.refreshRepository(_:)), "")
         item(source, "Compare with Last Commit", #selector(MainWindowController.compareWithHead(_:)), "d", [.command, .option, .shift])
         item(source, "History of This File…", #selector(MainWindowController.showFileHistory(_:)), "y", [.command, .option])
         // Each line's commit, in a column beside the line numbers.

@@ -6,7 +6,8 @@ protocol GitViewDelegate: AnyObject {
     func gitView(_ view: GitView, openDiff subject: DiffSubject)
     /// Open a file beside it.
     func gitView(_ view: GitView, open path: String)
-    func gitViewRefresh(_ view: GitView)
+    /// The repository read again on its host; `done` once it has been.
+    func gitViewRefresh(_ view: GitView, done: @escaping () -> Void)
     /// Pull (fast-forward) or push the branch, on the repository's host;
     /// `done` with what went wrong, if anything.
     func gitView(_ view: GitView, sync push: Bool, done: @escaping (String?) -> Void)
@@ -29,7 +30,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     var source: () -> Block? = { nil }
 
     private let branchLabel = NSTextField(labelWithString: "")
-    private let refresh = IconButton("arrow.clockwise", weight: .medium, tip: "Refresh")
+    /// Read again, at the strip's end; a spinner in its place till it has been.
+    private let refresh = IconButton("arrow.clockwise", weight: .medium, tip: "Refresh: the repository read again")
+    private let refreshing = NSProgressIndicator()
     /// The branch pulled from its upstream, pushed to it.
     private let pull = FlatButton("Pull", symbol: "arrow.down", font: UIType.detail)
     private let push = FlatButton("Push", symbol: "arrow.up", font: UIType.detail)
@@ -91,7 +94,10 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         push.target = self
         push.action = #selector(pushClicked)
         push.toolTip = "Push: the branch's commits sent to its upstream"
-        for v in [branchLabel, refresh, pull, push] { addSubview(v) }
+        refreshing.style = .spinning
+        refreshing.controlSize = .small
+        refreshing.isDisplayedWhenStopped = false
+        for v in [branchLabel, refresh, refreshing, pull, push] { addSubview(v) }
 
         table.dataSource = self
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
@@ -182,17 +188,14 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         keeper.restoreScroll(of: scroll)
     }
 
-    /// Refresh, under the pointer on the branch's strip.
-    private lazy var reveal = HoverReveal(in: self) { [unowned self] in [refresh] }
-
     override func layout() {
         super.layout()
         let w = bounds.width
         let strip = TileMetrics.strip, mid = bounds.height - strip / 2
-        reveal.track(NSRect(x: 0, y: bounds.height - strip, width: w, height: strip))
-        // Where it is is the bar's; here the branch, and refresh under the pointer.
+        // Where it is is the bar's; here the branch, and refresh at the end.
         branchLabel.alignment = .left
         refresh.frame = NSRect(x: w - 12 - 20, y: mid - 10, width: 20, height: 20)
+        refreshing.frame = refresh.frame.insetBy(dx: 2, dy: 2)
         // Pull and push, always there, left of refresh.
         let pw = push.intrinsicContentSize.width, lw = pull.intrinsicContentSize.width, bh = push.intrinsicContentSize.height
         push.frame = NSRect(x: refresh.frame.minX - 6 - pw, y: (mid - bh / 2).rounded(), width: pw, height: bh)
@@ -244,7 +247,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil { delegate?.gitViewRefresh(self) }
+        if window != nil { delegate?.gitViewRefresh(self) {} }
     }
 
     func documentChanged() {
@@ -351,7 +354,26 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         return debugSync
     }
 
-    @objc private func refreshClicked() { delegate?.gitViewRefresh(self) }
+    /// Refresh clicked (or chosen in Source Control): the button a spinner till the host has read
+    /// the repository — a beat at least, so a quick one is seen to happen.
+    @objc func refreshRepository(_ sender: Any?) { refreshClicked() }
+
+    @objc func refreshClicked() {
+        guard !refresh.isHidden else { return }
+        refresh.isHidden = true
+        refreshing.startAnimation(nil)
+        let started = Date()
+        delegate?.gitViewRefresh(self) { [weak self] in
+            let left = max(0, 0.4 - Date().timeIntervalSince(started))
+            DispatchQueue.main.asyncAfter(deadline: .now() + left) {
+                guard let self else { return }
+                self.refreshing.stopAnimation(nil)
+                self.refresh.isHidden = false
+            }
+        }
+    }
+
+    var debugRefreshing: Bool { refresh.isHidden }
 
     /// Double-clicked, its row; ⏎, each row chosen.
     @objc private func rowChosen() {

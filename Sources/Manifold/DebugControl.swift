@@ -847,9 +847,12 @@ enum DebugControl {
             guard let wc else { return "no window" }
             return wc.hosts.all.map { "\(wc.hosts.label(of: $0.host)): \($0.node.links($0.host).links.count) links, \($0.node.registry($0.host).trail.count) steps" }.joined(separator: "\n")
         case "gitsync":
-            // "gitsync": the focused git tile's Pull and Push; "gitsync pull|push": clicked.
+            // "gitsync": the focused git tile's Pull and Push; "gitsync pull|push": clicked;
+            // "gitsync refresh": its refresh clicked (says whether it's spinning).
             func find(_ v: NSView) -> GitView? { (v as? GitView) ?? v.subviews.lazy.compactMap(find).first }
             guard let v = wc?.debugFocusedView, let g = find(v) else { return "no git tile focused" }
+            if arg == "refresh" { g.refreshClicked() }
+            if arg == "refresh" || arg == "refreshing" { return g.debugRefreshing ? "refreshing" : "idle" }
             return arg.isEmpty ? g.debugSync : g.debugClick(push: arg == "push")
         case "rowmenu":
             // "rowmenu <row>": the link menu a right-click on that row of the

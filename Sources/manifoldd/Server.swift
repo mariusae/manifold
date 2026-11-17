@@ -1371,8 +1371,8 @@ final class Server {
             watchRepo(repo, vcs)
             done()
         case let .refreshGit(block):
-            refreshGit(block)
-            done()
+            // Answered once it's read: a refresh asked for by hand says when.
+            refreshGit(block) { done() }
         case let .gitSync(block, push):
             gitSync(block, push: push, done: done)
         case var .project(p):
@@ -1667,8 +1667,9 @@ final class Server {
         }
     }
 
-    private func refreshGit(_ block: BlockID) {
-        guard let b = node.block(block), b.kind == .git, let root = b.path else { return }
+    /// `done` once it's read (whether or not anything changed).
+    private func refreshGit(_ block: BlockID, done: (() -> Void)? = nil) {
+        guard let b = node.block(block), b.kind == .git, let root = b.path else { done?(); return }
         let vcs = b.git?.vcs ?? git.repository(of: root)?.vcs ?? .git
         // Watched, whenever it's looked at: a tile already made asks only
         // for refreshes, so a server started since watched nothing for it.
@@ -1688,6 +1689,7 @@ final class Server {
         if let w = vcs.whereArguments { commands.append(w) }
         if let a = vcs.aheadArguments { commands.append(a) }
         git.run(vcs, commands, in: root) { [weak self] results in
+            defer { done?() }
             guard let self, self.node.block(block) != nil else { return }
             var error: String?
             var branch: String?, ahead = 0, behind = 0, status: [GitStatusEntry] = [], log: [GitCommit] = []
