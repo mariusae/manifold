@@ -2293,15 +2293,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.layer?.borderWidth = 0
         glass.themed { [weak self] _ in self?.paintGlass() }
         addSubview(glass)
-        // An agent's: a dot of its colour before its name, a strip of it along the bar's foot.
-        for v in [agentDot, agentStrip] {
+        // An agent's: its name in a pill of its colour before its title (what
+        // its program says it's doing), a strip of it along the bar's foot.
+        for v in [agentPill, agentStrip] {
             v.wantsLayer = true
             v.isHidden = true
             v.themed { [weak self] _ in self?.paintAgent() }
         }
-        agentDot.layer?.cornerRadius = 3.5
+        agentPill.layer?.cornerRadius = 8
+        agentPill.addSubview(agentName)
+        agentName.font = .systemFont(ofSize: 11, weight: .semibold)
         glass.addSubview(agentStrip)
-        addSubview(agentDot)
+        addSubview(agentPill)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
         name.textColor = Theme.text
@@ -2561,25 +2564,29 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The symbol the icon shows, so it's set only when it changes.
     private var symbolName = ""
 
-    /// An agent's colour (`AgentLook`), shown by its name and along the bar.
-    private let agentDot = NSView()
+    /// An agent's name (`AgentLook`) in a pill of its colour, and its colour along the bar.
+    private let agentPill = NSView()
+    private let agentName = NSTextField(labelWithString: "")
     private let agentStrip = NSView()
     private var agentColor: NSColor? {
         didSet {
             guard agentColor != oldValue else { return }
-            agentDot.isHidden = agentColor == nil
+            agentPill.isHidden = agentColor == nil
             agentStrip.isHidden = agentColor == nil
             paintAgent()
             needsLayout = true
         }
     }
+    /// Its ink on the pill: white, dark on the light colours.
+    private var agentInk: NSColor = .white
 
     private func paintAgent() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let c = agentColor?.cgColor
-            agentDot.layer?.backgroundColor = c
+            agentPill.layer?.backgroundColor = c
             agentStrip.layer?.backgroundColor = c
         }
+        agentName.textColor = agentInk
     }
 
     /// Shown afresh on every render (each keystroke in a note is one):
@@ -2608,8 +2615,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
             symbolName = shown.symbol
             icon.image = Theme.symbol(shown.symbol, size: IconHandle.markSize)
         }
+        if let b = shown.block, AgentLook.color(of: b) != nil {
+            let name = AgentLook.name(of: b)
+            if agentName.stringValue != name { agentName.stringValue = name; needsLayout = true }
+            agentInk = AgentLook.ink(on: b)
+            agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent" }
+        }
         agentColor = AgentLook.color(of: shown.block)
-        agentDot.toolTip = shown.block.flatMap(AgentIdentity.color(of:)).map { "\(shown.title), the \(AgentLook.colorNames[$0]) agent" }
+        paintAgent()
         let title = shown.title + (shown.isDormant ? "  (dormant)" : shown.exitedWords.map { "  (\($0))" } ?? "")
         // Edited and unsaved: a dot after the name, amber when the file
         // changed on disk under the edits (the menu says what to do).
@@ -2745,8 +2758,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
-            agentDot.frame = NSRect(x: x - 2, y: ((h - 7) / 2).rounded(), width: 7, height: 7)
-            x += 11
+            let nw = ceil(agentName.intrinsicContentSize.width), nh = ceil(agentName.intrinsicContentSize.height)
+            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded(), width: nw + 14, height: 16)
+            agentName.frame = NSRect(x: 7, y: ((16 - nh) / 2).rounded(), width: nw, height: nh)
+            x += nw + 14 + 6
         }
         agentStrip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 2)
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in

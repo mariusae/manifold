@@ -225,8 +225,9 @@ extension MainWindowController {
         for (agent, asks) in byAgent {
             let text = asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: ")
             // Its name, as the threads call it: with other agents in them, which one it is.
-            let name = hosts.block(agent).map { AgentIdentity.color(of: $0) != nil ? $0.displayTitle : $0.agent?.name ?? "The agent" } ?? "The agent"
-            let who = hosts.block(agent).flatMap { AgentIdentity.color(of: $0) != nil ? "(You are \(name) in these threads.) " : nil } ?? ""
+            let named = hosts.block(agent).flatMap(AgentIdentity.name(of:))
+            let name = named ?? hosts.block(agent)?.agent?.name ?? "The agent"
+            let who = named.map { "(You are \($0) in these threads.) " } ?? ""
             say(who + text, to: agent)
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }
         }

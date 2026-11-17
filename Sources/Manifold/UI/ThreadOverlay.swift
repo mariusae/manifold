@@ -67,7 +67,9 @@ extension MainWindowController {
         o.onClose = { [weak self] in self?.closeThreadOverlay() }
         o.chat.composer.onCancel = { [weak self] in self?.closeThreadOverlay() }
         o.onPopOut = { [weak self, weak o] in
-            guard let self, let id = o?.chat.threadID else { return }
+            guard let self, let o else { return }
+            // A new one's composition: a draft, in a tile.
+            guard let id = o.chat.threadID else { return self.popOutDraft(o.chat) }
             self.closeThreadOverlay()
             self.popOutThread(id)
         }
@@ -82,7 +84,8 @@ extension MainWindowController {
         o.chat.threadID = openHere
         o.chat.newPlace = openHere == nil ? here : nil
         o.chat.newSpace = selected
-        o.canPopOut = openHere != nil
+        // A thread there, or a new one's composition (a draft, then).
+        o.canPopOut = openHere != nil || here != nil
         o.hereTitle = (thread.flatMap { hosts.block($0)?.thread?.title } ?? openHere.flatMap { hosts.block($0)?.thread?.title })
             ?? ((thread.flatMap { hosts.block($0)?.thread?.about } ?? here).map { describe($0).title } ?? "")
         if o.superview == nil {

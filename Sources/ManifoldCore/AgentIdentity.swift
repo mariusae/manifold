@@ -4,12 +4,15 @@ import Foundation
 /// its own — a plant's or a bird's, stable for its life whatever it's
 /// working on, as most agents share a worktree and their tasks drift — and
 /// a colour, one of a few that stay apart for eyes that don't tell red from
-/// green. The name is its block's title (renaming its tile renames it
-/// everywhere); the colour an annotation (`agent.color`, the palette's
-/// slot). The host gives both, once, the first time it hears from the agent.
+/// green. Both are annotations (`agent.name`, `agent.color`, the palette's
+/// slot) — not its title, which stays what its program says it's doing
+/// (Claude Code's summary of what it was asked, or done). The host gives
+/// both, once, the first time it hears from the agent.
 public enum AgentIdentity {
     /// The annotation that holds an agent's colour: its slot in the palette.
     public static let colorKey = "agent.color"
+    /// The annotation that holds its name.
+    public static let nameKey = "agent.name"
 
     /// How many colours there are (the app has them: Paul Tol's bright
     /// palette, less its grey).
@@ -50,6 +53,11 @@ public enum AgentIdentity {
         let open = counts.indices.filter { counts[$0] == least }
         let color = open[Int((seed / 7) % UInt64(open.count))]
         return (name, color)
+    }
+
+    /// An agent block's name, if it has been given one.
+    public static func name(of block: Block) -> String? {
+        block.annotations?[nameKey].flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// An agent block's colour slot, if it has been given one.

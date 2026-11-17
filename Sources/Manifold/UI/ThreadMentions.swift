@@ -396,10 +396,11 @@ extension MainWindowController {
             var listed = Set<BlockID>()
             // The agents at work, this space's first.
             for b in running {
-                guard let a = b.agent, matches([b.displayTitle, a.command, a.name]) else { continue }
+                let name = AgentLook.name(of: b)
+                guard let a = b.agent, matches([name, b.displayTitle, a.command, a.name]) else { continue }
                 listed.insert(b.id)
-                out.append(MentionChoice(symbol: "sparkle", title: b.displayTitle, detail: AgentLook.description(of: b) + (here.contains(b.id) ? " · here" : ""),
-                                         link: "[\(b.displayTitle.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(b.id)))",
+                out.append(MentionChoice(symbol: "sparkle", title: name, detail: AgentLook.description(of: b) + (here.contains(b.id) ? " · here" : ""),
+                                         link: "[\(name.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(b.id)))",
                                          icon: AgentLook.face(of: b, size: 14) ?? AgentIcons.image(a.command, size: 14), category: "Agents", block: b.id))
             }
             // The words that ask one (the nearest at work, or one started):

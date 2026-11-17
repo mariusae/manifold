@@ -275,7 +275,8 @@ final class ThreadChatView: NSView {
         placeLabel.stringValue = m.placeTitle
         driftLabel.stringValue = m.drift ?? ""
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
-        tileButton.isHidden = !showsTileButton || m.inTile || m.thread == nil
+        // A new one's too: taken to a tile as a draft.
+        tileButton.isHidden = !showsTileButton || m.inTile || (m.thread == nil && newPlace == nil)
         // Ask: the agent's thread, or (a new one) as switched; its mark in the header.
         // Who it asks: a new thread's, which of its kind (more than one in
         // the space); a thread's, its lead by name, or all of them.

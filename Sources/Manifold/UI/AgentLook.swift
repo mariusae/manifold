@@ -39,9 +39,12 @@ enum AgentLook {
         return slot == 1 || slot == 3 ? NSColor(white: 0.12, alpha: 1) : .white
     }
 
+    /// Its name (`AgentIdentity`), else its title.
+    static func name(of block: Block) -> String { AgentIdentity.name(of: block) ?? block.displayTitle }
+
     /// The first letter of its name: what its face shows.
     static func initial(of block: Block) -> String {
-        String(block.displayTitle.first(where: \.isLetter) ?? "A").uppercased()
+        String(name(of: block).first(where: \.isLetter) ?? "A").uppercased()
     }
 
     /// Its face: a disc of its colour, its initial on it.
@@ -61,11 +64,9 @@ enum AgentLook {
     static func description(of b: Block) -> String {
         var parts: [String] = []
         if let a = b.agent { parts.append(a.name) }
-        if let t = b.terminal?.title?.trimmingCharacters(in: .whitespaces), !t.isEmpty, t != b.displayTitle {
-            // Claude Code's spinner and mark before its summary: the words alone.
-            let words = t.drop { !$0.isLetter && !$0.isNumber }
-            if !words.isEmpty { parts.append(String(words)) }
-        }
+        // Its title (Claude Code's summary of its task, its spinner and mark before it: the words alone).
+        let words = b.displayTitle.drop { !$0.isLetter && !$0.isNumber }
+        if !words.isEmpty, String(words) != name(of: b), String(words) != b.agent?.name { parts.append(String(words)) }
         switch b.statusState {
         case .working: parts.append("working")
         case .blocked: parts.append("waiting on you")
@@ -93,12 +94,12 @@ extension AgentLook {
 }
 
 extension ThreadAuthor {
-    /// Its name as it reads now: an agent's its block's title (its name,
-    /// renamed or not), else the name it wrote with.
+    /// Its name as it reads now: an agent's its name (`AgentIdentity`), else
+    /// its block's title, else the name it wrote with.
     var shownName: String {
         switch self {
         case .you: "You"
-        case let .agent(b, name, _): AgentLook.block?(b)?.displayTitle ?? name
+        case let .agent(b, name, _): AgentLook.block?(b).map(AgentLook.name(of:)) ?? name
         case .manifold: "Manifold"
         }
     }

@@ -70,8 +70,10 @@ extension MainWindowController: EditorViewDelegate {
             let from = outbound.filter { $0.fromAnchor == a.id }
             guard !to.isEmpty || !from.isEmpty else { continue }
             // Threads about it (§3.12): marked as threads, not among its links.
-            let threads = to.filter { $0.relation == ThreadText.annotates }.compactMap { hosts.block($0.from) }.filter { $0.kind == .thread }
-            to.removeAll { e in threads.contains { $0.id == e.from } }
+            let annotating = to.filter { $0.relation == ThreadText.annotates }.compactMap { hosts.block($0.from) }.filter { $0.kind == .thread }
+            to.removeAll { e in annotating.contains { $0.id == e.from } }
+            // A draft (nothing sent yet) marks nothing.
+            let threads = annotating.filter { !Hosts.isDraft($0) }
             var links: [TextView.Place.Link] = []
             var seen = Set<String>()
             for e in to {

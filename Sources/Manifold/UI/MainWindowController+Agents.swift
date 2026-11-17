@@ -378,11 +378,13 @@ extension MainWindowController {
     /// sidebar's): kept to reopen (⇧⌘T), and what it leaves to be
     /// collected said, with Undo, if it had edits or a job running.
     func closeTile(_ placement: PlacementID, in id: BlockID) {
-        guard let a = hosts.arrangement(id), a.placement(placement) != nil else { return }
+        guard let a = hosts.arrangement(id), let p = a.placement(placement) else { return }
         let before = hosts.reachable()
         noteClosing(placement, in: id)
         hosts.append([.remove(placement)], to: .block(id))
         afterClosing(reachedBefore: before)
+        // A draft thread closed with nothing sent: gone.
+        dropDraftIfEmpty(p.block)
     }
 
     func gridLink(_ block: BlockID, to target: PlacementID) {

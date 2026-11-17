@@ -828,6 +828,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             let t = ThreadTileView(placement: p.id, block: p.block)
             t.chat.threadID = p.block
             t.chat.show(chatModel(thread: hosts.block(p.block), place: nil, inTile: true))
+            // A draft's: what was written for it before it came to a tile.
+            if let draft = threadUI.drafts.removeValue(forKey: p.block) { t.chat.composer.textStorage?.setAttributedString(draft) }
             watch(t.chat)
             v = t
         case .ui:

@@ -2323,20 +2323,19 @@ final class Server {
     // MARK: Agents' hooks
 
     /// An agent heard from for the first time: given a name and a colour
-    /// unlike those of the agents at work here (`AgentIdentity`) — a name
-    /// as its title, unless it has one already (yours stays).
+    /// unlike those of the agents at work here (`AgentIdentity`), as
+    /// annotations — its title left to what its program says it's doing.
     private func nameAgent(_ b: Block) {
-        guard AgentIdentity.color(of: b) == nil else { return }
+        guard AgentIdentity.color(of: b) == nil || AgentIdentity.name(of: b) == nil else { return }
         var taken = AgentIdentity.Taken()
         for o in node.blocks where o.id != b.id && sessions[o.id] != nil {
-            guard let c = AgentIdentity.color(of: o) else { continue }
-            taken.colors.append(c)
-            if let t = o.title { taken.names.insert(t) }
+            if let c = AgentIdentity.color(of: o) { taken.colors.append(c) }
+            if let n = AgentIdentity.name(of: o) { taken.names.insert(n) }
         }
         let seed = b.id.ulid.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
         let (name, color) = AgentIdentity.choose(taken: taken, seed: seed)
-        append(.annotate([AgentIdentity.colorKey: String(color)]), to: .block(b.id))
-        if b.title == nil { append(.title(name), to: .block(b.id)) }
+        append(.annotate([AgentIdentity.colorKey: String(AgentIdentity.color(of: b) ?? color),
+                          AgentIdentity.nameKey: AgentIdentity.name(of: b) ?? name]), to: .block(b.id))
     }
 
     /// The marks each block's agent made for its turns, as opposed to the

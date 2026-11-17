@@ -9,9 +9,14 @@ extension Hosts {
     static var you: ThreadAuthor { .you(machine: HostClient.machine) }
 
     /// Every thread there is, on every host.
+    /// Every thread, drafts aside.
     var threads: [Block] {
-        all.flatMap { c in c.node.graph.blocks(kind: .thread).compactMap { c.block($0) } }
+        all.flatMap { c in c.node.graph.blocks(kind: .thread).compactMap { c.block($0) } }.filter { !Self.isDraft($0) }
     }
+
+    /// A thread made but not yet written in (a composition taken to a tile):
+    /// in no list, on no timeline, till its first comment.
+    static func isDraft(_ b: Block) -> Bool { b.kind == .thread && b.thread?.entries.isEmpty == true }
 
     /// A space's threads: those made in it, and those about it.
     func threads(inSpace space: BlockID) -> [Block] {
@@ -19,7 +24,7 @@ extension Hosts {
         for c in all {
             for e in c.node.graph.edges(from: space, kind: .link(.thread)) { ids.insert(e.to) }
         }
-        var out = ids.compactMap { block($0) }
+        var out = ids.compactMap { block($0) }.filter { !Self.isDraft($0) }
         // Those the space's link hasn't come for yet (made elsewhere), by
         // their own say.
         for t in threads where t.thread?.space == space && !ids.contains(t.id) { out.append(t) }
@@ -42,7 +47,7 @@ extension Hosts {
         for c in all {
             let edges = anyPlace ? c.node.graph.edges(to: block, kind: .link(.linked)).filter { $0.relation == ThreadText.annotates }
                 : c.node.graph.edges(to: block, anchor: anchor, relation: ThreadText.annotates)
-            out += edges.compactMap { e in self.block(e.from).flatMap { $0.kind == .thread ? $0 : nil } }
+            out += edges.compactMap { e in self.block(e.from).flatMap { $0.kind == .thread && !Self.isDraft($0) ? $0 : nil } }
         }
         return out
     }

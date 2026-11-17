@@ -1395,6 +1395,28 @@ or the composer for a new one about it. With none, on the space's
 timeline, its composer making a thread about the space. A place in it,
 clicked, is gone to with the overlay kept; ⎋ closes it.
 
+**Telling agents apart.** Each agent is given, the first time its hooks
+report (the host gives it, so two Macs don't race), a **name** of its
+own — a plant's or a bird's (Linden, Wren, Juniper), stable for its life
+whatever it's working on, since most agents share a worktree and their
+tasks drift; none another live agent has, and while there are some, an
+initial none starts with — and a **colour**, the one fewest live agents
+have, from Paul Tol's bright palette less its grey (blue, cyan, green,
+yellow, red, purple), which stays apart for every common kind of colour
+blindness, a little lighter on a dark ground (`AgentIdentity`: the
+annotations `agent.name`, `agent.color`). Its title stays what its
+program says it's doing (Claude Code's summary of its task, or of what it
+did). So its tile's bar has its name in a pill of its colour before that
+title, and a strip of its colour along its foot; its face — its initial
+on its colour — is its mark in a thread's comments and events, the
+sidebar's rows, the `@` list and the lead's menu, each with what it is
+and does (its kind, its task, working or waiting on you or idle); the
+colour is never alone, its name beside it. Threads, notifications and
+`mani` call it by its name as it is now; asked in a thread, it's told
+which one it is. Pointed at elsewhere — its face in a thread, its row in
+the sidebar, its name in a menu — its tile is ringed in its colour where
+it's on screen, so you see which it is without going there.
+
 **Agents.** `@` and an agent — its pill, dropped or picked — asks it.
 `@` at a word's start in a composer opens a list at the caret: the
 agents at work (this space's first), then the words that ask one
@@ -1406,7 +1428,15 @@ back what was typed for it. `@claude` alone picks one: the project's agent if th
 new one in the thread's project, the thread its first prompt. Asked, an
 agent is sent a short prompt typed into its terminal — the thread's
 reference, the comment, and `mani thread read`/`reply` — at once if
-idle, else when its turn ends (its hooks, §3.7). A thread has
+idle, else when its turn ends (its hooks, §3.7). A new thread's lead is the
+agent you talked to last (asked in a thread, or Return pressed in its
+terminal), the composer's Ask saying so ("Ask Linden"), its ⌄ listing
+every agent at work, last talked to first, to choose another before
+it's sent. A new thread's composition can be taken to a tile (the
+overlay's ↖↘, a card's Open as Tile) to have agents and references
+dragged in: it's made then as a **draft** — no comment yet, its lead as
+chosen — in no list, on no timeline and marking no place till its first
+comment; closed empty, it's gone. A thread has
 **participants**: the agents in it, its lead first — the one it was first
 asked of (or started for it), any tagged in it (by you, or by an agent
 bringing in another: a coordinator its worker), any invited from the Ask

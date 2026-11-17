@@ -26,6 +26,9 @@ final class ThreadUI {
     /// The threads' state as last seen, to tell editors and diffs only
     /// when something did change.
     var lastSignature = ""
+    /// What was written for a new thread taken to a tile (a draft), for
+    /// the tile's composer once it's made.
+    var drafts: [BlockID: NSAttributedString] = [:]
 }
 
 /// A thread as a tile of its own (§3.12): its chat, filling the tile.
@@ -161,7 +164,7 @@ extension MainWindowController: ThreadChatDelegate {
         // Which of its kind it asks, when the space has more than one.
         let space = thread?.thread?.space ?? selected
         func ask(_ b: Block) -> ThreadChatModel.AskAgent {
-            ThreadChatModel.AskAgent(id: b.id, title: Self.linkTitle(b), face: AgentLook.face(of: b, size: 16), detail: AgentLook.description(of: b))
+            ThreadChatModel.AskAgent(id: b.id, title: AgentLook.name(of: b), face: AgentLook.face(of: b, size: 16), detail: AgentLook.description(of: b))
         }
         if thread == nil {
             // A new thread's: every agent at work, the one you talked to
@@ -183,13 +186,13 @@ extension MainWindowController: ThreadChatDelegate {
         // Who's in it, and who could be brought in: the agents at work in its space.
         if let t = thread {
             let parts = participants(of: t)
-            m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: Self.linkTitle($0)) } }
+            m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: AgentLook.name(of: $0)) } }
             m.asksAll = asksAll(t)
             if let a = space.flatMap({ hosts.arrangement($0) }) {
                 var seen = Set(parts)
                 m.invitable = a.placements.compactMap { p in
                     guard seen.insert(p.block).inserted, let b = hosts.block(p.block), b.agent != nil, Self.agentRuns(b) else { return nil }
-                    return ThreadChatModel.AskAgent(id: b.id, title: Self.linkTitle(b))
+                    return ThreadChatModel.AskAgent(id: b.id, title: AgentLook.name(of: b), face: AgentLook.face(of: b, size: 16), detail: AgentLook.description(of: b))
                 }
             }
         }
@@ -385,7 +388,9 @@ extension MainWindowController: ThreadChatDelegate {
         if chat.threadID != nil, thread == nil { return }
         let m = chatModel(thread: thread, place: chat.newPlace, inTile: chat.model.inTile)
         let th = thread?.thread
+        // Who's in it and who it asks too: a draft's lead comes after it, as an annotation.
         let key = "\(thread?.id.description ?? "new")/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(m.drift ?? "")/\(m.placeTitle)/\(m.working.count)"
+            + "/\(m.participants.map(\.title).joined(separator: ","))/\(m.asks ?? "")/\(m.asksAll)/\(m.askAgents.map(\.title).joined(separator: ","))"
         guard threadUI.shown[ObjectIdentifier(chat)] != key else { return }
         threadUI.shown[ObjectIdentifier(chat)] = key
         // The New rule stays where it was while the chat is open.
@@ -531,7 +536,39 @@ extension MainWindowController: ThreadChatDelegate {
         open(address, from: arrangement?.focused)
     }
 
+    /// A new thread's composition taken to a tile (the overlay's ↖↘, or
+    /// Open as Tile): the thread made as a **draft** — no comment yet, its
+    /// lead as chosen — and opened as a tile with what was written, there to
+    /// have agents and references dragged in before it's sent. A draft is
+    /// in no list until its first comment; its tile closed empty, it's gone.
+    func popOutDraft(_ view: ThreadChatView) {
+        guard view.threadID == nil, let place = view.newPlace else { return }
+        let id = hosts.newThread(about: place, space: view.newSpace ?? selected, text: "") { [weak self] error in
+            if let error { self?.toast.say("The thread wasn't made: \(error)", .brief) }
+        }
+        if view.asksNew, let lead = view.leadForNew, let kind = hosts.block(lead)?.agent {
+            annotateThread(id, [Self.asksKey: kind.command, Self.participantsKey: lead.description, Self.asksAgentKey: lead.description])
+        }
+        threadUI.drafts[id] = NSAttributedString(attributedString: view.composer.attributedString())
+        threadUI.popover?.close()
+        if threadUI.overlay?.chat === view { closeThreadOverlay() }
+        popOutThread(id)
+    }
+
+    /// A draft's tile closed with nothing sent: the draft let go of.
+    func dropDraftIfEmpty(_ id: BlockID) {
+        guard let t = hosts.block(id), t.kind == .thread, Hosts.isDraft(t), !isPlaced(id) else { return }
+        threadUI.drafts[id] = nil
+        for c in hosts.all {
+            for e in c.node.graph.edges(from: id) + c.node.graph.edges(to: id) where e.isLive {
+                if case .link = e.kind { hosts.propose(.unlink(e.id)) }
+            }
+        }
+        hosts.propose(.discard(id))
+    }
+
     func threadChatOpenTile(_ view: ThreadChatView) {
+        if view.threadID == nil { return popOutDraft(view) }
         guard let id = view.threadID else { return }
         threadUI.popover?.close()
         if threadUI.overlay?.chat === view { closeThreadOverlay() }

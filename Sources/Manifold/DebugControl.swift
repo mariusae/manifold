@@ -408,6 +408,13 @@ enum DebugControl {
             return wc?.debugFooter(arg) ?? "no window"
         case "threadoverlay":
             return wc?.debugOverlay(arg) ?? "no window"
+        case "threadtile":
+            // "threadtile send <text>": a comment sent from the focused thread's tile,
+            // as its composer sends one; "threadtile": who it asks.
+            func find(_ v: NSView) -> ThreadTileView? { (v as? ThreadTileView) ?? v.subviews.lazy.compactMap(find).first }
+            guard let wc, let v = wc.debugFocusedView, let t = find(v) else { return "no thread tile focused" }
+            if arg.hasPrefix("send ") { wc.threadChat(t.chat, send: String(arg.dropFirst(5))) }
+            return t.chat.debugAsk(nil)
         case "diffview":
             // "diffview fold <file>": a file folded or unfolded; "diffview select
             // <side> <line> <col> <line> <col>": text selected; "diffview across <dx>";
