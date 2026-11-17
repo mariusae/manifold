@@ -1407,7 +1407,7 @@ blindness, a little lighter on a dark ground (`AgentIdentity`: the
 annotations `agent.name`, `agent.color`). Its title stays what its
 program says it's doing (Claude Code's summary of its task, or of what it
 did). So its tile's bar has its name in a pill of its colour before that
-title, and a strip of its colour along its foot (the pill double-clicked,
+title — its colour enough to tell it by, no more of it on the bar (the pill double-clicked,
 or Rename in the tile's menu, renames it there, in place: its name, not
 its title; `mani annotate <it> agent.name=…` does too); its face — its initial
 on its colour — is its mark in a thread's comments and events, the

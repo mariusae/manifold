@@ -2305,14 +2305,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         glass.themed { [weak self] _ in self?.paintGlass() }
         addSubview(glass)
         // An agent's: its name in a pill of its colour before its title (what
-        // its program says it's doing), a strip of it along the bar's foot.
-        for v in [agentPill, agentStrip] {
-            v.wantsLayer = true
-            v.isHidden = true
-            v.themed { [weak self] _ in self?.paintAgent() }
-        }
+        // its program says it's doing) — its colour enough to tell it by.
+        agentPill.wantsLayer = true
+        agentPill.isHidden = true
+        agentPill.themed { [weak self] _ in self?.paintAgent() }
         agentPill.layer?.cornerRadius = 8
-        glass.addSubview(agentStrip)
         addSubview(agentPill)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
@@ -2573,14 +2570,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The symbol the icon shows, so it's set only when it changes.
     private var symbolName = ""
 
-    /// An agent's name (`AgentLook`) in a pill of its colour, and its colour along the bar.
+    /// An agent's name (`AgentLook`) in a pill of its colour.
     private let agentPill = AgentNamePill()
-    private let agentStrip = NSView()
     private var agentColor: NSColor? {
         didSet {
             guard agentColor != oldValue else { return }
             agentPill.isHidden = agentColor == nil
-            agentStrip.isHidden = agentColor == nil
             paintAgent()
             needsLayout = true
         }
@@ -2592,7 +2587,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let c = agentColor?.cgColor
             agentPill.layer?.backgroundColor = c
-            agentStrip.layer?.backgroundColor = c
         }
         agentPill.ink = agentInk
     }
@@ -2770,7 +2764,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded(), width: pw, height: 16)
             x += pw + 6
         }
-        agentStrip.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 2)
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
         // order, so the name keeps at least a little room — the place
         // goes first (below), then the links' pill shrinks to its arrow
@@ -3538,6 +3531,9 @@ final class AgentNamePill: NSControl {
     override func mouseUp(with event: NSEvent) { superview?.mouseUp(with: event) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// Drawn bottom up, as a plain view is: a control is flipped, and the
+    /// name, drawn from its top, sat a point high.
+    override var isFlipped: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
         let s = name as NSString
