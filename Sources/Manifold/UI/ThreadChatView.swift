@@ -24,6 +24,10 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, remove agent: BlockID)
     /// A comment that tags no one: asks them all, or only the lead.
     func threadChat(_ view: ThreadChatView, asksAll: Bool)
+    /// Things put on its shelf (agents into the conversation, references
+    /// into its context), and one taken off: by their addresses.
+    func threadChat(_ view: ThreadChatView, addContext addresses: [String])
+    func threadChat(_ view: ThreadChatView, removeContext address: String)
     /// Its place (the place line, the text it was written against) clicked:
     /// gone back to, where the thread was made.
     func threadChatGoToPlace(_ view: ThreadChatView)
@@ -37,6 +41,8 @@ extension ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, invite agent: BlockID) {}
     func threadChat(_ view: ThreadChatView, remove agent: BlockID) {}
     func threadChat(_ view: ThreadChatView, asksAll: Bool) {}
+    func threadChat(_ view: ThreadChatView, addContext addresses: [String]) {}
+    func threadChat(_ view: ThreadChatView, removeContext address: String) {}
     func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
@@ -89,6 +95,9 @@ struct ThreadChatModel {
     var participants: [AskAgent] = []
     var invitable: [AskAgent] = []
     var asksAll = false
+    /// Its shelf: the agents in its conversation (the lead first) and the
+    /// references kept in its context.
+    var context: [ThreadShelfView.Item] = []
 }
 
 /// A thread as a chat (§3.12): at its head what it's about, and the text
@@ -120,6 +129,8 @@ final class ThreadChatView: NSView {
     private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
     /// Which agent Ask asks, when the space has more than one of its kind.
     private let askPick = IconButton("chevron.down", size: 9, tip: "Who's in this thread, and who it asks")
+    /// Its context (§3.12): who's in the conversation, what's kept in it.
+    let shelf = ThreadShelfView()
     /// Its participants, by name, after its place: who's in it.
     private let participantsLabel = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText)
     /// A new thread's agent, chosen before it's made (nil: the first).
@@ -183,8 +194,42 @@ final class ThreadChatView: NSView {
         header.alignment = .leading
         header.spacing = 5
         header.addArrangedSubview(placeRow)
+        header.addArrangedSubview(shelf)
         header.addArrangedSubview(contextView)
         placeRow.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        shelf.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
+        shelf.onAdd = { [weak self] addresses in
+            guard let self else { return }
+            self.delegate?.threadChat(self, addContext: addresses)
+        }
+        shelf.onRemove = { [weak self] address in
+            guard let self else { return }
+            self.delegate?.threadChat(self, removeContext: address)
+        }
+        shelf.onOpen = { [weak self] address in
+            guard let self else { return }
+            self.delegate?.threadChat(self, follow: address)
+        }
+        shelf.onLead = { [weak self] agent in
+            guard let self else { return }
+            self.delegate?.threadChat(self, asksAgent: agent)
+        }
+        shelf.addMenu = { [weak self] in
+            guard let self else { return nil }
+            let menu = NSMenu()
+            menu.addItem(.sectionHeader(title: "Add to the Conversation"))
+            for a in self.model.invitable {
+                let item = ClosureMenuItem(a.title, symbol: nil) { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.threadChat(self, addContext: [MainWindowController.address(a.id)])
+                }
+                item.image = a.face
+                item.subtitle = a.detail.isEmpty ? nil : a.detail
+                item.representedObject = a.id
+                menu.addItem(item)
+            }
+            return menu.items.count > 1 ? menu : nil
+        }
         contextView.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         tileButton.target = self
         tileButton.action = #selector(openTile)
@@ -291,6 +336,16 @@ final class ThreadChatView: NSView {
             askButton.title = m.asksAll && m.participants.count > 1 ? "Ask All \(m.participants.count)" : "Ask \(lead)"
             askPick.isHidden = m.participants.isEmpty && m.invitable.isEmpty
         }
+        // A thread's: its shelf says who's in it, and asks — no Ask, no ⌄, no "with …".
+        shelf.items = m.context
+        shelf.isHidden = m.thread == nil
+        if m.thread != nil {
+            askButton.isHidden = true
+            askPick.isHidden = true
+        } else {
+            askButton.isHidden = false
+        }
+        participantsLabel.isHidden = m.thread != nil
         participantsLabel.stringValue = m.participants.isEmpty ? "" : "· with " + m.participants.enumerated()
             .map { i, p in Self.short(p.title) + (i == 0 && m.participants.count > 1 && !m.asksAll ? " (lead)" : "") }.joined(separator: ", ")
         participantsLabel.toolTip = m.participants.isEmpty ? nil
@@ -455,6 +510,10 @@ final class ThreadChatView: NSView {
             return event(who(e), "edited it (+\(added) −\(removed))", at: e.at, symbol: "pencil", icon: e.author.agentBlock.flatMap(model.icon))
         case .gone: return event(nil, "Its lines were deleted", at: e.at, symbol: "trash", tone: .systemRed)
         case .stopped(let why): return event(nil, why, at: e.at, symbol: "pause", tone: .systemOrange)
+        case let .context(added, address, title):
+            let agent = BlockID.link(address).flatMap { l in AgentLook.block?(l.block)?.agent != nil ? l.block : nil }
+            return event(who(e), added ? "added \(title) to the context" : "took \(title) out of the context", at: e.at,
+                         symbol: added ? "plus.circle" : "minus.circle", icon: agent.flatMap { AgentLook.block?($0) }.flatMap { AgentLook.face(of: $0, size: 14) })
         }
     }
 
@@ -820,7 +879,9 @@ final class ThreadChatView: NSView {
         let hh = headerHeight
         header.frame = NSRect(x: pad, y: y - hh, width: w, height: hh)
         y -= hh + 8
-        let bh = boxHeight
+        // Its head (where it's about, its shelf) kept in sight in a short
+        // tile: the composer gives way, never covers it.
+        let bh = min(boxHeight, max(56, y - pad))
         box.frame = NSRect(x: pad, y: pad, width: w, height: bh)
         let listBottom = box.frame.maxY + 10
         scroll.frame = NSRect(x: pad, y: listBottom, width: w, height: max(0, y - listBottom))

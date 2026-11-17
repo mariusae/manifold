@@ -1417,6 +1417,29 @@ which one it is. Pointed at elsewhere — its face in a thread, its row in
 the sidebar, its name in a menu — its tile is ringed in its colour where
 it's on screen, so you see which it is without going there.
 
+**The shelf: a thread's context.** A thread is a group conversation, and
+its **shelf** — a row of chips under its place — is who's in it and
+what's kept with it: the agents in its conversation, its lead first
+(★, when there's more than one), and the references put there to stay
+part of it (a file, a block, a place in one, a page). Anything dropped
+on the shelf goes on it — an agent's tile or pill joins the conversation,
+anything else is a reference — and + offers the agents at work; a chip's
+× or its menu takes it off, an agent's menu makes it the lead; a chip
+clicked is gone to, an agent's pointed at rings its tile; an agent not
+running stays, dimmed. Only what's dropped on the shelf is on it: a
+reference in a comment is that comment's. Each change is an event in the
+thread ("You added Readme.md to its context"), so its history says who
+was in the room when (`ThreadContext`: the annotations `participants`,
+a comma list, and `context`, an address a line). Those on the shelf are
+**told** everything said in the thread, as it's said — not typed to: the
+host keeps what each hasn't heard (`agentNews`), and an agent's prompt
+hook (Claude Code's, whose output goes into its turn) is answered with
+it at its next prompt, less any thread that prompt itself names — and
+**asked** only as below: a comment that names no one asks the lead, one
+that names agents asks those. `mani thread read` gives an agent the shelf
+with the thread, and `mani thread context <thread> [add|remove <ref>…]`
+lets it list the shelf and change it (another agent, a file, a place).
+
 **Agents.** `@` and an agent — its pill, dropped or picked — asks it.
 `@` at a word's start in a composer opens a list at the caret: the
 agents at work (this space's first), then the words that ask one
@@ -1445,8 +1468,8 @@ Shown after its place ("with …"). A comment of yours that tags no one
 asks its **lead** — the first at work — or, as the thread says (A Comment
 Asks Everyone), all of them; one that tags asks those tagged. Only
 participants are asked so: two Claudes in a space, or twenty agents, a
-thread asks the ones in it. An agent invited is told at once — read the
-thread, don't answer till asked — so it needn't be primed elsewhere.
+thread asks the ones in it. An agent brought in is told so, at its next prompt, with the rest of
+what it hasn't heard — never typed to, so it isn't interrupted.
 Agents' comments never ask another agent unless they tag it, and a
 thread asks agents at most a few times in a row without you (a loop
 stopped, said in the thread). **Ask @agent to address these**, on any

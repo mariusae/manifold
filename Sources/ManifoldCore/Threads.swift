@@ -52,6 +52,29 @@ public enum ThreadEntryKind: Codable, Equatable, Sendable {
     case gone
     /// Asking agents stopped: too many asks in a row without you.
     case stopped(String)
+    /// Its context (§3.12's shelf) changed: an agent brought into the
+    /// conversation or taken out, a reference put on it or taken off — by
+    /// its address (`manifold:…`), named as it was then.
+    case context(added: Bool, address: String, title: String)
+}
+
+/// A thread's context — the shelf: the agents in its conversation (its
+/// participants, the lead first), and the references put there to stay
+/// part of it — kept as its block's annotations, written by whoever
+/// changes it with an event saying so.
+public enum ThreadContext {
+    /// The agents, lead first: their ids, comma-separated.
+    public static let participantsKey = "participants"
+    /// The references: their addresses, a line each.
+    public static let referencesKey = "context"
+
+    public static func participants(of t: Block) -> [BlockID] {
+        (t.annotations?[participantsKey] ?? "").split(separator: ",").compactMap { BlockID(string: String($0)) }
+    }
+
+    public static func references(of t: Block) -> [String] {
+        (t.annotations?[referencesKey] ?? "").split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
 }
 
 public struct ThreadEntry: Codable, Equatable, Sendable, Identifiable {

@@ -74,8 +74,31 @@ public enum AgentHookCommand {
             input.merge(json) { _, new in new }
         }
         guard let event = event(name, agent: agent, input: input) else { exit(0) }
+        // A prompt, in an agent whose hook's output is read into its turn
+        // (Claude Code's): what's happened in its threads, printed for it.
+        if case .prompt = event, ["claude", "metacode"].contains(agent) {
+            if let news = sendForNews(event, about: block), !news.isEmpty { print(news) }
+            exit(0)
+        }
         send(event, about: block)
         exit(0)
+    }
+
+    /// The event sent, and the agent's news waited for — a moment at most,
+    /// a prompt not to be held up.
+    private static func sendForNews(_ event: AgentEvent, about block: BlockID) -> String? {
+        guard let fd = try? UnixSocket.connect(path: Paths.socket) else { return nil }
+        defer { close(fd) }
+        var channel = BlockingChannel(fd: fd)
+        guard channel.send(.agent(block: block, event)) else { return nil }
+        let until = Date().addingTimeInterval(1.5)
+        while true {
+            switch channel.next(until: until) {
+            case let .message(.agentNews(text)): return text
+            case .message: continue
+            case .timedOut, .closed: return nil
+            }
+        }
     }
 
     /// The event a hook's name and input stand for; nil for one to let be

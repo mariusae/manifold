@@ -434,6 +434,10 @@ final class Server {
             }
         case let .agent(block, event)?:
             agentEvent(block, event)
+            // Its prompt: what it's been told since, for its turn's context.
+            if case let .prompt(_, text, _) = event {
+                conn.send(.message(ServerMessage.agentNews(takeNews(for: block, prompt: text))))
+            }
             conn.close()
         case .shutdown?:
             exit(endSessions: true)
@@ -1735,6 +1739,10 @@ final class Server {
     }
 
     // MARK: Folders shown
+
+    /// What each agent in a thread's conversation hasn't heard yet (§3.12),
+    /// by its block: told at its next prompt (`takeNews`).
+    var agentNews: [BlockID: [(thread: BlockID, line: String)]] = [:]
 
     /// The folders each connection shows, watched for it (§7.4): told
     /// when they change, rather than asked about every few seconds.

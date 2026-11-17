@@ -1459,6 +1459,8 @@ final class HostClient {
         case let .gutter(block, marks):
             gutters[block] = marks
             delegate?.client(self, gutter: block)
+        case .agentNews:
+            break // an agent's hook's, not the app's
         case let .foldersChanged(paths):
             let changed = Set(paths)
             for w in folderWatchers.values {

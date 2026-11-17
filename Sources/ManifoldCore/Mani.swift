@@ -240,6 +240,16 @@ public enum Mani {
                  shows a comment: its lines as written, a list as `- ` lines,
                  code in backticks or fences.
                  """, answeredBy: .app, readsInput: true),
+        Verb(words: ["thread", "context"], args: "<thread> [add|remove <ref>...]", minArgs: 1, maxArgs: nil, flags: [],
+             summary: "A thread's context: who's in its conversation, and what's kept in it",
+             details: """
+                 With no more, lists it: the agents in its conversation (told
+                 everything said there; a comment that names no one asks the
+                 first) and the references kept with it. `add` puts things on it —
+                 an agent's terminal brings it into the conversation, anything else
+                 (a file, a block, a place, `manifold:…`, a page) is kept as a
+                 reference — and `remove` takes them off, each said in the thread.
+                 """, answeredBy: .app),
         Verb(words: ["thread", "resolve"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
              summary: "Resolve a thread", details: "Done with, as Resolve in its chat.", answeredBy: .app),
         Verb(words: ["thread", "reopen"], args: "<thread>", minArgs: 1, maxArgs: 1, flags: [],
@@ -590,6 +600,12 @@ public enum Mani {
             - Where you're unsure of something you did (an assumption, a guess), leave a
               thread on it for the user: `mani thread new "$(mani ref <file> --line 40)" "…"`.
             - Your replies are marked as yours by Manifold; you can't write as the user.
+            - A thread is a group conversation: the agents in it (each with a name, e.g.
+              Linden — Manifold tells you yours) and the references kept in its context
+              (`mani thread context <thread>`; `add` or `remove` a file, a place, another
+              agent). You're told what's said in threads you're in at your next prompt —
+              that's for awareness: reply only where you're asked (named, or the lead of a
+              thread whose comment names no one). Read its context before answering.
 
             ## What the user says, and what to run
             - "this" with a `manifold:` reference in their message: `mani read <it>` (and

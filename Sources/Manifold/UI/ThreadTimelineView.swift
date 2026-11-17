@@ -344,6 +344,7 @@ final class ThreadTimelineView: NSView {
                 if case .manifold = e.author { words = "Changed on disk (+\(added) −\(removed))" } else { words = "Edited by \(who) (+\(added) −\(removed))" }
             case .gone: words = "Its lines were deleted"
             case .stopped(let why): words = why
+            case let .context(added, _, title): words = added ? "\(title) added to its context by \(who)" : "\(title) taken out by \(who)"
             case .comment: words = ""
             }
             let label = NSTextField.label(words + " · " + when, font: UIType.footnote, color: Theme.secondaryText)

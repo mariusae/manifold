@@ -79,7 +79,52 @@ extension Server {
         }
         append(.threadEntry(e), to: .block(block))
         if e.comment != nil { threadMentions(block) }
+        tell(about: block, e)
         return nil
+    }
+
+    /// Something said in a thread: every agent in its conversation but its
+    /// author told, at its next prompt — whether or not it's asked to answer
+    /// (§3.12: those on the shelf are told everything; the lead, or those
+    /// named, asked).
+    func tell(about block: BlockID, _ e: ThreadEntry) {
+        guard let b = node.block(block), let t = b.thread else { return }
+        let what: String
+        switch e.kind {
+        case let .comment(text): what = "\(name(of: e.author)) wrote: \"\(String(text.replacingOccurrences(of: "\n", with: " ").prefix(600)))\""
+        case .resolved: what = "\(name(of: e.author)) resolved it"
+        case .reopened: what = "\(name(of: e.author)) reopened it"
+        case let .context(added, _, title): what = "\(name(of: e.author)) \(added ? "added" : "took out") \(title) \(added ? "to" : "from") its context"
+        default: return
+        }
+        let line = "[thread manifold:\(block) “\(t.title ?? "")”] \(what)"
+        for agent in ThreadContext.participants(of: b) where agent != e.author.agentBlock {
+            var queue = agentNews[agent] ?? []
+            queue.append((block, line))
+            // The last forty: an agent away a long while reads the thread.
+            if queue.count > 40 { queue.removeFirst(queue.count - 40) }
+            agentNews[agent] = queue
+        }
+    }
+
+    private func name(of author: ThreadAuthor) -> String {
+        switch author {
+        case .you: "The user"
+        case let .agent(b, name, _): node.block(b).flatMap(AgentIdentity.name(of:)) ?? name
+        case .manifold: "Manifold"
+        }
+    }
+
+    /// An agent's news, taken: what was said in its threads since it last
+    /// heard, as a few lines for its turn — less any thread its prompt
+    /// already names (it's being asked there).
+    func takeNews(for agent: BlockID, prompt: String) -> String {
+        guard let queue = agentNews.removeValue(forKey: agent), !queue.isEmpty else { return "" }
+        let fresh = queue.filter { !prompt.contains($0.thread.description) }
+        guard !fresh.isEmpty else { return "" }
+        let me = node.block(agent).flatMap(AgentIdentity.name(of:)).map { " (you are \($0))" } ?? ""
+        return "Manifold: since you last heard, in threads you're in\(me) — for your awareness; reply in a thread only if you're asked there:\n"
+            + fresh.map { "- " + $0.line }.joined(separator: "\n")
     }
 
     /// A comment's words changed, by whoever wrote it: why not, if not.

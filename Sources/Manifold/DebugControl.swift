@@ -414,7 +414,8 @@ enum DebugControl {
             func find(_ v: NSView) -> ThreadTileView? { (v as? ThreadTileView) ?? v.subviews.lazy.compactMap(find).first }
             guard let wc, let v = wc.debugFocusedView, let t = find(v) else { return "no thread tile focused" }
             if arg.hasPrefix("send ") { wc.threadChat(t.chat, send: String(arg.dropFirst(5))) }
-            return t.chat.debugAsk(nil)
+            let shelf = t.chat.shelf
+            return t.chat.debugAsk(nil) + "\nshelf \(shelf.isHidden ? "hidden" : "shown") \(shelf.frame) in window \(shelf.window != nil): \(shelf.debugState)"
         case "diffview":
             // "diffview fold <file>": a file folded or unfolded; "diffview select
             // <side> <line> <col> <line> <col>": text selected; "diffview across <dx>";

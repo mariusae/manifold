@@ -29,6 +29,10 @@ final class ThreadUI {
     /// What was written for a new thread taken to a tile (a draft), for
     /// the tile's composer once it's made.
     var drafts: [BlockID: NSAttributedString] = [:]
+    /// A thread's references as last written here, till its block says so
+    /// too: changes made one after another build on each other, not on
+    /// what hasn't come back yet.
+    var pendingReferences: [BlockID: [String]] = [:]
 }
 
 /// A thread as a tile of its own (§3.12): its chat, filling the tile.
@@ -183,18 +187,17 @@ extension MainWindowController: ThreadChatDelegate {
             m.askAgents = agents(kind, inSpace: space).map(ask)
             m.asksAgent = thread.flatMap(pinnedAgent)
         }
-        // Who's in it, and who could be brought in: the agents at work in its space.
+        // Who's in it, and who could be brought in: every agent at work, the
+        // space's first; and its shelf (§3.12), the agents then what's kept.
         if let t = thread {
             let parts = participants(of: t)
             m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: AgentLook.name(of: $0)) } }
             m.asksAll = asksAll(t)
-            if let a = space.flatMap({ hosts.arrangement($0) }) {
-                var seen = Set(parts)
-                m.invitable = a.placements.compactMap { p in
-                    guard seen.insert(p.block).inserted, let b = hosts.block(p.block), b.agent != nil, Self.agentRuns(b) else { return nil }
-                    return ThreadChatModel.AskAgent(id: b.id, title: AgentLook.name(of: b), face: AgentLook.face(of: b, size: 16), detail: AgentLook.description(of: b))
-                }
-            }
+            let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
+            m.invitable = hosts.blocks.filter { !parts.contains($0.id) && $0.agent != nil && Self.agentRuns($0) }
+                .sorted { a, b in here.contains(a.id) != here.contains(b.id) ? here.contains(a.id) : AgentRecency.when(a.id) > AgentRecency.when(b.id) }
+                .map(ask)
+            m.context = contextItems(of: t)
         }
         return m
     }
@@ -298,8 +301,18 @@ extension MainWindowController: ThreadChatDelegate {
     }
 
     func threadChat(_ view: ThreadChatView, remove agent: BlockID) {
-        guard let id = view.threadID, let t = hosts.block(id) else { return }
-        setParticipants(participants(of: t).filter { $0 != agent }, of: id)
+        guard let id = view.threadID else { return }
+        removeFromContext(id, Self.address(agent))
+    }
+
+    func threadChat(_ view: ThreadChatView, addContext addresses: [String]) {
+        guard let id = view.threadID else { return }
+        addToContext(id, addresses)
+    }
+
+    func threadChat(_ view: ThreadChatView, removeContext address: String) {
+        guard let id = view.threadID else { return }
+        removeFromContext(id, address)
     }
 
     func threadChat(_ view: ThreadChatView, asksAll: Bool) {
@@ -391,6 +404,7 @@ extension MainWindowController: ThreadChatDelegate {
         // Who's in it and who it asks too: a draft's lead comes after it, as an annotation.
         let key = "\(thread?.id.description ?? "new")/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(m.drift ?? "")/\(m.placeTitle)/\(m.working.count)"
             + "/\(m.participants.map(\.title).joined(separator: ","))/\(m.asks ?? "")/\(m.asksAll)/\(m.askAgents.map(\.title).joined(separator: ","))"
+            + "/\(m.context.map { ($0.isLead ? "*" : "") + $0.title + $0.detail }.joined(separator: ","))"
         guard threadUI.shown[ObjectIdentifier(chat)] != key else { return }
         threadUI.shown[ObjectIdentifier(chat)] = key
         // The New rule stays where it was while the chat is open.

@@ -82,16 +82,20 @@ extension MainWindowController {
         // Untagged, yours: the thread's participants asked — its lead (the
         // first of them at work), or all of them, as it says — else one of
         // its kind near, made its lead, else one started.
-        if author.isYou, asked.isEmpty, starting.isEmpty, let kind = asksAgent(of: t) {
+        // With agents on its shelf, a comment that names no one asks the lead
+        // (§3.12) — whether or not the thread was made asking.
+        if author.isYou, asked.isEmpty, starting.isEmpty, !parts.isEmpty || asksAgent(of: t) != nil {
             let working = parts.filter { hosts.block($0).map(Self.agentRuns) == true }
             if !working.isEmpty {
                 asked = asksAll(t) ? working : [working[0]]
-            } else if let a = agentFor(kind, near: th) {
-                asked = [a]
-                parts.insert(a, at: 0)
-                setParticipants(parts, of: id)
-            } else {
-                starting.append(kind)
+            } else if let kind = asksAgent(of: t) ?? parts.compactMap({ hosts.block($0)?.agent }).first {
+                if let a = agentFor(kind, near: th) {
+                    asked = [a]
+                    parts.insert(a, at: 0)
+                    setParticipants(parts, of: id)
+                } else {
+                    starting.append(kind)
+                }
             }
         }
         guard !asked.isEmpty || !starting.isEmpty else { return }
@@ -140,21 +144,105 @@ extension MainWindowController {
     /// An agent brought into a thread (its participants' ⌄, a tile dropped
     /// on it): in it from now on, and told — the thread read for what it's
     /// about, not answered till it's asked — so it needn't be primed apart.
-    func invite(_ agent: BlockID, to thread: BlockID) {
-        guard let t = hosts.block(thread), hosts.block(agent)?.agent != nil else { return }
+    /// An agent brought into a thread's conversation (its shelf, §3.12):
+    /// told from then on of everything said there (at its next prompt), the
+    /// thread saying it was brought in — not typed to, not interrupted.
+    func invite(_ agent: BlockID, to thread: BlockID, author: ThreadAuthor = Hosts.you) {
+        guard let t = hosts.block(thread), let b = hosts.block(agent), b.agent != nil else { return }
         var parts = participants(of: t)
         guard !parts.contains(agent) else { return }
         parts.append(agent)
         setParticipants(parts, of: thread)
-        // Ask on: an invited agent is there to be talked to.
-        if asksAgent(of: t) == nil, let command = hosts.block(agent)?.agent?.command {
-            annotateThread(thread, [Self.asksKey: command])
+        if asksAgent(of: t) == nil, let command = b.agent?.command { annotateThread(thread, [Self.asksKey: command]) }
+        hosts.addToThread(thread, .context(added: true, address: Self.address(agent), title: AgentLook.name(of: b)), author: author)
+    }
+
+    /// Things put on a thread's shelf, by their addresses: an agent into
+    /// its conversation, anything else into its context (a reference kept
+    /// with it, read with it by those asked) — each said in the thread.
+    /// A thread's references: as last written here, while that hasn't come back.
+    private func references(_ thread: BlockID, _ t: Block) -> [String] {
+        let now = ThreadContext.references(of: t)
+        guard let pending = threadUI.pendingReferences[thread] else { return now }
+        if pending == now { threadUI.pendingReferences[thread] = nil }
+        return pending
+    }
+
+    private func setReferences(_ refs: [String], of thread: BlockID) {
+        threadUI.pendingReferences[thread] = refs
+        annotateThread(thread, [ThreadContext.referencesKey: refs.joined(separator: "\n")])
+    }
+
+    func addToContext(_ thread: BlockID, _ addresses: [String], author: ThreadAuthor = Hosts.you) {
+        guard let t = hosts.block(thread) else { return }
+        var refs = references(thread, t)
+        var added: [(String, String)] = []
+        for address in addresses {
+            if let (id, fragment) = BlockID.link(address), fragment == nil, hosts.block(id)?.agent != nil {
+                invite(id, to: thread, author: author)
+                continue
+            }
+            guard !refs.contains(address), address != Self.address(thread) else { continue }
+            refs.append(address)
+            added.append((address, contextTitle(address)))
         }
-        let ref = Self.address(thread)
-        let about = t.thread?.about.map { describe($0).title } ?? "the space"
-        let line = "[Manifold thread \(ref), about \(about)] You've been added to this thread: read it with `mani thread read \(ref)` for what it's about and where it stands. "
-            + "Don't answer now — you'll be asked in it when you're addressed, and answer then with `mani thread reply \(ref) \"…\"`."
-        ask(agent, threads: [thread], prompt: line)
+        guard !added.isEmpty else { return }
+        setReferences(refs, of: thread)
+        for (address, title) in added { hosts.addToThread(thread, .context(added: true, address: address, title: title), author: author) }
+    }
+
+    /// One taken off a thread's shelf: an agent out of its conversation (no
+    /// longer told), a reference out of its context.
+    func removeFromContext(_ thread: BlockID, _ address: String, author: ThreadAuthor = Hosts.you) {
+        guard let t = hosts.block(thread) else { return }
+        let title = contextTitle(address)
+        if let (id, _) = BlockID.link(address), ThreadContext.participants(of: t).contains(id) {
+            setParticipants(ThreadContext.participants(of: t).filter { $0 != id }, of: thread)
+        } else {
+            let refs = references(thread, t)
+            guard refs.contains(address) else { return }
+            setReferences(refs.filter { $0 != address }, of: thread)
+        }
+        hosts.addToThread(thread, .context(added: false, address: address, title: title), author: author)
+    }
+
+    /// What a thing on a shelf is called: an agent by its name, a block by
+    /// its title (and the place in it), a file by its name, a page by its address.
+    func contextTitle(_ address: String) -> String {
+        if case let .file(_, path, _)? = ManifoldAddress.parse(address) { return path.lastPathComponent.isEmpty ? path : path.lastPathComponent }
+        if let (id, fragment) = BlockID.link(address), let b = hosts.block(id) {
+            if b.agent != nil { return AgentLook.name(of: b) }
+            return Self.linkTitle(b) + (fragment.map { " · " + $0.replacingOccurrences(of: "=", with: " ") } ?? "")
+        }
+        return address
+    }
+
+    /// A thread's shelf, as its chat shows it: the agents in its
+    /// conversation, the lead first, then what's kept in its context.
+    func contextItems(of t: Block) -> [ThreadShelfView.Item] {
+        // Every agent put there, running or not (one gone quiet stays, dimmed).
+        let parts = ThreadContext.participants(of: t).filter { hosts.block($0) != nil }
+        var out: [ThreadShelfView.Item] = parts.enumerated().compactMap { i, id in
+            guard let b = hosts.block(id) else { return nil }
+            let runs = Self.agentRuns(b)
+            return ThreadShelfView.Item(address: Self.address(id), title: AgentLook.name(of: b), image: AgentLook.face(of: b, size: 15),
+                                        symbol: "sparkle", agent: id, isLead: i == 0 && parts.count > 1 && !asksAll(t),
+                                        detail: runs ? AgentLook.description(of: b) : "not running: a comment asks another of its kind, or starts one", quiet: !runs)
+        }
+        for address in references(t.id, t) {
+            var symbol = "doc"
+            var image: NSImage?
+            if case let .file(_, path, _)? = ManifoldAddress.parse(address) {
+                symbol = path.hasSuffix("/") ? "folder" : Theme.symbolName(for: BlockKind.forFile(path), path: path)
+            } else if let (id, _) = BlockID.link(address), let b = hosts.block(id) {
+                symbol = Theme.symbolName(for: b)
+                image = b.web.flatMap { Favicons.image(forPage: $0.url) }
+            } else if address.hasPrefix("http") {
+                symbol = "globe"
+            }
+            out.append(ThreadShelfView.Item(address: address, title: contextTitle(address), image: image, symbol: symbol))
+        }
+        return out
     }
 
     /// The line typed into an agent's terminal: which thread, about what,

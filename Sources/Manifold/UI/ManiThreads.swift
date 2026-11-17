@@ -70,6 +70,41 @@ extension ManiDesk {
             }
             if let error { throw Failure(message: error) }
             return ""
+        case "thread context":
+            // "thread context <thread> [add|remove <ref>…]": its shelf, or a
+            // thing put on it or taken off (an agent into the conversation; a
+            // reference into its context) — as you, or the agent running it.
+            let t = try await thread(r.args[0], scope)
+            if r.args.count > 2, ["add", "remove"].contains(r.args[1]) {
+                var addresses: [String] = []
+                for name in r.args.dropFirst(2) {
+                    if name.hasPrefix("manifold:") || name.hasPrefix("http") { addresses.append(name); continue }
+                    // A block's id (host/ULID): the block.
+                    if let id = BlockID(string: name), ManifoldAddress.parse("manifold:" + name) == .block(id, fragment: nil) {
+                        addresses.append(MainWindowController.address(id))
+                        continue
+                    }
+                    // A path — one that's there, on this Mac; any, given as a path — the
+                    // file (or folder) on the command's host.
+                    var path = (name as NSString).expandingTildeInPath
+                    if !path.hasPrefix("/") { path = (r.cwd as NSString).appendingPathComponent(path) }
+                    path = (path as NSString).standardizingPath
+                    let there = scope.host == hosts.local.host && FileManager.default.fileExists(atPath: path)
+                    if there || name.hasPrefix("/") || name.hasPrefix("~") || name.hasPrefix(".") {
+                        addresses.append(ManifoldAddress.of(file: path, on: scope.host))
+                        continue
+                    }
+                    let found = try await target(name, scope)
+                    addresses.append(MainWindowController.address(found.block, anchor: wc.anchor(found.at, in: found.block)?.anchorID))
+                }
+                if r.args[1] == "add" { wc.addToContext(t.id, addresses, author: author) } else { for a in addresses { wc.removeFromContext(t.id, a, author: author) } }
+                return ""
+            }
+            let parts = wc.participants(of: t)
+            let refs = ThreadContext.references(of: t)
+            if parts.isEmpty && refs.isEmpty { return "Nothing in its context yet." }
+            return (parts.map { id in "agent \(hosts.block(id).map(AgentLook.name(of:)) ?? "?") — \(MainWindowController.address(id))" }
+                + refs.map { "ref \(wc.contextTitle($0)) — \($0)" }).joined(separator: "\n")
         case "thread resolve", "thread reopen":
             let t = try await thread(r.args[0], scope)
             hosts.addToThread(t.id, r.verb == "thread resolve" ? .resolved : .reopened, author: author)
@@ -116,6 +151,20 @@ extension ManiDesk {
                 out += c.split(separator: "\n", omittingEmptySubsequences: false).map { "  | " + $0 }
             }
         }
+        // Its context (§3.12): who's in the conversation, what's kept in it.
+        let parts = wc.participants(of: b)
+        if !parts.isEmpty {
+            out.append("in the conversation (told everything said here; a comment naming no one asks the first):")
+            for id in parts {
+                let a = hosts.block(id)
+                out.append("  - \(a.map(AgentLook.name(of:)) ?? "an agent") — \(MainWindowController.address(id))\(a.map { " · " + AgentLook.description(of: $0) } ?? "")")
+            }
+        }
+        let refs = ThreadContext.references(of: b)
+        if !refs.isEmpty {
+            out.append("context (kept with it — read these for what it's about):")
+            out += refs.map { "  - \(wc.contextTitle($0)) — \($0)" }
+        }
         for e in t.entries {
             let when = BlockSummary.since(e.at.date, now: Date())
             switch e.kind {
@@ -130,6 +179,7 @@ extension ManiDesk {
                 out.append("— \(who), +\(a) −\(r) (\(when))")
             case .gone: out.append("— its lines were deleted (\(when))")
             case .stopped(let why): out.append("— \(why) (\(when))")
+            case let .context(added, address, title): out.append("— \(e.author.shownName) \(added ? "added" : "took out") \(title) (\(address)) \(added ? "to" : "from") its context (\(when))")
             }
         }
         return out.joined(separator: "\n")

@@ -766,6 +766,10 @@ public enum ServerMessage: Codable, Sendable {
     case agentLink(AgentLinkStatus)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
+    /// What's happened in the threads an agent is in since it last heard
+    /// (§3.12: those in a conversation are told everything said in it), in
+    /// answer to its prompt hook: read into its turn's context. Empty, nothing.
+    case agentNews(String)
     /// Folders this connection watches (`watchFolders`) changed: what's
     /// in them made, removed, renamed or written — or, its repository's
     /// state having moved, what it ignores may have. Said as it happens,
