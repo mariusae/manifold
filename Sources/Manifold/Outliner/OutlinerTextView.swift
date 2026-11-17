@@ -418,15 +418,26 @@ final class OutlinerTextView: NSTextView {
         sender.draggingSourceOperationMask.contains(.move) ? .move : .copy
     }
 
+    /// Its own words dragged within it: the text system's to move.
+    private func ownText(_ sender: any NSDraggingInfo) -> Bool { (sender.draggingSource as? NSTextView) === self }
+
+    /// What Manifold carries — a block's link, a file, a page, a picture,
+    /// words from elsewhere — is taken as a note takes it (`Dropping`,
+    /// `dropForms`); rows carried and its own words, as the outliner does.
+    private func manifolds(_ sender: any NSDraggingInfo) -> Bool { !carriesRows && !ownText(sender) && owner != nil }
+
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        if manifolds(sender) { return Dropping.updated(self, sender) }
         guard carriesRows, owner != nil else { return super.draggingEntered(sender) }
         return showDrop(sender) ? operation(sender) : []
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        if manifolds(sender) { return Dropping.updated(self, sender) }
         guard carriesRows, owner != nil else { return super.draggingUpdated(sender) }
         return showDrop(sender) ? operation(sender) : []
     }
+
 
     override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         // Rows are this view's to take, whatever the text system makes of what is carried.
@@ -442,6 +453,7 @@ final class OutlinerTextView: NSTextView {
     override func draggingExited(_ sender: (any NSDraggingInfo)?) {
         outlinerLayout?.dropLine = nil
         needsDisplay = true
+        if let sender, manifolds(sender) { return Dropping.exited(self, sender) }
         if !carriesRows { super.draggingExited(sender) }
     }
 
@@ -1141,8 +1153,18 @@ final class OutlinerTextView: NSTextView {
         case #selector(undo(_:)): return owner?.editor.canUndo ?? false
         case #selector(redo(_:)): return owner?.editor.canRedo ?? false
         case #selector(paste(_:)) where isEditable && NSPasteboard.general.availableType(from: PasteboardImages.types + [.fileURL]) != nil: return true
-        default: return super.validateUserInterfaceItem(item)
+        case #selector(performTextFinderAction(_:)) where onFind != nil: return true
+        default:
+            if let ok = validateOutline(item) { return ok }
+            return super.validateUserInterfaceItem(item)
         }
+    }
+
+    /// ⌘F and the rest of find: the tile's find pill (`OutlineNoteView`'s), not the text view's bar.
+    var onFind: ((Any?) -> Void)?
+
+    override func performTextFinderAction(_ sender: Any?) {
+        if let onFind { onFind(sender) } else { super.performTextFinderAction(sender) }
     }
 
     // MARK: Pictures, and an address, pasted and dropped
@@ -1169,6 +1191,7 @@ final class OutlinerTextView: NSTextView {
 
     /// Pictures dropped: the app's to keep, and written where they were let go.
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        if manifolds(sender) { return Dropping.perform(self, sender) }
         if let dropped = drop(rows: sender) { return dropped }
         let at = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
         if owner?.pastePictures(from: sender.draggingPasteboard, at: at) == true { return true }

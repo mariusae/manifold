@@ -895,6 +895,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 if !ids.isEmpty { self.showThreadCard(threads: ids, at: rect, in: o) }
             }
             o.pictureFor = { [weak self] source in self?.picture(source, in: p.block) }
+            o.blockLook = { [weak self] id in self?.hosts.block(id).map { ($0.displayTitle, Theme.symbolName(for: $0)) } }
             o.documentChanged()
             v = o
         default:

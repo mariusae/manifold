@@ -413,54 +413,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(format, "Strikethrough", #selector(TextView.formatStrikethrough(_:)), "x", [.command, .shift])
         item(format, "Code", #selector(TextView.formatCode(_:)), "c", [.command, .option])
         item(format, "Highlight", #selector(TextView.formatHighlight(_:)), "h", [.command, .shift])
-        item(format, "Link…", #selector(NoteOutlineTextView.editLink(_:)), "k", [.command, .option])
+        item(format, "Link…", #selector(OutlinerTextView.editLink(_:)), "k", [.command, .option])
         let formatItem = NSMenuItem(title: "Format", action: nil, keyEquivalent: "")
         formatItem.submenu = format
         edit.addItem(formatItem)
-        // An outline's own (§7.9), as Prism's: its rows, their kinds, the
-        // selection a step at a time, a row focused on. (⌘↩ checks a row,
-        // ⌃⌘↑ ⌃⌘↓ move rows, ⇧⌘D ⇧⌘K duplicate and delete them: the
-        // editor's keys for lines.)
+        // An outline's own (§7.9), as Bike 2 has them. The outline takes its
+        // keys itself while it has the keyboard (⌘↩ a row below, ⌘D its
+        // rows duplicated, ⌘9 ⌘0 a fold…), before these menus: those that
+        // are another item's here are shown on none, not to take theirs.
         let outline = NSMenu(title: "Outline")
-        item(outline, "New Row", #selector(NoteOutlineTextView.newRow(_:)), "")
+        item(outline, "New Row Below", #selector(OutlinerTextView.insertRowBelow(_:)), "")
+        item(outline, "New Row Above", #selector(OutlinerTextView.insertRowAbove(_:)), "")
+        item(outline, "New Child Row", #selector(OutlinerTextView.insertChildRow(_:)), "")
         outline.addItem(.separator())
-        item(outline, "Indent", #selector(NoteOutlineTextView.indentRows(_:)), right, [.command, .control])
-        item(outline, "Outdent", #selector(NoteOutlineTextView.outdentRows(_:)), left, [.command, .control])
+        item(outline, "Indent", #selector(OutlinerTextView.indentRows(_:)), right, [.command, .control])
+        item(outline, "Outdent", #selector(OutlinerTextView.outdentRows(_:)), left, [.command, .control])
+        item(outline, "Move Up Keeping Level", #selector(OutlinerTextView.moveUpKeepingLevel(_:)), up, [.command, .option, .control])
+        item(outline, "Move Down Keeping Level", #selector(OutlinerTextView.moveDownKeepingLevel(_:)), down, [.command, .option, .control])
+        item(outline, "Group", #selector(OutlinerTextView.groupRows(_:)), "g", [.command, .option])
+        item(outline, "Join Rows", #selector(OutlinerTextView.joinRows(_:)), "\u{8}", [.command, .control])
+        item(outline, "Promote Children", #selector(OutlinerTextView.promoteChildren(_:)), "")
+        item(outline, "Demote Siblings", #selector(OutlinerTextView.demoteSiblings(_:)), "")
+        item(outline, "Delete Row Only", #selector(OutlinerTextView.deleteRowOnly(_:)), "")
         outline.addItem(.separator())
-        item(outline, "Checklist Item", #selector(NoteOutlineTextView.cycleChecklist(_:)), "")
-        item(outline, "Task", #selector(NoteOutlineTextView.cycleTask(_:)), "")
+        item(outline, "Checklist Item", #selector(OutlinerTextView.cycleChecklist(_:)), "l", [.command, .shift])
+        item(outline, "Task", #selector(OutlinerTextView.cycleTask(_:)), "l", [.command, .control])
         // ⇧⌘U: Notes' Mark as Checked.
-        item(outline, "Toggle Done", #selector(NoteOutlineTextView.toggleDone(_:)), "u", [.command, .shift])
-        item(outline, "Move Done to Bottom", #selector(NoteOutlineTextView.moveDoneToBottom(_:)), "d", [.command, .control, .shift])
+        item(outline, "Toggle Done", #selector(OutlinerTextView.toggleDone(_:)), "u", [.command, .shift])
+        item(outline, "Move Done to Bottom", #selector(OutlinerTextView.moveDoneToBottom(_:)), "d", [.command, .control, .shift])
         outline.addItem(.separator())
-        item(outline, "Bullet", #selector(NoteOutlineTextView.toggleBullet(_:)), "8", [.command, .shift])
-        item(outline, "Horizontal Line", #selector(NoteOutlineTextView.insertHorizontalLine(_:)), "-", [.command, .option])
-        item(outline, "Code Block", #selector(NoteOutlineTextView.toggleCodeBlock(_:)), "c", [.command, .option, .shift])
+        item(outline, "Bullet", #selector(OutlinerTextView.toggleBullet(_:)), "8", [.command, .shift])
         let turn = NSMenu(title: "Turn Into")
-        for (i, type) in NoteOutlineTextView.RowType.allCases.enumerated() {
-            item(turn, type.title, #selector(NoteOutlineTextView.turnInto(_:)), "").tag = i
+        for (i, type) in OutlinerRowType.allCases.enumerated() {
+            item(turn, type.title, #selector(OutlinerTextView.turnInto(_:)), "").tag = i
         }
         let turnItem = NSMenuItem(title: "Turn Into", action: nil, keyEquivalent: "")
         turnItem.submenu = turn
         outline.addItem(turnItem)
         outline.addItem(.separator())
-        item(outline, "Select Row Text", #selector(NoteOutlineTextView.selectRowText(_:)), "l", [.command, .shift])
-        item(outline, "Select Branch", #selector(NoteOutlineTextView.selectBranch(_:)), "b", [.command, .shift])
-        // ⌃⌥⌘ and an arrow, Prism's ⌥⌘ (here the tile that way).
-        item(outline, "Expand Selection", #selector(NoteOutlineTextView.expandSelection(_:)), up, [.command, .option, .control])
-        item(outline, "Contract Selection", #selector(NoteOutlineTextView.contractSelection(_:)), down, [.command, .option, .control])
+        item(outline, "Expand Selection", #selector(OutlinerTextView.expandSelection(_:)), right, [.command, .control, .shift])
+        item(outline, "Contract Selection", #selector(OutlinerTextView.contractSelection(_:)), left, [.command, .control, .shift])
         outline.addItem(.separator())
-        item(outline, "Focus In", #selector(NoteOutlineTextView.focusIn(_:)), right, [.command, .option, .control])
-        item(outline, "Focus Out", #selector(NoteOutlineTextView.focusOut(_:)), left, [.command, .option, .control])
-        item(outline, "Unfocus", #selector(NoteOutlineTextView.unfocus(_:)), "")
-        // Its folds too (they were View's): an outline's all in one place.
+        // ⌥⌘→ ⌥⌘← in the outline (here, elsewhere, the tile that way).
+        item(outline, "Focus In", #selector(OutlinerTextView.focusIn(_:)), "")
+        item(outline, "Focus Out", #selector(OutlinerTextView.focusOut(_:)), "")
+        item(outline, "Unfocus", #selector(OutlinerTextView.unfocus(_:)), "")
+        // Its folds too: ⌘9 ⌘0 a row's, ⌃⌘9 ⌃⌘0 all, ⌥⌘9 ⌥⌘0 a level at a time.
         outline.addItem(.separator())
-        item(outline, "Collapse", #selector(NoteOutlineTextView.collapse(_:)), "9", [.command, .control])
-        item(outline, "Expand", #selector(NoteOutlineTextView.expand(_:)), "0", [.command, .control])
-        item(outline, "Collapse All", #selector(NoteOutlineTextView.collapseAll(_:)), "9", [.command, .option])
-        item(outline, "Expand All", #selector(NoteOutlineTextView.expandAll(_:)), "0", [.command, .option])
-        item(outline, "Collapse Completely", #selector(NoteOutlineTextView.collapseCompletely(_:)), "")
-        item(outline, "Expand Completely", #selector(NoteOutlineTextView.expandCompletely(_:)), "")
+        item(outline, "Collapse", #selector(OutlinerTextView.collapse(_:)), "9", [.command])
+        item(outline, "Expand", #selector(OutlinerTextView.expand(_:)), "")
+        item(outline, "Collapse All", #selector(OutlinerTextView.collapseAll(_:)), "9", [.command, .control])
+        item(outline, "Expand All", #selector(OutlinerTextView.expandAll(_:)), "0", [.command, .control])
+        item(outline, "Collapse by Level", #selector(OutlinerTextView.collapseByLevel(_:)), "9", [.command, .option])
+        item(outline, "Expand by Level", #selector(OutlinerTextView.expandByLevel(_:)), "0", [.command, .option])
+        item(outline, "Collapse Completely", #selector(OutlinerTextView.collapseCompletely(_:)), "")
+        item(outline, "Expand Completely", #selector(OutlinerTextView.expandCompletely(_:)), "")
         let outlineItem = NSMenuItem(title: "Outline", action: nil, keyEquivalent: "")
         outlineItem.submenu = outline
         edit.addItem(outlineItem)

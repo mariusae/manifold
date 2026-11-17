@@ -47,6 +47,8 @@ public final class OutlinerView: NSView, NSTextViewDelegate {
     /// The rows folded changed: a row was folded or unfolded, or the note
     /// changed around one. The app keeps them; they are no part of the note.
     public var onFolds: (([FoldedRow]) -> Void)?
+    /// A block dropped in by its link: linked from the note.
+    public var onLinked: ((BlockID) -> Void)?
     /// A picture pasted or dropped, for the app to keep: its bytes, its
     /// kind (`png`, `jpeg`, …), and what to call with the Markdown that
     /// shows it once kept (`![](path)`), which is written on a row of its own.
@@ -312,6 +314,40 @@ public final class OutlinerView: NSView, NSTextViewDelegate {
         isApplying = false
         textView.needsDisplay = true
         fitHeight()
+        onLaidOut?()
+    }
+
+    /// The text dressed again (an edit, a fold, another width): what the
+    /// app lays over the rows (a thread's mark, a heading's tick) placed again.
+    public var onLaidOut: (() -> Void)?
+
+    /// Where a row (a line of the text, from the first) is drawn, in the
+    /// text view's terms: its first line's fragment, as wide as the text;
+    /// nil for no such row.
+    public func rect(ofRow row: Int) -> NSRect? {
+        guard bodyLayout.lines.indices.contains(row), let manager = textView.layoutManager, let container = textView.textContainer,
+              let storage = textView.textStorage else { return nil }
+        let start = min(bodyLayout.lines[row].start, max(storage.length - 1, 0))
+        guard storage.length > 0 else {
+            return NSRect(x: textView.textContainerOrigin.x, y: textView.textContainerOrigin.y, width: container.size.width, height: theme.size * 1.4)
+        }
+        manager.ensureLayout(for: container)
+        let glyph = manager.glyphIndexForCharacter(at: start)
+        var r = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        r.origin.x += textView.textContainerOrigin.x
+        r.origin.y += textView.textContainerOrigin.y
+        return r
+    }
+
+    /// Where a row's words start in the text.
+    public func rowStart(_ row: Int) -> Int? { bodyLayout.lines.indices.contains(row) ? bodyLayout.lines[row].content : nil }
+
+    /// The row a point (the text view's terms) is on.
+    public func row(at point: NSPoint) -> Int? {
+        guard let manager = textView.layoutManager, let container = textView.textContainer, !bodyLayout.lines.isEmpty else { return nil }
+        let p = NSPoint(x: point.x - textView.textContainerOrigin.x, y: point.y - textView.textContainerOrigin.y)
+        let c = manager.characterIndexForGlyph(at: manager.glyphIndex(for: p, in: container))
+        return bodyLayout.lines.lastIndex { $0.start <= c } ?? 0
     }
 
     /// What is typed next takes the look of the line it is typed on.
