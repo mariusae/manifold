@@ -245,6 +245,10 @@ extension MainWindowController {
         return out
     }
 
+    /// Asked of an agent answering in a thread: what it names, linked —
+    /// shown as the thing's pill in the comment, and gone to when clicked.
+    static let linkHint = "Wherever you refer to something — a file, a declaration, a line, a block — link it, so it's clickable in the thread: `mani ref <file> --symbol Type.method --markdown` (or `--line N`, `--heading`), or a `manifold:` reference you were given, as `[name](manifold:…)`."
+
     /// The line typed into an agent's terminal: which thread, about what,
     /// what was said, and how to answer — on one line.
     private func prompt(for t: Block, comment: String, author: ThreadAuthor) -> String {
@@ -253,7 +257,8 @@ extension MainWindowController {
         let said = comment.replacingOccurrences(of: "\n", with: " ").prefix(400)
         return "[Manifold thread \(ref), about \(about)] \(author.isYou ? "The user" : author.shownName) wrote: \"\(said)\" — "
             + "read it with `mani thread read \(ref)`, and answer in the thread with `mani thread reply \(ref) \"…\"` (--resolve only if you did what it asks). "
-            + "The reply is Markdown, shown as GitHub shows a comment: a list as `- ` lines, code in backticks or fences."
+            + "The reply is Markdown, shown as GitHub shows a comment: a list as `- ` lines, code in backticks or fences. "
+            + Self.linkHint
     }
 
     /// Words typed into an agent's prompt and sent: the words, then
@@ -355,7 +360,7 @@ extension MainWindowController {
         let list = threads.map { t in Self.address(t.id) + " (" + (t.thread?.about.map { describe($0).title } ?? "the space") + ")" }
         let prompt = "[Manifold] Please address these \(threads.count) open thread\(threads.count == 1 ? "" : "s"): " + list.joined(separator: "; ")
             + ". For each: `mani thread read <ref>`, do what it asks, and reply in it with `mani thread reply <ref> \"…\"` — with --resolve only if you did it; "
-            + "a question is a reply left open. Work through them oldest change first, then say briefly here what you did."
+            + "a question is a reply left open. " + Self.linkHint + " Work through them oldest change first, then say briefly here what you did."
         if let a = agent ?? agentForAsking(in: threads[0]) {
             threadUI.asks.append(PendingAsk(agent: a, threads: threads.map(\.id), prompt: prompt))
             deliverAsks()

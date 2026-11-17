@@ -597,6 +597,10 @@ public enum Mani {
               without `--resolve` — then go on with the rest; don't stop to ask in the terminal.
             - Never resolve what you didn't address. Keep replies short; they're read beside
               the code.
+            - Link what you refer to — a file, a declaration, a line, a block — so it's a pill
+              the user can click in the thread: `mani ref <file> --symbol Type.method --markdown`
+              (or `--line N`, `--heading <title>`) prints `[name](manifold:…)`; a `manifold:`
+              reference you were given goes in as it is. Not a bare path or line number.
             - Where you're unsure of something you did (an assumption, a guess), leave a
               thread on it for the user: `mani thread new "$(mani ref <file> --line 40)" "…"`.
             - Your replies are marked as yours by Manifold; you can't write as the user.
