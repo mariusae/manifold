@@ -25,9 +25,17 @@ final class Searches {
     }
 
     func cancel(_ block: BlockID) {
+        sizing[block] = nil
         guard let child = running.removeValue(forKey: block) else { return }
         child.end(SIGTERM)
     }
+
+    /// The most files a search in a large repository reads: more than that
+    /// under its folder (a monorepo's root, its biggest parts), and it asks
+    /// for a folder further in — reading them all would fetch them all.
+    static let largeRepositoryFiles = 50_000
+    /// Searches waiting on their folder's size being found, by their turn.
+    private var sizing: [BlockID: UUID] = [:]
 
     func run(_ block: BlockID, _ query: SearchQuery) {
         cancel(block)
@@ -35,6 +43,25 @@ final class Searches {
             onHits?(block, [], true, false, nil)
             return
         }
+        guard let repo = VCS.repository(of: query.root), Repositories.isLarge(repo.root) else { return start(block, query) }
+        let turn = UUID()
+        sizing[block] = turn
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let under = FolderListing.files(under: query.root, limit: Self.largeRepositoryFiles)
+            self?.queue.async {
+                guard let self, self.sizing[block] == turn else { return }
+                self.sizing[block] = nil
+                guard under.complete else {
+                    let n = Self.largeRepositoryFiles.formatted()
+                    self.onHits?(block, [], true, false, "More than \(n) files here, in a large repository: search a folder further in.")
+                    return
+                }
+                self.start(block, query)
+            }
+        }
+    }
+
+    private func start(_ block: BlockID, _ query: SearchQuery) {
         let child: Child
         let usingRg: Bool
         if let c = try? Child.spawn(Self.rgCommand(query), stderrToNull: true, group: true) {
@@ -150,5 +177,6 @@ final class Searches {
     func stopAll() {
         for (_, c) in running { c.end(SIGTERM) }
         running = [:]
+        sizing = [:]
     }
 }

@@ -75,7 +75,8 @@ enum Scans {
     private static let slots = DispatchSemaphore(value: 2)
 
     /// The output of `argv`, ended once it has said `records` NUL-ended
-    /// records; nil if it failed or ran out of `timeout`.
+    /// records (`.max`: all it says); nil if it failed or ran out of
+    /// `timeout`.
     static func run(_ argv: [String], records: Int, root: String, timeout: TimeInterval = 30) -> Data? {
         let key = argv.joined(separator: "\u{0}") + "\u{0}\(records)"
         lock.lock()
@@ -91,7 +92,7 @@ enum Scans {
         lock.unlock()
         slots.wait()
         let started = Date()
-        let r = try? Child.run(argv, timeout: timeout, quiet: true, records: records)
+        let r = try? Child.run(argv, timeout: timeout, quiet: true, records: records == .max ? nil : records)
         slots.signal()
         // Ended for having said enough, or done: its output. Else nothing —
         // and, out of time, the repository's large.

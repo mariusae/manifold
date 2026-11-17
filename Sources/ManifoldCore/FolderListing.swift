@@ -79,9 +79,8 @@ public enum FolderListing {
         while i < asked.count {
             let batch = Array(asked[i..<min(i + 300, asked.count)])
             i += batch.count
-            guard let r = try? Child.run(["sl", "--cwd", root, "debugignore"] + batch.map { prefix + $0 }, timeout: 10, quiet: true),
-                  r.status == 0 else { return [] }
-            let said = String(decoding: r.output, as: UTF8.self)
+            guard let out = Scans.run(["sl", "--cwd", root, "debugignore"] + batch.map { prefix + $0 }, records: .max, root: root, timeout: 10) else { return [] }
+            let said = String(decoding: out, as: UTF8.self)
             for line in said.split(separator: "\n") {
                 for name in batch where line.hasPrefix(prefix + name + ": ignored") { ruled.insert(name) }
             }
@@ -90,13 +89,11 @@ public enum FolderListing {
         let folders = Set(TextFile.list(path)?.filter(\.isDirectory).map(\.name) ?? [])
         // Tracked though its rules say otherwise: kept.
         if ruled.contains(where: { !folders.contains($0) }),
-           let r = try? Child.run(["sl", "--cwd", root, "files", "-0", "rootfilesin:" + (prefix.isEmpty ? "." : rel)], timeout: 10, quiet: true),
-           r.status == 0 {
-            for raw in r.output.split(separator: 0) { ruled.remove(String(decoding: raw, as: UTF8.self).lastPathComponent) }
+           let out = Scans.run(["sl", "--cwd", root, "files", "-0", "rootfilesin:" + (prefix.isEmpty ? "." : rel)], records: .max, root: root, timeout: 10) {
+            for raw in out.split(separator: 0) { ruled.remove(String(decoding: raw, as: UTF8.self).lastPathComponent) }
         }
         for name in ruled where folders.contains(name) {
-            if let r = try? Child.run(["sl", "--cwd", root, "files", "-0", "path:" + prefix + name], timeout: 10, quiet: true, records: 1),
-               !r.output.isEmpty {
+            if let out = Scans.run(["sl", "--cwd", root, "files", "-0", "path:" + prefix + name], records: 1, root: root, timeout: 10), !out.isEmpty {
                 ruled.remove(name)
             }
         }
