@@ -134,6 +134,11 @@ extension MainWindowController {
             let end = w.dropFirst().first ?? ""
             guard let t = hosts.threads.first(where: { $0.id.ulid.hasSuffix(end) }) else { return "no thread \(end)" }
             showThreadOverlay(nil, thread: t.id)
+        case "lead":
+            // "threadoverlay lead [<name>]": a new thread's lead and the agents it
+            // could be, in their order; with a name, that one chosen.
+            guard let o = threadUI.overlay else { return "no overlay" }
+            return o.chat.debugLead(w.dropFirst().first)
         case "popout": threadUI.overlay?.onPopOut?()
         case "send":
             guard let o = threadUI.overlay else { return "no overlay" }

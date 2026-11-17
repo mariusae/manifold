@@ -102,7 +102,10 @@ extension MainWindowController {
             return
         }
         let line = prompt(for: t, comment: comment, author: author)
-        for a in asked { ask(a, threads: [id], prompt: line) }
+        for a in asked {
+            if author.isYou { AgentRecency.talked(to: a) }
+            ask(a, threads: [id], prompt: line)
+        }
         for kind in starting { startAgent(kind, for: t, prompt: line) }
     }
 

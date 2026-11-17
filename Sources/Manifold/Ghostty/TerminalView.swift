@@ -2043,6 +2043,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     // MARK: Keyboard
 
     override func keyDown(with event: NSEvent) {
+        // Return in an agent's terminal: talked to (a new thread's lead is the last).
+        if event.keyCode == 36 || event.keyCode == 76 { AgentRecency.talked(to: block) }
         if exited {
             // Return: a new shell; nothing else has anywhere to go.
             if event.keyCode == 36 || event.keyCode == 76 { restartShell() } else { NSSound.beep() }

@@ -160,8 +160,24 @@ extension MainWindowController: ThreadChatDelegate {
         }
         // Which of its kind it asks, when the space has more than one.
         let space = thread?.thread?.space ?? selected
-        if let kind = thread.flatMap({ asksAgent(of: $0) }) ?? askingAgent {
-            m.askAgents = agents(kind, inSpace: space).map { ThreadChatModel.AskAgent(id: $0.id, title: Self.linkTitle($0)) }
+        func ask(_ b: Block) -> ThreadChatModel.AskAgent {
+            ThreadChatModel.AskAgent(id: b.id, title: Self.linkTitle(b), face: AgentLook.face(of: b, size: 16), detail: AgentLook.description(of: b))
+        }
+        if thread == nil {
+            // A new thread's: every agent at work, the one you talked to
+            // last first (its lead, unless another's chosen), this space's
+            // before others'.
+            let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
+            m.askAgents = hosts.blocks.filter { $0.agent != nil && Self.agentRuns($0) }
+                .sorted { a, b in
+                    let (ta, tb) = (AgentRecency.when(a.id), AgentRecency.when(b.id))
+                    if ta != tb { return ta > tb }
+                    if here.contains(a.id) != here.contains(b.id) { return here.contains(a.id) }
+                    return a.displayTitle < b.displayTitle
+                }
+                .map(ask)
+        } else if let kind = thread.flatMap({ asksAgent(of: $0) }) ?? askingAgent {
+            m.askAgents = agents(kind, inSpace: space).map(ask)
             m.asksAgent = thread.flatMap(pinnedAgent)
         }
         // Who's in it, and who could be brought in: the agents at work in its space.
@@ -485,8 +501,9 @@ extension MainWindowController: ThreadChatDelegate {
         view.newPlace = nil
         // Made with Ask on: the agent's thread, and asked from the first comment
         // (the agent chosen for it, if one was).
-        let asks = view.asksNew ? askingAgent : nil
-        let agent = view.asksNew ? view.asksNewAgent : nil
+        // Its lead: the agent chosen, else the one you talked to last — of its own kind.
+        let agent = view.asksNew ? view.leadForNew : nil
+        let asks = view.asksNew ? (agent.flatMap { hosts.block($0)?.agent } ?? askingAgent) : nil
         view.madeAsking()
         askAgents(in: id, comment: text, author: Hosts.you, asks: asks, agent: agent)
         // The card's threads now this one.

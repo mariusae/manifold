@@ -74,7 +74,13 @@ struct ThreadChatModel {
     var askName = "Claude"
     /// The agents of that kind at work in its space (more than one: which
     /// is asked shown, and chosen), and the one it's held to.
-    struct AskAgent: Equatable { var id: BlockID; var title: String }
+    struct AskAgent: Equatable {
+        var id: BlockID
+        var title: String
+        /// Its face, and what it is and does, to tell it from the others.
+        var face: NSImage? = nil
+        var detail = ""
+    }
     var askAgents: [AskAgent] = []
     var asksAgent: BlockID?
     /// Its participants (§3.12), its lead first; the agents at work in its
@@ -274,9 +280,11 @@ final class ThreadChatView: NSView {
         // Who it asks: a new thread's, which of its kind (more than one in
         // the space); a thread's, its lead by name, or all of them.
         if m.thread == nil {
-            let chosenAgent = m.askAgents.count > 1 ? (m.askAgents.first { $0.id == asksNewAgent } ?? m.askAgents[0]) : nil
-            askButton.title = "Ask \(m.askName)" + (chosenAgent.map { " · " + Self.short($0.title) } ?? "")
-            askPick.isHidden = m.askAgents.count < 2
+            // Its lead: the one chosen, else the agent you talked to last.
+            let chosenAgent = m.askAgents.first { $0.id == asksNewAgent } ?? m.askAgents.first
+            askButton.title = "Ask " + (chosenAgent.map { Self.short($0.title) } ?? m.askName)
+            askButton.toolTip = chosenAgent.map { "Asks \($0.title)\($0.detail.isEmpty ? "" : " (\($0.detail))") — ⌄ for another" }
+            askPick.isHidden = m.askAgents.isEmpty
         } else {
             let lead = m.participants.first.map { Self.short($0.title) } ?? m.asks ?? m.askName
             askButton.title = m.asksAll && m.participants.count > 1 ? "Ask All \(m.participants.count)" : "Ask \(lead)"
@@ -287,7 +295,7 @@ final class ThreadChatView: NSView {
         participantsLabel.toolTip = m.participants.isEmpty ? nil
             : "In this thread: " + m.participants.map(\.title).joined(separator: ", ") + (m.asksAll ? " — a comment asks them all" : " — a comment asks the first; tag the others")
         askButton.state = (m.thread == nil ? asksNew : m.asks != nil) ? .on : .off
-        askButton.toolTip = "Every comment here asks \(m.asks ?? m.askName), without tagging it"
+        if m.thread != nil { askButton.toolTip = "Every comment here asks \(m.asks ?? m.askName), without tagging it" }
         agentMark.image = m.asksIcon
         agentMark.isHidden = m.asks == nil
         agentMark.toolTip = m.asks.map { "\($0)'s thread: your comments here ask it" }
@@ -632,6 +640,8 @@ final class ThreadChatView: NSView {
 
     /// Made: the next new one's Ask on again, as they start.
     func madeAsking() { asksNew = true; asksNewAgent = nil }
+    /// A new thread's lead: the agent chosen, else the one talked to last.
+    var leadForNew: BlockID? { asksNewAgent ?? model.askAgents.first?.id }
 
     /// A tile's name, short enough for a button.
     private static func short(_ s: String) -> String { s.count > 24 ? String(s.prefix(23)) + "…" : s }
@@ -642,12 +652,19 @@ final class ThreadChatView: NSView {
     @objc private func pickAskAgent() {
         let m = model
         if m.thread != nil { return participantsMenu() }
-        guard m.askAgents.count > 1 else { return }
+        guard !m.askAgents.isEmpty else { return }
         let current = m.thread == nil ? asksNewAgent ?? m.askAgents.first?.id : m.asksAgent
         let menu = NSMenu()
-        for a in m.askAgents {
+        menu.delegate = AgentMenuSpotlight.shared
+        menu.addItem(.sectionHeader(title: "Ask, as the Thread's Lead"))
+        for (i, a) in m.askAgents.enumerated() {
             let item = ClosureMenuItem(a.title, symbol: nil) { [weak self] in self?.chooseAskAgent(a.id) }
+            item.image = a.face
+            item.representedObject = a.id
             item.state = a.id == current ? .on : .off
+            // What it is and does, under its name (the one talked to last, said so).
+            let words = (i == 0 ? ["last talked to"] : []) + (a.detail.isEmpty ? [] : [a.detail])
+            if !words.isEmpty { item.subtitle = words.joined(separator: " · ") }
             menu.addItem(item)
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: askPick.bounds.maxY + 4), in: askPick)
@@ -739,6 +756,15 @@ final class ThreadChatView: NSView {
     }
 
     /// Debugging: Ask switched, as clicked; and how it stands.
+    /// Debugging: a new thread's lead, and the agents offered, in order
+    /// (each with what it is and does); a name given, that one chosen.
+    func debugLead(_ pick: String?) -> String {
+        if let pick, let a = model.askAgents.first(where: { $0.title.hasPrefix(pick) }) { chooseAskAgent(a.id) }
+        let lead = leadForNew
+        return "button “\(askButton.title)” · lead \(model.askAgents.first { $0.id == lead }?.title ?? "none")\n"
+            + model.askAgents.map { "\($0.id == lead ? "*" : " ") \($0.title) — \($0.detail)\($0.face == nil ? "" : " [face]")" }.joined(separator: "\n")
+    }
+
     func debugAsk(_ on: Bool?) -> String {
         if let on, (askButton.state == .on) != on { askButton.performClick(nil) }
         return "ask \(askButton.state == .on ? "on" : "off") · \(askButton.title) · mark \(agentMark.isHidden ? "hidden" : "shown")"
@@ -1015,6 +1041,16 @@ final class Avatar: NSView {
         super.init(frame: .zero)
         toolTip = author.isYou ? nil : author.shownName
     }
+
+    // An agent's face under the pointer: its tile ringed, where it's on screen.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        guard author.agentBlock != nil else { return }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { AgentLook.spotlight?(author.agentBlock) }
+    override func mouseExited(with event: NSEvent) { AgentLook.spotlight?(nil) }
 
     required init?(coder: NSCoder) { fatalError() }
 

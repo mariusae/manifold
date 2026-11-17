@@ -106,3 +106,44 @@ extension ThreadAuthor {
     /// Its agent's block, as it is now.
     var agentNow: Block? { agentBlock.flatMap { AgentLook.block?($0) } }
 }
+
+/// Which agents you last talked to — asked in a thread, or Return pressed
+/// in its terminal — kept on this Mac: a new thread's lead is the one you
+/// talked to last.
+enum AgentRecency {
+    private static let key = "AgentRecency"
+
+    private static var stored: [String: Double] {
+        get { UserDefaults.standard.dictionary(forKey: key) as? [String: Double] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+
+    /// Talked to now.
+    static func talked(to block: BlockID) {
+        var d = stored
+        d[block.description] = Date().timeIntervalSince1970
+        // The last forty, no more.
+        if d.count > 40 { for (k, _) in d.sorted(by: { $0.value < $1.value }).prefix(d.count - 40) { d[k] = nil } }
+        stored = d
+    }
+
+    /// When it was last talked to (0: never, here).
+    static func when(_ block: BlockID) -> Double { stored[block.description] ?? 0 }
+}
+
+extension AgentLook {
+    /// An agent pointed at somewhere else (its face in a thread, its row,
+    /// its name in a menu): its tile ringed in its colour, where it's on
+    /// screen, while the pointer stays — so you see which one it is without
+    /// going there. Nil: the ring gone. Given by the window.
+    nonisolated(unsafe) static var spotlight: ((BlockID?) -> Void)?
+}
+
+/// A menu of agents that rings each one's tile as it's highlighted.
+final class AgentMenuSpotlight: NSObject, NSMenuDelegate {
+    static let shared = AgentMenuSpotlight()
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        AgentLook.spotlight?(item?.representedObject as? BlockID)
+    }
+    func menuDidClose(_ menu: NSMenu) { AgentLook.spotlight?(nil) }
+}

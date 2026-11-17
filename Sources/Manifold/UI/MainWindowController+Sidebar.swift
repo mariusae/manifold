@@ -137,6 +137,8 @@ extension MainWindowController: OrganizationViewDelegate {
         if let node, let c = hostClient(of: node), let window {
             return showHostCard(c, beside: rect, in: window)
         }
+        // An agent's row: its tile ringed too, where it's on screen.
+        spotlightAgent(node?.block.flatMap { hosts.block($0)?.agent != nil ? $0 : nil })
         guard let node, let id = node.block, let window else { return HoverCard.shared.hide() }
         showBlockCard(id, beside: rect, in: window)
     }
