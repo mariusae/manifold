@@ -617,7 +617,10 @@ extension Markup {
 
     // --- Writing -----------------------------------------------------------
 
-    static func write(_ rows: [(Int, Block)], _ trailing: [String], _ finalNewline: Bool, _ ending: LineEnding) -> String {
+    /// The rows written as lines; `record` is told, of each row in turn, the
+    /// line its words start on and how many lines they take.
+    static func write(_ rows: [(Int, Block)], _ trailing: [String], _ finalNewline: Bool, _ ending: LineEnding,
+                      record: ((Int, Int) -> Void)? = nil) -> String {
         var lines: [String] = []
         // The content column of the list item open at each depth.
         var columns: [Int] = []
@@ -632,7 +635,9 @@ extension Markup {
         var quote: Int? = nil
         for (rowDepth, block) in rows {
             if block.kind == .raw {
-                lines.append(contentsOf: block.text.u8.split(byte: .newline).map(\.string))
+                let rawLines = block.text.u8.split(byte: .newline).map(\.string)
+                record?(lines.count, rawLines.count)
+                lines.append(contentsOf: rawLines)
                 columns.removeAll()
                 continuing = nil
                 quote = nil
@@ -686,6 +691,7 @@ extension Markup {
                 let firstBytes = first.u8
                 if !startsBlock(firstBytes.trimmingStart([.space]), indentation(firstBytes) >= column) { lines.append("") }
             }
+            let firstLineIndex = lines.count
             lines.append(first)
             continuing = continues(block) ? continuation : nil
             let facts = block.layout.continuation ?? []
@@ -703,6 +709,7 @@ extension Markup {
                     lines.append(String(repeating: " ", count: continuation) + line.string)
                 }
             }
+            record?(firstLineIndex, lines.count - firstLineIndex)
         }
         lines.append(contentsOf: trailing)
         let newline = ending == .crlf ? "\r\n" : "\n"

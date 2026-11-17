@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ManifoldCore
 
@@ -108,5 +109,27 @@ struct RichTests {
         }
         #expect(Rich.plain(" a  b ").toMarkdown() == "&#32;a  b&#32;")
         #expect(Rich.plain("a b").toMarkdown() == "a b")
+    }
+
+    /// Every row of a graph's notes, read and written back: `RICH_GRAPH=<folder> swift test --filter RichTests`.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["RICH_GRAPH"] != nil))
+    func everyRowOfAGraphReadsBackTheSame() throws {
+        let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["RICH_GRAPH"]!)
+        var (rows, same, misread) = (0, 0, [(String, String)]())
+        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+        while let url = files?.nextObject() as? URL {
+            if url.lastPathComponent == ".git" { files?.skipDescendants(); continue }
+            guard url.pathExtension == "md", let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for row in Markup.Document.parse(source).rows() where row.block.hasInlineContent {
+                rows += 1
+                let rich = Rich.parse(row.block.text)
+                let written = rich.toMarkdown()
+                if written == row.block.text { same += 1 }
+                if !Rich.parse(written).sameAs(rich) { misread.append((row.block.text, written)) }
+            }
+        }
+        print("rows \(rows), written the same \(same), read back differently \(misread.count)")
+        for (from, to) in misread.prefix(15) { print("  \(from.debugDescription)\n→ \(to.debugDescription)") }
+        #expect(misread.isEmpty)
     }
 }
