@@ -34,17 +34,21 @@ public final class FileStamps {
 
 /// Watches a file, calling back when it changes. Editors often save by
 /// writing a new file and renaming it over the old one, so on a rename or
-/// delete the path is watched afresh. Where there are no file system
-/// event sources (Linux), the file is looked at once a second.
+/// delete the path is watched afresh; one that isn't there is waited for
+/// by watching the nearest folder up that is, until it comes (§ M4). The
+/// file system says so — a Mac's vnode events, Linux's inotify (a folder
+/// watched itself, a file through its folder) — nothing looked at again
+/// and again.
 public final class FileWatcher {
     private let path: String
     private let queue: DispatchQueue
     private let onChange: () -> Void
     #if canImport(Darwin)
     private var source: DispatchSourceFileSystemObject?
+    /// While it isn't there: the folder up it would come in.
+    private var waiting: DispatchSourceFileSystemObject?
     #else
-    private var timer: DispatchSourceTimer?
-    private var last: (Int64, Double)?
+    private var token: Inotify.Token?
     #endif
     private var pending: DispatchWorkItem?
 
@@ -54,68 +58,100 @@ public final class FileWatcher {
         self.path = path
         self.queue = queue
         self.onChange = stamps.map { stamps in { if stamps.moved() { onChange() } } } ?? onChange
-        start(retries: 0)
+        start(missing: false)
     }
 
     deinit {
         #if canImport(Darwin)
         source?.cancel()
+        waiting?.cancel()
         #else
-        timer?.cancel()
+        if let token { Inotify.shared.unwatch(token) }
         #endif
     }
 
+    /// The nearest folder up from the path that's there.
+    private var nearestThere: String {
+        var dir = path.deletingLastPathComponent
+        while dir.count > 1, !FileManager.default.fileExists(atPath: dir) { dir = dir.deletingLastPathComponent }
+        return dir.isEmpty ? "/" : dir
+    }
+
     #if canImport(Darwin)
-    private func start(retries: Int) {
+    private func start(missing: Bool) {
         source?.cancel()
         source = nil
+        waiting?.cancel()
+        waiting = nil
         let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else {
-            // Gone, perhaps mid-save: looked for again shortly, for a
-            // while; then once a second, for as long as it's watched — a
-            // file made again later is followed again (§ M4), as Linux's
-            // polling does.
-            queue.asyncAfter(deadline: .now() + (retries < 20 ? 0.1 : 1)) { [weak self] in
-                self?.start(retries: retries + 1)
-            }
-            return
-        }
+        guard fd >= 0 else { return wait() }
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename, .attrib, .link], queue: queue)
         source.setEventHandler { [weak self, weak source] in
             guard let self, let source else { return }
             if !source.data.isDisjoint(with: [.delete, .rename]) {
-                self.start(retries: 0)
+                self.start(missing: true)
             }
             self.changed()
         }
         source.setCancelHandler { close(fd) }
         source.resume()
         self.source = source
-        if retries > 0 { changed() }
-    }
-    #else
-    private func stamp() -> (Int64, Double)? {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
-        let size = (attrs[.size] as? Int64) ?? 0
-        let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return (size, modified)
+        if missing { changed() }
     }
 
-    private func start(retries: Int) {
-        last = stamp()
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 1, repeating: 1)
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            let now = self.stamp()
-            if now?.0 != self.last?.0 || now?.1 != self.last?.1 {
-                self.last = now
-                self.changed()
+    /// Not there (perhaps mid-save): the folder it would come in watched
+    /// — or the nearest one up that's there — and looked for again when
+    /// that changes.
+    private func wait() {
+        let dir = nearestThere
+        let fd = open(dir, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let w = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .link, .rename, .delete], queue: queue)
+        w.setEventHandler { [weak self] in self?.start(missing: true) }
+        w.setCancelHandler { close(fd) }
+        w.resume()
+        waiting = w
+        // Come while the watch was being set.
+        if FileManager.default.fileExists(atPath: path) || nearestThere != dir { start(missing: true) }
+    }
+    #else
+    private func start(missing: Bool) {
+        if let token { Inotify.shared.unwatch(token) }
+        token = nil
+        let fm = FileManager.default
+        let name = path.lastPathComponent
+        if fm.isDirectory(atPath: path) == true {
+            // A folder: what's in it, watched in it.
+            token = Inotify.shared.watch(path) { [weak self] _, mask in
+                self?.queue.async {
+                    guard let self else { return }
+                    if mask & (Inotify.ignored | Inotify.deleteSelf | Inotify.moveSelf) != 0 { self.start(missing: true) }
+                    self.changed()
+                }
             }
+        } else if fm.fileExists(atPath: path.deletingLastPathComponent) {
+            // A file (or none yet): its folder's events for its name.
+            let dir = path.deletingLastPathComponent
+            token = Inotify.shared.watch(dir) { [weak self] entry, mask in
+                self?.queue.async {
+                    guard let self else { return }
+                    if mask & (Inotify.ignored | Inotify.deleteSelf | Inotify.moveSelf) != 0 { return self.start(missing: true) }
+                    guard entry == name else { return }
+                    // Made a folder where the file was: watched as one.
+                    if mask & (Inotify.create | Inotify.movedTo) != 0, fm.isDirectory(atPath: self.path) == true { self.start(missing: true) }
+                    self.changed()
+                }
+            }
+        } else {
+            // Its folder isn't there: the nearest up that is, until it comes.
+            let dir = nearestThere
+            token = Inotify.shared.watch(dir) { [weak self] _, _ in
+                self?.queue.async { self?.start(missing: true) }
+            }
+            if nearestThere != dir { return start(missing: true) }
         }
-        timer.resume()
-        self.timer = timer
+        if missing, fm.fileExists(atPath: path) { changed() }
     }
     #endif
 
