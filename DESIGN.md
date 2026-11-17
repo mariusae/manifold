@@ -2090,82 +2090,58 @@ nothing asks first, but the widget's tooltip says what it runs.
 ### 7.9 Outline
 
 A note — any Markdown text — as an outline (the `outliner` lens, ⌥⌘↩
-from its editor or preview, and back): Prism's, after Bike. The Markdown
-is read into rows (`NoteOutlineMarkdown`, in ManifoldCore): list items and
-what nests in them, headings, paragraphs, quotes, fenced code, rules, each
-with the small facts of how it was written (its bullet, its spacing, the
-blank lines before it), so that a note read and written back unedited
-comes back byte for byte. The rows are what's edited (`NoteOutlineView`,
-a text view whose paragraphs are the rows, each carrying its row as an
-attribute): Return makes a row, Tab and ⇧Tab move rows in and out with
-their children, ⌃⌘↑ ⌃⌘↓ move them among their siblings, ⌘↩ cycles a
-checkbox (open, checked, none), Markdown typed at a row's start (`#`,
-`>`, `[ ]`, `1.`) sets its kind, a bullet clicked folds its children (a
-fold is how it shows, not what it says: the children are still written),
-paste of Markdown comes in as rows and copy of rows goes out as Markdown;
-undo is the outline's own. Escape leaves the text for the rows: a block of
-them selected, drawn behind them, that ↑ ↓ move and ⇧ extends, and that
-Space checks off, Delete deletes, Tab moves in, ← and → fold and unfold,
-⌘C copies as Markdown; Escape or Return goes back to the text. A bullet
-dragged (past a few points; a click still folds) carries its row and the
-rows under it, a line showing where they'll go and how deep, from where
-the pointer is across; ⌥⌘9 ⌥⌘0 fold and unfold every row (as Prism does,
-a heading's section folds under it). Inline Markdown — emphasis, code,
-strikethrough, links (`InlineMarkup`,
-`InlineEditing`, Prism's) — is styled, its markup laid out as zero-width
-glyphs, so the bytes stay the note's: the caret steps over markup it
-can't see, Delete takes what's shown and not a hidden `*`, and a link
-clicked opens where it points. Each change is written back as the Markdown
-the rows say — only the bytes between what's unchanged at either end, one
-edit to the block's log — and a change from anywhere else (its editor,
-another Mac, `mani write`) is read in again, the caret kept on its row,
-its folds and its focus on the rows they were on (`NoteOutlineFolds`: by
-place and words). A note whose Markdown doesn't come back the same
-(`roundTrips`: tabs for indents, mixed line endings) is shown, not edited,
-a line over it saying so — its first edit would rewrite what it didn't
-touch.
+from its editor or preview, and back): Weft's outliner, after Bike 2,
+ported from prism into Manifold's own Swift — no prism, no Rust.
 
-Its actions are Prism's (`OutlineNoteCommands`), on Edit ▸ Outline and
-a row's own menu, the keys Manifold's where Prism's are taken: rows
-duplicated, deleted and moved by the editor's line keys (⇧⌘D, ⇧⌘K,
-⌃⌘↑ ⌃⌘↓), in and out by ⌃⌘→ ⌃⌘←; a task (`+ [ ]`, round, and `+ ` typed)
-beside a checklist item, Toggle Done, Move Done to Bottom (⌃⇧⌘D); Bullet
-(⇧⌘8), Horizontal Line (⌥⌘-, or `---` typed), Code Block (⇧⌥⌘C: the rows
-one block, or a block rows again), Turn Into; Select Row Text (⇧⌘L),
-Select Branch (⇧⌘B), Expand and Contract Selection (⌃⌥⌘↑ ⌃⌥⌘↓: word,
-sentence, text, row, branch, the branch it's in, every row); Format's
-bold, italic, strikethrough, code, highlight (⇧⌘H) and Link… (⌥⌘K), and
-an address pasted over words making them its link. **Focus** (⌃⌥⌘→, or
-⌥-click a bullet; ⌃⌥⌘← out a step; Unfocus) shows a row and what's under
-it as if it were the note, the rest set aside (`NoteOutlineFocus`) and
-written round it, the path to it over the rows, each step a way back.
-**Pictures** are drawn, Prism's way (`OutlineNotePictures`): a picture's
-`![…](…)` hidden whole, one thing to the caret and to Delete, the picture
-under its line's words — in place of them on a line with nothing else —
-at its own size (no taller than 420 points, given none) or the size noted
-after it (`<!-- {"width":320} -->`, as Prism's editor writes one), never
-wider than its column. Where from: an image block (`manifold:…`, this
-Mac's file read, another host's fetched), a file beside the note's own
-(or a path), a picture on the web — fetched once, kept for the session,
-the outlines told when it comes; one that isn't there or isn't a picture
-stays its Markdown, greyed. Under the pointer a picture shows a grip in
-its corner: dragged, the picture made larger or smaller in its own shape
-(60 points to its column), the width written after its Markdown when it's
-let go, one edit to undo; twice clicked, that taken away. The size is the
-note's, not this Mac's (Prism keeps it per Mac), so the Markdown view
-draws it so too. A picture selected is ringed; a picture pasted (a
-screenshot copied, Copy Image) is kept as an image block, as one dropped
-is, and goes in the caret's row if it's empty, else a row after it.
-The lens is Prism's too: a fold told by a pill of three dots after the
-row's words (clicked, unfolded), not on its bullet; a hollow ghost of a
-bullet before the row under the pointer that has none — a heading's
-clicked folds its section; a bullet with checkboxes under it ringed with
-how many are done; a code block's language in its corner. A bullet with
-nothing under it clicked selects its row. Return on a code block's
-closing fence, or on the empty line before it, leaves the block. Where it
-still differs: Return on an empty item deeper in brings it out a level
-(Prism makes another), pictures aren't dragged by themselves, and there's no
-`[[` completion — a note links to blocks by dropping them.
+**The engine** (`ManifoldCore/Outliner`, `Markup.*` behind `NoteEditor`)
+is prism-markup's note session: the Markdown read into a lossless block
+tree (a note read and written back unedited comes back byte for byte,
+whatever it holds), shown as rows of rich words — never Markdown, a link
+or a picture one atom (U+FFFC), a line break within a row U+2028 — and
+edited as Bike 2 edits: what's typed handed to `replace`, what's asked
+for to `perform` (Return, Delete at a row's start, indent and outdent
+with children, moves, a row alone, group, join, promote and demote,
+kinds typed or turned into, folds by row, all and level, done rows to
+the bottom), each answered with what the view should do; undo is the
+engine's, structure and all. Manifold's notes differ from Weft's in its
+`Options`: a note's `# Title` is a row like any other; folds and the row
+focused on are the view's, never written into the note; there are no
+cards. Its tests are prism's, ported (108), with Manifold's own.
+
+**The view** (`Manifold/Outliner`, `OutlinerView`, TextKit 1) is Weft's
+Mac editor: Bike 2's look in the font theme's faces and Manifold's
+colours — rows a step of 1.6 times the size in, a triangle before each
+(down while it's open, a guide line down its branch), no bullet on a
+plain row, a checklist item's square and a task's circle and a number
+in the step after, a quote's bar, a done row struck through — the caret
+the system's with a tail for which side it types with; a handle clicked
+folds (⌥, all under it), dragged carries the row and what's under it, a
+line showing where and how deep; Escape for rows chosen (↑ ↓ ⇧, Space
+checks them off); copy and paste as Markdown; an address pasted over
+words links them. Its keys are Bike 2's, taken before the menus while
+it has the keyboard (⌘↩ ⇧⌘↩ ⌥⌘↩ a row below, above, a child; ⌘D its
+rows duplicated, ⇧⌘K deleted; ⌃⌘ and an arrow moves and indents; ⌘9
+⌘0, ⌃⌘9 ⌃⌘0, ⌥⌘9 ⌥⌘0 folds; ⌥⌘→ ⌥⌘← focus in and out; ⌃⇧⌘→ ⌃⇧⌘←
+the selection a step wider or narrower); Edit ▸ Outline lists them,
+showing a key only where no other item has it.
+
+**The tile** (`OutlineNoteView`) keeps what it is to the rest of
+Manifold: the block's Markdown read in, and another's edit (its editor,
+another Mac, `mani write`) taken with the caret, folds and focus kept by
+their words; each edit written back as one, the bytes between what's
+unchanged; a `manifold:` link reading as its block's title with its
+symbol, and followed by the one rule (a web link marked ↗); a row of
+pictures drawn in its place — an image block's, a file beside the
+note's, the web's, at the size noted after it (`<!-- {"width":320} -->`)
+— and a block embedded (`![name](manifold:…)`) as its card; things
+dropped going in as a note takes them (§3.11) — several, or a row's
+worth, as rows where the pointer lets go; here (§2.5) as the Markdown
+lines the rows chosen or the caret's stand for (`markdownLines`);
+threads marked at their rows' right; find and replace in the tile's
+pill; a row focused on with the path to it over the rows. Not carried
+over from the outline before it: a picture's grip for resizing, the
+ghost bullet under the pointer, Horizontal Line and Code Block, Select
+Row Text and Select Branch.
 
 A note's outline — what its tile shows as ticks and in its sidebar, and
 ⌘P finds — is the same in every lens (`NoteOutlineMarkdown.items`): its

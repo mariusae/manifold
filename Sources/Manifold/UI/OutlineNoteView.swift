@@ -93,6 +93,8 @@ final class OutlineNoteView: NSView, PaneContent {
             self?.markCurrent()
         }
         outliner.onLaidOut = { [weak self] in
+            // Rows shown change with folds and focus, the Markdown not.
+            self?.mapRows()
             self?.strip.refill()
             self?.placeThreadMarks()
             self?.markCurrent()
@@ -243,7 +245,7 @@ final class OutlineNoteView: NSView, PaneContent {
         let found = NoteOutlineMarkdown.items(in: markdown)
         items = found
         headings.set(found.map(Outline.Item.init))
-        rowLines = (0..<outliner.rowCount).map { outliner.editor.markdownLines(ofRow: $0) }
+        mapRows()
         strip.refill()
         markCurrent()
         placeThreadMarks()
@@ -253,6 +255,8 @@ final class OutlineNoteView: NSView, PaneContent {
     private var items: [NoteOutlineItem] = []
     /// The Markdown's lines each row shown stands for (from 0), by row.
     private var rowLines: [ClosedRange<Int>?] = []
+
+    private func mapRows() { rowLines = (0..<outliner.rowCount).map { outliner.editor.markdownLines(ofRow: $0) } }
 
     /// The row shown that a Markdown line is in, if any: the last that starts at or before it.
     private func row(ofLine line: Int) -> Int? {
