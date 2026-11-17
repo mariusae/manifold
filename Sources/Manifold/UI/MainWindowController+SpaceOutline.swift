@@ -251,6 +251,15 @@ extension MainWindowController {
         var d = given ?? (over == true ? .over : Self.disposition ?? .goTo)
         if over == false, d == .over { d = .beside }
         let place: Where = placement.map { d == .over ? .over($0) : .besideOpener($0) } ?? .here
+        // A file on a host, as another app was given it (manifold://host/path):
+        // opened as a path there is, at its line if it names one.
+        if case let .file(on, path, fragment)? = ManifoldAddress.parse(target) {
+            let line = fragment.flatMap { f in f.hasPrefix("line=") ? Int(f.dropFirst(5).prefix { $0.isNumber }) : nil }
+            let at = path + (line.map { ":\($0)" } ?? "")
+            if on == host.host { return open(at, from: placement, here: here, over: over, as: given) }
+            guard hosts.client(on) != nil else { return toast.say("That file is on a host that isn't attached here") }
+            return openRemote(at, on: on, base: nil, from: placement, as: d)
+        }
         // A link to a block (manifold:host/ulid, as a note's pill is): go to
         // it — and to a place in it, if the link names one (#command=7).
         if target.hasPrefix("manifold:"), let (b, fragment) = BlockID.link(target) {

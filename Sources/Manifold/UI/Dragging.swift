@@ -170,6 +170,11 @@ struct Dragged {
                 let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !t.contains(" "), !t.contains("\n"), let u = URL(string: t), u.scheme == "http" || u.scheme == "https" {
                     things.append(DragThing(title: t, url: t, text: t))
+                } else if case let .file(host, path, _)? = ManifoldAddress.parse(t), !t.contains("\n") {
+                    // Another host's file, as another app was given it.
+                    let folder = path.count > 1 && path.hasSuffix("/")
+                    let p = folder ? String(path.dropLast()) : path
+                    things.append(DragThing(title: p.lastPathComponent, file: .init(host: host, path: p, isDirectory: folder), text: p))
                 } else if let (id, fragment) = BlockID.reference(t), !t.contains("\n") {
                     // A reference (or a block's link) as text: the block it names.
                     things.append(DragThing(block: id, at: fragment.flatMap(Locator.init(fragment:)), title: t.hasPrefix("[") ? String(t.dropFirst().prefix { $0 != "]" }) : "", text: s))

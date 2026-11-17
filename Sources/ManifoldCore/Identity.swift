@@ -50,13 +50,16 @@ public struct BlockID: Hashable, Codable, Sendable, CustomStringConvertible, Com
             r = "manifold:" + r[open.upperBound..<r.index(before: r.endIndex)]
         }
         guard r.hasPrefix("manifold:") else { return nil }
+        // A file's address (`manifold://host/abs/path`) names no block.
+        if case .file? = ManifoldAddress.parse(r) { return nil }
         return link(r)
     }
 
-    /// A reference written bare, as a pattern: `manifold:host/id`, and a
+    /// A reference written bare, as a pattern: `manifold:host/id` (or
+    /// `manifold://host/id`, as another app is given it), and a
     /// place in it — a legible one (`#line=12`, `#lines=3-7`, `#cell=k2x9`)
     /// or an anchor (`#k7q2mx`, §2.5).
-    public static let referencePattern = #"manifold:[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#(?:[A-Za-z]+=[0-9A-Za-z]+(?:-[0-9]+)?|[0-9a-z]{4,12}\b))?"#
+    public static let referencePattern = #"manifold:(?://)?[A-Za-z0-9._-]+/[0-9A-HJKMNP-TV-Z]{26}(?:#(?:[A-Za-z]+=[0-9A-Za-z]+(?:-[0-9]+)?|[0-9a-z]{4,12}\b))?"#
 
     public static func link(_ address: String) -> (block: BlockID, fragment: String?)? {
         var s = address.hasPrefix("manifold:") ? String(address.dropFirst(9)) : address

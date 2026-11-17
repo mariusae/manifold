@@ -654,6 +654,28 @@ enum DebugControl {
             let catching = wc.grids.filter { $0.value.dragging }.map { name($0.key) }.sorted()
             let shown = wc.selected.map(name) ?? "-"
             return "dragging=\(wc.draggingTab) catching=\(catching.isEmpty ? "-" : catching.joined(separator: ",")) shown=\(shown)"
+        case "dragout":
+            // "dragout <host>/<ulid>": what a block dragged as a reference (⇧)
+            // gives another app; "dragout <host>:<path>": a file's, from a
+            // folder's listing.
+            guard let wc else { return "no window" }
+            let item: NSPasteboardItem?
+            if let id = BlockID(string: arg), !arg.contains(":") {
+                item = Drags.block?(id, [.shift])
+            } else if let colon = arg.firstIndex(of: ":") {
+                let host = HostID(String(arg[..<colon])), path = String(arg[arg.index(after: colon)...])
+                item = Drags.file(path, isDirectory: path.hasSuffix("/"), on: host)
+            } else { return "usage: dragout <host>/<ulid> | <host>:<path>" }
+            _ = wc
+            guard let item else { return "nothing" }
+            let shown: [(String, NSPasteboard.PasteboardType)] = [("string", .string), ("URL", .URL), ("fileURL", .fileURL),
+                                                                  ("name", NSPasteboard.PasteboardType("public.url-name"))]
+            return shown.compactMap { name, t in item.string(forType: t).map { "\(name): \($0)" } }.joined(separator: "\n")
+        case "openaddress":
+            // "openaddress <address>": opened as another app's link to it is
+            // (without bringing the app to the front, as that does).
+            wc?.openLink(arg)
+            return wc == nil ? "no window" : "ok"
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"

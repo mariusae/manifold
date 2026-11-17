@@ -666,7 +666,10 @@ extension MainWindowController: GridDelegate {
     /// taken (its name over it), as text elsewhere, as a block's link in a note.
     func copyLink(to block: BlockID, fragment: String? = nil) {
         guard let b = hosts.block(block) else { return }
-        let address = "manifold:\(block.description)" + (fragment.map { "#" + $0 } ?? "")
+        // Another app's (macOS hands it back here), with the slashes apps
+        // take for an address; a note's link as notes write them.
+        let address = ManifoldAddress.of(block, fragment: fragment)
+        let noted = "manifold:\(block.description)" + (fragment.map { "#" + $0 } ?? "")
         let title = b.displayTitle.replacingOccurrences(of: "]", with: "\\]")
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -674,7 +677,7 @@ extension MainWindowController: GridDelegate {
         item.setString(address, forType: .string)
         item.setString(address, forType: .URL)
         item.setString("<a href=\"\(address)\">\(b.displayTitle.replacingOccurrences(of: "<", with: "&lt;"))</a>", forType: .html)
-        item.setString("[\(title)](\(address))", forType: .manifoldBlockLink)
+        item.setString("[\(title)](\(noted))", forType: .manifoldBlockLink)
         pb.writeObjects([item])
     }
 

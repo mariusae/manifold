@@ -397,15 +397,35 @@ enum Drags {
     static var localHost = HostID("local")
 
     /// What dragging a thing writes, from wherever it's dragged: the thing,
-    /// and for another app its words, its file here, its page.
+    /// and for another app what opens it again — a file on this Mac as the
+    /// file (its URL, its path), a page as its address, and anything else of
+    /// Manifold's (a block, a place in one, another host's file) as its
+    /// `manifold://` address, which brings it back here; a selection as its
+    /// words.
     static func item(_ t: DragThing) -> NSPasteboardItem {
         let item = NSPasteboardItem()
         if let data = try? JSONEncoder().encode(t) { item.setData(data, forType: .manifoldThing) }
-        let reference = t.block.map { "manifold:" + $0.description + (t.at.map { "#" + $0.fragment } ?? "") }
-        if let s = t.text ?? t.place?.path ?? t.url ?? reference { item.setString(s, forType: .string) }
+        if let address = outsideAddress(t) {
+            item.setString(address, forType: .string)
+            item.setString(address, forType: .URL)
+            if !t.title.isEmpty { item.setString(t.title, forType: NSPasteboard.PasteboardType("public.url-name")) }
+        } else if let s = t.text ?? t.place?.path ?? t.url {
+            item.setString(s, forType: .string)
+        }
         if let f = t.file, f.host == localHost { item.setString(URL(fileURLWithPath: f.path).absoluteString, forType: .fileURL) }
         if let u = t.url { item.setString(u, forType: .URL) }
         return item
+    }
+
+    /// The `manifold://` address another app is given for a thing: none for
+    /// a file on this Mac (it's the file), a page (its own address), a
+    /// selection (its words) or a commit with no block (its sha).
+    static func outsideAddress(_ t: DragThing) -> String? {
+        if t.selection == true || t.url != nil { return nil }
+        if let f = t.file, f.host == localHost { return nil }
+        if let b = t.block { return ManifoldAddress.of(b, fragment: t.at?.fragment) }
+        if let f = t.file { return ManifoldAddress.of(file: f.path, on: f.host, isDirectory: f.isDirectory, fragment: t.at?.fragment) }
+        return nil
     }
 
     static var modifiers: NSEvent.ModifierFlags { NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags }

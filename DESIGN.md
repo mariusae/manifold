@@ -1091,8 +1091,17 @@ it's dragged, so a tile under it takes the drop, and closes after); a file or fo
 Finder); a page's address; a picture; words. A thing is written the same
 from wherever it's dragged (`DragThing`: the block and its place, the
 file and its host, the folder a terminal is in, the address, the words),
-beside what another app takes (its file here, its text), and read the
-same wherever it lands (`Dragged`), from Manifold or not.
+beside what another app takes, and read the same wherever it lands
+(`Dragged`), from Manifold or not. Another app is given what opens it
+again: a file on this Mac as the file (its URL and path); a page as its
+address; a selection as its words; anything else of Manifold's — a
+block, a place in one, another host's file or folder — as a
+`manifold://` address (`ManifoldAddress`: `manifold://host/<ulid>#place`
+for a block, `manifold://host/abs/path` for a file, a folder's ending in
+`/`), titled, which macOS hands back to Manifold to open: the block gone
+to, the file opened on its host (at the line its place names). Copy Link
+gives the same address; notes keep writing `manifold:host/<ulid>`, and
+both are read alike.
 
 A **commit** is a thing too (`DragThing.Commit`: its host, repository,
 sha and summary), from wherever one is shown: a git tile's history, a
