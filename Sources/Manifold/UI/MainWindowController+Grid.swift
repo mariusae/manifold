@@ -476,8 +476,9 @@ extension MainWindowController: GridDelegate {
         let menu = NSMenu()
         var path = start
         var first = true
-        // The tile's own folder: a folder's itself, a file's the one it's in,
-        // a terminal's where it is — held under the pointer.
+        // Held under the pointer: the level above the tile's own — a file's
+        // folder, a folder's (a project's, a Finder's) the one it's in; a
+        // terminal's where it is, as it isn't one of the rows itself.
         var own: NSMenuItem?
         while true {
             let name = path == "/" ? "/" : path.lastPathComponent
@@ -493,13 +494,13 @@ extension MainWindowController: GridDelegate {
             }
             item.indentationLevel = 0
             menu.addItem(item)
-            if own == nil, isFolder { own = item }
+            if own == nil, b.path == nil || !first { own = item }
             if path == "/" { break }
             path = path.deletingLastPathComponent
             if path.isEmpty { path = "/" }
             first = false
         }
-        return (menu, own)
+        return (menu, own ?? menu.items.first)
     }
 
     /// An agent's name (§3.12) edited in its tile's bar, over its pill:

@@ -906,6 +906,10 @@ enum DebugControl {
             guard let tiff = out.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return "no image" }
             try? png.write(to: URL(fileURLWithPath: w[1]))
             return "wrote \(w[1])"
+        case "pathmenu":
+            // The focused tile's ⌘-click path menu, the row held under the pointer marked ▸.
+            guard let wc, let id = wc.arrangement?.focused, let (menu, here) = wc.gridPathMenu(for: id) else { return "no path menu" }
+            return menu.items.map { ($0 === here ? "▸ " : "  ") + $0.title }.joined(separator: "\n")
         case "pillmenu":
             // "pillmenu [title]": the focused tile's menu, or that item chosen.
             return wc?.debugPillMenu(arg) ?? "no window"
