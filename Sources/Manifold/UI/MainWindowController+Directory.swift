@@ -175,6 +175,20 @@ extension MainWindowController: DirectoryViewDelegate {
         hosts.propose(.listDirectory(view.block))
     }
 
+    func directoryView(_ view: DirectoryView, watch folders: Set<String>, changed: @escaping (Set<String>) -> Void) -> Bool {
+        guard let client = hosts.client(of: view.block), client.isConnected, client.watchesFolders else { return false }
+        client.watchFolders(for: view, folders, changed: changed)
+        return true
+    }
+
+    func directoryViewUnwatch(_ view: DirectoryView) {
+        hosts.client(of: view.block)?.unwatchFolders(for: view)
+    }
+
+    func directoryView(_ view: DirectoryView, watchPresence changed: (() -> Void)?) {
+        if let changed { hosts.watch(kinds: [.terminal, .agent], by: view, changed) } else { hosts.unwatchKinds(by: view) }
+    }
+
     func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void) {
         guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.listFolder(path, done: done)

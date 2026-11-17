@@ -14,7 +14,7 @@ final class DirectoryColumnsMode: NSView, DirectoryMode, NSTableViewDataSource, 
     private let model: DirectoryModel
     private let scroll = ClippingScrollView()
     private let strip = FlippedView()
-    private var columns: [Column] = []
+    private var columns: [Column] = [] { didSet { owner.shownFoldersChanged() } }
     private let previewBox = NSView()
     private let preview = FilePreviewView()
     /// The deepest chosen: a folder (its entries the last column) or a

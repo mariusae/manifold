@@ -581,6 +581,44 @@ final class HostClient {
         list(.listFolder(path: path)) { entries, _ in done(entries) }
     }
 
+    /// Whether the host's server watches folders for those showing them
+    /// (`watchFolders`); one from before is asked again and again instead.
+    var watchesFolders: Bool { features.contains("folderWatch") }
+
+    /// Who shows which folders, and what they're told when one changes.
+    private var folderWatchers: [ObjectIdentifier: (folders: Set<String>, changed: (Set<String>) -> Void)] = [:]
+    /// What the server was last told to watch (nil: nothing yet, this connection).
+    private var watchedSent: Set<String>?
+    private var watchSendDue = false
+
+    /// The folders `owner` shows, watched on the host for it — these, in
+    /// place of what it showed before; `changed` with those that change.
+    func watchFolders(for owner: AnyObject, _ folders: Set<String>, changed: @escaping (Set<String>) -> Void) {
+        folderWatchers[ObjectIdentifier(owner)] = (folders, changed)
+        sendWatchedFolders()
+    }
+
+    func unwatchFolders(for owner: AnyObject) {
+        guard folderWatchers.removeValue(forKey: ObjectIdentifier(owner)) != nil else { return }
+        sendWatchedFolders()
+    }
+
+    /// Every one's folders, said to the server once what's changing them
+    /// (a column opened, a tree's folders expanded) has.
+    private func sendWatchedFolders() {
+        guard !watchSendDue else { return }
+        watchSendDue = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.watchSendDue = false
+            guard self.conn != nil, self.watchesFolders else { return }
+            let all = self.folderWatchers.values.reduce(into: Set<String>()) { $0.formUnion($1.folders) }
+            guard all != self.watchedSent else { return }
+            self.watchedSent = all
+            self.propose(.watchFolders(paths: all.sorted()))
+        }
+    }
+
     /// What each path is on the host, in order (nil: nothing there); nil
     /// for none, not attached. Fewer than asked when the host ran out of
     /// time looking.
@@ -1283,6 +1321,10 @@ final class HostClient {
             // over a link to another machine, to a server that takes them.
             mux?.compression = isRemote && features?.contains("zstd") == true
             self.features = Set(features ?? [])
+            // The folders shown, watched by this server (another, after a
+            // restart, knows none of them).
+            watchedSent = nil
+            sendWatchedFolders()
             if version != protocolVersion {
                 NSLog("manifoldd speaks protocol %d, we speak %d", version, protocolVersion)
                 if isRemote {
@@ -1417,6 +1459,12 @@ final class HostClient {
         case let .gutter(block, marks):
             gutters[block] = marks
             delegate?.client(self, gutter: block)
+        case let .foldersChanged(paths):
+            let changed = Set(paths)
+            for w in folderWatchers.values {
+                let theirs = w.folders.intersection(changed)
+                if !theirs.isEmpty { w.changed(theirs) }
+            }
         case let .notebookLive(block, cell, output):
             delegate?.client(self, notebookLive: block, cell: cell, output: output)
         case let .passwordInput(block, on):

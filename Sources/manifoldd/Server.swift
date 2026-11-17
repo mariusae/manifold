@@ -232,6 +232,12 @@ final class Server {
         scip = SCIPService(queue: queue)
         scip.projects = { [weak self] in self.map { $0.node.desk($0.host).projects } ?? [] }
         scip.preferredShell = { [weak self] in self.flatMap { $0.node.desk($0.host).preferences.shell } }
+        // Those showing a project's folder ask its index again.
+        scip.onChanged = { [weak self] root in
+            guard let self else { return }
+            let shown = self.folderWatch.folders.filter { $0 == root || Self.alias(of: $0) == root }
+            if !shown.isEmpty { self.foldersChanged(shown) }
+        }
         languageServers.textOf = { [weak self] block in
             guard let b = self?.node.block(block), let t = b.text else { return nil }
             return (t.text, b.path)
@@ -507,6 +513,7 @@ final class Server {
         commandsUnanswered(by: conn)
         commandsEnded(by: conn)
         peers.removeValue(forKey: me)
+        if folderWatches.removeValue(forKey: me) != nil { watchFolders() }
         owners = owners.filter { $0.value != me }
         links.removeValue(forKey: me)
         // Whether whoever it's attached to is still here.
@@ -1107,6 +1114,12 @@ final class Server {
             offQueue({ FolderListing.children(of: path) }) { entries in
                 self.answer(id, .listing(entries: entries, complete: true), to: conn)
             }
+        case let .watchFolders(paths):
+            // A few thousand at most: what a window of folders shows.
+            let me = ObjectIdentifier(conn)
+            folderWatches[me] = paths.isEmpty ? nil : Set(paths.prefix(4000))
+            watchFolders()
+            done()
         case let .lookUpPaths(paths):
             // Each path looked at, for so long: a slow filesystem (a
             // network's) answers for those looked at in time, the rest
@@ -1712,8 +1725,40 @@ final class Server {
         }
         gitRefreshedAt[root] = Date()
         for b in node.blocks where b.kind == .git && b.path == root { refreshGit(b.id) }
+        // What's ignored (or, a checkout on a virtual file system, what's
+        // there) in the folders shown in it may have changed with it.
+        let shown = folderWatch.folders.filter { $0.isUnder(root) }
+        if !shown.isEmpty { foldersChanged(shown) }
         checkHead(root)
         for b in node.blocks where b.kind == .text && guttered.contains(b.id) && b.path?.isUnder(root) == true { scheduleGutter(b.id) }
+    }
+
+    // MARK: Folders shown
+
+    /// The folders each connection shows, watched for it (§7.4): told
+    /// when they change, rather than asked about every few seconds.
+    private var folderWatches: [ObjectIdentifier: Set<String>] = [:]
+    private lazy var folderWatch = FolderWatch(queue: queue) { [weak self] changed in self?.foldersChanged(changed) }
+
+    private func watchFolders() {
+        let all = folderWatches.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        folderWatch.set(all)
+        // Their repositories' state too: what's tracked (and so ignored)
+        // changes there, not in the folders.
+        for f in all { if let (root, vcs) = git.repository(of: f) { watchRepo(root, vcs) } }
+    }
+
+    /// Folders shown changed: each connection showing one told, and a
+    /// folder's block listed again (only a change written).
+    private func foldersChanged(_ changed: Set<String>) {
+        for (me, shown) in folderWatches {
+            let theirs = shown.intersection(changed)
+            guard !theirs.isEmpty, let p = peers[me] else { continue }
+            p.conn.send(.message(ServerMessage.foldersChanged(paths: theirs.sorted())))
+        }
+        for b in node.blocks where b.kind == .directory {
+            if let path = b.path, changed.contains(path) { list(b.id) }
+        }
     }
 
     /// A project's repository watched (§2.6), and where its working copy

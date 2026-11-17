@@ -1812,16 +1812,35 @@ if it's gone; folders not listed yet are taken from the tree meanwhile,
 so the columns reach a match at once.
 
 The host lists (§4): a folder's entries come with `isIgnored` set from
-the repository it's in (`git check-ignore`, or for Sapling whatever isn't
-in `sl files` or `sl status -u`), and the tree under a folder (`listTree`,
-20,000 files at most) is git's tracked and unignored files, Sapling's, or
-a walk that skips hidden and dependency folders. Ignored and hidden
-entries are left out unless ⇧⌘. shows them. The listing's own entries are
-the block's (`listDirectory`, written to its log only when they change);
-the folders opened under it are asked for as they open (`listFolder`),
-answered and not logged. While it's on screen and the app is in use, the
-view asks again every few seconds for what it shows, and a folder whose
-entries changed is reloaded keeping the selection. The filter takes the
+the repository it's in, asked of each name — `git check-ignore`, or for
+Sapling `sl debugignore`, less the files it tracks in the folder
+(`rootfilesin:`) and the folders holding any (a first one found) — never
+of everything under the folder. The tree under a folder (`listTree`,
+20,000 files at most) is git's tracked and unignored files, Sapling's
+new and tracked ones, or a walk that skips hidden and dependency folders;
+each listing command is ended once it has said its limit, its process
+group with it (`sl` leaves `hg.real` behind otherwise), the same one asked
+for at once runs once, two at most run at a time, and one that runs out
+of time marks its repository large. A large repository — on EdenFS (a
+`.eden`), or a git index or Sapling tree state past 25 MB — is never
+walked, its tree's files aren't looked at one by one (no sizes or dates),
+its homepage counts no languages, and its project's "changed since the
+index" is what version control says is changed (as it is everywhere),
+never every file's date. What anything costs goes with what's shown or
+asked for, not with the repository's size. Ignored and hidden entries are
+left out unless ⇧⌘. shows them. The listing's own entries are the block's
+(`listDirectory`, written to its log only when they change); the folders
+opened under it are asked for as they open (`listFolder`), answered and
+not logged. While it's in a window, the view has the host watch the
+folders it shows (`watchFolders`: FSEvents on a Mac, inotify on Linux,
+each folder by itself, not what's under it), and the host says which
+changed (`foldersChanged`) — its own folder it lists again into the block,
+the others the view asks for; a repository's state moving (a checkout,
+what's ignored) counts as a change to those shown in it, and a project's
+index starting, ending or its count of changed files moving as one to its
+folder. Nothing is asked again and again; only a server from before
+`folderWatch` is asked every few seconds while the app's in use. A
+folder whose entries changed is reloaded keeping the selection. The filter takes the
 tree once (again after thirty seconds) and shows, in every mode, the
 entries whose path holds each word (the last in the name), the folders on
 the way to them, and all of a folder that matched. The mode, the

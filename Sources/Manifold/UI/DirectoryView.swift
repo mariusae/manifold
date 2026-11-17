@@ -34,6 +34,14 @@ protocol DirectoryMode: NSView, DebugDescribing {
 protocol DirectoryViewDelegate: AnyObject {
     func directoryView(_ view: DirectoryView, open path: String, isDirectory: Bool)
     func directoryViewRefresh(_ view: DirectoryView)
+    /// The folders shown watched on the block's host, `changed` told those
+    /// that change — in place of those watched before; false where its
+    /// server can't (one from before), or it isn't attached.
+    func directoryView(_ view: DirectoryView, watch folders: Set<String>, changed: @escaping (Set<String>) -> Void) -> Bool
+    func directoryViewUnwatch(_ view: DirectoryView)
+    /// Told when what's at work anywhere changes (a terminal's or an
+    /// agent's block), nil to stop.
+    func directoryView(_ view: DirectoryView, watchPresence changed: (() -> Void)?)
     /// A folder's entries on the block's host, ignored ones marked.
     func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void)
     /// The tree under a folder on the block's host, less what's ignored.
@@ -308,22 +316,92 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         note.set(.idle)
     }
 
-    /// Kept current while it's on screen and the app in use: the folder
-    /// and those open in it listed again every few seconds — told only
-    /// when something changed, so nothing moves (the selection stays).
+    /// Kept current while it's in a window: the folder and those open in
+    /// it watched on the host, each listed again when the host says it
+    /// changed — told only what changed, so nothing moves (the selection
+    /// stays). Where the host's server can't watch (one from before) or
+    /// isn't attached yet, they're listed again every few seconds while
+    /// the app's in use, until it can.
     private var refresher: Timer?
+    /// The folders the host watches for it.
+    private var watched: Set<String>?
+    private var activation: NSObjectProtocol?
+    private var watchDue = false
 
     private func keepCurrent(_ on: Bool) {
         refresher?.invalidate()
         refresher = nil
-        guard on else { return }
-        refresher = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            guard let self, NSApp.isActive, self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return }
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+        activation = nil
+        delegate?.directoryView(self, watchPresence: nil)
+        guard on else {
+            if watched != nil { delegate?.directoryViewUnwatch(self) }
+            watched = nil
+            return
+        }
+        // A homepage's facts: who's at work as that changes; what's changed
+        // since its index, as the host says (`foldersChanged`) and when
+        // the app comes back to the front (files edited meanwhile).
+        delegate?.directoryView(self, watchPresence: { [weak self] in
+            guard let self, self.home else { return }
+            self.showFacts()
+        })
+        activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.unchecked {
+                guard let self, self.home else { return }
+                self.showFacts()
+                self.askIndex(now: true)
+            }
+        }
+        if updateWatch() { return }
+        refresher = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] t in
+            guard let self else { return }
+            if self.updateWatch() {
+                t.invalidate()
+                self.refresher = nil
+                return
+            }
+            guard NSApp.isActive, self.window?.isVisible == true, !self.isHiddenOrHasHiddenAncestor else { return }
             self.delegate?.directoryViewRefresh(self)
             if let shown = self.content?.shownFolders { self.model?.refresh(shown) }
-            // Its git block isn't placed, so its changes don't come as the
-            // tile's: read now and then.
             if self.home { self.showFacts(); self.askIndex() }
+        }
+    }
+
+    /// The folders shown changed (one opened, a column closed; its folder
+    /// set up): watched, once whatever's changing them has — and, watched
+    /// at last, no longer asked again and again.
+    func shownFoldersChanged() {
+        guard refresher != nil || watched != nil, !watchDue else { return }
+        watchDue = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.watchDue = false
+            guard self.window != nil, self.updateWatch() else { return }
+            self.refresher?.invalidate()
+            self.refresher = nil
+        }
+    }
+
+    /// The folders shown watched on the host; false where it can't.
+    @discardableResult private func updateWatch() -> Bool {
+        guard let model else { return false }
+        let folders = Set([model.root] + (content?.shownFolders ?? []))
+        if folders == watched { return true }
+        guard delegate?.directoryView(self, watch: folders, changed: { [weak self] in self?.foldersChanged($0) }) == true else { return false }
+        watched = folders
+        return true
+    }
+
+    /// The host says these changed: those open in it listed again (its
+    /// own folder the host lists again itself, into the block); its
+    /// homepage's facts asked again with its folder.
+    private func foldersChanged(_ folders: Set<String>) {
+        guard let model else { return }
+        model.refresh(Array(folders))
+        if folders.contains(model.root), home {
+            showFacts()
+            askIndex(now: true)
         }
     }
 
@@ -340,6 +418,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         m.changed = { [weak self] folder in
             self?.content?.folderChanged(folder)
             self?.updateFooter()
+            self?.shownFoldersChanged()
         }
         m.filterChanged = { [weak self] in
             self?.content?.reloadAll()
@@ -355,6 +434,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             m.ascending = s[1] == "1"
         }
         model = m
+        shownFoldersChanged()
         // A project's tile opens on its homepage, its files in columns,
         // unless it was left otherwise.
         homeShown = keeper.value("home") != "0"
@@ -529,6 +609,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             gitAskedAt = Date()
             projectGit = delegate?.directoryView(self, gitFor: project)
             if let id = projectGit { delegate?.directoryView(self, watch: id) { [weak self] in self?.showFacts() } }
+            // Its block comes with a change; none, in a moment it's no
+            // longer waited for.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.1) { [weak self] in self?.showFacts() }
         }
         let git = projectGit.flatMap { delegate?.directoryView(self, block: $0) }
         // Its languages, from its tree (now and then); what's at work in it.
@@ -540,10 +623,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
                 self.showFacts()
             }
         }
-        if Date().timeIntervalSince(presenceAt ?? .distantPast) > 2 {
-            presenceAt = Date()
-            presence = delegate?.directoryView(self, presenceIn: project) ?? []
-        }
+        // Who's at work in it, from what this Mac has of the host: asked
+        // again as their blocks change (`watchPresence`).
+        presence = delegate?.directoryView(self, presenceIn: project) ?? []
         var f = facts?.project == project ? facts! : ProjectFacts(project: project)
         f.project = project
         f.repo = git?.path
@@ -562,7 +644,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     private var languages: [LanguageShare] = []
     private var languagesAt: Date?
     private var presence: [Presence] = []
-    private var presenceAt: Date?
 
     /// The index's state asked again: at once, while it's being made, and
     /// otherwise now and then.
@@ -1553,6 +1634,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if let p = parentProject { lines.append("in project \(p.name), offered") }
         if !footer.isHidden { lines.append("footer \(footer.stringValue)") }
         lines.append("note \(note.debugState)")
+        lines.append("watched " + (watched.map { $0.map { model?.relative($0) ?? $0 }.map { $0.isEmpty ? "." : $0 }.sorted().joined(separator: " ") } ?? "none (asked again every few seconds)"))
         if let e = readmeEntry {
             lines.append("readme \(e.name) \(readme.isHidden ? "hidden" : readme.collapsed ? "collapsed" : "open \(Int(readme.frame.height))")\(readmeText == nil ? " (unread)" : "")")
         }

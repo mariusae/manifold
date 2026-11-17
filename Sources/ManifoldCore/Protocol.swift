@@ -8,7 +8,7 @@ public let protocolVersion = 71
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
-public let serverFeatures = ["zstd", "machine", "environment"]
+public let serverFeatures = ["zstd", "machine", "environment", "folderWatch"]
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -251,6 +251,11 @@ public enum Proposal: Codable, Sendable {
     case machine(MachineQuery)
     /// A folder's entries, ignored ones marked (§7.4), answered with `listing`.
     case listFolder(path: String)
+    /// The folders this connection shows (§7.4), watched for it — these and
+    /// no others, until it says otherwise or goes: each change in one is
+    /// told it (`foldersChanged`), nothing asked again and again. From a
+    /// server that says `folderWatch`.
+    case watchFolders(paths: [String])
     /// What each path is on the host — a file, a folder, or nothing —
     /// answered with `pathKinds`: for telling which of the names a
     /// terminal shows are files there (§3.8). A path starting with ~ is
@@ -343,7 +348,7 @@ public extension Proposal {
             return request.block
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .seen, .hold, .release, .link, .unlink, .resetGraph,
              .history, .languageServers, .scip, .editFile, .editing, .project, .unproject, .signal, .machine,
-             .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath, .threadSeen:
+             .listFolder, .watchFolders, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath, .threadSeen:
             return nil
         }
     }
@@ -372,7 +377,7 @@ public extension Proposal {
         // A project's said to its own host's client (`HostClient.propose`);
         // here, this Mac's.
         case .workspaces, .settings, .preferences, .environment, .indexAgents, .scip, .editFile, .project, .unproject,
-             .signal, .machine, .listFolder, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath:
+             .signal, .machine, .listFolder, .watchFolders, .lookUpPaths, .listTree, .languages, .fileHistory, .makeFolder, .trashPaths, .showRevision, .movePath:
             return .local
         // The rest, each for its block's host.
         default:
@@ -761,6 +766,11 @@ public enum ServerMessage: Codable, Sendable {
     case agentLink(AgentLinkStatus)
     /// How a text block's lines stand against what's committed.
     case gutter(BlockID, [GutterMark])
+    /// Folders this connection watches (`watchFolders`) changed: what's
+    /// in them made, removed, renamed or written — or, its repository's
+    /// state having moved, what it ignores may have. Said as it happens,
+    /// not kept.
+    case foldersChanged(paths: [String])
     /// What a notebook's running cell has printed so far (its end, if
     /// long): sent as it comes, not kept; the cell's output is written
     /// when it ends (§7.7).

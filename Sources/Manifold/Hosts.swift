@@ -179,10 +179,27 @@ final class Hosts {
     private var watchers: [BlockID: [Watcher]] = [:]
     private var watchedChanged: Set<BlockID> = []
 
+    /// Those told when any block of these kinds changes — once for all
+    /// that change together (a project's homepage, for who's at work in it).
+    func watch(kinds: Set<BlockKind>, by owner: AnyObject, _ changed: @escaping () -> Void) {
+        kindWatchers.removeAll { $0.watcher.owner == nil || $0.watcher.owner === owner }
+        kindWatchers.append((kinds, Watcher(owner: owner, changed: changed)))
+    }
+
+    func unwatchKinds(by owner: AnyObject) {
+        kindWatchers.removeAll { $0.watcher.owner == nil || $0.watcher.owner === owner }
+    }
+
+    private var kindWatchers: [(kinds: Set<BlockKind>, watcher: Watcher)] = []
+    private var kindsChanged: Set<BlockKind> = []
+
     private func blockChanged(_ id: BlockID) {
-        guard watchers[id] != nil else { return }
-        let first = watchedChanged.isEmpty
-        watchedChanged.insert(id)
+        let kind = kindWatchers.isEmpty ? nil : block(id)?.kind
+        let byKind = kind.map { k in kindWatchers.contains { $0.kinds.contains(k) } } ?? false
+        guard watchers[id] != nil || byKind else { return }
+        let first = watchedChanged.isEmpty && kindsChanged.isEmpty
+        if watchers[id] != nil { watchedChanged.insert(id) }
+        if byKind, let kind { kindsChanged.insert(kind) }
         guard first else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -192,6 +209,10 @@ final class Hosts {
                 self.watchers[id]?.removeAll { $0.owner == nil }
                 for w in self.watchers[id] ?? [] { w.changed() }
             }
+            let kinds = self.kindsChanged
+            self.kindsChanged = []
+            self.kindWatchers.removeAll { $0.watcher.owner == nil }
+            for (k, w) in self.kindWatchers where !k.isDisjoint(with: kinds) { w.changed() }
         }
     }
 

@@ -37,6 +37,10 @@ final class SCIPService {
 
     private var folder: URL { Paths.scip }
 
+    /// A root's index began or ended being made, or what's changed since
+    /// it was counted anew: on the queue, for those showing it to ask again.
+    var onChanged: ((String) -> Void)?
+
     private func file(_ root: String) -> URL {
         var h: UInt64 = 14_695_981_039_346_656_037
         for b in root.utf8 { h = (h ^ UInt64(b)) &* 1_099_511_628_211 }
@@ -203,7 +207,11 @@ final class SCIPService {
                       let m = (try? fm.attributesOfItem(atPath: root.appendingPathComponent(rel)))?[.modificationDate] as? Date else { return false }
                 return m > made
             }.count
-            self?.queue.async { if self?.counts[root]?.made == made { self?.counts[root]?.changed = n } }
+            self?.queue.async {
+                guard let self, self.counts[root]?.made == made, self.counts[root]?.changed != n else { return }
+                self.counts[root]?.changed = n
+                self.onChanged?(root)
+            }
         }
         return last?.changed
     }
@@ -274,6 +282,7 @@ final class SCIPService {
             return
         }
         running.insert(root)
+        onChanged?(root)
         failures.removeValue(forKey: root)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let out = file(root), partial = out.appendingPathExtension("part")
@@ -309,6 +318,7 @@ final class SCIPService {
                 guard let self else { return }
                 self.running.remove(root)
                 if !ok { self.failures[root] = reason + (words.isEmpty ? "" : "\n\n" + words) }
+                self.onChanged?(root)
                 if self.wantedAgain.remove(root) != nil { self.index(root, with: indexer) }
             }
         }

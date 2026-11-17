@@ -19,7 +19,7 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
     private let preview = FilePreviewView()
     private let nothing = NSTextField.label(color: Theme.secondaryText, align: .center)
     /// Open folders, relative to the root.
-    private var expanded: Set<String>
+    private var expanded: Set<String> { didSet { owner.shownFoldersChanged() } }
     /// Each folder's shown entries, as last asked for.
     private var cache: [String: [BrowserNode]] = [:]
     /// Under the filter: the files matching it, best first.
