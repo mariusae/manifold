@@ -187,8 +187,10 @@ final class SCIPService {
     }
 
     /// How many of a project's code files changed after its index was made
-    /// (§2.6): counted off the queue, at most every ten seconds a root; the
-    /// last count (for the same index) meanwhile.
+    /// (§2.6): of those its version control has changed and not committed
+    /// (a checkout or a pull reindexes it), never every file looked at —
+    /// counted off the queue, at most every ten seconds a root; the last
+    /// count (for the same index) meanwhile.
     private var counts: [String: (made: Date, at: Date, changed: Int?)] = [:]
     private func changedSince(_ root: String, _ made: Date) -> Int? {
         let last = counts[root].flatMap { $0.made == made ? $0 : nil }
@@ -196,7 +198,7 @@ final class SCIPService {
         counts[root] = (made, Date(), last?.changed)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let fm = FileManager.default
-            let n = FileFinder.list(root: root).filter { rel in
+            let n = FolderListing.changed(under: root)?.filter { rel in
                 guard CodeLanguage.forPath(rel)?.kind == .language,
                       let m = (try? fm.attributesOfItem(atPath: root.appendingPathComponent(rel)))?[.modificationDate] as? Date else { return false }
                 return m > made

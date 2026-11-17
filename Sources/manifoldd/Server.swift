@@ -1737,8 +1737,10 @@ final class Server {
     /// A folder's languages as GitHub counts them (§2.6): its files as its
     /// repository lists them, its `.gitattributes` read, and a code file's
     /// beginning where what's generated is told by it.
+    /// None in a large repository: counting means looking at every file.
     static func languages(of root: String) -> [Linguist.Count]? {
         guard FileManager.default.isDirectory(atPath: root) == true else { return nil }
+        if let repo = VCS.repository(of: root), Repositories.isLarge(repo.root) { return nil }
         let tree = FolderListing.tree(of: root, limit: 50_000)
         let files = tree.entries.filter { !$0.isDirectory }
         let attributes = Linguist.Attributes(files.compactMap { e in

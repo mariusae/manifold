@@ -28,9 +28,11 @@ public enum FileFinder {
     /// git's files (the git on the tools' PATH, not /usr/bin's, which on a
     /// Mac without the developer tools only offers to install them).
     static func gitFiles(root: String, limit: Int = .max) -> [String]? {
-        guard let r = try? Child.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], timeout: 20, quiet: true),
-              r.status == 0 else { return nil }
-        let data = r.output
+        // Ended once it's said enough (a few more than wanted, for those
+        // deleted but still tracked).
+        let wanted = limit == .max ? .max : limit + min(limit, 1000)
+        guard let data = Scans.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], records: wanted,
+                                   root: root, timeout: 20) else { return nil }
         // Deleted-but-tracked files are listed too; only what's there — and
         // only as many as are kept are looked for (a big checkout has more).
         let fm = FileManager.default

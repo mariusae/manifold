@@ -68,3 +68,63 @@ private func scratchRepository() throws -> String {
     try "build/\n*.log\n".write(toFile: root + "/.gitignore", atomically: true, encoding: .utf8)
     #expect(try ignored() == ["build", "debug.log", "more.log"])
 }
+
+/// The same in a Sapling repository, if Sapling's here: the ignored folder
+/// holding a file it tracks isn't ignored.
+private func scratchSapling() throws -> String? {
+    guard (try? Child.run(["sl", "--version"], timeout: 20, quiet: true))?.status == 0 else { return nil }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("folder-sl-\(UUID().uuidString)").path
+    let fm = FileManager.default
+    for d in ["src/deep", "build/out", "dist", "src/node_modules"] { try fm.createDirectory(atPath: root + "/" + d, withIntermediateDirectories: true) }
+    for (path, text) in [(".gitignore", "build/\ndist/\n*.log\nnode_modules\n"), ("README.md", "hi"), ("src/main.swift", "x"), ("src/deep/a.txt", "a"),
+                         ("notes.txt", "untracked"), ("debug.log", "ignored"), ("kept.log", "tracked"), ("build/out/bin", "ignored"),
+                         ("dist/shipped", "tracked"), ("src/x.log", "ignored")] {
+        try text.write(toFile: root + "/" + path, atomically: true, encoding: .utf8)
+    }
+    _ = try Child.run(["sl", "init", "--git", root], quiet: true)
+    _ = try Child.run(["sl", "--cwd", root, "add", "README.md", "src/main.swift", "src/deep", ".gitignore", "kept.log", "dist/shipped"], quiet: true)
+    return root
+}
+
+@Test func saplingFolderChildrenAreAskedAboutByName() throws {
+    guard let root = try scratchSapling() else { return }
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let entries = try #require(FolderListing.children(of: root))
+    // Tracked though ignored (kept.log, dist with its tracked file): not.
+    #expect(Set(entries.filter { $0.isIgnored == true }.map(\.name)) == ["build", "debug.log"])
+    let src = try #require(FolderListing.children(of: root + "/src"))
+    #expect(Set(src.filter { $0.isIgnored == true }.map(\.name)) == ["node_modules", "x.log"])
+}
+
+@Test func saplingTreeIsTrackedAndNewFiles() throws {
+    guard let root = try scratchSapling() else { return }
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let (entries, complete) = FolderListing.tree(of: root)
+    #expect(complete)
+    let files = Set(entries.filter { !$0.isDirectory }.map(\.name))
+    #expect(files == ["README.md", "src/main.swift", "src/deep/a.txt", ".gitignore", "kept.log", "dist/shipped", "notes.txt"])
+    let (some, all) = FolderListing.tree(of: root, limit: 3)
+    #expect(!all && some.filter { !$0.isDirectory }.count == 3)
+    // What's changed: what's added and new, not every file.
+    #expect(Set(FolderListing.changed(under: root) ?? []) == ["README.md", "src/main.swift", "src/deep/a.txt", ".gitignore", "kept.log", "dist/shipped", "notes.txt"])
+    #expect(FolderListing.changed(under: root + "/src") == ["deep/a.txt", "main.swift"])
+}
+
+@Test func gitChangedFilesAreWhatsModifiedOrNew() throws {
+    let root = try scratchRepository()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    _ = try Child.run(["git", "-C", root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"], quiet: true)
+    try "changed".write(toFile: root + "/src/main.swift", atomically: true, encoding: .utf8)
+    #expect(FolderListing.changed(under: root) == ["notes.txt", "src/main.swift"])
+}
+
+@Test func aLargeRepositoryIsNeitherWalkedNorLookedAtFileByFile() throws {
+    let root = try scratchRepository()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    // As EdenFS has it.
+    try FileManager.default.createDirectory(atPath: root + "/.eden", withIntermediateDirectories: true)
+    #expect(Repositories.isLarge(root))
+    let (entries, _) = FolderListing.tree(of: root)
+    let readme = try #require(entries.first { $0.name == "README.md" })
+    #expect(readme.size == 0 && readme.modified == 0)
+}
