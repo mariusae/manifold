@@ -976,7 +976,11 @@ command's whose row is at or above it, or, below the last command once
 it has ended, where the shell is now. So ⌘ held after `ls` and `cd sub`
 still links the names `ls` printed, to the folder it listed, here and on
 another host alike; a link's target is made absolute from that
-directory before it is opened.
+directory before it is opened. Where a shell is (one that doesn't send
+OSC 7) and whether a job other than it is in front are looked at when
+something moves at its terminal — output read, input written — at most
+twice a second while that goes on and once just after it stops: never
+for a terminal where nothing happens, and never every few seconds.
 
 The terminal finds its links by reading the viewport's lines with ⌘ held
 (`TerminalLinks`): a line as its program wrote it, the rows the terminal

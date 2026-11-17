@@ -80,3 +80,43 @@ extension ProcessLifecycle {
         #expect(openDescriptors() <= before, "the notebook's pty is still open")
     }
 }
+
+/// What a terminal's activity hook saw: how often it was told, and
+/// whether a job was in front of the shell, then not, after it.
+private final class Looks: @unchecked Sendable {
+    var told = 0
+    var sawBusy = false
+    var idleAfterBusy = false
+}
+
+extension ProcessLifecycle {
+    /// A terminal is looked at (where its shell is, what's in front of it)
+    /// when something moves there — a command typed, it ending, the prompt
+    /// after — and not while nothing does.
+    @Test func aTerminalIsLookedAtWhenSomethingMovesThereAndOnlyThen() throws {
+        let queue = DispatchQueue(label: "test.session.activity")
+        let looks = Looks()
+        let session = try #require(queue.sync {
+            Session(id: BlockID(host: HostID("testhost")), cwd: "/tmp", cols: 80, rows: 24, env: [:], history: Data(),
+                    shell: "/bin/sh", queue: queue)
+        })
+        queue.sync {
+            session.onActivity = { [unowned session] in
+                looks.told += 1
+                if session.isBusy { looks.sawBusy = true } else if looks.sawBusy { looks.idleAfterBusy = true }
+            }
+        }
+        session.type("sleep 1\n")
+        // Typed once the shell's been given its few seconds to prompt.
+        wait(12, on: queue) { queue.sync { looks.sawBusy } }
+        #expect(queue.sync { looks.sawBusy }, "the command in front wasn't seen")
+        wait(5, on: queue) { queue.sync { looks.idleAfterBusy } }
+        #expect(queue.sync { looks.idleAfterBusy }, "the shell back in front wasn't seen")
+        // Nothing happening: not looked at.
+        wait(1, on: queue) { false }
+        let quiet = queue.sync { looks.told }
+        wait(1.5, on: queue) { false }
+        #expect(queue.sync { looks.told } == quiet, "looked at while nothing happened")
+        queue.sync { session.terminate() }
+    }
+}

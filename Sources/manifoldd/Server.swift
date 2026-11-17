@@ -293,7 +293,6 @@ final class Server {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 2, repeating: 2)
         timer.setEventHandler { [weak self] in
-            self?.pollSessions()
             self?.saveHistory()
             self?.closeSilent()
         }
@@ -2091,6 +2090,7 @@ final class Server {
             self?.append(.title(title), to: .block(id))
         }
         s.onStatus = { [weak self] signals in self?.status(id, signals) }
+        s.onActivity = { [weak self] in self?.lookAtShell(id) }
         s.onPasswordInput = { [weak self] on in
             let frame = Frame.message(ServerMessage.passwordInput(block: id, on))
             self?.broadcast(frame)
@@ -2600,17 +2600,18 @@ final class Server {
         return h == mine || h.split(separator: ".").first == mine.split(separator: ".").first
     }
 
-    private func pollSessions() {
-        for (id, session) in sessions {
-            guard let t = node.block(id)?.terminal else { continue }
-            // A shell that reports its directory itself (OSC 7) is believed;
-            // the rest are asked, through the process, every so often.
-            if !session.reportsDirectory, let cwd = session.cwd, t.cwd != cwd {
-                append(.cwd(cwd), to: .block(id))
-            }
-            let busy = session.isBusy
-            if busy != t.busy { append(.shell(.busy(busy)), to: .block(id)) }
+    /// Something happened at a terminal (`Session.onActivity`): where its
+    /// shell is and whether something's in front of it, looked at — only
+    /// then, not every few seconds for every terminal. A shell that reports
+    /// its directory itself (OSC 7) is believed; the rest are asked, through
+    /// the process.
+    private func lookAtShell(_ id: BlockID) {
+        guard let session = sessions[id], let t = node.block(id)?.terminal else { return }
+        if !session.reportsDirectory, let cwd = session.cwd, t.cwd != cwd {
+            append(.cwd(cwd), to: .block(id))
         }
+        let busy = session.isBusy
+        if busy != t.busy { append(.shell(.busy(busy)), to: .block(id)) }
     }
 
     /// Terminals off screen with an idle shell for long enough go dormant:

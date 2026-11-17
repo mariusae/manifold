@@ -55,6 +55,14 @@ final class Session {
     var onStatus: (([StatusSignal]) -> Void)?
     /// The program is reading a password, or has stopped.
     var onPasswordInput: ((Bool) -> Void)?
+    /// Something moved at the terminal — output read, input written: where
+    /// the shell is and whether something's in front of it can have changed
+    /// only then (a command typed, its output, the prompt after it). Said at
+    /// most twice a second while it goes on, and once more just after it
+    /// stops; a terminal where nothing happens isn't looked at.
+    var onActivity: (() -> Void)?
+    private var activitySaid = Date.distantPast
+    private lazy var activityAfter = Debouncer(queue: queue)
     private(set) var readingPassword = false
     private lazy var passwordCheck = Debouncer(queue: queue)
 
@@ -94,7 +102,7 @@ final class Session {
     private var pendingEnd: Int64?
     /// The last few bytes of the last read, for a mark split across two.
     private var markTail: [UInt8] = []
-    /// The shell has said where it is (OSC 7): its directory isn't polled.
+    /// The shell has said where it is (OSC 7): its directory isn't asked of its process.
     var reportsDirectory = false
 
     init?(id: BlockID, cwd: String?, cols: UInt16, rows: UInt16, env: [String: String], history: Data,
@@ -524,6 +532,7 @@ final class Session {
         // (a script that writes its prompt first).
         checkPassword()
         passwordCheck.schedule(after: 0.2) { [weak self] in self?.checkPassword() }
+        moved()
         passOn(data)
     }
 
@@ -562,7 +571,24 @@ final class Session {
         writeInput()
     }
 
+    /// Output read or input written: told (`onActivity`), now if it's been
+    /// a while, and a moment after the last of it — by when a command typed
+    /// has been started, or one ended has given the shell back.
+    private func moved() {
+        guard onActivity != nil else { return }
+        let now = Date()
+        if now.timeIntervalSince(activitySaid) >= 0.5 {
+            activitySaid = now
+            onActivity?()
+        }
+        activityAfter.schedule(after: 0.3) { [weak self] in
+            self?.activitySaid = Date()
+            self?.onActivity?()
+        }
+    }
+
     private func writeInput() {
+        if !input.isEmpty { moved() }
         while !input.isEmpty {
             let n = input.withUnsafeBytes { write(master, $0.baseAddress, $0.count) }
             if n > 0 {
