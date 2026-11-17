@@ -502,6 +502,21 @@ extension MainWindowController: GridDelegate {
         return (menu, own)
     }
 
+    /// An agent's name (§3.12) edited in its tile's bar, over its pill:
+    /// its `agent.name`, not its title, which stays its program's. Emptied
+    /// or left as it was, it stays as it was.
+    func gridRenameAgent(_ placement: PlacementID) {
+        guard let a = arrangement, let p = a.placement(placement), let b = hosts.block(p.block), AgentLook.color(of: b) != nil else { return }
+        focus(placement)
+        let block = p.block
+        let was = AgentLook.name(of: b)
+        content.editPill(placement, PillEdit(text: was, placeholder: "Name this agent", overAgent: true) { [weak self] name in
+            let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, name != was else { return }
+            self?.hosts.append(.annotate([AgentIdentity.nameKey: name]), to: .block(block))
+        })
+    }
+
     /// A tile's pill ⌃- or right-clicked, or its symbol clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu? {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
@@ -547,6 +562,9 @@ extension MainWindowController: GridDelegate {
             menu.addItem(.separator())
         }
         if let clear = clearStatusItem(block) { menu.addItem(clear) }
+        if let b = hosts.block(block), AgentLook.color(of: b) != nil {
+            menu.addItem(ClosureMenuItem("Rename \(AgentLook.name(of: b))…", symbol: "character.cursor.ibeam") { [weak self] in self?.gridRenameAgent(placement) })
+        }
         if let last = hosts.block(block)?.terminal?.turns?.last {
             let sub = NSMenu()
             for item in turnItems(last, of: block, beside: placement) { sub.addItem(item) }

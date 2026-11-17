@@ -38,6 +38,8 @@ protocol GridDelegate: AnyObject {
     func gridDragAtLeftEdge()
     /// A tile's pill was clicked: its menu.
     func gridPillMenu(for placement: PlacementID) -> NSMenu?
+    /// An agent's name pill double-clicked: its name edited in place.
+    func gridRenameAgent(_ placement: PlacementID)
     /// ⌥-drag (or a bar dropped on another's): the dragged tile in another's
     /// place, that one docked under it.
     func gridCover(_ placement: PlacementID, over target: PlacementID)
@@ -280,6 +282,12 @@ final class GridView: NSView, NSDraggingSource {
                     pill?.sidebar = view.sidebarShown
                 }
                 pill.onClose = { [weak self] in self?.delegate?.gridCloseClicked(id) }
+                // An agent's name pill: clicked, the tile focused (not grown —
+                // a double-click's first click would grow it); twice, renamed.
+                pill.onAgentClick = { [weak self] clicks in
+                    self?.delegate?.gridFocus(id)
+                    if clicks >= 2 { self?.delegate?.gridRenameAgent(id) }
+                }
                 // The bar clicked grows the tile, ⌘-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
                 pill.onClick = { [weak self, weak pill] at, mods in
@@ -2111,6 +2119,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onPathClick: (() -> Void)?
     /// Dragged: the tile, or (from the icon) the thing it stands for.
     var onDragStart: ((NSEvent, _ thing: Bool) -> Void)?
+    /// An agent's name pill clicked, with how many clicks in a row.
+    var onAgentClick: ((Int) -> Void)?
+    private var lastAgentClick: TimeInterval = 0
     private let glass = NSView()
     private let icon = NSImageView()
     /// The icon's handle, folded out under the pointer (`IconHandle`).
@@ -2371,7 +2382,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.stringValue = e.text
         editor.placeholderString = e.placeholder
         editor.textColor = Theme.text
-        editor.font = e.overName ? name.font : subtitle.font
+        editor.font = e.overAgent ? AgentNamePill.font : e.overName ? name.font : subtitle.font
         subtitle.isHidden = true
         editor.isHidden = false
         needsLayout = true
@@ -2616,7 +2627,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let name = AgentLook.name(of: b)
             if agentPill.name != name { agentPill.name = name; needsLayout = true }
             agentInk = AgentLook.ink(on: b)
-            agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent" }
+            agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent — double-click to rename" }
         }
         agentColor = AgentLook.color(of: shown.block)
         paintAgent()
@@ -2864,12 +2875,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
             // Over the address, where it was; over the name when the
             // address would have too little room.
             subtitle.isHidden = true
-            let roomy = edit?.overName != true && right - sx >= 160
+            let overAgent = edit?.overAgent == true && agentColor != nil
+            let roomy = edit?.overName != true && !overAgent && right - sx >= 160
             name.isHidden = !roomy
-            let ex = roomy ? sx - 2 : x - 2
+            // An agent's name: over its pill and on, as far as the title went.
+            agentPill.isHidden = overAgent || agentColor == nil
+            let ex = overAgent ? agentPill.frame.minX + 4 : roomy ? sx - 2 : x - 2
             let eh = ceil(editor.intrinsicContentSize.height)
             editor.frame = NSRect(x: ex, y: ((h - eh) / 2).rounded(), width: max(0, right - ex), height: eh)
         } else {
+            agentPill.isHidden = agentColor == nil
             subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
         }
         window?.invalidateCursorRects(for: self)
@@ -3011,7 +3026,17 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let p = convert(event.locationInWindow, from: nil)
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
-            if iconSpot.contains(p) { onIconClick?(event.modifierFlags) } else { onClick?(p, event.modifierFlags) }
+            if iconSpot.contains(p) {
+                onIconClick?(event.modifierFlags)
+            } else if !agentPill.isHidden, agentPill.frame.contains(p), event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty, let onAgentClick {
+                // Counted here: the window hands a bar every click as a first
+                // (`MainWindow.sendEvent`), lest the title bar take a second.
+                let twice = event.timestamp - lastAgentClick < NSEvent.doubleClickInterval
+                lastAgentClick = twice ? 0 : event.timestamp
+                onAgentClick(twice ? 2 : 1)
+            } else {
+                onClick?(p, event.modifierFlags)
+            }
         }
         downAt = nil
     }
@@ -3497,14 +3522,22 @@ extension GridView: DropTaking {
 /// An agent's name in a pill of its colour, on its tile's bar: the name
 /// drawn, centred, the same room either side of it (a label's own inset
 /// had it off centre).
-final class AgentNamePill: NSView {
+final class AgentNamePill: NSControl {
     var name = "" { didSet { if name != oldValue { needsDisplay = true } } }
     var ink: NSColor = .white { didSet { needsDisplay = true } }
-    private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
     private static let pad: CGFloat = 7
 
     private var attributes: [NSAttributedString.Key: Any] { [.font: Self.font, .foregroundColor: ink] }
     var wantedWidth: CGFloat { ceil((name as NSString).size(withAttributes: attributes).width) + Self.pad * 2 }
+    // Clicked (twice: renamed) and dragged, the bar's to take. A control,
+    // as the bar's title is: at the window's top, under its title bar, a
+    // plain view's click moved the window instead.
+    override func mouseDown(with event: NSEvent) { superview?.mouseDown(with: event) }
+    override func mouseDragged(with event: NSEvent) { superview?.mouseDragged(with: event) }
+    override func mouseUp(with event: NSEvent) { superview?.mouseUp(with: event) }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         let s = name as NSString

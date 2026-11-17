@@ -228,6 +228,8 @@ struct PillEdit {
     /// Over the name, in its type (a note's name), rather than over the
     /// place after it (a page's address).
     var overName = false
+    /// Over an agent's name pill, in its type (the agent renamed).
+    var overAgent = false
     var commit: (String) -> Void
     /// What's typed so far, completed (a page's address, as a browser's
     /// address bar does): the rows under the field, the first the default.
