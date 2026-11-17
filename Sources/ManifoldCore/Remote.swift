@@ -189,9 +189,14 @@ public struct Child {
     /// and every git command after it — a minute at the server's start,
     /// the gutter's marks with it), and on macOS whatever else is open.
     /// `errorsToOutput`: its stderr into the output pipe too, in with what
-    /// it prints (for a log of both).
+    /// it prints (for a log of both). `group`: the child leads a process
+    /// group of its own, so that what it starts in turn is ended with it
+    /// (`end()`) — `sl` is a wrapper whose `hg.real` went on alone, each
+    /// a repository's worth of memory, when only `sl` was killed. Not for
+    /// what may ask at the terminal (ssh's password), which only the
+    /// terminal's own group may read.
     public static func spawn(_ argv: [String], stderrToNull: Bool = false, errorsToOutput: Bool = false,
-                             environment: [String: String]? = nil) throws -> Child {
+                             environment: [String: String]? = nil, group: Bool = false) throws -> Child {
         var toChild: [Int32] = [0, 0], fromChild: [Int32] = [0, 0]
         guard pipe(&toChild) == 0, pipe(&fromChild) == 0 else { throw POSIXError(.EPIPE) }
         for fd in toChild + fromChild { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
@@ -214,12 +219,20 @@ public struct Child {
         if !stderrToNull, !errorsToOutput { posix_spawn_file_actions_addinherit_np(&actions, 2) }
         var attr: posix_spawnattr_t? = nil
         posix_spawnattr_init(&attr)
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | (group ? POSIX_SPAWN_SETPGROUP : 0)))
+        if group { posix_spawnattr_setpgroup(&attr, 0) }
         defer { posix_spawnattr_destroy(&attr) }
         #else
         for fd in [toChild[0], toChild[1], fromChild[0], fromChild[1]] {
             posix_spawn_file_actions_addclose(&actions, fd)
         }
+        var attr = posix_spawnattr_t()
+        posix_spawnattr_init(&attr)
+        if group {
+            posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
+            posix_spawnattr_setpgroup(&attr, 0)
+        }
+        defer { posix_spawnattr_destroy(&attr) }
         #endif
         var pid: pid_t = 0
         let cargs: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
@@ -230,7 +243,7 @@ public struct Child {
         #if canImport(Darwin)
         let err = posix_spawnp(&pid, argv[0], &actions, &attr, cargs, cenv)
         #else
-        let err = posix_spawnp(&pid, argv[0], &actions, nil, cargs, cenv)
+        let err = posix_spawnp(&pid, argv[0], &actions, &attr, cargs, cenv)
         #endif
         posix_spawn_file_actions_destroy(&actions)
         close(toChild[0])
@@ -240,7 +253,23 @@ public struct Child {
             close(fromChild[0])
             throw POSIXError(POSIXErrorCode(rawValue: err) ?? .ENOENT)
         }
-        return Child(pid: pid, output: fromChild[0], input: toChild[1])
+        return Child(pid: pid, output: fromChild[0], input: toChild[1], group: group)
+    }
+
+    /// Whether it leads a process group of its own.
+    public var group: Bool = false
+
+    public init(pid: pid_t, output: Int32, input: Int32, group: Bool = false) {
+        self.pid = pid
+        self.output = output
+        self.input = input
+        self.group = group
+    }
+
+    /// Ends it — and, leading a group, all it started that's still in it.
+    public func end(_ signal: Int32 = SIGKILL) {
+        if group { kill(-pid, signal) }
+        kill(pid, signal)
     }
 
     /// Runs `argv` to completion with `input` on its stdin; its output and
@@ -249,11 +278,18 @@ public struct Child {
     /// gets in all; `progress` is told how much of the input has been
     /// taken as it goes, from another thread. The status is a shell's:
     /// its exit code, or 128 and the signal that ended it. `quiet`: its
-    /// stderr to /dev/null; `errorsToOutput`: in its output.
+    /// stderr to /dev/null; `errorsToOutput`: in its output. `records`:
+    /// once its output holds that many of `separator`, it's ended — what it
+    /// would say after them never asked for (a listing of a repository
+    /// with millions of files, the first thousands wanted); its status
+    /// then 128 + SIGKILL. `cancelled`, looked at each second at most: true,
+    /// it's ended. Whatever ends it ends what it started too: it runs in
+    /// a process group of its own.
     public static func run(_ argv: [String], input: Data = Data(), timeout: TimeInterval = 120, stall: TimeInterval? = nil,
                            progress: (@Sendable (Int) -> Void)? = nil, quiet: Bool = false, errorsToOutput: Bool = false,
-                           environment: [String: String]? = nil) throws -> (output: Data, status: Int32) {
-        let child = try spawn(argv, stderrToNull: quiet, errorsToOutput: errorsToOutput, environment: environment)
+                           environment: [String: String]? = nil, records: Int? = nil, separator: UInt8 = 0,
+                           cancelled: (() -> Bool)? = nil) throws -> (output: Data, status: Int32) {
+        let child = try spawn(argv, stderrToNull: quiet, errorsToOutput: errorsToOutput, environment: environment, group: true)
         let moved = Moved()
         let writer = Thread {
             input.withUnsafeBytes { raw in
@@ -273,20 +309,40 @@ public struct Child {
         var out = Data()
         var buf = [UInt8](repeating: 0, count: 1 << 16)
         let end = Date().addingTimeInterval(timeout)
+        var counted = 0
+        var ended = false
         while true {
             let deadline = stall.map { min(end, moved.last.addingTimeInterval($0)) } ?? end
-            // A second at most between looks, to see whether input moved.
-            let left = Int32(min(max(0, deadline.timeIntervalSinceNow), stall == nil ? .infinity : 1) * 1000)
-            guard deadline.timeIntervalSinceNow > 0 else { kill(child.pid, SIGKILL); break }
+            // A second at most between looks, to see whether input moved
+            // (or the run is still wanted).
+            let left = Int32(min(max(0, deadline.timeIntervalSinceNow), stall == nil && cancelled == nil ? .infinity : 1) * 1000)
+            guard deadline.timeIntervalSinceNow > 0, cancelled?() != true else { child.end(); ended = true; break }
             var pfd = pollfd(fd: child.output, events: Int16(POLLIN), revents: 0)
             guard poll(&pfd, 1, left) > 0 else { continue }
             let n = read(child.output, &buf, buf.count)
             if n > 0 {
+                if let records {
+                    // Kept up to the record that's the last wanted.
+                    var cut: Int?
+                    for i in 0..<n where buf[i] == separator {
+                        counted += 1
+                        if counted >= records { cut = i + 1; break }
+                    }
+                    if let cut {
+                        out.append(contentsOf: buf[0..<cut])
+                        child.end()
+                        ended = true
+                        break
+                    }
+                }
                 out.append(contentsOf: buf[0..<n])
                 moved.touch()
             } else if n == 0 || errno != EINTR { break }
         }
         close(child.output)
+        // What it started that's left behind (holding a pipe it was given,
+        // say) goes with it, when it was ended.
+        if ended { child.end() }
         var status: Int32 = 0
         waitpid(child.pid, &status, 0)
         let code = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)

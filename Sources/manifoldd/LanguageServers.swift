@@ -477,7 +477,7 @@ final class LanguageServer {
 
     func start() {
         let argv = ["/bin/sh", "-c", "cd '\(root)' && exec \(command)"]
-        guard let child = try? Child.spawn(argv, stderrToNull: true) else {
+        guard let child = try? Child.spawn(argv, stderrToNull: true, group: true) else {
             return fail("couldn't start")
         }
         self.child = child
@@ -542,7 +542,7 @@ final class LanguageServer {
         waiting = [:]
         for w in left { w(.failure(RPCError("the language server " + (said == "exited" ? "exited" : "failed")))) }
         if let child {
-            kill(child.pid, SIGTERM)
+            child.end(SIGTERM)
             close(child.input)
         }
         child = nil
@@ -551,7 +551,7 @@ final class LanguageServer {
     func stop() {
         guard let child else { return }
         request("shutdown", [:]) { [weak self] _ in self?.notify("exit", [:]) }
-        queue.asyncAfter(deadline: .now() + 2) { kill(child.pid, SIGTERM) }
+        queue.asyncAfter(deadline: .now() + 2) { child.end(SIGTERM) }
     }
 
     func notify(_ method: String, _ params: [String: Any]) {

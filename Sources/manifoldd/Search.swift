@@ -26,7 +26,7 @@ final class Searches {
 
     func cancel(_ block: BlockID) {
         guard let child = running.removeValue(forKey: block) else { return }
-        kill(child.pid, SIGTERM)
+        child.end(SIGTERM)
     }
 
     func run(_ block: BlockID, _ query: SearchQuery) {
@@ -37,10 +37,10 @@ final class Searches {
         }
         let child: Child
         let usingRg: Bool
-        if let c = try? Child.spawn(Self.rgCommand(query), stderrToNull: true) {
+        if let c = try? Child.spawn(Self.rgCommand(query), stderrToNull: true, group: true) {
             child = c
             usingRg = true
-        } else if let c = try? Child.spawn(Self.grepCommand(query), stderrToNull: true) {
+        } else if let c = try? Child.spawn(Self.grepCommand(query), stderrToNull: true, group: true) {
             child = c
             usingRg = false
         } else {
@@ -89,7 +89,7 @@ final class Searches {
                     total += 1
                     if total >= Self.maxHits {
                         truncated = true
-                        kill(child.pid, SIGTERM)
+                        child.end(SIGTERM)
                         break outer
                     }
                 }
@@ -148,7 +148,7 @@ final class Searches {
     }
 
     func stopAll() {
-        for (_, c) in running { kill(c.pid, SIGTERM) }
+        for (_, c) in running { c.end(SIGTERM) }
         running = [:]
     }
 }
