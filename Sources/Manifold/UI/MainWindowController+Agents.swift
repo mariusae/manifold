@@ -387,6 +387,25 @@ extension MainWindowController {
         dropDraftIfEmpty(p.block)
     }
 
+    /// Tiles taken off a space at once, on screen and docked (a project's,
+    /// from its row's ✕): each as ⌘W takes one, the blocks kept.
+    func closeTiles(_ placements: [PlacementID], in id: BlockID) {
+        guard let a = hosts.arrangement(id) else { return }
+        let here = placements.filter { a.placement($0) != nil }
+        guard !here.isEmpty else { return }
+        let before = hosts.reachable()
+        // Noted so ⇧⌘T brings the docked back first, in the dock's order
+        // (each to its place in it, the earliest first), then the rest.
+        let dockOrder = a.docked.map(\.placement.id)
+        let grid = here.filter { !dockOrder.contains($0) }
+        let docked = dockOrder.filter { here.contains($0) }
+        for p in grid + docked.reversed() { noteClosing(p, in: id) }
+        let unfill = a.full.map { here.contains($0) } == true ? [Event.full(nil)] : []
+        hosts.append(unfill + here.map { .remove($0) }, to: .block(id))
+        afterClosing(reachedBefore: before)
+        for p in here { if let b = a.placement(p)?.block { dropDraftIfEmpty(b) } }
+    }
+
     func gridLink(_ block: BlockID, to target: PlacementID) {
         guard let t = shown(target)?.block else { return }
         link(block, to: t.id)

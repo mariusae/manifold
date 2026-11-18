@@ -891,11 +891,14 @@ extension MainWindowController {
         }
         var found: [(proj: Project, host: HostID, key: String)] = []
         var tileProject: [PlacementID: String] = [:]
+        // What keeps each here: its tiles, on screen and docked.
+        var members: [String: [Placement]] = [:]
         for p in a.columns.flatMap({ $0 }) + a.docked.map(\.placement) {
             guard let proj = projectFor(p.block) else { continue }
             let host = proj.block?.host ?? p.block.host
             let key = "\(host.raw)|\(proj.root)"
             if !found.contains(where: { $0.key == key }) { found.append((proj, host, key)) }
+            members[key, default: []].append(p)
             if a.locate(p.id) != nil, !a.docked.contains(where: { $0.placement.id == p.id }), !pinned.contains(p.block), !urgent.contains(p.id) {
                 tileProject[p.id] = key
             }
@@ -922,9 +925,20 @@ extension MainWindowController {
                 n.column = columnOf(header.id)
                 n.placement = header.id
                 n.emphasis = header.id == a.focused
-                let pid = header.id
-                n.accessories = [.init(symbol: "xmark", tip: "Close Tile", run: { [weak self] in self?.closeTile(pid, in: id) })]
             }
+            // Here while a tile here is in it: said, and closed all at once.
+            let keeping = members[key] ?? []
+            let dockedIDs = Set(a.docked.map(\.placement.id))
+            let why = keeping.compactMap { p -> String? in
+                let d = dockedIDs.contains(p.id)
+                guard let title = tile(p, docked: d, column: nil)?.title ?? hosts.block(p.block).map(Self.linkTitle) else { return nil }
+                return title + (d ? " (docked)" : "")
+            }
+            let said = why.count > 8 ? why.prefix(7) + ["\(why.count - 7) more"] : why[...]
+            n.tooltip = proj.root.abbreviatingHome + "\nHere for " + said.joined(separator: " · ")
+            let ids = keeping.map(\.id)
+            let tip = ids.count == 1 ? "Close \(proj.name)’s Tile" : "Close \(proj.name)’s \(ids.count) Tiles"
+            n.accessories = [.init(symbol: "xmark", tip: tip, run: { [weak self] in self?.closeTiles(ids, in: id) })]
             projects.append(n)
         }
         if !projects.isEmpty {

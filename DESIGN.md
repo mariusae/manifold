@@ -856,7 +856,12 @@ threads, the latest five and a row for all of them. Each thing is said
 once: what's pinned in a project is under it, not in its column; the
 project's folder's tile is the project's row; its other tiles are in
 their columns. Clicked, the project's
-tile, the one here if there is one, else one made here. The pointer
+tile, the one here if there is one, else one made here. Its tooltip
+says what keeps it here — each of its tiles in the space, docked ones
+too (a terminal whose directory is in it, a thread about something in
+it count) — and its ✕ closes them all, as ⌘W closes one, so the
+project goes from the space; what's pinned in it stays pinned there,
+for when it's opened again. The pointer
 on a project's box makes it a chevron that folds it (and opens it
 again), kept so: folded, its agents' faces follow its name and its
 open threads are counted at its right. Then the rest of what's on screen,
@@ -1725,7 +1730,9 @@ its log deleted, unregistered) — unless it was placed again meanwhile. What on
 it reached is left to the collector like anything closed — in Recently
 Closed for the grace, not deleted with it. The app keeps what it closed
 on a stack, and **⇧⌘T** puts the last thing back where it was — a tile
-at its old column and place (here, if that space has gone), a space
+at its old column and place (here, if that space has gone), a docked
+tile back in the dock where it was (still knowing its place in the
+grid; several closed at once come back in the dock's order), a space
 back in the sidebar — skipping whatever has been collected meanwhile.
 **Recently Closed**, a row at the sidebar's foot with a count, lists
 what exists and nothing reaches, and Open Quickly marks it *recent*;

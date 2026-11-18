@@ -1181,6 +1181,16 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "hovered \(trackedRow)" + (buttons.map { "\n" + $0 } ?? "")
     }
 
+    /// A row's tooltip and its buttons' tips; with `press`, the button with
+    /// that tip pressed (as its ✕ clicked).
+    func debugAccessory(row: Int, press: String) -> String {
+        guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
+        if press.isEmpty { return "tooltip: \(node.tooltip ?? "-")\nbuttons: " + node.accessories.map(\.tip).joined(separator: " | ") }
+        guard let a = node.accessories.first(where: { $0.tip == press }) else { return "no such button" }
+        a.run()
+        return "pressed \(press)"
+    }
+
     /// The row's context menu: its titles, or the item named chosen.
     func debugMenu(row: Int, choose: String) -> String {
         guard let node = outline.item(atRow: row) as? OrgNode, let menu = delegate?.organizationMenu(for: node) else { return "no menu" }
