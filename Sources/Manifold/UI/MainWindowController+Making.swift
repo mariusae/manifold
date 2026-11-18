@@ -510,10 +510,10 @@ extension MainWindowController {
         switch item.action {
         case #selector(togglePinInWorkspace(_:)):
             // Named for what it will do to its tile's block.
-            guard let id = selected, let block = pinTarget(item) else { item.title = "Pin in Space"; return false }
-            let on = isPinned(block, in: id)
-            item.title = on ? "Unpin" : "Pin in Space"
-            item.image = Theme.symbol(on ? "pin.slash" : "pin", size: 13)
+            guard let id = selected, let block = pinTarget(item) else { item.title = "Pin"; return false }
+            let t = pinToggle(block, in: id)
+            item.title = t.title
+            item.image = Theme.symbol(t.on ? "pin.slash" : "pin", size: 13)
             return true
         case #selector(nextInInbox(_:)):
             return !inboxOrder().isEmpty

@@ -544,6 +544,19 @@ final class SelectionRowView: NSTableRowView {
         recheckHover()
     }
 
+    /// Its window no longer key, its tracking stops with no exit to say so:
+    /// the band goes then, not left lit till the pointer comes back.
+    private var resignObserver: NSObjectProtocol?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resignObserver.map(NotificationCenter.default.removeObserver)
+        resignObserver = window.map { w in
+            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hovered = false }
+            }
+        }
+    }
+
     override func setFrameOrigin(_ newOrigin: NSPoint) {
         super.setFrameOrigin(newOrigin)
         if hovered { recheckHover() }

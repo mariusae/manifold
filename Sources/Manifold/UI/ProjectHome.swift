@@ -21,21 +21,6 @@ enum ProjectAction {
     case pin([String])
 }
 
-/// One of a project's agents (§3.12), as its pill shows it — on the
-/// project's line, its name; at the sidebar's foot, its initial.
-struct ProjectAgentChip: Equatable {
-    var id: BlockID
-    var name: String
-    var color: NSColor
-    /// What most wants you of it (`StatusGlyph`), at its corner.
-    var status: StatusGlyph.Look?
-    /// Its process ended: asked, or shown, it starts again where it left off.
-    var asleep: Bool
-    /// What it is and does, and the project it's in, for its tip.
-    var detail: String
-    var project = ""
-}
-
 /// How a project stands, as its homepage shows it: its repository's
 /// state scoped to it, and its index's.
 struct ProjectFacts: Equatable {
@@ -257,167 +242,6 @@ final class ProjectStrip: NSView {
     }
 }
 
-/// A project's agent (§3.12) as a pill: `letter`, its face, as an agent
-/// has it everywhere (its initial on a disc of its colour), paler while
-/// it's asleep (asked, it starts again where it left off); else its colour
-/// as a tint, edged in it, its name in it, its edge dashed asleep. At its
-/// top right what most wants you of it, as a space's square has it (a dot:
-/// needs you, failed, done and not read; an open ring: working). Clicked, it's
-/// shown; its menu shows, renames, deletes it; dragged, it's a reference to
-/// it (onto a thread's shelf, it joins); pointed at, its tile is ringed.
-final class ProjectAgentPill: NSControl {
-    let chip: ProjectAgentChip
-    let letter: Bool
-    var onClick: (() -> Void)?
-    var onMenu: (() -> NSMenu)?
-    static let height: CGFloat = 18
-    static let letterSize: CGFloat = 20
-    private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    private static let letterFont = NSFont.systemFont(ofSize: 10.5, weight: .bold)
-
-    init(_ chip: ProjectAgentChip, letter: Bool = false) {
-        self.chip = chip
-        self.letter = letter
-        super.init(frame: .zero)
-        let doing: String = switch chip.status {
-        case .working?, .busy?: "working"
-        case .needsYou?: "waiting on you"
-        case .done(read: false)?: "done — not read yet"
-        case .failed(read: false)?: "failed"
-        default: "idle"
-        }
-        let state = chip.asleep ? "asleep — asked, it starts again where it left off" : doing
-        let whose = chip.project.isEmpty ? "this project's agent" : "\(chip.project)'s agent"
-        toolTip = "\(chip.name), \(whose) — \(state)\(chip.detail.isEmpty ? "" : "\n" + chip.detail)\nClick to show it; drag it into a thread"
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var isFlipped: Bool { false }
-    override var mouseDownCanMoveWindow: Bool { false }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    private var initial: String { chip.name.first.map { String($0).uppercased() } ?? "?" }
-
-    /// Its width as it's drawn, its corner's dot within it.
-    var wantedWidth: CGFloat {
-        letter ? Self.letterSize + 3 : ceil((chip.name as NSString).size(withAttributes: [.font: Self.font]).width) + 16 + 3
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        if letter { return drawFace() }
-        // Room at the top right for its dot, outside the pill.
-        let body = letter
-            ? NSRect(x: 0.75, y: (bounds.height - Self.letterSize) / 2 + 0.75, width: Self.letterSize - 1.5, height: Self.letterSize - 1.5)
-            : NSRect(x: 0.75, y: 0.75, width: bounds.width - 3 - 1.5, height: bounds.height - 1.5 - 1.5)
-        let path = NSBezierPath(roundedRect: body, xRadius: body.height / 2, yRadius: body.height / 2)
-        chip.color.withAlphaComponent(chip.asleep ? 0.08 : 0.22).setFill()
-        path.fill()
-        chip.color.withAlphaComponent(chip.asleep ? 0.55 : 1).setStroke()
-        path.lineWidth = 1.5
-        if chip.asleep { path.setLineDash([2.5, 2], count: 2, phase: 0) }
-        path.stroke()
-        // Its words in its colour, drawn toward the text's, to read on the tint.
-        let ink = (chip.color.blended(withFraction: 0.35, of: Theme.text) ?? chip.color).withAlphaComponent(chip.asleep ? 0.6 : 1)
-        let font = letter ? Self.letterFont : Self.font
-        let words = letter ? initial : chip.name
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
-        // Its capitals' middle at the pill's: the baseline set from the top
-        // of the line drawn (its height the line's, taller than the font's
-        // ascent and descent — set from the bottom, it rode a point high).
-        let size = (words as NSString).size(withAttributes: attrs)
-        let baseline = body.midY - font.capHeight / 2
-        (words as NSString).draw(at: NSPoint(x: (body.midX - size.width / 2).rounded(), y: baseline + font.ascender - size.height), withAttributes: attrs)
-        if !chip.asleep { Self.drawStatus(chip.status, on: body) }
-    }
-
-    /// As its face is everywhere (`AgentLook`): a disc of its colour, its
-    /// initial on it — paler asleep; what most wants you at its corner.
-    private func drawFace() {
-        let r = NSRect(x: 0.5, y: (bounds.height - Self.letterSize) / 2 + 0.5, width: Self.letterSize - 1, height: Self.letterSize - 1)
-        chip.color.withAlphaComponent(chip.asleep ? 0.4 : 1).setFill()
-        NSBezierPath(ovalIn: r).fill()
-        let font = AgentLook.initialFont((r.height * 0.6).rounded())
-        // Dark on the light colours, as a face's ink is.
-        let ink: NSColor = Tints.luminance(chip.color) > 0.45 ? NSColor(white: 0.12, alpha: 1) : .white
-        let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(chip.asleep ? 0.7 : 1)]
-        let words = initial as NSString
-        let width = words.size(withAttributes: a).width
-        words.draw(at: NSPoint(x: r.midX - width / 2, y: r.midY - font.capHeight / 2 + font.descender), withAttributes: a)
-        if !chip.asleep { Self.drawStatus(chip.status, on: r) }
-    }
-
-    /// What most wants you, at a pill's top right, as a space's square has
-    /// it: a dot (needs you, failed, done and not read), an open ring (at work).
-    static func drawStatus(_ look: StatusGlyph.Look?, on r: NSRect) {
-        guard let tone = SpaceStripView.tone(look) else { return }
-        let d = NSRect(x: r.maxX - 4.5, y: r.maxY - 4.5, width: 7, height: 7)
-        Theme.panel.setFill()
-        NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
-        if case .working = look {
-            let ring = NSBezierPath(ovalIn: d.insetBy(dx: 0.75, dy: 0.75))
-            ring.lineWidth = 1.5
-            tone.setStroke()
-            ring.stroke()
-        } else {
-            tone.setFill()
-            NSBezierPath(ovalIn: d).fill()
-        }
-    }
-
-    // Pointed at: its tile ringed where it's on screen, and its card —
-    // what kind of agent, and what it's doing (or that it's idle, asleep).
-    override func mouseEntered(with event: NSEvent) {
-        AgentLook.spotlight?(chip.id)
-        if let window { AgentLook.card?(chip.id, convert(bounds, to: nil), window) }
-    }
-    override func mouseExited(with event: NSEvent) {
-        AgentLook.spotlight?(nil)
-        AgentLook.hideCard?()
-    }
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { AgentLook.hideCard?() }
-        super.viewWillMove(toWindow: newWindow)
-    }
-
-    private var downAt: NSPoint?
-    override func mouseDown(with event: NSEvent) {
-        AgentLook.hideCard?()
-        downAt = event.locationInWindow
-    }
-
-    /// Dragged: the agent, as a block — onto a thread's shelf, it joins.
-    override func mouseDragged(with event: NSEvent) {
-        guard let start = downAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4 else { return }
-        downAt = nil
-        let item = NSPasteboardItem()
-        item.setString(chip.id.description, forType: .manifoldBlock)
-        let dragging = NSDraggingItem(pasteboardWriter: item)
-        let image = NSImage(size: bounds.size, flipped: false) { [weak self] _ in self?.draw(.zero); return true }
-        dragging.setDraggingFrame(bounds, contents: image)
-        beginDraggingSession(with: [dragging], event: event, source: self)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        defer { downAt = nil }
-        guard downAt != nil, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
-        onClick?()
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        let m = onMenu?()
-        m?.delegate = AgentMenuSpotlight.shared
-        return m
-    }
-}
-
-extension ProjectAgentPill: NSDraggingSource {
-    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .withinApplication ? [.link, .copy, .move, .generic] : []
-    }
-}
-
 /// A project's sidebar (§2.6), at its homepage's right, as GitHub has
 /// one: its changes and its recent commits — the project's alone, where
 /// it's a folder in a bigger repository — each opened as a diff beside.
@@ -435,13 +259,19 @@ final class ProjectSidebar: NSView {
     private var dropping = false {
         didSet {
             guard dropping != oldValue else { return }
-            // Ringed in the accent, over its rows, while it would take the drop.
+            // Ringed in the accent, over its rows, while it would take the
+            // drop; a pin at its top says what the drop does.
             wantsLayer = true
             layer?.borderColor = Theme.accent.cgColor
             layer?.borderWidth = dropping ? 2 : 0
             layer?.cornerRadius = 6
+            pinNote.say("Pin in Project “\(shown?.project.name ?? "")”")
+            pinNote.isHidden = !dropping
+            needsLayout = true
         }
     }
+    /// What a drop over it does, while one would: a pin and its words.
+    private let pinNote = DropNote(symbol: "pin.fill")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -453,6 +283,8 @@ final class ProjectSidebar: NSView {
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         addSubview(scroll)
+        pinNote.isHidden = true
+        addSubview(pinNote)
         // Its rows' bands follow the pointer as they scroll under it.
         scroll.watchScrolling { [weak self] _, _ in
             self?.stack.subviews.forEach { ($0 as? HomeRow)?.recheckHover() }
@@ -598,6 +430,9 @@ final class ProjectSidebar: NSView {
         super.layout()
         scroll.frame = bounds.insetBy(dx: 0, dy: 0)
         relayout()
+        let size = pinNote.fittingSize
+        let w = min(size.width, bounds.width - 24)
+        pinNote.frame = NSRect(x: (bounds.width - w) / 2, y: isFlipped ? 12 : bounds.height - 12 - size.height, width: w, height: size.height)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -618,6 +453,9 @@ final class ProjectSidebar: NSView {
 
     override func draggingExited(_ sender: NSDraggingInfo?) { dropping = false }
 
+    /// Debugging: shown as it is while something that can be pinned is over it.
+    func debugDropping(_ on: Bool) { dropping = on }
+
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         dropping = false
         let found = ThreadShelfView.addresses(sender.draggingPasteboard)
@@ -629,6 +467,55 @@ final class ProjectSidebar: NSView {
     var debugState: String {
         stack.subviews.map { ($0 as? HomeRow)?.debugState ?? ($0 as? SectionLabel)?.stringValue.uppercased() ?? ($0 as? LanguageBar)?.debugState ?? "?" }.joined(separator: "\n")
     }
+}
+
+/// What a drop does, said over where it lands while it would: a symbol
+/// and its words, white on the accent, in a capsule.
+final class DropNote: NSView {
+    private let label = NSTextField(labelWithString: "")
+    private let symbol: String
+
+    init(symbol: String) {
+        self.symbol = symbol
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerCurve = .continuous
+        label.lineBreakMode = .byTruncatingMiddle
+        addSubview(label)
+        themed { $0.layer?.backgroundColor = Tints.accentFill.cgColor }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func say(_ words: String) {
+        let s = NSMutableAttributedString()
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))) {
+            let a = NSTextAttachment()
+            a.image = image
+            s.append(NSAttributedString(attachment: a))
+            s.append(NSAttributedString(string: " "))
+        }
+        s.append(NSAttributedString(string: words))
+        s.addAttributes([.font: UIType.caption, .foregroundColor: NSColor.white], range: NSRange(location: 0, length: s.length))
+        label.attributedStringValue = s
+        needsLayout = true
+    }
+
+    override var fittingSize: NSSize {
+        let l = label.fittingSize
+        return NSSize(width: ceil(l.width) + 20, height: ceil(l.height) + 8)
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.height / 2
+        let l = label.fittingSize
+        label.frame = NSRect(x: 10, y: (bounds.height - l.height) / 2, width: bounds.width - 20, height: l.height)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// A heading in a homepage's sidebar.

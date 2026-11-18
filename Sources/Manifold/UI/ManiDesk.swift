@@ -104,7 +104,9 @@ final class ManiDesk {
         case "pin", "unpin":
             let t = try await target(r.args[0], scope)
             guard let ws = t.workspace ?? scope.workspace else { throw Failure(message: "\(r.args[0]) isn't in a space to be pinned in") }
-            wc.setPinned(t.block, in: ws, r.verb == "pin")
+            // Where it lives: its project, if it's in one, else the space.
+            let pin = wc.pinToggle(t.block, in: ws)
+            if pin.on != (r.verb == "pin") { pin.run() }
             return ""
         case "link":
             let from = try await target(r.args[0], scope), to = try await target(r.args[1], scope)

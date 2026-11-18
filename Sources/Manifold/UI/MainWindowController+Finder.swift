@@ -600,6 +600,18 @@ extension MainWindowController {
     /// `near`: of the block's tiles here, the one in that tile's stack
     /// first (brought to its top), then its column's — not whichever comes
     /// first (another of the block's tiles elsewhere, focused for nothing).
+    /// A project's tile, its homepage (§2.6): the one in this space if
+    /// there's one (the nearest), focused; else one made here, beside
+    /// `near` — it isn't gone looking for in other spaces.
+    func openProject(_ p: Project, on host: HostID, near: PlacementID? = nil) {
+        let dir = hosts.directoryBlock(for: p.root, on: host)
+        if let a = arrangement, let here = selected, let t = nearest(a.placements(of: dir), to: near, in: a) {
+            hideStateView()
+            return land(on: t.id, in: here, a)
+        }
+        show(dir, lens: .directory, near.map { .besideOpener($0) } ?? .beside, context: "project")
+    }
+
     func goTo(_ id: BlockID, near: PlacementID? = nil) {
         guard let block = hosts.block(id) else { return sayMissing(id) }
         hideStateView()

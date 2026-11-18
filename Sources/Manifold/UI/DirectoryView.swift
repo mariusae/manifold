@@ -1665,7 +1665,12 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
             }
             return m.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: "\n")
         case "sidebar":
-            // "sidebar <i> <i>…": a homepage's draggable rows ⌘-clicked (-i: ⇧-clicked).
+            // "sidebar <i> <i>…": a homepage's draggable rows ⌘-clicked (-i: ⇧-clicked);
+            // "sidebar dropping on|off": shown as it is with something to pin over it.
+            if words.count > 1, words[1].hasPrefix("dropping") {
+                sidebar.debugDropping(words[1].hasSuffix("on"))
+                return "ok"
+            }
             return sidebar.debugChoose(words.count > 1 ? words[1].split(separator: " ").compactMap { Int($0) } : [])
         case "drag":
             // "drag": what dragging the selection carries.

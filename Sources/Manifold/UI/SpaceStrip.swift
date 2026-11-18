@@ -738,11 +738,12 @@ enum SpaceLook {
     /// Where a badge was kept before badges were shapes: read, if it's one.
     static let oldBadgeKey = "space.symbol"
 
+    /// The system's colours, eased to the theme's inks (`NSColor.identity`).
     static let colors: [(name: String, color: NSColor)] = [
-        ("red", .systemRed), ("orange", .systemOrange), ("yellow", .systemYellow), ("green", .systemGreen),
+        ("red", NSColor.systemRed), ("orange", .systemOrange), ("yellow", .systemYellow), ("green", .systemGreen),
         ("mint", .systemMint), ("teal", .systemTeal), ("blue", .systemBlue), ("indigo", .systemIndigo),
         ("purple", .systemPurple), ("pink", .systemPink), ("brown", .systemBrown), ("gray", .systemGray),
-    ]
+    ].map { ($0.0, NSColor.identity($0.1)) }
 
     /// The badges: shapes that read at a square's corner (nine points or
     /// so), filled. Only these — a symbol with any detail (a terminal, a
@@ -948,10 +949,7 @@ extension MainWindowController {
             wirePlus()
             sidebar.footer.threads.onClick = { [weak self] in self?.showFooterMenu(.threads) }
             sidebar.footer.tiles.onClick = { [weak self] in self?.showFooterMenu(.tiles) }
-            sidebar.footer.onAgent = { [weak self] id in self?.arrive(id, from: nil) }
-            sidebar.footer.agentMenu = { [weak self] id in self?.projectAgentMenu(id) }
         }
-        sidebar.footer.showAgents(spaceAgentChips())
         // Threads with something not seen, in the space shown.
         if let space = selected {
             let n = hosts.threads(inSpace: space).filter { !hosts.unseen($0).isEmpty }.count

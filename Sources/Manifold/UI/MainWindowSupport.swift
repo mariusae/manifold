@@ -68,7 +68,7 @@ final class SearchText {
 /// its tile, named Unpin when it's pinned (`validateMenuItem`).
 enum PinMenu {
     static func item(for placement: PlacementID) -> NSMenuItem {
-        let item = NSMenuItem(title: "Pin in Space", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "t")
+        let item = NSMenuItem(title: "Pin", action: #selector(MainWindowController.togglePinInWorkspace(_:)), keyEquivalent: "t")
         item.keyEquivalentModifierMask = [.command, .control]
         item.representedObject = placement
         return item

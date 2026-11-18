@@ -211,7 +211,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         sidebar.organizationView.delegate = self
         // The finder's window made ahead, so the first ⌘O shows at once.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in _ = self?.finder }
-        sidebar.organizationView.collapsedByHand = Set(hosts.state.collapsedRows)
+        sidebar.organizationView.restoreFolds(Set(hosts.state.collapsedRows))
         sidebar.organizationView.onCollapsedChanged = { [weak self] rows in self?.hosts.setCollapsedRows(rows) }
         setUp(content)
         _ = blankGrid
@@ -643,6 +643,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             s.caption = t.displayTitle
         }
         s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
+        // Its project (pinned in one, else the one it's in) — not the
+        // project's own folder, whose name is the project's already.
+        if let b = s.block, b.kind != .project, p.lens != .threads {
+            let pinnedIn = project(pinning: p.block)
+            if let proj = pinnedIn ?? project(of: p.block), !(b.kind == .directory && b.path == proj.root) {
+                s.project = ShownProject(name: proj.name, root: proj.root, pinned: pinnedIn != nil)
+            }
+        }
         // A space's timeline (§3.12): said so, not the space's name.
         if p.lens == .threads {
             // A block's threads (a project's, an agent's, a file's): said whose.

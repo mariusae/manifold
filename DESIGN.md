@@ -375,8 +375,15 @@ or made a folder again by hand, the project is no more, and its block,
 no longer kept, is collected as anything nothing reaches is (Recently
 Closed has it a while). Deleting the block (⌘D) is the other way round:
 the folder no longer a project, the folder itself left alone. Anything
-can be **pinned** in it, as in a space — Pin in <project>, in a tile's
-or a row's menu, for a block in a project; Unpin from <project>; or
+can be **pinned** in it. There's one kind of pinning: Pin (⌃⌘T, in a
+tile's or a row's menu, `mani pin`) pins a thing where it lives — in its
+project, if it's in one (Pin in Project “<name>”), else in the space
+(Pin in Space) — and Unpin lets go of it wherever it is; what was pinned
+in both a space and its project before is let go of in the space, the
+host settling it at each collection. A thing's pin in its project is
+said wherever the project is (under it in a space's list, on its
+homepage), not in a space apart — the project gone, so's its section;
+the folder holds the project by a strong edge. Pinned also by being
 dropped on the homepage's sidebar (a tile's bar, a row, a file, a page)
 — a `pinned` link from its block, which keeps what it pins, on screen or
 not; the project gone, what only it kept goes with it. Gone to (a link,
@@ -392,14 +399,12 @@ sessions are the project's — on the project's host, with nothing showing
 it: its card is under the project's Pinned. An agent with no tile, kept
 by a pin, is what was once called ambient; its tile is a view of it,
 closed, the agent stays; unpinned with no tile, it goes as a closed tile
-does (Recently Closed has it a while). The pinned agents the space shown
-reaches — pinned in it, or in a project it shows (a tile of it, or
-anything from inside it) — are a row at the sidebar's foot, over
-Threads, each its face as an agent has it everywhere — its initial on
-a disc of its colour, paler while it's asleep — at its top right what
-most wants you of it, as a space's square has it (a dot: needs you,
-failed, done and not read; an open ring: working), "+n" for those past
-the room; clicked, shown; their menu shows, renames, unpins, deletes.
+does (Recently Closed has it a while). A project's agents are under it
+in the sidebar, wherever a space refers to it (§3.6): each its name and
+its face as an agent has it everywhere — its initial on a disc of its
+colour, paler while it's asleep — saying what it's at; clicked, shown.
+(They were once a row of faces at the sidebar's foot, the space's
+agents apart from their projects.)
 Pointed at — a pill, a card, a row, a reference, a face — an agent shows
 the one card agents have everywhere (`agentCard`, in the block's card):
 its name; what kind of agent, the project it's in, the host; and what
@@ -407,7 +412,7 @@ it's doing — working on what it was asked (a thread's ask said as the
 thread and what was written there, its references by their names), and
 what it's doing now; waiting on you, for what; done (read or not) or
 idle, with what it was last asked and said; asleep — over its screen, if
-it's been seen. So that row reads, an agent's name is given an initial
+it's been seen. So its face reads, an agent's name is given an initial
 no agent pinned or at work has, and while there are some, one unlike any
 taken (not Q beside O, nor L beside I); the names (a plant's or a
 bird's) start with every letter. Dragged, it's a reference to it (onto
@@ -464,7 +469,12 @@ gives it back in proportion when it goes — the widths as they were, not
 made equal. Every copy of the space works the loans out alike from the
 same events.
 Each tile has a **bar** across its top: the block's symbol and its
-**title** (a dot after it while edited and unsaved), where it is, its
+**title** (a dot after it while edited and unsaved), where it is — in
+a project (§2.6), from the project: its name set apart, a shade darker
+and heavier than a folder's, after its box (a small pin leaning as one
+stuck in, in the bar's quieter grey, where the tile's block is pinned
+in it), on the title's baseline as an agent's name in its pill is, then the path in it, `brick/src/net`; the name
+clicked, the project's tile (the one here, else one made beside) — its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the
 bar gives up as it narrows — its **links** (the linked blocks' faces,
@@ -836,11 +846,30 @@ host under it when there's more than one to tell apart), then **one
 list**. First what **needs you**, in every space — this space's tiles
 risen out of their places below, then the other spaces' as the strip
 has them, each saying which space (clicked, gone to there); a hairline;
-Pinned, in the order pinned; then what's on screen, unheaded, as the
-grid has it, column by column, a hairline between columns — its rows
+Pinned (in the space: what's in no project), in the order pinned; then
+**the projects** the space refers to — each project a tile here is in,
+or pinned in, for as long as one is (its last such tile closed, it
+goes) — each its name, with under it, set in, what's pinned in the
+project (its agents by their names, saying what they're at; anything
+else pinned there — its tile's row, if it's on screen), then its open
+threads, the latest five and a row for all of them. Each thing is said
+once: what's pinned in a project is under it, not in its column; the
+project's folder's tile is the project's row; its other tiles are in
+their columns. Clicked, the project's
+tile, the one here if there is one, else one made here. The pointer
+on a project's box makes it a chevron that folds it (and opens it
+again), kept so: folded, its agents' faces follow its name and its
+open threads are counted at its right. Then the rest of what's on screen,
+unheaded, as the grid has it, column by column — with more
+than one column, each column's rows under a little map of the columns,
+its own lit, so they read as that column — its rows
 not saying again what their bars say (done, failed, and when); then
 Docked, folded under how many, the latest first once opened (and kept
-open). The focused one marked, so the sidebar is the table of contents
+open, across launches, as a project folded is kept folded). A tile's row
+pointed at rings its tile — an agent's in its colour, the rest in the
+accent — where it's on screen and open; only out of sight (docked, down
+to its bar, in no tile here) does the row show its card instead, the
+tile itself there to see otherwise. The focused one marked, so the sidebar is the table of contents
 of the screen; clicking a tile row focuses it (a docked one comes back
 where it was). (What needs you was once a section of its own at the
 sidebar's foot, `NeedsYouView`, and On Screen and Docked headed
@@ -2968,7 +2997,7 @@ marks, diagnostics, `==highlight==`), diffs, what search found (a PDF's
 matches too), a machine's charts, the colours that tell kinds apart (a
 file's type, a link's), a terminal's palette in each appearance (its
 paper, text, caret, selection and all 256 colours: the sixteen, then the
-extended palette's 6×6×6 cube and 24 greys — xterm's, in Paper, as
+extended palette's 6×6×6 cube and 24 greys — xterm's, in Classic, as
 Ghostty's own were), and the preview's page. One is in use (`Palette.current`), and what draws asks it as it
 draws: the named colours (`Theme.text`, `Status.failed`,
 `TextView.addedColor`…) are each one object (`NSColor.themed`) whose
@@ -2982,7 +3011,8 @@ cells are drawn in the same. The preview's page takes the
 theme's as CSS variables (`--page-text`, `--page-link`…, light and
 under `prefers-color-scheme: dark`), set again in an open page when the
 theme changes. The theme is a setting (`Appearance.colorTheme`, by id,
-Paper for one there isn't), set from Settings ▸ Appearance ▸ Theme
+Merino for one there isn't, and a theme there was by the one that
+replaced it: Paper's by Merino, Claude Classic's by Claude), set from Settings ▸ Appearance ▸ Theme
 (`ColorThemePicker`: each a small window drawn in its colours as the
 appearance has them — a sidebar with a row chosen in the accent and
 blocks' states, an editor's tile with its gutter, the caret's line lit,
@@ -3000,15 +3030,20 @@ text, each step between taken in CIELAB, the greys from the background
 to the text — from the background whatever it is (Ghostty's
 "harmonious"), or turned round for a light one to go dark to light.
 
-**Paper** is Manifold's look as it was before there were themes, to the
-value: debug `colordump <path>` writes every named colour in both
-appearances, the terminal's config and the 256 colours Ghostty makes of
-it, compared with the build before. **Newsprint** is ink on newsprint:
-paper #F2F2F0 and ink #333331, muted inks (brick red #B3402E, sage,
-ochre, slate blue, plum, teal), a red caret on a grey selection
-(#DDDDD6), its extended palette made from its own; by night paper
-#1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the six
-4.5:1 on the paper), warm greys throughout (a step less blue).
+**Merino**, the default, is GitHub's Primer as Rex's Merino sets it: GitHub
+Light's sixteen (its yellows deepened) on white, GitHub Dark's on #161b22;
+Primer's inks, blue, success, attention and danger; a tile's bar the page's
+own with a hairline round each tile; code and pages on its subtle canvas.
+It took the place of Paper, Manifold's look from before there were themes,
+which was all but the same. Debug `colordump <path>` writes every named
+colour in both appearances, the terminal's config and the 256 colours
+Ghostty makes of it, to compare two builds' looks. **Newsprint** is ink on
+newsprint: paper #F2F2F0 and ink #333331, muted inks (brick red #B3402E,
+sage, ochre, slate blue, plum, teal), its accent the slate blue — an
+editor's pencil; the red is what failed — and a red caret on a grey
+selection (#DDDDD6), its extended palette made from its own; by night
+paper #1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the
+six 4.5:1 on the paper), warm greys throughout (a step less blue).
 **Classic** is apex's Classic palette (~/src/apex,
 `crates/apex-client/src/theme.rs`): paper #FCFCF2, ink #202224,
 secondary #6E7072, the tags' pale blue (#EAF4F7, the sidebar #E8EFF1)
@@ -3018,9 +3053,9 @@ blue #50B7E0, selection #4A4526. Its colour-blind pairs as apex's: B3's
 blue #2A5DB0 for added, done and passed, B2's burnt orange #C85A00 for
 removed and warnings, the fenced fuchsia #CE3262 for errors and what
 failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
-past them). Two of apex's are a step darker here, to read as text on a
-panel at 4.5:1: the faint grey (#737577 for #8A8C8E) and stale's ochre
-(#8F6B00 for #C79A00). **Financial Times** is
+past them). Where apex's don't read as text at 4.5:1 they're a step
+darker by day (the faint grey #737577, stale's ochre #8F6B00) and lighter
+by night (the blue #6494E2, the fuchsia #F16388). **Financial Times** is
 github.com/mariusae/financial-times-theme's, from FT Origami's palette:
 paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected, teal #0D7680
 the accent and links, an ink caret (as its Ghostty theme's); jade,
@@ -3032,15 +3067,43 @@ selected, teal-80 #14BDCC, the inks lifted (#66CC99, #FF8833,
 (Origami's colours eased to 5.5:1 on the paper), the rest made from
 them. FT's muted grey #807973 reads at 3.9:1, so secondary text is
 black-60 #66605C; jade and mandarin are deepened where read as text
-(#007A3D, #A35214). The backdrop is a theme's too, so the window is of
+(#007A3D, #A35214). **Claude** is Claude's desktop app as shipped: its
+Code tab's neutral greys (white pages by day, #191919 on #1f1f1f by
+night), its ink, clay #D97757 (#C6613F on white) the accent, Claude Code's
+own terminal sixteen and its blue caret and selection. **Claude Warm** is
+claude.ai's classic set: ivory #FAF9F5 on #F5F4ED and white cards, by
+night #262624 on #1F1E1D and #30302E cards, its warm inks, clay, its blue
+for links, the terminal's sixteen in Claude's own inks made for the ivory.
+In both, what failed is a crimson (#A4273E, by night #FF93A1), not
+Claude's danger red, which was a step from the clay — a focus ring read
+as a failure. (Claude Classic, Claude's app before its neutral greys,
+was all but Claude, and went.)
+
+Every theme keeps to the same promises, and a test holds each to them by
+day and by night (`ThemeContractTests`): text, secondary and tertiary,
+the statuses and line numbers each 4.5:1 on what they're drawn on; its
+accent apart from what failed; a terminal's inks 4.5:1 on its paper (by
+day its white a grey and its brights 3:1, as a light terminal's are; by
+night bright black, the dim text of suggestions and comments, 3.7:1);
+and a diff's added and removed lines apart to a deuteranope — what's
+added a pale blue, what's taken away a pale orange, hunks a grey, as
+Classic and GitHub's colour-blind themes have them. What tells a space
+or an agent apart — the system's colours a space is given, an agent's
+Paul Tol hues — is eased to the theme's inks (`NSColor.identity`): its
+hue and lightness kept, its chroma brought to the theme's terminal's (as
+Merino's are, at most; at least 0.6 of them), so Newsprint's and
+Financial Times' aren't loud in them.
+
+The backdrop is a theme's too, so the window is of
 a piece: its wash's four stops and how its pools are lit, in each
-appearance (`Palette.Backdrop`) — Paper's lavender, rose, peach and
-cream (by night indigo, plum, umber, near-black), Newsprint's off-whites
-a shade warmer or cooler than its paper with a faint blush of its red
+appearance (`Palette.Backdrop`) — Merino's heathered slate into teal
+and green (by night slate, deep teal, forest), Newsprint's off-whites
+a shade warmer or cooler than its paper with a faint breath of its blue
 (by night its paper unlit), Classic's acme pale blue into its cream and
 yellow (by night go.dev's slate into acme's dark yellow), Financial
 Times' FT pink into its paper and wheat (by night slate with a claret
-dusk) — still turned
+dusk), Claude's sky into lavender, clay and peach, Claude Warm's clay
+into kraft, manilla and oat — still turned
 by the day, lit by the hour, its first pool the tint's; the Settings
 picker draws each card on its wash. What isn't a theme's: a language's colour in
 a project's bar (the code hosts'); masks and shadows (black or white at

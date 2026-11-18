@@ -24,7 +24,8 @@ enum AgentLook {
         func rgb(_ v: Int) -> NSColor {
             NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
         }
-        return NSColor(name: nil) { a in a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark) : rgb(light) }
+        // Eased to the theme's inks (Paul Tol's hues and lightnesses kept).
+        return .identity(NSColor(name: nil) { a in a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? rgb(dark) : rgb(light) })
     }
 
     /// An agent's colour, if it's an agent given one.

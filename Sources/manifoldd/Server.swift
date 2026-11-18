@@ -286,6 +286,7 @@ final class Server {
         // Projects' blocks, and what was kept before pins and links made
         // pins and links (§2.6, §3.12).
         settleProjects()
+        settleDoublePins()
         settleShelves()
         let fd = try UnixSocket.listen(path: Paths.socket)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
@@ -922,6 +923,7 @@ final class Server {
     private func collect() {
         settleRoots()
         settleProjects()
+        settleDoublePins()
         settleShelves()
         projectsFollowTheirFolders()
         let minutes = node.desk(host).settings.collectAfterMinutes

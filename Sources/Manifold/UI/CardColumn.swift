@@ -203,8 +203,10 @@ final class SummaryCard: NSView {
         }
         if let tag = content.agent, let r = head.agent { tag.draw(in: r) }
         if !head.shimmers { head.title.draw(with: head.titleRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin]) }
-        let x = head.titleRect.minX
-        // Its lines, under the title, set in from the symbol.
+        // Its lines, under the title, set in from the symbol — from the
+        // agent's pill where it has one: the pill is the title's, not a
+        // column the lines keep clear of.
+        let x = head.agent.map { $0.minX + 2 } ?? head.titleRect.minX
         drawLines(s, x: x, right: right, top: top + 21, room: 3, note: false)
         drawProgress(s, in: card, pad: pad)
     }

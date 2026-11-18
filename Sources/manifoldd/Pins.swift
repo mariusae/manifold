@@ -66,6 +66,23 @@ extension Server {
         }
     }
 
+    /// One kind of pinning (§2.6): what's pinned in a project isn't pinned
+    /// in a space too — what was pinned in both before (a space's pin, then
+    /// its project's) is let go of in the spaces. At every collection.
+    func settleDoublePins() {
+        var n = 0
+        for p in node.desk(host).projects {
+            guard let pb = p.block else { continue }
+            for target in pinned(in: pb) {
+                for e in node.graph.edges(to: target, kind: .link(.pinned)) where e.isLive && e.from != pb && node.block(e.from)?.kind == .arrangement {
+                    append(.unlink(e.id), to: .links(host))
+                    n += 1
+                }
+            }
+        }
+        if n > 0 { log("\(n) pin(s) in a space let go of: pinned in their projects") }
+    }
+
     /// The agents pinned in a project, by its root.
     func projectAgents(_ root: String) -> [BlockID] {
         guard let b = node.desk(host).projects.first(where: { $0.root == root })?.block else { return [] }

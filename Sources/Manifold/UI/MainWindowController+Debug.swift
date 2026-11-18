@@ -266,11 +266,14 @@ extension MainWindowController {
 
     /// Debugging: the focused folder view, told `arg` (see DirectoryView.debug).
     func debugDirectory(_ arg: String) -> String {
-        // "dir show <host>:<path>": a folder tile of that host's, made here.
+        // "dir show <host>:<path> [beside]": a folder tile of that host's, made here (in a new column).
         if arg.hasPrefix("show ") {
-            let parts = arg.dropFirst(5).split(separator: ":", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { return "usage: dir show <host>:<path>" }
-            show(hosts.directoryBlock(for: parts[1], on: HostID(parts[0])), lens: .directory, .here)
+            var spec = String(arg.dropFirst(5))
+            let beside = spec.hasSuffix(" beside")
+            if beside { spec = String(spec.dropLast(7)) }
+            let parts = spec.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return "usage: dir show <host>:<path> [beside]" }
+            show(hosts.directoryBlock(for: parts[1], on: HostID(parts[0])), lens: .directory, beside ? .beside : .here)
             return "ok"
         }
         guard let d = arrangement?.focused.flatMap({ views[$0] as? DirectoryView }) else { return "no folder focused" }

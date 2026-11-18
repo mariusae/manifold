@@ -221,24 +221,6 @@ extension MainWindowController: DirectoryViewDelegate {
         return client.newProjectAgent(root: project.root, command: command)
     }
 
-    /// The pinned agents the space shown reaches (§3.12), as the pills at
-    /// the sidebar's foot show them: those pinned in it, then those pinned in
-    /// each project it shows (a tile of it, or something from inside it),
-    /// project by project, in the space's order.
-    func spaceAgentChips() -> [ProjectAgentChip] {
-        guard let id = selected, let a = hosts.arrangement(id) else { return [] }
-        var seen: Set<String> = [], ids: Set<BlockID> = [], out: [ProjectAgentChip] = []
-        for e in pins(of: id) {
-            guard let b = hosts.block(e.to), b.agent != nil, ids.insert(b.id).inserted else { continue }
-            out.append(agentChip(b, in: project(pinning: b.id) ?? project(of: b.id)))
-        }
-        for p in a.placements {
-            guard let proj = project(of: p.block), seen.insert("\(p.block.host)|\(proj.root)").inserted else { continue }
-            for b in agents(of: proj, on: p.block.host) where ids.insert(b.id).inserted { out.append(agentChip(b, in: proj)) }
-        }
-        return out
-    }
-
     /// A project's agent's menu, wherever its pill is: show it, rename it,
     /// delete it (with Undo, as any block).
     func projectAgentMenu(_ id: BlockID) -> NSMenu? {
@@ -249,7 +231,7 @@ extension MainWindowController: DirectoryViewDelegate {
         menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { [weak self] in self?.renameProjectAgent(id) })
         if let item = threadsItem(id) { menu.addItem(item) }
         if let p = project(pinning: id) {
-            menu.addItem(ClosureMenuItem("Unpin from \(p.name)", symbol: "pin.slash") { [weak self] in self?.setPinned(id, inProject: p, false) })
+            menu.addItem(ClosureMenuItem("Unpin from Project “\(p.name)”", symbol: "pin.slash") { [weak self] in self?.setPinned(id, inProject: p, false) })
         } else if let s = selected, isPinned(id, in: s) {
             menu.addItem(pinItem(id, in: s))
         }
@@ -325,14 +307,6 @@ extension MainWindowController: DirectoryViewDelegate {
             }
         }
         return (AgentLook.name(of: b), detail, lines.joined(separator: "\n"))
-    }
-
-    /// A project's agent as its pill shows it (§3.12): its name and colour,
-    /// what most wants you of it, whether it's asleep.
-    func agentChip(_ b: Block, in project: Project?) -> ProjectAgentChip {
-        ProjectAgentChip(id: b.id, name: AgentLook.name(of: b), color: AgentLook.color(of: b) ?? Theme.accent,
-                         status: StatusGlyph.look(of: b), asleep: !Self.agentRuns(b),
-                         detail: AgentLook.description(of: b), project: project?.name ?? "")
     }
 
     /// "?text" in a folder's filter: the files under it searched, the

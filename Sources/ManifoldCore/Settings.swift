@@ -67,7 +67,7 @@ public struct Appearance: Codable, Equatable, Sendable {
     /// the caret, a pool of light in the backdrop.
     public var tint: Tint = .theme
     /// The colour theme, by its id: every colour the app draws in.
-    public var colorTheme: String = "paper"
+    public var colorTheme: String = "merino"
     /// The custom font theme's typography (used when `theme` is `.custom`).
     public var typography: Typography = .apple
     /// Settings ▸ Typography shown, and the Custom theme offered.
@@ -75,7 +75,7 @@ public struct Appearance: Codable, Equatable, Sendable {
 
     public init(theme: FontTheme = .apple, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
-                editorFont: EditorFont = .proportional, tint: Tint = .theme, colorTheme: String = "paper") {
+                editorFont: EditorFont = .proportional, tint: Tint = .theme, colorTheme: String = "merino") {
         self.theme = theme
         self.colorScheme = colorScheme
         self.contrastCorrection = contrastCorrection

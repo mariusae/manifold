@@ -45,4 +45,26 @@ enum ColorVision: CaseIterable {
                 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
                 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
     }
+
+    /// Oklab in sRGB (gamma encoded), its chroma eased toward grey until
+    /// it's in the gamut.
+    static func srgb(fromOklab c: (l: CGFloat, a: CGFloat, b: CGFloat)) -> NSColor {
+        func encode(_ v: CGFloat) -> CGFloat { v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055 }
+        var k: CGFloat = 1
+        while true {
+            let a = c.a * k, b = c.b * k
+            let l = pow(c.l + 0.3963377774 * a + 0.2158037573 * b, 3)
+            let m = pow(c.l - 0.1055613458 * a - 0.0638541728 * b, 3)
+            let s = pow(c.l - 0.0894841775 * a - 1.2914855480 * b, 3)
+            let rgb = (4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                       -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                       -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)
+            let inGamut = [rgb.0, rgb.1, rgb.2].allSatisfy { $0 >= -0.0001 && $0 <= 1.0001 }
+            if inGamut || k <= 0 {
+                func clamp(_ v: CGFloat) -> CGFloat { encode(min(max(v, 0), 1)) }
+                return NSColor(srgbRed: clamp(rgb.0), green: clamp(rgb.1), blue: clamp(rgb.2), alpha: 1)
+            }
+            k -= 0.02
+        }
+    }
 }

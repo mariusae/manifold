@@ -1804,12 +1804,12 @@ private final class Seen: @unchecked Sendable {
     #expect(Appearance().theme == .apple)
 }
 
-@Test func appearanceFromBeforeColourThemesIsPaperInTheThemesAccent() throws {
+@Test func appearanceFromBeforeColourThemesIsMerinoInTheThemesAccent() throws {
     let old = try JSONDecoder().decode(Appearance.self, from: Data(#"{"theme":"apple"}"#.utf8))
-    #expect(old.colorTheme == "paper" && old.tint == .theme)
+    #expect(old.colorTheme == "merino" && old.tint == .theme)
     // An accent chosen stays chosen.
     let blue = try JSONDecoder().decode(Appearance.self, from: Data(#"{"tint":"blue"}"#.utf8))
-    #expect(blue.tint == .blue && blue.colorTheme == "paper")
+    #expect(blue.tint == .blue && blue.colorTheme == "merino")
     var a = Appearance()
     a.colorTheme = "newsprint"
     let back = try JSONDecoder().decode(Appearance.self, from: JSONEncoder().encode(a))

@@ -137,9 +137,16 @@ extension MainWindowController: OrganizationViewDelegate {
         if let node, let c = hostClient(of: node), let window {
             return showHostCard(c, beside: rect, in: window)
         }
-        // An agent's row: its tile ringed too, where it's on screen.
-        spotlightAgent(node?.block.flatMap { hosts.block($0)?.agent != nil ? $0 : nil })
-        guard let node, let id = node.block, let window else { return HoverCard.shared.hide() }
+        // A tile's row (an agent's, wherever it is): its tile ringed, where
+        // it's on screen and open — and then no card: the tile is there to
+        // see. Out of sight, docked or down to its bar, its card.
+        let here = node.flatMap { n -> PlacementID? in
+            if let p = n.placement, n.arrangement == selected { return p }
+            guard let b = n.block, hosts.block(b)?.agent != nil else { return nil }
+            return arrangement?.placements.first { $0.block == b }?.id
+        }
+        let ringed = spotlightTile(here)
+        guard let node, let id = node.block, let window, !ringed else { return HoverCard.shared.hide() }
         showBlockCard(id, beside: rect, in: window)
     }
 
@@ -297,9 +304,11 @@ extension MainWindowController: OrganizationViewDelegate {
             return menu
         }
         guard let id = node.block else { return nil }
-        if let arr = node.arrangement, node.style == .row {
+        // Pin or Unpin, where it lives (not a project's own row: a project
+        // is in the list while it's referred to, not by a pin).
+        if node.style == .row, hosts.block(id)?.kind != .project,
+           let arr = node.arrangement ?? (project(pinning: id) != nil ? selected : nil) {
             menu.addItem(pinItem(id, in: arr))
-            if let item = projectPinItem(id) { menu.addItem(item) }
             if let item = threadsItem(id) { menu.addItem(item) }
             menu.addItem(.separator())
         }
@@ -339,12 +348,26 @@ extension MainWindowController: OrganizationViewDelegate {
 
     // MARK: Items a block's menus share (its pill's, its sidebar row's)
 
-    /// Pin in Space, or Unpin; with its key (⌃⌘T) where the tile's focused.
-    func pinItem(_ block: BlockID, in space: BlockID, key: Bool = false) -> NSMenuItem {
-        let on = isPinned(block, in: space)
-        let item = ClosureMenuItem(on ? "Unpin" : "Pin in Space", symbol: on ? "pin.slash" : "pin", key: key ? "t" : "") { [weak self] in
-            self?.setPinned(block, in: space, !on)
+    /// One kind of pinning (§2.6): what's pinned is pinned where it lives —
+    /// in its project, if it's in one (or already pinned in one); else in
+    /// the space. What Pin will do, or Unpin: its words, and the doing.
+    func pinToggle(_ block: BlockID, in space: BlockID) -> (title: String, on: Bool, run: () -> Void) {
+        if let p = project(pinning: block) {
+            return ("Unpin from Project “\(p.name)”", true, { [weak self] in self?.setPinned(block, inProject: p, false) })
         }
+        if isPinned(block, in: space) {
+            return ("Unpin from Space", true, { [weak self] in self?.setPinned(block, in: space, false) })
+        }
+        if hosts.block(block)?.kind != .project, let p = project(of: block), p.block != nil {
+            return ("Pin in Project “\(p.name)”", false, { [weak self] in self?.setPinned(block, inProject: p, true) })
+        }
+        return ("Pin in Space", false, { [weak self] in self?.setPinned(block, in: space, true) })
+    }
+
+    /// Pin, or Unpin (`pinToggle`); with its key (⌃⌘T) where the tile's focused.
+    func pinItem(_ block: BlockID, in space: BlockID, key: Bool = false) -> NSMenuItem {
+        let t = pinToggle(block, in: space)
+        let item = ClosureMenuItem(t.title, symbol: t.on ? "pin.slash" : "pin", key: key ? "t" : "", t.run)
         if key { item.keyEquivalentModifierMask = [.command, .control] }
         return item
     }
@@ -359,17 +382,6 @@ extension MainWindowController: OrganizationViewDelegate {
         return ClosureMenuItem("Threads (\(n))", symbol: "bubble.left.and.bubble.right") { [weak self] in
             self?.show(block, lens: .threads, .here, context: "threads")
         }
-    }
-
-    /// Pin in its project (§2.6), or Unpin from the one it's pinned in:
-    /// kept by the project, on screen or not — under its Pinned, an agent
-    /// asked in its threads. None where it's in no project.
-    func projectPinItem(_ block: BlockID) -> NSMenuItem? {
-        if let p = project(pinning: block) {
-            return ClosureMenuItem("Unpin from \(p.name)", symbol: "pin.slash") { [weak self] in self?.setPinned(block, inProject: p, false) }
-        }
-        guard hosts.block(block)?.kind != .project, let p = project(of: block), p.block != nil else { return nil }
-        return ClosureMenuItem("Pin in \(p.name)", symbol: "pin") { [weak self] in self?.setPinned(block, inProject: p, true) }
     }
 
     /// Pinned in a project, or let go of there. An agent with no tile let

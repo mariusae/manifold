@@ -101,6 +101,17 @@ final class OrgNode {
         var run: () -> Void
     }
     var accessories: [Accessory] = []
+    /// Set in from the rows' edge, in a flat list: a project's rows under it.
+    var inset: CGFloat = 0
+    /// Folds by hand in a flat list (a project): under the pointer its icon
+    /// is a chevron, clicked it folds or opens; folded, `foldedFaces` after
+    /// its name and `foldedCount` at its right say what's in it.
+    var foldable = false
+    var foldedFaces: [NSImage] = []
+    var foldedCount: Int?
+    /// A divider at a column's rows: which column of how many, as a little
+    /// map of them at its start.
+    var columnMap: (index: Int, of: Int)?
     /// A pill in place of its status's (Editing), and a badge on its icon.
     var pill: StatusPill.Kind?
     var badge: String?
@@ -268,7 +279,16 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     private var expandedByDefault: Set<String> = []
     /// Rows closed by hand: remembered (the client's state keeps them).
     var collapsedByHand: Set<String> = []
+    /// What's closed unless opened, opened by hand (Docked): kept so too.
+    var openedByHand: Set<String> = []
+    /// Both, to keep: the folded by their ids, the opened as "open:" and theirs.
     var onCollapsedChanged: ((Set<String>) -> Void)?
+    private func keepFolds() { onCollapsedChanged?(collapsedByHand.union(openedByHand.map { "open:" + $0 })) }
+    /// What was kept (`onCollapsedChanged`'s), taken back.
+    func restoreFolds(_ kept: Set<String>) {
+        openedByHand = Set(kept.filter { $0.hasPrefix("open:") }.map { String($0.dropFirst(5)) })
+        collapsedByHand = kept.filter { !$0.hasPrefix("open:") }
+    }
     private var trackedRow: Int = -1
     private var selecting = false
     /// Flat (§3.5): no chevrons and no indentation — sections (hosts,
@@ -456,7 +476,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
             outline.beginUpdates()
             merge(nodes, into: nil, changed: &changed, inserted: &inserted)
             func expandNew(_ list: [OrgNode]) {
-                for n in list where expanded.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
+                for n in list where expanded.contains(n.id) || openedByHand.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
                     outline.expandItem(n)
                     expandNew(n.children)
                 }
@@ -488,7 +508,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
         outline.reloadData()
         func expandAll(_ list: [OrgNode]) {
-            for n in list where expanded.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
+            for n in list where expanded.contains(n.id) || openedByHand.contains(n.id) || (expandedByDefault.contains(n.id) && !collapsedByHand.contains(n.id)) {
                 outline.expandItem(n)
                 expandAll(n.children)
             }
@@ -623,7 +643,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         // A label among a space's rows (no rows of its own): room above it.
         case .section: return n.hasChildren ? 24 : 34
         case .row: return Self.fullHeight(n, flat: flat)
-        case .divider: return 9
+        case .divider: return n.columnMap == nil ? 9 : 16
         }
     }
 
@@ -880,7 +900,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.insert(n.id)
-            if collapsedByHand.remove(n.id) != nil { onCollapsedChanged?(collapsedByHand) }
+            var kept = collapsedByHand.remove(n.id) != nil
+            if !expandedByDefault.contains(n.id), openedByHand.insert(n.id).inserted { kept = true }
+            if kept { keepFolds() }
         }
     }
 
@@ -888,8 +910,9 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.remove(n.id)
-            collapsedByHand.insert(n.id)
-            onCollapsedChanged?(collapsedByHand)
+            openedByHand.remove(n.id)
+            if expandedByDefault.contains(n.id) { collapsedByHand.insert(n.id) }
+            keepFolds()
         }
     }
 
@@ -903,6 +926,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         let cell = outlineView.makeView(withIdentifier: .init("org"), owner: nil) as? OrgRowView ?? OrgRowView()
         cell.identifier = .init("org")
         cell.flat = flat
+        cell.folded = node.foldable && !outline.isItemExpanded(node)
         cell.show(node)
         return cell
     }
@@ -912,6 +936,11 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
     @objc private func rowClicked() {
         let row = outline.clickedRow
         guard row >= 0, let node = outline.item(atRow: row) as? OrgNode else { return }
+        // A project's chevron (its icon, under the pointer): folded or opened.
+        if node.foldable, let cell = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? OrgRowView,
+           let e = NSApp.currentEvent, cell.isOnFold(cell.convert(e.locationInWindow, from: nil)) {
+            return toggleFold(node)
+        }
         if !flat, node.hasChildren, (NSApp.currentEvent?.modifierFlags ?? []).intersection([.command, .option, .shift]).isEmpty {
             // In a tree (Files), a folder clicked opens or closes; double-
             // clicked, or with ⌘ or ⌥, it's gone to.
@@ -931,6 +960,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         } else if node.hasChildren {
             if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
         }
+    }
+
+    /// A row that folds, folded or opened, and drawn so.
+    func toggleFold(_ node: OrgNode) {
+        if outline.isItemExpanded(node) { outline.collapseItem(node) } else { outline.expandItem(node) }
+        outline.reloadItem(node, reloadChildren: false)
     }
 
     @objc private func rowDoubleClicked() {
@@ -1161,6 +1196,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "expanded, \(outline.numberOfRows) rows"
     }
 
+    /// As a project's chevron clicked: folded or opened.
+    func debugFold(row: Int) -> String {
+        guard let node = outline.item(atRow: row) as? OrgNode, node.foldable else { return "not a row that folds" }
+        toggleFold(node)
+        return (outline.isItemExpanded(node) ? "open" : "folded") + ", \(outline.numberOfRows) rows; by hand: \(collapsedByHand.sorted())"
+    }
+
     /// As the chevron closing a row: remembered as closed by hand.
     func debugCollapse(row: Int) -> String {
         guard let node = outline.item(atRow: row) as? OrgNode else { return "no row" }
@@ -1357,6 +1399,11 @@ final class OrgRowView: NSTableCellView {
     private let sparkline = Sparkline()
     /// The hairline a divider row is.
     private let rule = FlatDivider()
+    /// At a column's divider, the map of the columns, its own lit.
+    private let columnMap = ColumnMapView()
+    /// Folded (a project's row, folded by hand): its agents' faces after its name.
+    var folded = false
+    private var faceViews: [NSImageView] = []
     /// On the icon's corner (an $EDITOR's document over its terminal).
     private let badge: NSImageView = {
         let v = NSImageView()
@@ -1379,8 +1426,29 @@ final class OrgRowView: NSTableCellView {
         didSet {
             guard hovering != oldValue else { return }
             for b in accessoryButtons { b.isHidden = !hovering }
+            showFoldIcon()
             needsLayout = true
         }
+    }
+
+    /// A row that folds: under the pointer its icon is the chevron that folds it.
+    private func showFoldIcon() {
+        guard let node, node.foldable, node.style == .row else { return }
+        if hovering {
+            icon.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 11, weight: .semibold)
+            symbol = ""
+        } else if node.image == nil, node.symbol != symbol {
+            symbol = node.symbol
+            icon.image = Theme.symbol(node.symbol, size: 12)
+        } else if let image = node.image {
+            icon.image = image
+        }
+    }
+
+    /// Whether a point (its own coordinates) is on the chevron that folds it.
+    func isOnFold(_ p: NSPoint) -> Bool {
+        guard let node, node.foldable else { return false }
+        return icon.frame.insetBy(dx: -4, dy: -6).contains(p)
     }
 
     override init(frame: NSRect) {
@@ -1395,8 +1463,9 @@ final class OrgRowView: NSTableCellView {
         trailing.alignment = .right
         detailIcon.contentTintColor = Theme.secondaryText
         detailIcon.isHidden = true
-        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule, badge] { addSubview(v) }
+        for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule, badge, columnMap] { addSubview(v) }
         rule.isHidden = true
+        columnMap.isHidden = true
         // Its parts drawn into its own layer, not one layer each (those that
         // move, the status glyph and a shimmering name, keep theirs): ten
         // views a row, made and put in place as rows scroll into view, and
@@ -1415,6 +1484,26 @@ final class OrgRowView: NSTableCellView {
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
+
+    /// Hovering only while the pointer's on it, in the key window: checked
+    /// as it's shown again (reloaded, reused, moved under a still pointer)
+    /// and let go of when the window stops being key (its tracking stops
+    /// then with no exit to say so — a project's chevron stayed).
+    private func recheckHover() {
+        guard let window, window.isKeyWindow, superview != nil else { return hovering = false }
+        hovering = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+    }
+    private var resignObserver: NSObjectProtocol?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resignObserver.map(NotificationCenter.default.removeObserver)
+        resignObserver = window.map { w in
+            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hovering = false }
+            }
+        }
+        recheckHover()
+    }
 
     /// Debugging: as the pointer coming onto it (or leaving): its buttons
     /// shown, laid out; where they went.
@@ -1435,10 +1524,18 @@ final class OrgRowView: NSTableCellView {
         // A divider: the hairline alone.
         let divider = node.style == .divider
         rule.isHidden = !divider
+        columnMap.isHidden = node.columnMap == nil
+        if let m = node.columnMap { columnMap.map = m }
+        faceViews.forEach { $0.removeFromSuperview() }
+        faceViews = node.foldable && folded ? node.foldedFaces.map { image in
+            let v = NSImageView(image: image)
+            addSubview(v)
+            return v
+        } : []
         for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline] as [NSView] where divider { v.isHidden = true }
         if divider {
             shimmer.on = false
-            toolTip = nil
+            toolTip = node.columnMap == nil ? nil : node.tooltip
             needsLayout = true
             return
         }
@@ -1497,8 +1594,9 @@ final class OrgRowView: NSTableCellView {
         icon.isHidden = node.style == .section
         icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
         icon.alphaValue = node.dimmed ? 0.6 : 1
-        count.stringValue = node.count.map { "\($0)" } ?? ""
-        count.isHidden = node.count == nil
+        let shownCount = node.foldable ? (folded ? node.foldedCount : nil) : node.count
+        count.stringValue = shownCount.map { "\($0)" } ?? ""
+        count.isHidden = shownCount == nil
         detail.stringValue = node.detail
         detail.isHidden = node.detail.isEmpty
         if (node.detailSymbol ?? "") != detailSymbol {
@@ -1511,6 +1609,8 @@ final class OrgRowView: NSTableCellView {
         // A block's row has its card (the title, and more) for a tooltip.
         toolTip = node.liveTooltip != nil || node.block != nil ? nil : node.detail.isEmpty ? node.title : node.title + " — " + node.detail
         placeLiveTip()
+        recheckHover()
+        showFoldIcon()
         needsLayout = true
     }
 
@@ -1533,6 +1633,8 @@ final class OrgRowView: NSTableCellView {
         let h = bounds.height
         if let node, node.style == .divider {
             rule.frame = NSRect(x: 22, y: (h / 2).rounded(), width: max(0, bounds.width - 26), height: 1)
+            // The map in the icons' column, level with the hairline.
+            if node.columnMap != nil { columnMap.frame = NSRect(x: 2, y: ((h - 8) / 2).rounded(), width: 16, height: 8) }
             return
         }
         if let node, node.style == .section {
@@ -1588,7 +1690,7 @@ final class OrgRowView: NSTableCellView {
         if let node, flat, node.style == .row, !detail.isHidden {
             // Two lines: the name with the status at its right, then what
             // the status says beneath, aligned with the name.
-            let ix: CGFloat = 0
+            let ix: CGFloat = node.inset
             icon.frame = NSRect(x: 2 + ix, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4
             // The pointer on it: its buttons at the right of the name's
@@ -1618,7 +1720,7 @@ final class OrgRowView: NSTableCellView {
             detailIcon.alphaValue = 1
             return
         }
-        let ix: CGFloat = 0
+        let ix: CGFloat = node?.inset ?? 0
         icon.frame = NSRect(x: 2 + ix, y: (h - 14) / 2, width: node?.style == .host ? 18 : 16, height: 14)
         badge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 3, width: 10, height: 10)
         var right = bounds.width - 4
@@ -1638,7 +1740,21 @@ final class OrgRowView: NSTableCellView {
         statusAtRight(&right, y: (h - 17) / 2)
         let nameWidth = max(0, right - 22 - ix)
         if detail.isHidden {
-            name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth, height: 17)
+            if faceViews.isEmpty {
+                name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth, height: 17)
+            } else {
+                // Folded: its agents' faces after the name, as many as fit.
+                let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? UIType.row]).width) + 4
+                let facesWidth = CGFloat(faceViews.count) * 16
+                let nw = min(wanted, max(0, nameWidth - min(facesWidth, 48) - 6))
+                name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nw, height: 17)
+                var x = 22 + ix + nw + 6
+                for v in faceViews {
+                    v.isHidden = x + 13 > 22 + ix + nameWidth
+                    v.frame = NSRect(x: x, y: ((h - 13) / 2).rounded(), width: 13, height: 13)
+                    x += 16
+                }
+            }
         } else {
             let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? UIType.row]).width) + 4
             // The name whole whenever it fits; the detail gets what's left,
@@ -1657,6 +1773,26 @@ final class OrgRowView: NSTableCellView {
             detail.alphaValue = shown ? 1 : 0
             glyph.alphaValue = 1
             detailIcon.alphaValue = shown ? 1 : 0
+        }
+    }
+}
+
+/// A little map of a space's columns, one lit: at the head of a column's
+/// rows in the sidebar, so they read as that column.
+final class ColumnMapView: NSView {
+    var map: (index: Int, of: Int) = (0, 1) { didSet { needsDisplay = true } }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let n = max(1, map.of)
+        let gap: CGFloat = n > 4 ? 1 : 1.5
+        let w = max(1.5, min(4, (bounds.width - gap * CGFloat(n - 1)) / CGFloat(n)))
+        let total = w * CGFloat(n) + gap * CGFloat(n - 1)
+        var x = ((bounds.width - total) / 2).rounded()
+        for i in 0..<n {
+            let r = NSRect(x: x, y: 0, width: w, height: bounds.height)
+            (i == map.index ? Theme.secondaryText : Theme.tertiaryText.withAlphaComponent(0.4)).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 1, yRadius: 1).fill()
+            x += w + gap
         }
     }
 }

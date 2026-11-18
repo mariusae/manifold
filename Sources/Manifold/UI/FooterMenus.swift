@@ -9,39 +9,7 @@ final class SidebarFooter: NSView {
     let threads = FooterButton(symbol: "bubble.left.and.bubble.right", title: "Threads")
     let tiles = FooterButton(symbol: "chevron.down", title: nil)
     static let height: CGFloat = 38
-    /// The agents' row, over Threads, while there are some.
-    static let agentRow: CGFloat = 28
-    /// As tall as its rows: Threads, and the agents' over it if any.
-    var wantedHeight: CGFloat { agents.isEmpty ? Self.height : Self.height + Self.agentRow }
-    /// The agents of the projects the space reaches (§3.12), each its
-    /// initial in its ring, between Threads and the tiles' menu: clicked,
-    /// shown; their menu, as on the project's line.
-    var onAgent: ((BlockID) -> Void)?
-    var agentMenu: ((BlockID) -> NSMenu?)?
-    private var agents: [ProjectAgentChip] = []
-    private var agentPills: [ProjectAgentPill] = []
-    /// What's past the room: how many, their names in its tip.
-    private let more = NSTextField.label("", font: UIType.footnote, color: Theme.secondaryText)
-
-    func showAgents(_ list: [ProjectAgentChip]) {
-        guard list != agents else { return }
-        agents = list
-        agentPills.forEach { $0.removeFromSuperview() }
-        agentPills = list.map { a in
-            let p = ProjectAgentPill(a, letter: true)
-            p.onClick = { [weak self] in self?.onAgent?(a.id) }
-            p.onMenu = { [weak self] in self?.agentMenu?(a.id) ?? NSMenu() }
-            addSubview(p)
-            return p
-        }
-        needsLayout = true
-        // Its height, with a row or without: the sidebar's to lay out again.
-        superview?.needsLayout = true
-    }
-
-    var debugAgents: String {
-        agentPills.map { ($0.isHidden ? "(hidden) " : "") + $0.chip.name + ($0.chip.asleep ? " asleep" : $0.chip.status.map { " \($0)" } ?? "") }.joined(separator: ", ")
-    }
+    var wantedHeight: CGFloat { Self.height }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -49,8 +17,6 @@ final class SidebarFooter: NSView {
         tiles.toolTip = "Tiles and Recently Closed (⇧⌘A)"
         addSubview(threads)
         addSubview(tiles)
-        addSubview(more)
-        more.isHidden = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -61,34 +27,6 @@ final class SidebarFooter: NSView {
         let h = Self.height
         threads.frame = NSRect(x: SidebarView.margin - 8, y: (h - 28) / 2, width: tw, height: 28)
         tiles.frame = NSRect(x: bounds.width - 12 - 30, y: (h - 28) / 2, width: 30, height: 28)
-        // The agents, a row of their own over Threads, in their order from
-        // the left, as many as fit; "+n" after them for the rest.
-        guard !agentPills.isEmpty else { more.isHidden = true; return }
-        let left = SidebarView.margin - 6, right = bounds.width - 12
-        let y = Self.height - 4, rowH = Self.agentRow - 4
-        let widths = agentPills.map(\.wantedWidth)
-        var shown = 0, used: CGFloat = 0
-        for (i, w) in widths.enumerated() {
-            let moreRoom: CGFloat = i < widths.count - 1 ? 28 : 0
-            guard used + w + moreRoom <= right - left else { break }
-            used += w + 4
-            shown += 1
-        }
-        var x = left
-        for (i, p) in agentPills.enumerated() {
-            p.isHidden = i >= shown
-            guard !p.isHidden else { continue }
-            p.frame = NSRect(x: x, y: y + ((rowH - ProjectAgentPill.letterSize - 3) / 2).rounded(), width: widths[i], height: ProjectAgentPill.letterSize + 3)
-            x += widths[i] + 4
-        }
-        let rest = agentPills.count - shown
-        more.isHidden = rest == 0
-        if rest > 0 {
-            more.stringValue = "+\(rest)"
-            more.toolTip = agentPills.dropFirst(shown).map(\.chip.name).joined(separator: ", ")
-            let z = more.intrinsicContentSize
-            more.frame = NSRect(x: x, y: y + ((rowH - z.height) / 2).rounded(), width: z.width + 2, height: z.height)
-        }
     }
 }
 

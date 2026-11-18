@@ -1166,6 +1166,7 @@ enum DebugControl {
             }
             if a.first == "expand", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row) }
             if a.first == "collapse", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugCollapse(row: row) }
+            if a.first == "fold", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugFold(row: row) }
             if a.first == "deep", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugExpand(row: row, deep: true) }
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
             // "org spring <row>|off": a drag resting on that row; "org spring": its band.
@@ -1301,6 +1302,9 @@ enum DebugControl {
             // "inspector [toggle|rows|click <row>|fold <section>|host <name>|picture <png>]": the inspector's window;
             // "inspector set <row> name=… value=… scope=…|remove=1|escape": a row edited in place, then left.
             return wc?.debugInspector(arg) ?? "no window"
+        case "spotlight":
+            // "spotlight": the ring round a tile pointed at in the sidebar, if one's up.
+            return MainWindowController.spotlightRing.map { "ringed " + NSStringFromRect($0.frame) } ?? "none"
         case "colordump":
             // "colordump <path>": every named colour and the terminal's config, written there.
             try? MainActor.unchecked { ColorDump.run() }.write(toFile: arg, atomically: true, encoding: .utf8)
@@ -1735,7 +1739,6 @@ enum DebugControl {
                 }
                 lines.append(p.root + ": " + each.joined(separator: "; "))
             }
-            lines.append("sidebar: " + wc.sidebar.footer.debugAgents)
             return lines.joined(separator: "\n")
         case "settings":
             // "settings show [pane]", "settings tint <name>", "settings close",

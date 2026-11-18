@@ -721,8 +721,8 @@ extension MainWindowController {
         }
         actions.append(row("Show the Neighborhood Map", "⇧⌥⌘M", "point.3.connected.trianglepath.dotted") { [weak self] in self?.showNeighborhood(around: b.id) })
         if let w = selected, b.kind != .arrangement {
-            let pinnedHere = isPinned(b.id, in: w)
-            actions.append(row(pinnedHere ? "Unpin from This Space" : "Pin in This Space", "⌃⌘T", "pin") { [weak self] in self?.setPinned(b.id, in: w, !pinnedHere) })
+            let t = pinToggle(b.id, in: w)
+            actions.append(row(t.title, "⌃⌘T", t.on ? "pin.slash" : "pin") { t.run() })
         }
         section("Actions", "bolt", actions)
         return (sections, Set(sections.map(\.id)))
@@ -769,13 +769,17 @@ extension MainWindowController {
     func deskTree() -> ([OrgNode], Set<String>) {
         guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
         let aid = "arr/\(id)"
-        let pinned = pins(of: id).map(\.to)
+        // Pinned in the space: what isn't in a project (one kind of
+        // pinning, §2.6: what's in one is pinned there, said under it).
+        let pinned = pins(of: id).map(\.to).filter { project(pinning: $0) == nil }
         // What needs you here: risen to the top, out of its place below.
         let urgent = Set(a.placements.filter { StatusGlyph.look(of: hosts.block($0.block)) == .needsYou }.map(\.id))
         func tile(_ p: Placement, docked isDock: Bool, column c: Int?) -> OrgNode? {
             let b = hosts.block(p.block)
-            // An untitled note by its first words, as its links name it.
-            let title = b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
+            // An untitled note by its first words, as its links name it; a
+            // list of threads as its bar names it (whose threads).
+            let title = p.lens == .threads ? (b.map { threads(of: $0).1 } ?? "Threads")
+                : b.map(Self.linkTitle) ?? "On \(hosts.label(of: p.block.host))"
             // What its status says beyond its glyph (not "Done"); else
             // its state — docked, maximized — as a small symbol. Edits
             // unsaved: the bar's dot after its name.
@@ -875,19 +879,77 @@ extension MainWindowController {
             top.append(n)
         }
         if !top.isEmpty { out += [label("Pinned", "pinned")] + top }
-        // On screen, column by column.
+        // The projects the space refers to (§2.6): each one a tile here is
+        // in, or pinned in — while one is. Under each, what's pinned in it
+        // (its tile's row, if it's on screen) and its open threads; clicked,
+        // its tile. Its other tiles are in their columns.
+        func projectFor(_ block: BlockID) -> Project? {
+            if hosts.block(block)?.kind == .project, let c = hosts.client(block.host) {
+                return c.desk.projects.first { $0.block == block }
+            }
+            return project(pinning: block) ?? project(of: block)
+        }
+        var found: [(proj: Project, host: HostID, key: String)] = []
+        var tileProject: [PlacementID: String] = [:]
+        for p in a.columns.flatMap({ $0 }) + a.docked.map(\.placement) {
+            guard let proj = projectFor(p.block) else { continue }
+            let host = proj.block?.host ?? p.block.host
+            let key = "\(host.raw)|\(proj.root)"
+            if !found.contains(where: { $0.key == key }) { found.append((proj, host, key)) }
+            if a.locate(p.id) != nil, !a.docked.contains(where: { $0.placement.id == p.id }), !pinned.contains(p.block), !urgent.contains(p.id) {
+                tileProject[p.id] = key
+            }
+        }
+        var projects: [OrgNode] = [], projectTiles: Set<PlacementID> = []
+        func columnOf(_ id: PlacementID) -> Int? { a.columns.firstIndex { $0.contains { $0.id == id } } }
+        for (proj, host, key) in found {
+            let mine = a.columns.flatMap { $0 }.filter { tileProject[$0.id] == key }
+            // Its folder's tile here is the project's row.
+            let folder = hosts.directoryBlock(for: proj.root, on: host)
+            let header = mine.first { $0.block == folder }
+            if let header { projectTiles.insert(header.id) }
+            // What's pinned in it and on screen here: its tile's row.
+            func onScreen(_ block: BlockID) -> OrgNode? {
+                guard let t = mine.first(where: { $0.block == block && $0.lens != .threads && !projectTiles.contains($0.id) }),
+                      let row = tile(t, docked: false, column: columnOf(t.id)) else { return nil }
+                projectTiles.insert(t.id)
+                return row
+            }
+            // Its other tiles here stay in their columns.
+            let n = projectNode(proj, on: host, id: "\(aid)/project/\(key)", onScreen: onScreen)
+            if let header {
+                n.arrangement = id
+                n.column = columnOf(header.id)
+                n.placement = header.id
+                n.emphasis = header.id == a.focused
+                let pid = header.id
+                n.accessories = [.init(symbol: "xmark", tip: "Close Tile", run: { [weak self] in self?.closeTile(pid, in: id) })]
+            }
+            projects.append(n)
+        }
+        if !projects.isEmpty {
+            if !top.isEmpty { out.append(rule("projects")) }
+            out += projects
+        }
+        // On screen, the rest, column by column: each column's rows under a
+        // little map of the columns, its own lit (with more than one).
+        let many = a.columns.count > 1
         var grid: [OrgNode] = []
         for (c, column) in a.columns.enumerated() {
-            let rows = column.filter { !pinned.contains($0.block) && !urgent.contains($0.id) }.compactMap { tile($0, docked: false, column: c) }
+            let rows = column.filter { !pinned.contains($0.block) && !urgent.contains($0.id) && !projectTiles.contains($0.id) }
+                .compactMap { tile($0, docked: false, column: c) }
             guard !rows.isEmpty else { continue }
-            if !grid.isEmpty { grid.append(rule("col/\(c)")) }
+            if many {
+                let r = rule("col/\(c)")
+                r.columnMap = (c, a.columns.count)
+                r.tooltip = "Column \(c + 1) of \(a.columns.count)"
+                grid.append(r)
+            } else if !out.isEmpty {
+                grid.append(rule("screen"))
+            }
             grid += rows
         }
-        // On screen needs no heading: it's what the list is, under what's pinned.
-        if !grid.isEmpty {
-            if !top.isEmpty { out.append(rule("screen")) }
-            out += grid
-        }
+        out += grid
         // A new tile, as Dia's New Tab: the kind last made (⌘N's picker
         // the first time, and from its button for another kind).
         out.append(newTileRow(in: id))
@@ -902,7 +964,57 @@ extension MainWindowController {
             l.arrangement = id
             out.append(l)
         }
-        return (out, [])
+        return (out, Set(projects.map(\.id)))
+    }
+
+    /// A project in a space's list (§2.6): its name, and under it what's
+    /// pinned in it — its agents by their names, saying what they're at —
+    /// then its open threads, the latest five (and a row for the rest).
+    /// Clicked, its tile (here, or made here); the rows, each its thing.
+    /// `onScreen`: a pinned thing's tile's row, if it has one here.
+    func projectNode(_ proj: Project, on host: HostID, id nid: String, onScreen: (BlockID) -> OrgNode? = { _ in nil }) -> OrgNode {
+        var children: [OrgNode] = []
+        for b in pinned(in: proj).compactMap({ hosts.block($0) }) {
+            if let row = onScreen(b.id) {
+                if b.agent != nil { row.title = AgentLook.name(of: b) }
+                children.append(row)
+                continue
+            }
+            let n = node(for: b, id: "\(nid)/pin/\(b.id)")
+            if b.agent != nil {
+                n.title = AgentLook.name(of: b)
+                n.detail = StatusGlyph.remark(b) ?? (Self.agentRuns(b) ? "" : "Asleep")
+            }
+            n.age = nil
+            let id = b.id
+            n.action = { [weak self] in self?.arrive(id, from: nil) }
+            children.append(n)
+        }
+        let agents = children.compactMap { $0.block.flatMap { hosts.block($0) } }.filter { $0.agent != nil }
+        let open = proj.block.flatMap { hosts.block($0) }.map { threads(of: $0).0.filter { $0.thread?.resolved != true } } ?? []
+        for t in open.prefix(5) {
+            let n = node(for: t, id: "\(nid)/thread/\(t.id)")
+            n.age = nil
+            let unseen = hosts.unseen(t).count
+            if unseen > 0 { n.detail = "\(unseen) new" }
+            let id = t.id
+            n.action = { [weak self] in self?.arrive(id, from: nil) }
+            children.append(n)
+        }
+        if open.count > 5, let pb = proj.block {
+            let more = OrgNode(id: "\(nid)/threads", title: "All \(open.count) Open Threads", symbol: "bubble.left.and.bubble.right")
+            more.action = { [weak self] in self?.show(pb, lens: .threads, .here, context: "threads") }
+            children.append(more)
+        }
+        for c in children { c.inset = 14 }
+        let n = OrgNode(id: nid, block: proj.block, title: proj.name, symbol: Theme.projectSymbol, isGroup: true, children: children)
+        n.action = { [weak self] in self?.openProject(proj, on: host) }
+        n.tooltip = proj.root.abbreviatingHome
+        // Folded by hand: its agents' faces after its name, its open threads counted.
+        n.foldable = true
+        n.foldedFaces = agents.compactMap { AgentLook.face(of: $0, size: 13) }
+        n.foldedCount = open.isEmpty ? nil : open.count
+        return n
     }
 
     /// Files: each host's sparse tree, roots open.

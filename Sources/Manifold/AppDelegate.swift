@@ -636,7 +636,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tile.addItem(.separator())
         // ⌃⌘T, the Finder's Add to Sidebar: a pin keeps the block in the
         // space's part of the sidebar, tile or not.
-        item(tile, "Pin in Space", #selector(MainWindowController.togglePinInWorkspace(_:)), "t", [.command, .control])
+        item(tile, "Pin", #selector(MainWindowController.togglePinInWorkspace(_:)), "t", [.command, .control])
         item(tile, "Name Note…", #selector(MainWindowController.nameFocusedNote(_:)), "")
         item(tile, "Show the Neighborhood Map", #selector(MainWindowController.showNeighborhood(_:)), "m", [.command, .option, .shift])
 

@@ -54,6 +54,8 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
+    /// The project's name in a bar's place clicked: the project's tile.
+    func gridOpenProject(_ placement: PlacementID)
     /// The bar's ×: the tile taken off (as ⌘W does).
     func gridClose(_ placement: PlacementID)
     /// A tile's × clicked: closed, the pointer onto the × of the tile that
@@ -295,6 +297,11 @@ final class GridView: NSView, NSDraggingSource {
                     if mods.contains(.control) {
                         self.delegate?.gridFocus(id)
                         self.showPillMenu(id)
+                        return
+                    }
+                    // The project's name in its place: the project.
+                    if let pill, !pill.isEditing, pill.isOnProject(at), mods.isDisjoint(with: [.shift, .option, .command]) {
+                        self.delegate?.gridOpenProject(id)
                         return
                     }
                     // The address in a page's pill, clicked, becomes its field;
@@ -2745,8 +2752,27 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if collapsed, let s = shown.block?.summary() {
             let line = (s.lines.prefix(2) + [s.note].compactMap { $0 }).joined(separator: " · ")
             if subtitle.stringValue != line { subtitle.stringValue = line; needsLayout = true }
+            projectKey = nil
+            projectWidth = nil
             return
         }
+        // In a project: its place from the project — the project's name
+        // set apart (its box, or a pin where it's pinned there), the rest
+        // the path in it.
+        if let proj = shown.project, let full = shown.block?.place {
+            // Made again only when what it says, or the light it's drawn in, changes.
+            let key = "\(proj)|\(full)|\(effectiveAppearance.isDark)|\(Palette.current.id)"
+            if key != projectKey {
+                let line = Self.projectPlace(proj, place: full)
+                subtitle.attributedStringValue = line.text
+                projectWidth = line.chipWidth
+                projectKey = key
+                needsLayout = true
+            }
+            return
+        }
+        projectWidth = nil
+        projectKey = nil
         // Where it is, after the name, in grey: a folder, an address.
         let place = (shown.block?.web?.url ?? shown.block?.place?.abbreviatingHome) ?? ""
         // Not when the name already says it (a terminal named for its
@@ -2836,7 +2862,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         x += 22
         if agentColor != nil {
             let pw = agentPill.wantedWidth
-            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded(), width: pw, height: 16)
+            // A point under the bar's middle: its name's baseline the
+            // title's (centred, its smaller capitals sat a point above them).
+            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded() - 1, width: pw, height: 16)
             x += pw + 6
         }
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
@@ -2937,7 +2965,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
             sx += hostWidth + 6
         }
         let sh = ceil(subtitle.intrinsicContentSize.height)
+        // On the title's baseline: centred, its smaller letters sat a point
+        // above the title's, and the bar read as uneven.
+        let baseline = name.frame.minY + name.lastBaselineOffsetFromBottom
         subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
+        subtitle.frame.origin.y = ((baseline - subtitle.lastBaselineOffsetFromBottom) * 2).rounded() / 2
         if fanEdge != nil { fadeForFan() }
         if isEditing {
             // Over the address, where it was; over the name when the
@@ -2980,6 +3012,67 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// Whether a point (the pill's coordinates) is on the place to edit.
     func isOnPlace(_ p: NSPoint) -> Bool { placeRect?.contains(p) ?? false }
+
+    /// How wide the project's name is at the place's start, when it's in one.
+    private var projectWidth: CGFloat?
+    /// What the project's place was last made for.
+    private var projectKey: String?
+
+    /// The project's name in the place, where it shows: there a click goes to the project.
+    private var projectRect: NSRect? {
+        guard let w = projectWidth, !isEditing, !subtitle.isHidden, subtitle.alphaValue > 0.5 else { return nil }
+        let f = subtitle.frame
+        return NSRect(x: f.minX - 3, y: 0, width: min(w, f.width) + 6, height: bounds.height)
+    }
+
+    /// Whether a point (the pill's coordinates) is on the project's name.
+    func isOnProject(_ p: NSPoint) -> Bool { projectRect?.contains(p) ?? false }
+
+    /// A pin, leaning as one stuck in a board does (its head to the right).
+    static func obliquePin(size: CGFloat, color: NSColor) -> NSImage? {
+        guard let pin = Theme.symbol("pin.fill", size: size, weight: .regular, color: color) else { return nil }
+        let s = pin.size
+        let side = ceil(max(s.width, s.height))
+        return NSImage(size: NSSize(width: side, height: side), flipped: false) { r in
+            let t = NSAffineTransform()
+            t.translateX(by: r.midX, yBy: r.midY)
+            t.rotate(byDegrees: -35)
+            t.concat()
+            pin.draw(in: NSRect(x: -s.width / 2, y: -s.height / 2, width: s.width, height: s.height))
+            return true
+        }
+    }
+
+    /// A place in a project, as a bar says it: the project's box (a pin,
+    /// pinned there) and its name, a shade darker and heavier than a
+    /// folder's, then the path in it in the bar's grey — and the name's
+    /// width, where a click goes to the project.
+    static func projectPlace(_ p: ShownProject, place: String) -> (text: NSAttributedString, chipWidth: CGFloat) {
+        let s = NSMutableAttributedString()
+        let ink = Theme.secondaryText
+        // The pin small and slanted, as a pin stuck in, in the bar's quieter ink.
+        let mark = p.pinned ? obliquePin(size: 8.5, color: Theme.barInk) : Theme.symbol(Theme.projectSymbol, size: 9.5, weight: .medium, color: ink)
+        if let image = mark {
+            let a = NSTextAttachment()
+            a.image = image
+            // Its middle on the capitals' middle.
+            let font = UIType.detail
+            a.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
+            s.append(NSAttributedString(attachment: a))
+            s.append(NSAttributedString(string: "\u{200A}", attributes: [.font: UIType.detail]))
+        }
+        s.append(NSAttributedString(string: p.name, attributes: [.font: NSFont.systemFont(ofSize: UIType.detail.pointSize, weight: .semibold), .foregroundColor: ink]))
+        let chip = ceil(s.size().width)
+        let root = p.root.hasSuffix("/") ? String(p.root.dropLast()) : p.root
+        var rest = ""
+        if place.hasPrefix(root + "/") { rest = String(place.dropFirst(root.count)) }
+        else if place != root { rest = "  " + place.abbreviatingHome }
+        s.append(NSAttributedString(string: rest, attributes: [.font: UIType.detail, .foregroundColor: Theme.barInk]))
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingMiddle
+        s.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: s.length))
+        return (s, chip)
+    }
 
     /// Where the icon takes the pointer: clicked, its menu; dragged, the
     /// thing the tile stands for.

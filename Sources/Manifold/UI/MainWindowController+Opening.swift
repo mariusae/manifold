@@ -38,11 +38,12 @@ extension MainWindowController {
         show(block, lens: b.defaultLens, .here, context: "pinned")
     }
 
-    /// Pin in Space: a tile's block (the menu's, from a block's own
-    /// menu; else the focused one's) pinned in the workspace shown, or let go of.
+    /// Pin: a tile's block (the menu's, from a block's own menu; else the
+    /// focused one's) pinned where it lives — its project, else the space
+    /// shown (`pinToggle`) — or let go of.
     @objc func togglePinInWorkspace(_ sender: Any?) {
         guard let id = selected, let block = pinTarget(sender) else { return NSSound.beep() }
-        setPinned(block, in: id, !isPinned(block, in: id))
+        pinToggle(block, in: id).run()
     }
 
     func pinTarget(_ sender: Any?) -> BlockID? {

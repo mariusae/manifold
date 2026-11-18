@@ -232,7 +232,7 @@ final class AppearancePane: SettingsPane {
     override func refresh() {
         let a = source.appearance()
         showScheme?(a.colorScheme)
-        colorThemes.chosen = a.colorTheme
+        colorThemes.chosen = Palette.named(a.colorTheme).id
         colorCarousel.reveal(colorThemes.chosenRect)
         tints.tint = a.tint
         themes.advanced = a.advancedTypography
@@ -376,7 +376,7 @@ final class TintPicker: NSView {
 /// marked) and a terminal's, focused, a test run in its palette — its
 /// name under it, the chosen one ringed.
 final class ColorThemePicker: NSView {
-    var chosen = Palette.paper.id { didSet { if chosen != oldValue { needsDisplay = true } } }
+    var chosen = Palette.merino.id { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onPick: ((Palette) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private static let card = NSSize(width: 214, height: 136), label: CGFloat = 22, spacing: CGFloat = 14

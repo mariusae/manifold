@@ -20,6 +20,9 @@ struct Shown: Equatable {
     /// Over a terminal in a pure stack ($EDITOR's): its name, shown as
     /// it — the terminal's symbol badged with a document, and Editing.
     var stackedOver: String?
+    /// The project it's in (§2.6), or pinned in: its place said from the
+    /// project's name, the name a chip that goes there.
+    var project: ShownProject?
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }
@@ -75,6 +78,14 @@ struct Shown: Equatable {
         case .threads: .arrangement
         }
     }
+}
+
+/// A tile's project, as its bar says it: its name, its folder, and
+/// whether the tile's block is pinned in it.
+struct ShownProject: Equatable {
+    var name: String
+    var root: String
+    var pinned: Bool
 }
 
 /// A placement's view: a terminal, an editor, a preview, and so on.

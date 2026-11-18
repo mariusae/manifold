@@ -327,13 +327,20 @@ extension Palette {
     }
 
     /// The theme in use.
-    private(set) static var current: Palette = .paper
+    private(set) static var current: Palette = .merino
 
     /// Every theme there is.
-    static let all: [Palette] = [.paper, .newsprint, .classic, .financialTimes, .claude, .claudeWarm, .claudeClassic, .merino]
+    static let all: [Palette] = [.merino, .newsprint, .classic, .financialTimes, .claude, .claudeWarm]
 
-    /// The theme by its id; Paper for one there isn't.
-    static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? .paper }
+    /// Themes there were, by what took their place: Paper's is Merino;
+    /// Claude Classic's, Claude (all but the same).
+    static let replaced = ["paper": "merino", "claude-classic": "claude"]
+
+    /// The theme by its id (or by the one that replaced it); Merino for one there isn't.
+    static func named(_ id: String) -> Palette {
+        let id = replaced[id] ?? id
+        return all.first { $0.id == id } ?? .merino
+    }
 
     /// A theme set: every colour redrawn, what's held in layers by the
     /// hooks that set them, the terminals reconfigured.
@@ -352,7 +359,36 @@ extension Palette {
     }
 }
 
+extension Palette {
+    /// How saturated its inks are: its terminal's six (red to cyan), their
+    /// mean chroma in Oklab, against Merino's (GitHub's) — at most 1, at
+    /// least 0.6. What tells a space or an agent apart is eased to it, so a
+    /// muted theme's (Newsprint's, Financial Times') isn't loud in it.
+    func identityChroma(dark: Bool) -> CGFloat {
+        func chroma(_ p: Palette) -> CGFloat {
+            let t = dark ? p.terminal.dark : p.terminal.light
+            let six = t.colors[1...6].map { ColorVision.oklab(ColorVision.typical.seen($0)) }
+            return six.map { sqrt($0.a * $0.a + $0.b * $0.b) }.reduce(0, +) / 6
+        }
+        return min(1, max(0.6, chroma(self) / chroma(.merino)))
+    }
+}
+
 extension NSColor {
+    /// A colour that tells a thing apart (a space's, an agent's) as the
+    /// theme in use has it: its hue and lightness, its chroma eased to the
+    /// theme's (`Palette.identityChroma`).
+    static func identity(_ base: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            var resolved = base
+            appearance.performAsCurrentDrawingAppearance { resolved = base.usingColorSpace(.sRGB) ?? base }
+            let k = Palette.current.identityChroma(dark: appearance.isDark)
+            guard k < 1 else { return resolved }
+            let c = ColorVision.oklab(ColorVision.typical.seen(resolved))
+            return ColorVision.srgb(fromOklab: (c.l, c.a * k, c.b * k)).withAlphaComponent(resolved.alphaComponent)
+        }
+    }
+
     /// A colour of the theme in use, as it has it in the appearance it's
     /// drawn in: one object, recoloured when the theme changes.
     static func themed(_ pick: @escaping (Palette) -> Shade) -> NSColor {
@@ -365,160 +401,33 @@ extension Notification.Name {
     static let manifoldPaletteChanged = Notification.Name("ManifoldPaletteChanged")
 }
 
-// MARK: Paper
+// MARK: What themes share
 
 extension Palette {
-    /// Manifold's own: paper, greys, go.dev's code and GitHub's terminal palettes.
-    static let paper = Palette(
-        id: "paper",
-        title: "Paper",
-        chrome: Chrome(
-            hover: .wash(0.055, 0.07),
-            selected: Shade(.white, NSColor(white: 1, alpha: 0.13)),
-            pressed: .wash(0.11, 0.14),
-            divider: .wash(0.1, 0.1),
-            panel: .grey(0.995, 0.17),
-            panelBorder: .wash(0.12, 0.14),
-            scrim: Shade(NSColor(white: 0.9, alpha: 0.35), NSColor(white: 0, alpha: 0.3)),
-            cardBorder: .wash(0.08, 0.1),
-            handle: .wash(0.22, 0.25),
-            scrubberKnob: .wash(0.14, 0.18),
-            sheetEdge: .wash(0.2, 0.16),
-            sheetEdgeHovered: .wash(0.34, 0.34),
-            // Darker further down in light, lighter nearer the top in dark.
-            sheet: { level in .grey(0.93 - CGFloat(level) * 0.045, 0.36 - CGFloat(level) * 0.05) },
-            stack: .grey(0.995, 0.2),
-            dragPill: Shade(NSColor(white: 1, alpha: 1), NSColor(white: 0.3, alpha: 1)),
-            linkBehind: { depth in .grey(0.95 - CGFloat(depth) * 0.03, 0.16 - CGFloat(depth) * 0.015) },
-            well: .wash(0.06, 0.09),
-            pill: .wash(0.07, 0.1),
-            historyWash: (
-                from: Shade(NSColor(calibratedHue: 0.72, saturation: 0.18, brightness: 0.98, alpha: 1),
-                            NSColor(calibratedHue: 0.70, saturation: 0.35, brightness: 0.22, alpha: 1)),
-                to: Shade(NSColor(calibratedHue: 0.07, saturation: 0.18, brightness: 1, alpha: 1),
-                          NSColor(calibratedHue: 0.06, saturation: 0.3, brightness: 0.2, alpha: 1)))),
-        text: Text(
-            primary: .grey(0.13, 0.89),
-            body: .grey(0.13, 0.86),
-            strong: .grey(0.08, 0.97),
-            // Each at least 4.5:1 on a panel or a card, in either appearance.
-            secondary: .grey(0.40, 0.68),
-            tertiary: .grey(0.45, 0.62),
-            readingBody: Shade(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xdb / 255, alpha: 1)),
-            readingStrong: Shade(NSColor(srgbRed: 0x20 / 255, green: 0x22 / 255, blue: 0x24 / 255, alpha: 1), NSColor(white: 0xf7 / 255, alpha: 1))),
-        status: StatusColors(
-            done: Shade(NSColor(srgbRed: 0.10, green: 0.50, blue: 0.22, alpha: 1), NSColor(srgbRed: 0.35, green: 0.80, blue: 0.45, alpha: 1)),
-            attention: Shade(NSColor(srgbRed: 0.66, green: 0.38, blue: 0.0, alpha: 1), NSColor(srgbRed: 0.95, green: 0.70, blue: 0.32, alpha: 1)),
-            failed: Shade(NSColor(srgbRed: 0.76, green: 0.15, blue: 0.12, alpha: 1), NSColor(srgbRed: 1.0, green: 0.42, blue: 0.38, alpha: 1))),
-        // Its blue, the terminal's caret and selection as the blue's.
-        accent: TintColors(accent: Shade(Theme.hex(0x3373F2)), caret: .hex(0x007AFF, 0x0A84FF), textSelection: .hex(0xCFE2FB, 0x264F78)),
-        tints: [
-            .blue: TintColors(accent: Shade(Theme.hex(0x3373F2)), caret: .hex(0x007AFF, 0x0A84FF), textSelection: .hex(0xCFE2FB, 0x264F78)),
-            // Overcast's orange (#FC7E0F) in the dark; deeper in the light.
-            .orange: TintColors(accent: .hex(0xE36A00, 0xFC7E0F), caret: .hex(0xEB7300, 0xFF8A26), textSelection: .hex(0xFDE1C4, 0x6E3D12)),
-            .purple: TintColors(accent: .hex(0x9550D6, 0xBF7AF0), textSelection: .hex(0xEADCF8, 0x4B2F68)),
-            .pink: TintColors(accent: .hex(0xDC3F78, 0xFF6B9C), textSelection: .hex(0xFADAE6, 0x6B2B43)),
-            .green: TintColors(accent: .hex(0x2A9A4A, 0x3FCB68), textSelection: .hex(0xD5EFDC, 0x25512F)),
-            .graphite: TintColors(accent: .hex(0x6E6E73, 0x98989D), caret: .hex(0x48484D, 0xC7C7CC), textSelection: .hex(0xE1E1E4, 0x4A4A4E)),
-        ],
-        code: Code(
-            // As go.dev's docs (the Go spec) set code: on their grey, in
-            // their text colour, its line numbers in theirs.
-            page: .hex(0xF8F8F8, 0x2D2D2D),
-            text: .hex(0x202224, 0xF0F1F2),
-            lineNumber: .hex(0x999999, 0x848688),
-            lineHighlight: Shade(NSColor(srgbRed: 1, green: 0.95, blue: 0.72, alpha: 1), NSColor(srgbRed: 0.32, green: 0.28, blue: 0.12, alpha: 1)),
-            gutterText: .grey(0.62, 0.42),
-            use: .wash(0.075, 0.1),
-            match: Shade(NSColor(srgbRed: 1, green: 0.9, blue: 0.5, alpha: 0.7), NSColor(srgbRed: 0.5, green: 0.42, blue: 0.1, alpha: 0.8)),
-            link: Shade(NSColor(srgbRed: 0, green: 0x7d / 255.0, blue: 0x9c / 255.0, alpha: 1),
-                        NSColor(srgbRed: 0x50 / 255.0, green: 0xb7 / 255.0, blue: 0xe0 / 255.0, alpha: 1)),
-            linkHover: .wash(0.08, 0.13),
-            added: Shade(NSColor(srgbRed: 0.3, green: 0.72, blue: 0.4, alpha: 1), NSColor(srgbRed: 0.4, green: 0.8, blue: 0.5, alpha: 1)),
-            modified: Shade(NSColor(srgbRed: 0.35, green: 0.6, blue: 0.95, alpha: 1), NSColor(srgbRed: 0.45, green: 0.65, blue: 1, alpha: 1)),
-            deleted: Shade(NSColor(srgbRed: 0.9, green: 0.35, blue: 0.35, alpha: 1), NSColor(srgbRed: 1, green: 0.45, blue: 0.45, alpha: 1)),
-            pins: [
-                Shade(NSColor(srgbRed: 0.2, green: 0.7, blue: 0.7, alpha: 0.28), NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 0.35)),
-                Shade(NSColor(srgbRed: 0.95, green: 0.7, blue: 0.2, alpha: 0.32), NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 0.35)),
-                Shade(NSColor(srgbRed: 0.6, green: 0.45, blue: 0.95, alpha: 0.28), NSColor(srgbRed: 0.65, green: 0.5, blue: 1, alpha: 0.35)),
-                Shade(NSColor(srgbRed: 0.95, green: 0.4, blue: 0.55, alpha: 0.26), NSColor(srgbRed: 1, green: 0.45, blue: 0.6, alpha: 0.33)),
-            ],
-            error: Shade(.systemRed),
-            warning: Shade(.systemOrange),
-            hint: Shade(NSColor.systemBlue.withAlphaComponent(0.6)),
-            changedOnDisk: Shade(NSColor(srgbRed: 1, green: 0.97, blue: 0.86, alpha: 1), NSColor(srgbRed: 0.27, green: 0.24, blue: 0.13, alpha: 1)),
-            highlighter: Shade(NSColor(srgbRed: 1, green: 0.86, blue: 0.3, alpha: 0.55), NSColor.systemYellow.withAlphaComponent(0.32))),
-        diff: Diff(
-            added: Shade(NSColor(srgbRed: 0.86, green: 0.96, blue: 0.87, alpha: 1), NSColor(srgbRed: 0.13, green: 0.26, blue: 0.16, alpha: 1)),
-            removed: Shade(NSColor(srgbRed: 0.99, green: 0.88, blue: 0.88, alpha: 1), NSColor(srgbRed: 0.3, green: 0.14, blue: 0.14, alpha: 1)),
-            hunk: Shade(NSColor(srgbRed: 0.91, green: 0.94, blue: 0.99, alpha: 1), NSColor(srgbRed: 0.15, green: 0.19, blue: 0.27, alpha: 1)),
-            found: Shade(NSColor(srgbRed: 1, green: 0.95, blue: 0.6, alpha: 1), NSColor(srgbRed: 0.45, green: 0.4, blue: 0.1, alpha: 1)),
-            current: Shade(NSColor(srgbRed: 1, green: 0.85, blue: 0.3, alpha: 1), NSColor(srgbRed: 0.7, green: 0.55, blue: 0.1, alpha: 1))),
-        found: Found(
-            current: Shade(NSColor(srgbRed: 1, green: 0.62, blue: 0.15, alpha: 0.55), NSColor(srgbRed: 0.85, green: 0.5, blue: 0.1, alpha: 0.6)),
-            currentRing: Shade(.systemOrange),
-            // Apart by hue and lightness both, for eyes that don't tell red from green.
-            pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
-            pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
-        chart: Chart(
-            // Checked for telling apart (colorblind too), each stepped for
-            // light and dark: blue, orange, aqua.
-            one: .hex(0x2A78D6, 0x3987E5),
-            two: .hex(0xEB6834, 0xD95926),
-            three: .hex(0x1BAF7A, 0x199E70),
-            track: .wash(0.07, 0.09),
-            surface: .wash(0.025, 0.035),
-            grid: .wash(0.07, 0.08)),
-        kinds: Kinds(
-            git: Shade(.systemOrange), swift: Shade(.systemOrange), shell: Shade(.systemGreen), pdf: Shade(.systemRed),
-            image: Shade(.systemPurple), data: Shade(.systemYellow), patch: Shade(.systemGreen), archive: Shade(.systemBrown),
-            media: Shade(.systemPink), code: Shade(.systemBlue), linked: Shade(.systemPurple), embeds: Shade(.systemTeal)),
-        // Paper, and GitHub's palettes, light and dark; past the sixteen,
-        // xterm's cube and greys in both.
-        terminal: (
-            light: TerminalPalette(background: "#fcfcfb", foreground: "#24292f", cursor: "#007aff",
-                                   selectionBackground: "#cfe2fb", selectionForeground: "#1f2328", ansi: [
-                                       "#24292f", "#cf222e", "#116329", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
-                                       "#57606a", "#a40e26", "#1a7f37", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"],
-                                   extended: TerminalPalette.xtermExtended),
-            dark: TerminalPalette(background: "#1c1c1b", foreground: "#e3e3df", cursor: "#0a84ff",
-                                  selectionBackground: "#264f78", selectionForeground: "#f0f0ee", ansi: [
-                                      "#484f58", "#ff7b72", "#3fb950", "#d29922", "#58a6ff", "#bc8cff", "#39c5cf", "#b1bac4",
-                                      "#6e7681", "#ffa198", "#56d364", "#e3b341", "#79c0ff", "#d2a8ff", "#56d4dd", "#f0f6fc"],
-                                  extended: TerminalPalette.xtermExtended)),
-        // As go.dev sets its docs: its colours.
-        page: Page(
-            background: .hex(0xFFFFFF, 0x202224),
-            text: .hex(0x202224, 0xDBDBDB),
-            strong: .hex(0x202224, 0xF7F7F7),
-            link: .hex(0x007D9C, 0x50B7E0),
-            code: .hex(0xF8F8F8, 0x2D2D2D),
-            codeText: .hex(0x202224, 0xF0F1F2),
-            copy: .hex(0xFFFFFF, 0x383838),
-            copyEdge: .hex(0xE1E4E8, 0x4A4A4A),
-            copyText: .hex(0x6E7781, 0xA8A8A8),
-            copyHoverEdge: .hex(0xC8CCD1, 0x5A5A5A),
-            copyHoverText: .hex(0x202224, 0xF0F1F2),
-            copyDone: .hex(0x1A7F37, 0x56D364),
-            quote: .hex(0x57606A, 0x9D9D98),
-            quoteRule: .hex(0xD8DBE0, 0x444441),
-            rule: .hex(0xE1E4E8, 0x3A3A38),
-            tableHead: .hex(0xF6F6F4, 0x262625),
-            tableStripe: .hex(0xF9F9F7, 0x212120),
-            struck: .hex(0x6E7781, 0x8B8B86),
-            missing: .hex(0xA40E26, 0xFF7B72),
-            diagramError: .hex(0xA40E26, 0xA40E26),
-            selection: .hex(0xCFE2FB, 0x264F78),
-            failed: .hex(0xD6453D, 0xD6453D),
-            running: .hex(0x2F8FDD, 0x2F8FDD),
-            attention: .hex(0xD68A1D, 0xD68A1D)),
-        // Lavender to rose to peach to cream; in the dark, indigo to plum
-        // to umber to near-black.
-        backdrop: Backdrop(
-            light: .init(stops: [(0.72, 0.28, 0.97), (0.95, 0.24, 0.99), (0.07, 0.28, 1.0), (0.12, 0.14, 1.0)],
-                         pool: (0.18, 1), tintPool: (0.32, 1)),
-            dark: .init(stops: [(0.70, 0.40, 0.26), (0.92, 0.35, 0.24), (0.06, 0.35, 0.22), (0.08, 0.15, 0.12)],
-                        pool: (0.5, 0.4), tintPool: (0.6, 0.45))))
+    /// Each tint's colours, for a theme that doesn't give its own:
+    /// Manifold's, from before there were themes.
+    static let standardTints: [Tint: TintColors] = [
+        .blue: TintColors(accent: Shade(Theme.hex(0x3373F2)), caret: .hex(0x007AFF, 0x0A84FF), textSelection: .hex(0xCFE2FB, 0x264F78)),
+        // Overcast's orange (#FC7E0F) in the dark; deeper in the light.
+        .orange: TintColors(accent: .hex(0xE36A00, 0xFC7E0F), caret: .hex(0xEB7300, 0xFF8A26), textSelection: .hex(0xFDE1C4, 0x6E3D12)),
+        .purple: TintColors(accent: .hex(0x9550D6, 0xBF7AF0), textSelection: .hex(0xEADCF8, 0x4B2F68)),
+        .pink: TintColors(accent: .hex(0xDC3F78, 0xFF6B9C), textSelection: .hex(0xFADAE6, 0x6B2B43)),
+        .green: TintColors(accent: .hex(0x2A9A4A, 0x3FCB68), textSelection: .hex(0xD5EFDC, 0x25512F)),
+        .graphite: TintColors(accent: .hex(0x6E6E73, 0x98989D), caret: .hex(0x48484D, 0xC7C7CC), textSelection: .hex(0xE1E1E4, 0x4A4A4E)),
+    ]
+
+    /// Highlight Uses' colours, in turn, for a theme without its own.
+    static let standardPins: [Shade] = [
+        Shade(NSColor(srgbRed: 0.2, green: 0.7, blue: 0.7, alpha: 0.28), NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 0.35)),
+        Shade(NSColor(srgbRed: 0.95, green: 0.7, blue: 0.2, alpha: 0.32), NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 0.35)),
+        Shade(NSColor(srgbRed: 0.6, green: 0.45, blue: 0.95, alpha: 0.28), NSColor(srgbRed: 0.65, green: 0.5, blue: 1, alpha: 0.35)),
+        Shade(NSColor(srgbRed: 0.95, green: 0.4, blue: 0.55, alpha: 0.26), NSColor(srgbRed: 1, green: 0.45, blue: 0.6, alpha: 0.33)),
+    ]
+
+    /// The colours that tell kinds apart, for a theme without its own: the system's.
+    static let standardKinds = Kinds(git: Shade(.systemOrange), swift: Shade(.systemOrange), shell: Shade(.systemGreen), pdf: Shade(.systemRed),
+        image: Shade(.systemPurple), data: Shade(.systemYellow), patch: Shade(.systemGreen), archive: Shade(.systemBrown),
+        media: Shade(.systemPink), code: Shade(.systemBlue), linked: Shade(.systemPurple), embeds: Shade(.systemTeal))
 }
 
 // MARK: Newsprint
@@ -527,15 +436,18 @@ extension Palette {
     /// Ink on newsprint: a grey, faintly warm paper and a near-black ink,
     /// muted inks for colour (a brick red, a sage, an ochre, a slate blue,
     /// a plum, a teal) — and by night the same paper unlit, the inks
-    /// lifted to read on it. Its accent is the red, a terminal's caret too,
-    /// selections a grey; its 256 colours are made from its own.
+    /// lifted to read on it. Its accent is the slate blue, an editor's blue
+    /// pencil — the red is what failed; the caret, a terminal's too, keeps
+    /// the red, selections a grey; its 256 colours are made from its own.
+    /// By day every ink reads at 4.5:1 on the paper (its white and bright
+    /// black greys, as a light terminal's are), the brights at 3:1.
     static let newsprint: Palette = {
         let light = (bg: "#f2f2f0", fg: "#333331", ansi: [
-            "#333331", "#b3402e", "#5d7f52", "#987921", "#4f6d94", "#85607f", "#4d7f7c", "#d5d5d0",
-            "#78786f", "#cc4f3b", "#6f9562", "#af8e2c", "#6182ab", "#9b7494", "#5e9692", "#fdfdfb"])
+            "#333331", "#b3402e", "#55774a", "#896a07", "#4f6d94", "#85607f", "#457774", "#6f6f6a",
+            "#5e5e58", "#cc4f3b", "#6f9562", "#a88823", "#6182ab", "#9b7494", "#5d9591", "#8b8b84"])
         let dark = (bg: "#1f1f1d", fg: "#d6d6d0", ansi: [
             "#4a4a46", "#db6650", "#84a672", "#c2a24a", "#7894bf", "#a986a1", "#6fa39c", "#c9c9c2",
-            "#6e6e68", "#e8806a", "#9dbe8a", "#d6b862", "#93acd3", "#c09fb8", "#89bab3", "#f2f2f0"])
+            "#787872", "#e8806a", "#9dbe8a", "#d6b862", "#93acd3", "#c09fb8", "#89bab3", "#f2f2f0"])
         // Warm greys: a step less blue than red and green.
         func warm(_ v: CGFloat) -> NSColor { NSColor(srgbRed: v, green: v, blue: max(0, v - 0.008), alpha: 1) }
         func ink(_ light: Int, _ dark: Int) -> Shade { .hex(light, dark) }
@@ -574,8 +486,9 @@ extension Palette {
                 readingBody: .hex(0x333331, 0xD6D6D0),
                 readingStrong: .hex(0x1F1F1D, 0xEFEFE9)),
             status: StatusColors(done: green, attention: ochre, failed: red),
-            // The brick red, as the terminal's caret is; selections its grey.
-            accent: TintColors(accent: red, caret: ink(0xB3402E, 0xDB6650), textSelection: .hex(0xDDDDD6, 0x3A3A36)),
+            // The slate blue, an editor's pencil; the caret the brick red,
+            // as the terminal's is; selections its grey.
+            accent: TintColors(accent: blue, caret: ink(0xB3402E, 0xDB6650), textSelection: .hex(0xDDDDD6, 0x3A3A36)),
             tints: [
                 .blue: TintColors(accent: blue, textSelection: .hex(0xD5DCE6, 0x343F4E)),
                 .orange: TintColors(accent: .hex(0xB8662A, 0xD98A4E), textSelection: .hex(0xEBDDCD, 0x4A3A2C)),
@@ -587,7 +500,7 @@ extension Palette {
             code: Code(
                 page: .hex(0xEEEEEA, 0x2A2A27),
                 text: .hex(0x333331, 0xDEDED8),
-                lineNumber: .hex(0x9A9A93, 0x7A7A73),
+                lineNumber: .hex(0x6C6C66, 0x91918A),
                 lineHighlight: .hex(0xECE9DA, 0x33322A),
                 gutterText: .hex(0x9A9A93, 0x6E6E68),
                 use: .wash(0.075, 0.1),
@@ -609,14 +522,14 @@ extension Palette {
                 changedOnDisk: .hex(0xEEE8D5, 0x37332A),
                 highlighter: Shade(NSColor(srgbRed: 0.91, green: 0.82, blue: 0.45, alpha: 0.5), NSColor(srgbRed: 0.6, green: 0.5, blue: 0.2, alpha: 0.45))),
             diff: Diff(
-                added: .hex(0xDCE4D6, 0x2C3A28),
-                removed: .hex(0xEFDAD5, 0x45292A),
-                hunk: .hex(0xDDE2E9, 0x2B3340),
+                added: .hex(0xCCE6EF, 0x1C3A44),
+                removed: .hex(0xF1DACE, 0x432C1F),
+                hunk: .hex(0xDFE2E6, 0x313336),
                 found: .hex(0xEDE3BA, 0x4A4227),
                 current: .hex(0xE2CE86, 0x6E5D25)),
             found: Found(
                 current: Shade(NSColor(srgbRed: 0.84, green: 0.58, blue: 0.3, alpha: 0.5), NSColor(srgbRed: 0.72, green: 0.45, blue: 0.2, alpha: 0.55)),
-                currentRing: red,
+                currentRing: ink(0xB8662A, 0xD98A4E),
                 pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
                 pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
             chart: Chart(
@@ -664,7 +577,7 @@ extension Palette {
                 attention: ochre),
             // Newsprint under the cards: off-whites a shade warmer or
             // cooler than the paper, by night its paper unlit; the pools
-            // faint, the tint's (its red) a blush.
+            // faint, the tint's (its blue) a breath.
             backdrop: Backdrop(
                 // Deeper than the paper the tiles are, from corner to
                 // corner more than before, as a desk under the pages: a
@@ -693,17 +606,18 @@ extension Palette {
     /// deeper blue (#2a5db0) for what's added and taken away.
     static let classic: Palette = {
         let light = (bg: "#fcfcf2", fg: "#202224", ansi: [
-            "#24292f", "#b35900", "#0550ae", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6e7781",
-            "#57606a", "#8a4600", "#0969da", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8c959f"])
+            "#24292f", "#b35900", "#0550ae", "#4d2d00", "#0969da", "#8250df", "#1b7c83", "#6c757f",
+            "#57606a", "#8a4600", "#0969da", "#633c01", "#218bff", "#a475f9", "#3192aa", "#8a939d"])
         let dark = (bg: "#202224", fg: "#e6e6e6", ansi: [
             "#545d68", "#f69d50", "#539bf5", "#c69026", "#539bf5", "#b083f0", "#39c5cf", "#909dab",
-            "#636e7b", "#ffbc6f", "#6cb6ff", "#daaa3f", "#6cb6ff", "#dcbdfb", "#56d4dd", "#cdd9e5"])
+            "#707b89", "#ffbc6f", "#6cb6ff", "#daaa3f", "#6cb6ff", "#dcbdfb", "#56d4dd", "#cdd9e5"])
         let go = Shade.hex(0x007D9C, 0x50B7E0)
         // B2 and B3's sweeps: what's taken away and what's added.
-        let orange = Shade.hex(0xC85A00, 0xE07A2A), blue = Shade.hex(0x2A5DB0, 0x5E8EDB)
+        // (By night each lifted to read at 4.5:1 on a panel.)
+        let orange = Shade.hex(0xC85A00, 0xE07A2A), blue = Shade.hex(0x2A5DB0, 0x6494E2)
         // Stale's ochre (darkened in the light to read as text), and the
         // fuchsia of a fenced handle for what failed.
-        let ochre = Shade.hex(0x8F6B00, 0xFDDD00), fuchsia = Shade.hex(0xCE3262, 0xE0547A)
+        let ochre = Shade.hex(0x8F6B00, 0xFDDD00), fuchsia = Shade.hex(0xCE3262, 0xF16388)
         let selection = Shade.hex(0xF1E9A6, 0x4A4526)
         return Palette(
             id: "classic",
@@ -744,11 +658,11 @@ extension Palette {
             status: StatusColors(done: blue, attention: ochre, failed: fuchsia),
             // Go blue, a terminal's caret too; acme's yellow selection.
             accent: TintColors(accent: go, textSelection: selection),
-            tints: Palette.paper.tints,
+            tints: Palette.standardTints,
             code: Code(
                 page: .hex(0xFCFCF2, 0x202224),
                 text: .hex(0x202224, 0xE6E6E6),
-                lineNumber: .hex(0x8A8C8E, 0x6E7072),
+                lineNumber: .hex(0x727476, 0x929496),
                 lineHighlight: .hex(0xF7F2CC, 0x2F2D22),
                 gutterText: .hex(0x8A8C8E, 0x6E7072),
                 use: .wash(0.075, 0.1),
@@ -758,15 +672,15 @@ extension Palette {
                 added: blue,
                 modified: go,
                 deleted: orange,
-                pins: Palette.paper.code.pins,
+                pins: Palette.standardPins,
                 error: fuchsia,
                 warning: orange,
                 hint: Shade(Theme.hex(0x007D9C).withAlphaComponent(0.6), Theme.hex(0x50B7E0).withAlphaComponent(0.6)),
                 changedOnDisk: .hex(0xF5EFCF, 0x332F20),
                 highlighter: Shade(NSColor(srgbRed: 0.95, green: 0.88, blue: 0.4, alpha: 0.55), NSColor(srgbRed: 0.6, green: 0.52, blue: 0.15, alpha: 0.45))),
             diff: Diff(
-                added: .hex(0xE1F3F8, 0x16323D),
-                removed: .hex(0xFFF0DA, 0x3A2C1C),
+                added: .hex(0xD6F3FD, 0x14333C),
+                removed: .hex(0xFFEDE4, 0x3F291D),
                 hunk: .hex(0xEAF4F7, 0x2B2D2F),
                 found: selection,
                 current: .hex(0xE8D66A, 0x6E6326)),
@@ -782,7 +696,7 @@ extension Palette {
                 track: .wash(0.07, 0.09),
                 surface: .wash(0.025, 0.035),
                 grid: .wash(0.07, 0.08)),
-            kinds: Palette.paper.kinds,
+            kinds: Palette.standardKinds,
             terminal: (
                 light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#007d9c", cursorText: light.bg,
                                        selectionBackground: "#f1e9a6", selectionForeground: light.fg, ansi: light.ansi,
@@ -894,11 +808,11 @@ extension Palette {
             status: StatusColors(done: jade, attention: mandarin, failed: crimson),
             // Teal, as FT's links and buttons; an ink caret on wheat, as its terminal's.
             accent: TintColors(accent: teal, caret: .hex(0x33302E, 0xFFFFFF), textSelection: wheat),
-            tints: Palette.paper.tints,
+            tints: Palette.standardTints,
             code: Code(
                 page: .hex(0xFFF1E5, 0x262A33),
                 text: .hex(0x33302E, 0xF2F2F2),
-                lineNumber: .hex(0x999189, 0x7D8088),
+                lineNumber: .hex(0x766E66, 0x8D9099),
                 lineHighlight: .hex(0xF7E7DA, 0x2D313A),
                 gutterText: .hex(0x999189, 0x6E717A),
                 use: .wash(0.075, 0.1),
@@ -920,10 +834,11 @@ extension Palette {
                 changedOnDisk: .hex(0xF2DFCE, 0x3A3633),
                 highlighter: Shade(NSColor(srgbRed: 1, green: 0.93, blue: 0.1, alpha: 0.45), NSColor(srgbRed: 0.7, green: 0.62, blue: 0.1, alpha: 0.45))),
             diff: Diff(
-                // FT's success background; crimson at a wash, on its paper.
-                added: .hex(0xD7F0D1, 0x1E3D33),
-                removed: .hex(0xFADBD0, 0x46262C),
-                hunk: .hex(0xE6EEF5, 0x2D3646),
+                // Its oxford blue for what's added, mandarin for what's
+                // taken away, each at a wash on its paper; hunks its grey.
+                added: .hex(0xCCEEFA, 0x1D3B44),
+                removed: .hex(0xF9DCCC, 0x412B1F),
+                hunk: .hex(0xEAEDF1, 0x343639),
                 found: .hex(0xFFF0A8, 0x4A4527),
                 current: .hex(0xFFE066, 0x6E6326)),
             found: Found(
@@ -1002,24 +917,30 @@ extension Palette {
     /// and its spinner; and Claude Code's own terminal and code palettes
     /// (`claudeCodeThemes`): its ANSI sixteen, its cool ink
     /// (hsl(220 20% 10%), hsl(220 15% 93%)), a blue caret and a blue
-    /// selection. Its diffs' grounds as the app renders them. One
-    /// departure: its muted grey (#878787) reads at 3.6:1 on white, so the
-    /// tertiary text by day is #737373 (4.7:1).
+    /// selection. Departures, to read: its muted grey (#878787) is 3.6:1
+    /// on white and on its popovers, so the tertiary text is #737373 by
+    /// day and #979797 by night; its night green lifted likewise; its
+    /// danger a crimson, apart from the clay (its own red was a step from
+    /// it, so a focus ring read as a failure); the terminal's inks
+    /// deepened by day to 4.5:1 on white (its white a grey, as a light
+    /// terminal's is), its bright black lifted by night; its diffs' grounds
+    /// a blue and an orange, apart to every eye.
     static let claude: Palette = {
         let light = (bg: "#ffffff", fg: "#14181f", ansi: [
-            "#1a1a1a", "#ff3a30", "#1e9e3c", "#98801f", "#0073e6", "#cd2054", "#8e6bd9", "#999999",
-            "#666666", "#ff5047", "#1e9e3c", "#98801f", "#0078f0", "#cd2054", "#8e6bd9", "#d6d6d6"])
+            "#1a1a1a", "#e91b19", "#03892d", "#8c7409", "#0073e6", "#cd2054", "#8562cf", "#767676",
+            "#666666", "#ff5047", "#1e9e3c", "#98801f", "#0078f0", "#cd2054", "#8e6bd9", "#949494"])
         let dark = (bg: "#191919", fg: "#eaecf0", ansi: [
             "#262626", "#ff3a30", "#32d74b", "#ffd014", "#0099ff", "#ff2c56", "#b796ff", "#a6a6a6",
-            "#525252", "#ff5047", "#32d74b", "#ffd014", "#0087ee", "#ff2c56", "#b796ff", "#ededed"])
+            "#737373", "#ff5047", "#32d74b", "#ffd014", "#0087ee", "#ff2c56", "#b796ff", "#ededed"])
         let clay = Shade.hex(0xC6613F, 0xD97757)
         // Claude Code's blue: its terminal's caret, its selection's hue.
         let blue = Shade.hex(0x0073E6, 0x0099FF), selection = Shade.hex(0xBFDCF9, 0x123F5E)
         // Its git colours (cds-text-git-*): added, modified, removed.
         let added = Shade.hex(0x1E9E3C, 0x32D74B), modified = Shade.hex(0x98801F, 0xFFD014), removed = Shade.hex(0xCD2054, 0xFF2C56)
         let violet = Shade.hex(0x8E6BD9, 0xB796FF), aqua = Shade.hex(0x0F7E5C, 0x3BBD8C)
-        // Its success, warning and danger, as text: each 4.9:1 or more.
-        let done = Shade.hex(0x008300, 0x0CA30C), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xB93535, 0xEC7E7E)
+        // Its success, warning and danger, as text: each 4.5:1 or more on
+        // a page or a popover; danger a crimson, apart from the clay.
+        let done = Shade.hex(0x008300, 0x25AF22), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xA4273E, 0xFF93A1)
         func alpha(_ hex: Int, _ light: CGFloat, _ darkHex: Int, _ dark: CGFloat) -> Shade {
             Shade(Theme.hex(hex).withAlphaComponent(light), Theme.hex(darkHex).withAlphaComponent(dark))
         }
@@ -1055,18 +976,18 @@ extension Palette {
                 body: .hex(0x0B0B0B, 0xEFEFEF),
                 strong: .hex(0x000000, 0xFFFFFF),
                 secondary: .hex(0x666666, 0x9C9C9C),
-                tertiary: .hex(0x737373, 0x878787),
+                tertiary: .hex(0x737373, 0x979797),
                 readingBody: .hex(0x0B0B0B, 0xEFEFEF),
                 readingStrong: .hex(0x000000, 0xFFFFFF)),
             status: StatusColors(done: done, attention: attention, failed: failed),
             accent: TintColors(accent: clay, caret: blue, textSelection: selection),
-            tints: Palette.paper.tints,
+            tints: Palette.standardTints,
             code: Code(
                 // Read, not edited (view mode, a search's preview): a grey
                 // step off the white pages edited; by night its sidebar's.
                 page: .hex(0xF7F7F7, 0x1F1F1F),
                 text: .hex(0x14181F, 0xEAECF0),
-                lineNumber: .hex(0x878787, 0x878787),
+                lineNumber: .hex(0x707070, 0x878787),
                 // Its editor's line highlight: #1a1a1a at 4%, white at 5%.
                 lineHighlight: .hex(0xF6F6F6, 0x242424),
                 gutterText: .hex(0x878787, 0x6B6B6B),
@@ -1093,10 +1014,12 @@ extension Palette {
                 // Its highlight: the warning's yellow, a third through.
                 highlighter: alpha(0xFFD014, 0.4, 0xFFD014, 0.3)),
             diff: Diff(
-                // As the app's diffs are drawn (read from its window).
-                added: .hex(0xE9F5E8, 0x263C25),
-                removed: .hex(0xFAE9EE, 0x461C24),
-                hunk: .hex(0xEBF4FD, 0x162B39),
+                // A blue for what's added, an orange for what's taken away
+                // (the app's green and pink were one to a deuteranope);
+                // hunks a grey.
+                added: .hex(0xDAF5FD, 0x0E3C48),
+                removed: .hex(0xFFE8DC, 0x402312),
+                hunk: .hex(0xF0F3F7, 0x26292B),
                 found: .hex(0xFFF4BF, 0x423B14),
                 current: .hex(0xFFE873, 0x75640F)),
             found: Found(
@@ -1174,11 +1097,12 @@ extension Palette {
     /// #1f1e1d, cards #30302e; its warm inks (#141413, #3d3d3a, #73726c;
     /// #faf9f5, #c2c0b6, #9c9a92) and borders (#1f1e1d and #dedcd1, faint);
     /// clay for the accent, its blue (#1b67b2, #74abe2) for links and its
-    /// pale blue (#d3e5f8, #1c3f62) for what's selected; its success and
-    /// danger, and their pale grounds for diffs. The terminal is Claude
-    /// Code's sixteen with their greys made the ink's warm ones, on the
-    /// ivory. By night the danger is its lighter one (#fe8181), #dd5353
-    /// reading at 3.9:1.
+    /// pale blue (#d3e5f8, #1c3f62) for what's selected; its success, and
+    /// for what failed a crimson (#a4273e, by night #ff93a1) — its danger
+    /// was a step from the clay, so a focus ring read as a failure. The
+    /// terminal is Claude Code's sixteen with their greys made the ink's
+    /// warm ones, on the ivory. Diffs a pale blue and a pale orange, apart
+    /// to every eye.
     static let claudeWarm: Palette = {
         // The terminal's sixteen in Claude's own inks, made for the ivory
         // (each ≥ 4.5:1 by day, brights ≥ 3.8; by night on #262624, black
@@ -1186,7 +1110,7 @@ extension Palette {
         // made for #191919 and white, and faded or vanished here.
         let light = (bg: "#faf9f5", fg: "#141413", ansi: [
             "#141413", "#b53333", "#2f7613", "#8a5a00", "#1b67b2", "#a3416b", "#3d7a6a", "#6b6a64",
-            "#73726c", "#c6613f", "#3b8a1d", "#a86d00", "#2c78c4", "#b4527e", "#4a8a79", "#9c9a92"])
+            "#73726c", "#c6613f", "#3b8a1d", "#a86d00", "#2c78c4", "#b4527e", "#4a8a79", "#929088"])
         let dark = (bg: "#262624", fg: "#faf9f5", ansi: [
             "#3d3d3a", "#fe8181", "#65bb30", "#db9300", "#74abe2", "#e08fb3", "#7dbfa9", "#c2c0b6",
             "#8a8880", "#ff9d8f", "#86d45a", "#f2b84a", "#9cc4ec", "#f0aecb", "#a3d6c4", "#faf9f5"])
@@ -1196,7 +1120,7 @@ extension Palette {
         // One green, one amber, one red: claude.ai's success and danger and
         // an amber — for status, git's marks, kinds and the terminal alike
         // (marks a shade lighter, where they aren't read as words).
-        let done = Shade.hex(0x2F7613, 0x65BB30), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xB53333, 0xFE8181)
+        let done = Shade.hex(0x2F7613, 0x65BB30), attention = Shade.hex(0x945D00, 0xDB9300), failed = Shade.hex(0xA4273E, 0xFF93A1)
         let added = Shade.hex(0x3B8A1D, 0x65BB30), modified = Shade.hex(0xB07A0A, 0xDB9300), removed = Shade.hex(0xB53333, 0xFE8181)
         // Claude's illustration colours (the desktop's pictograms): plum and
         // mineral by day, heather and cactus by night; and a fig.
@@ -1280,7 +1204,7 @@ extension Palette {
                 page: .hex(0xF4F3EC, 0x2C2C2A),
                 text: .hex(0x141413, 0xFAF9F5),
                 // Quiet, but read: 3.6 on the ivory, 4.0 by night.
-                lineNumber: .hex(0x85837C, 0x85837C),
+                lineNumber: .hex(0x716F68, 0x95938B),
                 // The caret's line, seen on the ivory and the oat both.
                 lineHighlight: .hex(0xEBE9E1, 0x363634),
                 gutterText: .hex(0x85837C, 0x85837C),
@@ -1303,11 +1227,12 @@ extension Palette {
                 changedOnDisk: .hex(0xFBF2CC, 0x403A22),
                 highlighter: alpha(honey, 0.45, honey, 0.32)),
             diff: Diff(
-                // Its success and danger, faint; a hunk in heather (plum by
-                // night), not a cool grey; what's found in honey. On the
+                // A pale blue and a pale orange (its success and danger,
+                // faint, were one to a deuteranope); a hunk in heather (plum
+                // by night), not a cool grey; what's found in honey. On the
                 // oat, as what's read is.
-                added: .hex(0xE2E9DA, 0x303E26),
-                removed: .hex(0xF3E5E2, 0x472E2C),
+                added: .hex(0xD2EBF4, 0x203E47),
+                removed: .hex(0xFAE4D8, 0x463023),
                 hunk: .hex(0xEAE9EC, 0x373640),
                 found: .hex(0xF1E0B5, 0x5B5035),
                 current: .hex(0xF1D38B, 0x87713C),
@@ -1380,172 +1305,6 @@ extension Palette {
                 dark: .init(stops: [(0.03, 0.5, 0.2), (0.065, 0.45, 0.18), (0.11, 0.38, 0.16), (0.08, 0.25, 0.1)],
                             pool: (0.5, 0.28), tintPool: (0.6, 0.32)),
                 tileShadow: (Theme.hex(0x3D3D3A), 0.1)))
-    }()
-}
-
-// MARK: Claude Classic
-
-extension Palette {
-    /// Claude's desktop app before its neutral greys (its stylesheet of
-    /// 2026-10-14, the last before them, as this Mac's cache kept it): the
-    /// Code tab's warm greys — by day white cards and terminal on the
-    /// sidebar's #f3f3f0, its chat on #f9f9f7; by night #1a1a19 on #111111,
-    /// its chat on #151515, cards #20201f — its warm inks (#131313,
-    /// #383835; #f9f9f7, #c3c2b7, #97958d), its text roles (blue 600 and
-    /// 300, green 600 and 400, yellow 600 and 300, red 600 and 300), clay,
-    /// and Claude Code's terminal as it was then (the same sixteen, on
-    /// white and on #1a1a19). One departure: its muted grey by day (#7b7974,
-    /// 4.35:1 on white) is the next on its scale, #6d6b67.
-    static let claudeClassic: Palette = {
-        let light = (bg: "#ffffff", fg: "#14181f", ansi: [
-            "#1a1a1a", "#ff3a30", "#1e9e3c", "#98801f", "#0073e6", "#cd2054", "#8e6bd9", "#999999",
-            "#666666", "#ff5047", "#1e9e3c", "#98801f", "#0078f0", "#cd2054", "#8e6bd9", "#d6d6d6"])
-        let dark = (bg: "#1a1a19", fg: "#eaecf0", ansi: [
-            "#262626", "#ff3a30", "#32d74b", "#ffd014", "#0099ff", "#ff2c56", "#b796ff", "#a6a6a6",
-            "#525252", "#ff5047", "#32d74b", "#ffd014", "#0087ee", "#ff2c56", "#b796ff", "#ededed"])
-        let clay = Shade.hex(0xC6613F, 0xD97757)
-        let blue = Shade.hex(0x0073E6, 0x0099FF), link = Shade.hex(0x184F95, 0x6DA7EC)
-        let selection = Shade.hex(0xBFDCF9, 0x12405E)
-        let done = Shade.hex(0x006300, 0x0CA30C), attention = Shade.hex(0x734500, 0xDB9300), failed = Shade.hex(0x8E2626, 0xEC7E7E)
-        let added = Shade.hex(0x1E9E3C, 0x32D74B), modified = Shade.hex(0x98801F, 0xFFD014), removed = Shade.hex(0xCD2054, 0xFF2C56)
-        let violet = Shade.hex(0x8E6BD9, 0xB796FF), aqua = Shade.hex(0x0F7E5C, 0x3BBD8C)
-        // Its neutral-900 and gray-50 at an alpha (its alpha scale): a warm wash.
-        func wash(_ light: CGFloat, _ dark: CGFloat) -> Shade {
-            Shade(Theme.hex(0x0B0B0B).withAlphaComponent(light), Theme.hex(0xF0EFEC).withAlphaComponent(dark))
-        }
-        func alpha(_ hex: Int, _ light: CGFloat, _ darkHex: Int, _ dark: CGFloat) -> Shade {
-            Shade(Theme.hex(hex).withAlphaComponent(light), Theme.hex(darkHex).withAlphaComponent(dark))
-        }
-        return Palette(
-            id: "claude-classic",
-            title: "Claude Classic",
-            chrome: Chrome(
-                // Its ghost hover and selected: 5% and 10%; 7.5% and 15%.
-                hover: wash(0.05, 0.075),
-                selected: Shade(.white, Theme.hex(0x20201F)),
-                pressed: wash(0.1, 0.15),
-                divider: wash(0.1, 0.1),
-                panel: .hex(0xFFFFFF, 0x20201F),
-                panelBorder: wash(0.12, 0.14),
-                scrim: Shade(Theme.hex(0xF0EFEC).withAlphaComponent(0.4), NSColor(white: 0, alpha: 0.45)),
-                cardBorder: wash(0.08, 0.1),
-                handle: wash(0.22, 0.25),
-                scrubberKnob: wash(0.14, 0.18),
-                sheetEdge: wash(0.2, 0.16),
-                sheetEdgeHovered: wash(0.34, 0.34),
-                // Its greys from gray-40 down by day; by night from gray-800 up.
-                sheet: { level in Shade(NSColor(srgbRed: 0.953 - CGFloat(level) * 0.045, green: 0.953 - CGFloat(level) * 0.045, blue: 0.94 - CGFloat(level) * 0.045, alpha: 1),
-                                        NSColor(srgbRed: 0.2 - CGFloat(level) * 0.035, green: 0.2 - CGFloat(level) * 0.035, blue: 0.195 - CGFloat(level) * 0.035, alpha: 1)) },
-                stack: .hex(0xFFFFFF, 0x20201F),
-                dragPill: .hex(0xFFFFFF, 0x2C2C2A),
-                linkBehind: { depth in Shade(NSColor(srgbRed: 0.95 - CGFloat(depth) * 0.03, green: 0.95 - CGFloat(depth) * 0.03, blue: 0.94 - CGFloat(depth) * 0.03, alpha: 1),
-                                            NSColor(srgbRed: 0.13 - CGFloat(depth) * 0.015, green: 0.13 - CGFloat(depth) * 0.015, blue: 0.125 - CGFloat(depth) * 0.015, alpha: 1)) },
-                well: wash(0.05, 0.075),
-                pill: wash(0.07, 0.1),
-                historyWash: (from: .hex(0xEBF4FD, 0x162B39), to: .hex(0xFAEBE6, 0x3F2C25))),
-            text: Text(
-                primary: .hex(0x131313, 0xF9F9F7),
-                body: .hex(0x131313, 0xF9F9F7),
-                strong: .hex(0x0B0B0B, 0xFFFFFF),
-                secondary: .hex(0x383835, 0xC3C2B7),
-                tertiary: .hex(0x6D6B67, 0x97958D),
-                readingBody: .hex(0x131313, 0xF9F9F7),
-                readingStrong: .hex(0x0B0B0B, 0xFFFFFF)),
-            status: StatusColors(done: done, attention: attention, failed: failed),
-            accent: TintColors(accent: clay, caret: blue, textSelection: selection),
-            tints: Palette.paper.tints,
-            code: Code(
-                // Read, not edited: its gray-30 (#f6f6f4) off its white;
-                // by night its chat's ground (#151515).
-                page: .hex(0xF6F6F4, 0x151515),
-                text: .hex(0x14181F, 0xEAECF0),
-                lineNumber: .hex(0x97958D, 0x7B7974),
-                lineHighlight: .hex(0xF6F6F6, 0x252524),
-                gutterText: .hex(0x97958D, 0x6D6B67),
-                use: alpha(0x0073E6, 0.1, 0x0099FF, 0.14),
-                match: alpha(0xFFD500, 0.25, 0xFFD500, 0.18),
-                link: link,
-                linkHover: wash(0.08, 0.13),
-                added: added,
-                modified: modified,
-                deleted: removed,
-                pins: [
-                    alpha(0x945D00, 0.24, 0xFFD014, 0.3),
-                    alpha(0xAD3D66, 0.22, 0xF3C0D3, 0.3),
-                    alpha(0x256ABF, 0.22, 0x3BBD8C, 0.3),
-                    alpha(0x8E6BD9, 0.22, 0xB796FF, 0.3),
-                ],
-                error: .hex(0xE34948, 0xFF5047),
-                warning: .hex(0xB77700, 0xFFD014),
-                hint: alpha(0x0073E6, 0.6, 0x0099FF, 0.6),
-                changedOnDisk: .hex(0xFFF7D5, 0x353018),
-                // Its highlight: the warning's fill a third through.
-                highlighter: alpha(0xFFD014, 0.4, 0xDB9300, 0.35)),
-            diff: Diff(
-                // Its git colours at a fifth, as its diffs' grounds were.
-                added: .hex(0xD2ECD8, 0x1F4023),
-                removed: .hex(0xF5D2DD, 0x481E25),
-                hunk: .hex(0xCDE2FB, 0x032042),
-                found: .hex(0xFFF4BF, 0x433C14),
-                current: .hex(0xFFE873, 0x76650F)),
-            found: Found(
-                current: alpha(0xFFD500, 0.55, 0xFFD500, 0.55),
-                currentRing: .hex(0xB77700, 0xFFD014),
-                pdf: Shade(NSColor(srgbRed: 1, green: 0.84, blue: 0, alpha: 0.8)),
-                pdfCurrent: Shade(NSColor(srgbRed: 0.2, green: 0.56, blue: 1, alpha: 0.7))),
-            chart: Chart(
-                one: .hex(0x2A78D6, 0x3987E5),
-                two: .hex(0xD97757, 0xD97757),
-                three: added,
-                track: wash(0.07, 0.09),
-                surface: wash(0.025, 0.035),
-                grid: wash(0.07, 0.08)),
-            kinds: Kinds(
-                git: .hex(0xC5621B, 0xFA832E), swift: .hex(0xD95926, 0xEC835A), shell: added, pdf: .hex(0xE34948, 0xEC7E7E),
-                image: violet, data: modified, patch: added, archive: .hex(0x6D6B67, 0xA5A49A), media: removed, code: blue,
-                linked: violet, embeds: aqua),
-            terminal: (
-                light: TerminalPalette(background: light.bg, foreground: light.fg, cursor: "#0073e6", cursorText: light.bg,
-                                       selectionBackground: "#bfdcf9", selectionForeground: light.fg, ansi: light.ansi,
-                                       extended: TerminalPalette.generated(background: light.bg, foreground: light.fg, ansi: light.ansi)),
-                dark: TerminalPalette(background: dark.bg, foreground: dark.fg, cursor: "#0099ff", cursorText: dark.bg,
-                                      selectionBackground: "#12405e", selectionForeground: dark.fg, ansi: dark.ansi,
-                                      extended: TerminalPalette.generated(background: dark.bg, foreground: dark.fg, ansi: dark.ansi))),
-            // A rendered page, read: as its code read.
-            page: Page(
-                background: .hex(0xF6F6F4, 0x151515),
-                text: .hex(0x131313, 0xF9F9F7),
-                strong: .hex(0x0B0B0B, 0xFFFFFF),
-                link: link,
-                code: .hex(0xEDEDEB, 0x212121),
-                codeText: .hex(0x14181F, 0xEAECF0),
-                copy: .hex(0xFFFFFF, 0x20201F),
-                copyEdge: .hex(0xE1E0D9, 0x383835),
-                copyText: .hex(0x6D6B67, 0x97958D),
-                copyHoverEdge: .hex(0xC3C2B7, 0x454442),
-                copyHoverText: .hex(0x131313, 0xF9F9F7),
-                copyDone: done,
-                quote: .hex(0x383835, 0xC3C2B7),
-                quoteRule: .hex(0xE1E0D9, 0x383835),
-                rule: .hex(0xE1E1DF, 0x2C2C2C),
-                tableHead: .hex(0xF0EFEC, 0x20201F),
-                tableStripe: .hex(0xF3F3F0, 0x1A1A19),
-                struck: .hex(0x6D6B67, 0x97958D),
-                missing: failed,
-                diagramError: failed,
-                selection: selection,
-                failed: failed,
-                running: .hex(0xD97757, 0xD97757),
-                attention: attention),
-            // Under its white cards, Claude's quieter illustration colours:
-            // sage into heather into clay into oat; by night deep teal into
-            // aubergine into a clay ember. Clay's pool of light in it.
-            // (Brightness as the calibrated space has it.)
-            backdrop: Backdrop(
-                light: .init(stops: [(0.42, 0.18, 0.93), (0.70, 0.16, 0.95), (0.035, 0.28, 0.98), (0.11, 0.20, 0.97)],
-                             pool: (0.2, 0.99), tintPool: (0.36, 0.99)),
-                dark: .init(stops: [(0.47, 0.45, 0.15), (0.76, 0.38, 0.14), (0.03, 0.5, 0.16), (0.09, 0.3, 0.08)],
-                            pool: (0.45, 0.24), tintPool: (0.6, 0.28))))
     }()
 }
 
@@ -1625,12 +1384,12 @@ extension Palette {
                 readingStrong: .hex(0x1F2328, 0xF0F6FC)),
             status: StatusColors(done: done, attention: attention, failed: failed),
             accent: TintColors(accent: blue, caret: blue, textSelection: selection),
-            tints: Palette.paper.tints,
+            tints: Palette.standardTints,
             code: Code(
                 // Read, not edited: the subtle canvas, as GitHub sets code.
                 page: subtle,
                 text: .hex(0x1F2328, 0xE6EDF3),
-                lineNumber: .hex(0x6E7781, 0x7D8590),
+                lineNumber: .hex(0x6A737D, 0x808893),
                 lineHighlight: .hex(0xF6F8FA, 0x1C2128),
                 gutterText: .hex(0x6E7781, 0x7D8590),
                 use: alpha(0x0969DA, 0.1, 0x2F81F7, 0.15),
@@ -1653,11 +1412,12 @@ extension Palette {
                 changedOnDisk: .hex(0xFFF8C5, 0x2F2A1E),
                 highlighter: alpha(0xD4A72C, 0.4, 0xBB8009, 0.4)),
             diff: Diff(
-                // As GitHub draws a diff: #e6ffec and #ffebe9, hunks in
-                // its accent's subtle; by night its 15% and 10% over the canvas.
-                added: .hex(0xE6FFEC, 0x1A2F27),
-                removed: .hex(0xFFEBE9, 0x2D2026),
-                hunk: .hex(0xDDF4FF, 0x192638),
+                // As GitHub's colour-blind themes draw a diff: what's added
+                // in a pale blue, what's taken away in a pale orange, hunks
+                // a grey.
+                added: .hex(0xE0F7FF, 0x112E37),
+                removed: .hex(0xFFE8DC, 0x341F13),
+                hunk: .hex(0xECF0F3, 0x242628),
                 found: .hex(0xFFF8C5, 0x2F2A1E),
                 current: .hex(0xEEDCAB, 0x584318)),
             found: Found(

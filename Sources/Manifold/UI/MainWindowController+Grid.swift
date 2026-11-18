@@ -468,6 +468,13 @@ extension MainWindowController: GridDelegate {
         if !sidebarShown { showSidebar(animated: true) }
     }
 
+    /// The project's name in a bar's place clicked: its tile.
+    func gridOpenProject(_ placement: PlacementID) {
+        guard let b = arrangement?.placement(placement)?.block,
+              let p = project(pinning: b) ?? project(of: b) else { return }
+        openProject(p, on: p.block?.host ?? b.host, near: placement)
+    }
+
     /// ⌘-click on a pill: where the block is, as a path — the file or
     /// folder, then each folder up to the root (a terminal's working
     /// directory likewise); choosing one browses that folder here, as
@@ -550,7 +557,6 @@ extension MainWindowController: GridDelegate {
             }
         }
         menu.addItem(pinItem(block, in: id, key: true))
-        if let item = projectPinItem(block) { menu.addItem(item) }
         if let item = threadsItem(block) { menu.addItem(item) }
         // A thread list's: how it's shown (its view menu), and its open
         // threads handed to an agent.
