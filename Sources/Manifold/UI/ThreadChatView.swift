@@ -1369,6 +1369,13 @@ final class ComposerTextView: NSTextView {
         guard let chat = enclosing(ThreadChatView.self) else { return super.performTextFinderAction(sender) }
         chat.performTextFinderAction(sender)
     }
+
+    // Find's items enabled for the chat: a text view without a find bar of
+    // its own would have them greyed, and ⌘F did nothing in a thread.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(performTextFinderAction(_:)), enclosing(ThreadChatView.self) != nil { return true }
+        return super.validateUserInterfaceItem(item)
+    }
     var onChange: (() -> Void)?
     /// ⎋: what it closes (a card, the overlay).
     var onCancel: (() -> Void)?
@@ -1600,6 +1607,13 @@ final class PillTextView: NSTextView {
     override func performTextFinderAction(_ sender: Any?) {
         guard let chat = enclosing(ThreadChatView.self) else { return super.performTextFinderAction(sender) }
         chat.performTextFinderAction(sender)
+    }
+
+    // Find's items enabled for the chat: a text view without a find bar of
+    // its own would have them greyed, and ⌘F did nothing in a thread.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(performTextFinderAction(_:)), enclosing(ThreadChatView.self) != nil { return true }
+        return super.validateUserInterfaceItem(item)
     }
 
     // The arrow over a comment's words, not the I-beam — it's read, not
