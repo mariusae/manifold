@@ -2653,9 +2653,11 @@ final class TextView: NSView, NSTextInputClient {
         // followed as it's let go — from the file's folder, if it's a name.
         if event.clickCount == 1, flags.contains(.command), let sel = selections.first(where: { !$0.isCaret && $0.min <= offset && offset < $0.max }) {
             let words = text[TextRange(sel.min, sel.max)].trimmingCharacters(in: .whitespacesAndNewlines)
-            if !words.isEmpty, !words.contains("\n") {
+            // A name that's no path (an identifier): not followed as a file
+            // but gone to as a definition, below.
+            if !words.isEmpty, !words.contains("\n"), let target = selectionTarget.map({ $0(words) }) ?? words {
                 dragAnchor = nil
-                pressedCommand = (event.locationInWindow, offset, selectionTarget?(words) ?? words, flags.contains(.option))
+                pressedCommand = (event.locationInWindow, offset, target, flags.contains(.option))
                 return
             }
         }
@@ -2715,7 +2717,7 @@ final class TextView: NSView, NSTextInputClient {
     /// go, or what's there dragged out if it moves first.
     private var pressedCommand: (at: NSPoint, offset: Int, link: String?, over: Bool)?
     /// What ⌘-clicked selected words go to: a name, from the file's folder.
-    var selectionTarget: ((String) -> String)?
+    var selectionTarget: ((String) -> String?)?
 
     /// The bar beside the definition the caret's in (drawn when it spans
     /// lines), as it's taken hold of — a little wider than it's drawn —

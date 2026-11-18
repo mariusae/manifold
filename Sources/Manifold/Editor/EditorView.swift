@@ -202,6 +202,13 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.selectionTarget = { [weak self] words in
             // ~ left for the file's host to say (opening expands it there).
             guard !words.contains("://"), !words.hasPrefix("manifold:"), !words.hasPrefix("~") else { return words }
+            // A bare name — an identifier, no folder, no extension — is no
+            // file to open (it made an empty tile, "frontend") unless one's
+            // there by that name (a Makefile): else its definition.
+            if words.range(of: #"^[A-Za-z_$][A-Za-z0-9_$]*$"#, options: .regularExpression) != nil {
+                guard let p = Mention.resolve(words, from: self?.path.isEmpty == false ? self?.path : nil), FileManager.default.fileExists(atPath: p) else { return nil }
+                return p
+            }
             return Mention.resolve(words, from: self?.path.isEmpty == false ? self?.path : nil) ?? words
         }
         // Text added at its end from elsewhere while scrolled up: said at its
