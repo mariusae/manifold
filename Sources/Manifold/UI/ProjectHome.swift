@@ -354,11 +354,26 @@ final class ProjectAgentPill: NSControl {
         }
     }
 
-    override func mouseEntered(with event: NSEvent) { AgentLook.spotlight?(chip.id) }
-    override func mouseExited(with event: NSEvent) { AgentLook.spotlight?(nil) }
+    // Pointed at: its tile ringed where it's on screen, and its card —
+    // what kind of agent, and what it's doing (or that it's idle, asleep).
+    override func mouseEntered(with event: NSEvent) {
+        AgentLook.spotlight?(chip.id)
+        if let window { AgentLook.card?(chip.id, convert(bounds, to: nil), window) }
+    }
+    override func mouseExited(with event: NSEvent) {
+        AgentLook.spotlight?(nil)
+        AgentLook.hideCard?()
+    }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { AgentLook.hideCard?() }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     private var downAt: NSPoint?
-    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+    override func mouseDown(with event: NSEvent) {
+        AgentLook.hideCard?()
+        downAt = event.locationInWindow
+    }
 
     /// Dragged: the agent, as a block — onto a thread's shelf, it joins.
     override func mouseDragged(with event: NSEvent) {

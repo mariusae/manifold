@@ -200,6 +200,65 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
+    /// An agent's card (§3.12), its pill pointed at: its name; what kind of
+    /// agent it is, the project it lives in, the host; and what it's doing —
+    /// the ask it's working on (a thread's said as the thread), waiting on
+    /// you for what, done or idle with what it was last asked and said, or
+    /// asleep — and its screen, if it's been seen.
+    func showAgentCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow) {
+        guard let b = hosts.block(id) else { return HoverCard.shared.hide() }
+        let t = b.terminal
+        let turn = t?.turns?.last
+        let now = Date()
+        // What it was asked, a thread's said as the thread, the references in it
+        // by their names ("[Quill](manifold:…)" as Quill).
+        func named(_ text: String) -> String {
+            var out = text.replacingOccurrences(of: #"\[([^\]]+)\]\(manifold:[^)\s]+\)"#, with: "$1", options: .regularExpression)
+            for m in TextLinks.bareReference.matches(in: out, range: NSRange(location: 0, length: (out as NSString).length)).reversed() {
+                let ref = (out as NSString).substring(with: m.range)
+                guard let (bid, _) = BlockID.link(ref), let rb = hosts.block(bid) else { continue }
+                out = (out as NSString).replacingCharacters(in: m.range, with: rb.agent != nil ? AgentLook.name(of: rb) : Self.linkTitle(rb))
+            }
+            return out
+        }
+        func asked(_ p: String) -> String { Block.oneLine(named(ThreadText.askShown(p) ?? p), max: 200) }
+        func ago(_ s: Stamp?) -> String { BlockSummary.since(s, now: now) ?? "" }
+        var detail = [b.agent?.name ?? "Agent", project(holding: id).map { "in \($0.name)" }].compactMap { $0 }.joined(separator: " · ")
+        if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }
+        var lines: [String] = []
+        let last = turn.map { "Last asked \(ago($0.began)): \(asked($0.prompt))" }
+        let said = turn?.message.map { "Said: " + Block.oneLine($0, max: 200) }
+        if !Self.agentRuns(b) {
+            lines.append("Asleep — asked, or shown, it starts again where it left off.")
+            lines += [last, said].compactMap { $0 }
+        } else {
+            let r = b.statusRecord
+            switch r?.state {
+            case .working?:
+                lines.append(turn.map { "Working\($0.isRunning ? " since " + ago($0.began) : ""): " + asked($0.prompt) } ?? "Working")
+                if let m = r?.msg, !m.isEmpty, turn.map({ !$0.prompt.hasPrefix(m) }) ?? true { lines.append("Now: " + Block.oneLine(m, max: 160)) }
+            case .blocked?:
+                lines.append("Waiting on you: " + (r?.msg.map { Block.oneLine($0, max: 160) } ?? "a question"))
+                if let turn { lines.append("On: " + asked(turn.prompt)) }
+            case .done?:
+                lines.append((r?.read == true ? "Done " : "Done, not read — ") + ago(turn?.ended ?? r?.at))
+                lines += [turn.map { "Asked: " + asked($0.prompt) }, said].compactMap { $0 }
+            case .error?:
+                lines.append("Failed" + (r?.msg.map { ": " + Block.oneLine($0, max: 160) } ?? ""))
+                if let last { lines.append(last) }
+            default:
+                lines.append("Idle — ask it in a thread, or click to show it.")
+                lines += [last, said].compactMap { $0 }
+            }
+        }
+        // Its screen as it was last seen, if it has been (one with no tile
+        // ever shown has none).
+        var picture = tilePictures[id]
+        if let v = view(of: id, as: TerminalView.self), let image = HoverCard.surfacePicture(of: v) { picture = image }
+        HoverCard.shared.show(key: "agent:" + id.description, title: AgentLook.name(of: b), detail: detail, body: lines.joined(separator: "\n"),
+                              font: nil, picture: picture, summary: nil, beside: rect, in: window, delay: 0.35, above: false)
+    }
+
     /// A project's agent as its pill shows it (§3.12): its name and colour,
     /// what most wants you of it, whether it's asleep.
     func agentChip(_ b: Block, in project: Project?) -> ProjectAgentChip {

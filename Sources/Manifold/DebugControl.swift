@@ -1686,6 +1686,14 @@ enum DebugControl {
             // "projectagents [new <root>]": each project's agents and how each
             // stands; "new": one made in the project at that root.
             guard let wc, let client = wc.hosts.client(wc.host.host) else { return "no window" }
+            if arg.hasPrefix("card ") {
+                // "card <name>": its card, as its pill pointed at shows it.
+                let name = String(arg.dropFirst(5))
+                guard let id = client.desk.projects.flatMap({ $0.agents ?? [] }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }),
+                      let window = wc.window else { return "no agent \(name)" }
+                wc.showAgentCard(id, beside: NSRect(x: 40, y: 60, width: 20, height: 20), in: window)
+                return "shown"
+            }
             if arg.hasPrefix("delete ") {
                 // "delete <name>": as its pill's Delete does.
                 let name = String(arg.dropFirst(7))

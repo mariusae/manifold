@@ -375,7 +375,13 @@ needs you, failed, done and not read; an open ring: working). The agents
 of every project the space shows (a tile of it, or anything from inside
 it) are a row at the sidebar's foot, over Threads: each its initial in
 its ring, its badge at its corner, "+n" for those past the room — clicked,
-shown; their menu as on the strip. So that row reads, an agent's name is
+shown; their menu as on the strip. Pointed at, either pill shows the
+agent's card: its name; what kind of agent, the project it lives in, the
+host; and what it's doing — working on what it was asked (a thread's ask
+said as the thread and what was written there, its references by their
+names), and what it's doing now; waiting on you, for what; done (read or
+not) or idle, with what it was last asked and said; asleep — with its
+screen, if it's been seen. So that row reads, an agent's name is
 given an initial no agent kept or at work has, and while there are some,
 one unlike any taken (not Q beside O, nor L beside I); the names (a
 plant's or a bird's) start with every letter. Clicked, its tile is placed (or gone to); closed, the tile goes

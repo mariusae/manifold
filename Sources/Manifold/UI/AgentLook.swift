@@ -150,6 +150,10 @@ extension AgentLook {
     /// screen, while the pointer stays — so you see which one it is without
     /// going there. Nil: the ring gone. Given by the window.
     nonisolated(unsafe) static var spotlight: ((BlockID?) -> Void)?
+    /// An agent's card beside a rect (window terms) — what it is, and what
+    /// it's doing — and put away (nil).
+    nonisolated(unsafe) static var card: ((BlockID, NSRect, NSWindow) -> Void)?
+    nonisolated(unsafe) static var hideCard: (() -> Void)?
 }
 
 /// A menu of agents that rings each one's tile as it's highlighted.

@@ -200,6 +200,8 @@ extension MainWindowController {
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         AgentLook.block = { [weak self] id in self?.hosts.block(id) }
         AgentLook.spotlight = { [weak self] id in self?.spotlightAgent(id) }
+        AgentLook.card = { [weak self] id, rect, window in self?.showAgentCard(id, beside: rect, in: window) }
+        AgentLook.hideCard = { HoverCard.shared.hide() }
         LinkMenus.make = { [weak self] target, from, on in self?.linkMenu(target, from: from, on: on) }
         LinkMenus.drag = { [weak self] target, from, on in self?.linkDrag(target, from: from, on: on) }
         // A reference rested on (a pill, a card over the composer): its block's card.
