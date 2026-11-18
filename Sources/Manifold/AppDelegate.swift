@@ -615,8 +615,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(tile, "Maximize", #selector(MainWindowController.toggleMaximize(_:)), "\r", [.command, .shift])
         tile.addItem(.separator())
         item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
-        item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .shift])
-        item(tile, "Fill the Column, Keeping Bars", #selector(MainWindowController.fillColumnKeepingBars(_:)), "=", [.command, .control, .option])
+        item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .option])
+        item(tile, "Fill the Column, Keeping Bars", #selector(MainWindowController.fillColumnKeepingBars(_:)), "=", [.command, .control, .shift])
         item(tile, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
         item(tile, "Dock", #selector(MainWindowController.dockTile(_:)), "m")
         // ⌥⇧⌘ and an arrow: the tile a step that way.

@@ -27,8 +27,7 @@ final class MainWindow: NSWindow {
         return rect
     }
 
-    // Even so, a second click in a row up there (⌥-clicks walking a
-    // stack whose bar is at the window's top, clicks growing a tile) is
+    // Even so, a second click in a row up there (clicks growing a tile) is
     // taken for a double click on the title bar and never reaches the
     // bar: on a tile's bar, which takes every click as one, it goes as one.
     override func sendEvent(_ event: NSEvent) {

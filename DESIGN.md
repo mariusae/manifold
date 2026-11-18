@@ -403,10 +403,11 @@ bar gives up as it narrows — its **links** (the linked blocks' faces,
 stacked), its status's
 pill (§3.7, the program it names in the tooltip), and maximize and
 close. The bar is the
-tile's handle to drag, grows the tile a step when clicked (⌘-click
-fills its column, docking the others; ⌥-click fills all of it but the
+tile's handle to drag, grows the tile a step when clicked (⌥-click
+fills its column, docking the others under it — ⌥ is "over", below —
+Tile ▸ Fill the Column, ⌃⌥⌘=; ⇧-click fills all of it but the
 others' bars, which stay in the grid, each down to its bar — Tile ▸
-Fill the Column, Keeping Bars, ⌃⌥⌘=; after either, a click on its bar
+Fill the Column, Keeping Bars, ⌃⇧⌘=; after either, a click on its bar
 puts the column back as it was, those docked back where they were and
 every share as it was — as acme's — if nothing's changed it since;
 ⌃-click or the symbol opens its menu), and as a tile narrows
@@ -905,7 +906,7 @@ tile over another;
 **⇧⌘** gives it to the system's app. On a bar, as Finder's title:
 ⌘-click for where the block is (the level above it under the pointer
 — a file's folder, a folder's or a project's the one it's in, a
-terminal's where it is — so letting go there goes to it), ⇧-click to fill the column; ⇧-drag a bar
+terminal's where it is — so letting go there goes to it), ⌥-click to fill the column (the others docked under it), ⇧-click to fill it keeping their bars; ⇧-drag a bar
 to link. One `Disposition`
 carries each, read off the click (or ⏎) wherever a view opens, and
 `follow` does it (a terminal's link needs ⌘ to be a link at all, so
@@ -3022,7 +3023,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   a plain click — the tile keeps a trail, ⌘[ ⌘] along it. ⌘ still
   opens beside.
 - **The bar:** a click grows the tile a step (acme's colgrow — clicks
-  build up; no double-click), ⇧-click fills the column, ⌃-click or the icon
+  build up; no double-click), ⌥-click fills the column (⇧-click keeping the others' bars), ⌃-click or the icon
   opens the tile's menu, ⌘-click the path menu (as Finder's title, the
   level above the tile under the pointer).
 - **A docked tile's row** clicked puts it back where it was.
@@ -3060,7 +3061,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   to make room (`OrganizationView.glide`), and what the row says is
   wiped in from the right as the tile gets there — undocked, wiped out,
   then the row glides back among those on screen as the tile pours out;
-  a tile down to its bar (⌥-clicked's others) has only its bar to pour,
+  a tile down to its bar (⇧-clicked's others) has only its bar to pour,
   so the bar flies to its row as wide as it is, then shrinks to the
   row's size, becoming the row on the way (`Genie.fly`), and back out
   the same way. Where it lands is marked: the tile takes on the accent

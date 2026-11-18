@@ -45,9 +45,9 @@ protocol GridDelegate: AnyObject {
     func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridGrow(_ placement: PlacementID)
     func gridFill(_ placement: PlacementID)
-    /// A bar ⌥-clicked: its tile all the column but the others' bars.
+    /// A bar ⇧-clicked: its tile all the column but the others' bars.
     func gridSqueeze(_ placement: PlacementID)
-    /// ⌥-click: the block's path, folder by folder, each going there.
+    /// ⌘-click: the block's path, folder by folder, each going there.
     /// The tile's path menu (its folder and those above), and the item
     /// to hold under the pointer (its own folder), to open as Finder's.
     func gridPathMenu(for placement: PlacementID) -> (menu: NSMenu, here: NSMenuItem?)?
@@ -288,7 +288,7 @@ final class GridView: NSView, NSDraggingSource {
                     self?.delegate?.gridFocus(id)
                     if clicks >= 2 { self?.delegate?.gridRenameAgent(id) }
                 }
-                // The bar clicked grows the tile, ⌘-clicked fills its column;
+                // The bar clicked grows the tile, ⌥-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
                 pill.onClick = { [weak self, weak pill] at, mods in
                     guard let self else { return }
@@ -300,21 +300,22 @@ final class GridView: NSView, NSDraggingSource {
                     // The address in a page's pill, clicked, becomes its field;
                     // the tile is focused, not grown. The rest of the bar is
                     // the bar.
-                    if let pill, !pill.isEditing, pill.isOnPlace(at), let edit = tile.view.pillEdit, !mods.contains(.shift) {
+                    if let pill, !pill.isEditing, pill.isOnPlace(at), let edit = tile.view.pillEdit, mods.isDisjoint(with: [.shift, .option]) {
                         self.delegate?.gridFocus(id)
                         pill.beginEditing(edit)
                         return
                     }
                     // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused — clicked again, a step more; ⇧-clicked, it
-                    // fills its column, the others docked; ⌥-clicked, all
-                    // its column but the others' bars, they staying (Maximize
-                    // is the corner's). The pointer follows the bar to
+                    // focused — clicked again, a step more; ⌥-clicked, it
+                    // fills its column, the others docked under it (⌥ is
+                    // "over", §3.11, as a link ⌥-clicked goes over a tile);
+                    // ⇧-clicked, all its column but the others' bars, they
+                    // staying (Maximize is the corner's). The pointer follows the bar to
                     // where it was clicked, once the tile has grown and moved
                     // it, so a click again grows again.
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.shift) { self.delegate?.gridFill(id); return }
-                    if mods.contains(.option) { self.delegate?.gridSqueeze(id); return }
+                    if mods.contains(.option) { self.delegate?.gridFill(id); return }
+                    if mods.contains(.shift) { self.delegate?.gridSqueeze(id); return }
                     self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
                 }

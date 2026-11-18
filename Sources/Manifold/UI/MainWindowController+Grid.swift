@@ -289,7 +289,7 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement))
     }
 
-    /// A pill ⌘-clicked: its tile fills the column, the others docked.
+    /// A pill ⌥-clicked: its tile fills the column, the others docked.
     func gridFill(_ placement: PlacementID) { fill(placement, keepingBars: false) }
 
     /// A column as it was before a tile filled it — its tiles' shares, and
@@ -465,7 +465,7 @@ extension MainWindowController: GridDelegate {
         if !sidebarShown { showSidebar(animated: true) }
     }
 
-    /// ⇧-click on a pill: where the block is, as a path — the file or
+    /// ⌘-click on a pill: where the block is, as a path — the file or
     /// folder, then each folder up to the root (a terminal's working
     /// directory likewise); choosing one browses that folder here, as
     /// ⌘-clicking a document's title does in the Finder.
