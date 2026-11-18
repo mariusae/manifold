@@ -175,8 +175,12 @@ extension MainWindowController: ThreadChatDelegate {
             // last first (its lead, unless another's chosen), this space's
             // before others'.
             let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
-            m.askAgents = hosts.blocks.filter { $0.agent != nil && Self.agentRuns($0) }
+            // Its place's project's own agents first (§3.12), asleep or not —
+            // the nearest project's are who a thread about it asks.
+            let own = Set(about.flatMap { project(of: $0.block) }?.agents ?? [])
+            m.askAgents = hosts.blocks.filter { $0.agent != nil && (Self.agentRuns($0) || own.contains($0.id)) }
                 .sorted { a, b in
+                    if own.contains(a.id) != own.contains(b.id) { return own.contains(a.id) }
                     let (ta, tb) = (AgentRecency.when(a.id), AgentRecency.when(b.id))
                     if ta != tb { return ta > tb }
                     if here.contains(a.id) != here.contains(b.id) { return here.contains(a.id) }
@@ -194,10 +198,15 @@ extension MainWindowController: ThreadChatDelegate {
             m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: AgentLook.name(of: $0)) } }
             m.asksAll = asksAll(t)
             let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
-            m.invitable = hosts.blocks.filter { !parts.contains($0.id) && $0.agent != nil && Self.agentRuns($0) }
-                .sorted { a, b in here.contains(a.id) != here.contains(b.id) ? here.contains(a.id) : AgentRecency.when(a.id) > AgentRecency.when(b.id) }
+            let own = Set(project(ofThread: t)?.agents ?? [])
+            m.invitable = hosts.blocks.filter { !parts.contains($0.id) && $0.agent != nil && (Self.agentRuns($0) || own.contains($0.id)) }
+                .sorted { a, b in
+                    if own.contains(a.id) != own.contains(b.id) { return own.contains(a.id) }
+                    return here.contains(a.id) != here.contains(b.id) ? here.contains(a.id) : AgentRecency.when(a.id) > AgentRecency.when(b.id)
+                }
                 .map(ask)
             m.context = contextItems(of: t)
+            m.projectName = project(ofThread: t)?.name
         }
         return m
     }
@@ -293,6 +302,20 @@ extension MainWindowController: ThreadChatDelegate {
         parts.insert(agent, at: 0)
         setParticipants(parts, of: id)
         annotateThread(id, [Self.asksKey: command])
+    }
+
+    /// A new agent of the project the thread's place is in (§3.12): made,
+    /// and brought into the conversation once the host has made it.
+    func threadChatNewAgent(_ view: ThreadChatView) {
+        guard let id = view.threadID, let t = hosts.block(id), let p = project(ofThread: t), let about = t.thread?.about,
+              let client = hosts.client(about.block.host) else { return NSSound.beep() }
+        let agent = newProjectAgent(in: p, on: client)
+        func bringIn(_ tries: Int) {
+            if hosts.block(agent)?.agent != nil { return invite(agent, to: id) }
+            guard tries > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { bringIn(tries - 1) }
+        }
+        bringIn(50)
     }
 
     func threadChat(_ view: ThreadChatView, invite agent: BlockID) {

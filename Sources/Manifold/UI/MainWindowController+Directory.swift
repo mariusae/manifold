@@ -81,7 +81,9 @@ extension MainWindowController: DirectoryViewDelegate {
         var out: [Presence] = []
         let shownHere = Set(arrangement?.placements.map(\.block) ?? [])
         // Terminals and agents with a shell there, what each is doing.
-        for b in client.node.blocks where b.kind == .terminal || b.kind == .agent {
+        let own = Set(project.agents ?? [])
+        for b in client.node.blocks where (b.kind == .terminal || b.kind == .agent) && !own.contains(b.id) {
+            // (Its own agents are pills on its line.)
             guard let t = b.terminal, t.pid != nil || t.dormantSince == nil, let cwd = t.cwd, project.holds(cwd) else { continue }
             let where_ = project.relative(cwd)
             let doing = b.statusRecord?.msg ?? t.commands?.last(where: { $0.isRunning })?.text
@@ -136,6 +138,41 @@ extension MainWindowController: DirectoryViewDelegate {
             hosts.scip(.index(path: project.root.appendingPathComponent(".")), on: view.block.host) { [weak self] result in
                 if case .error(let m) = result { self?.toast.say(m) }
             }
+        case .newAgent:
+            _ = newProjectAgent(in: project, on: client)
+        case let .showAgent(id):
+            arrive(id, from: view.placement)
+        case let .renameAgent(id):
+            // Its tile, and its name edited in its bar.
+            arrive(id, from: view.placement)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let p = self.arrangement?.placements.first(where: { $0.block == id }) else { return }
+                self.gridRenameAgent(p.id)
+            }
+        case let .deleteAgent(id):
+            // As any block's deleting: said, with Undo; gone for good, the
+            // project lets go of it (the host, as it discards it).
+            deleteBlock(id)
+        }
+    }
+
+    /// An agent made in a project (§3.12): kept by it, started with
+    /// nothing showing it — its pill on the project's line, its name its own.
+    @discardableResult
+    func newProjectAgent(in project: Project, on client: HostClient) -> BlockID {
+        let usual = desk.settings.agentCommand
+        let command = AgentCatalog.agent(inCommand: usual) != nil ? usual : "claude"
+        return client.newProjectAgent(root: project.root, command: command)
+    }
+
+    /// A project's agents, as the pills on its line show them.
+    func directoryView(_ view: DirectoryView, agentsOf project: Project) -> [ProjectAgentChip] {
+        (project.agents ?? []).compactMap { id in
+            guard let b = hosts.block(id), let color = AgentLook.color(of: b) ?? Optional(Theme.accent) else { return nil }
+            let state: ProjectAgentChip.State = !Self.agentRuns(b) ? .asleep
+                : b.statusState == .working ? .working : b.statusState == .blocked ? .waiting : .idle
+            return ProjectAgentChip(id: id, name: AgentLook.name(of: b), color: color, ink: AgentLook.color(of: b) == nil ? .white : AgentLook.ink(on: b),
+                                    state: state, detail: AgentLook.description(of: b))
         }
     }
 

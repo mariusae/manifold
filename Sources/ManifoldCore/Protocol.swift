@@ -224,6 +224,11 @@ public enum Proposal: Codable, Sendable {
     case project(Project)
     /// A folder no longer a project.
     case unproject(root: String)
+    /// An agent made in a project (§3.12): run in its folder, kept by it,
+    /// started at once with nothing showing it (a tile shows it if asked).
+    case newProjectAgent(block: BlockID, root: String, command: String)
+    /// An agent made a project's, or let go of (`attached` false).
+    case projectAgent(root: String, agent: BlockID, attached: Bool)
     case refreshGit(block: BlockID)
     /// The repository's branch pulled from its upstream (fast-forward only)
     /// or pushed to it, as its host's shells would; refreshed after. What
@@ -338,7 +343,7 @@ public extension Proposal {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
              let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .gitSync(block, _), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
-             let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .processes(block),
+             let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .newProjectAgent(block, _, _), let .projectAgent(_, block, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
              let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .editThreadEntry(block, _, _, _), let .threadSpace(block, _),

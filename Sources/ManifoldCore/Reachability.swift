@@ -11,6 +11,8 @@ extension Node {
         var roots: Set<BlockID> = []
         for id in desk(host).order where id.host == host { roots.insert(id) }
         for h in registry(host).holds.values where h.block.host == host { roots.insert(h.block) }
+        // A project's agents (§3.12): kept while it is.
+        for p in desk(host).projects { for a in p.agents ?? [] where a.host == host { roots.insert(a) } }
         return roots
     }
 

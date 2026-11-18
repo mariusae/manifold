@@ -13,6 +13,24 @@ enum ProjectAction {
     case settings
     /// A block at work in it (a terminal, an agent, a note), gone to.
     case go(BlockID)
+    /// Its agents (§3.12): one shown (a tile placed for it), a new one
+    /// made, one renamed, one ended.
+    case showAgent(BlockID)
+    case newAgent
+    case renameAgent(BlockID)
+    case deleteAgent(BlockID)
+}
+
+/// One of a project's agents, as its pill on the project's line shows it.
+struct ProjectAgentChip: Equatable {
+    enum State: Equatable { case working, waiting, idle, asleep }
+    var id: BlockID
+    var name: String
+    var color: NSColor
+    var ink: NSColor
+    var state: State
+    /// What it is and does, for its tip.
+    var detail: String
 }
 
 /// How a project stands, as its homepage shows it: its repository's
@@ -32,6 +50,8 @@ struct ProjectFacts: Equatable {
     var languages: [LanguageShare] = []
     /// What's at work in it: terminals and agents there, notes about its files.
     var presence: [Presence] = []
+    /// Its agents (§3.12), each a pill on its line.
+    var agents: [ProjectAgentChip] = []
 }
 
 /// A language's share of a project's code (§2.6).
@@ -99,6 +119,10 @@ final class ProjectStrip: NSView {
     private let changes = FlatButton("", symbol: "plusminus", font: UIType.detail)
     private let index = FlatButton("", symbol: "circle.dashed", font: UIType.detail)
     private var reindexes = false
+    /// Its agents (§3.12), at its right: a pill each, and + for another.
+    private var agentPills: [ProjectAgentPill] = []
+    private var agents: [ProjectAgentChip] = []
+    private let addAgent = IconButton("plus", size: 10, tip: "New Agent — one that lives in this project, asked in its threads; click its pill to show it")
     static let height: CGFloat = 30
 
     override init(frame: NSRect) {
@@ -110,6 +134,32 @@ final class ProjectStrip: NSView {
         branch.action = #selector(openGit)
         changes.action = #selector(openGit)
         index.action = #selector(reindex)
+        addAgent.target = self
+        addAgent.action = #selector(newAgent)
+        addSubview(addAgent)
+    }
+
+    @objc private func newAgent() { onAction?(.newAgent) }
+
+    private func showAgents(_ list: [ProjectAgentChip]) {
+        guard list != agents else { return }
+        agents = list
+        agentPills.forEach { $0.removeFromSuperview() }
+        agentPills = list.map { a in
+            let p = ProjectAgentPill(a)
+            p.onClick = { [weak self] in self?.onAction?(.showAgent(a.id)) }
+            p.onMenu = { [weak self] in
+                let menu = NSMenu()
+                menu.addItem(ClosureMenuItem("Show \(a.name)", symbol: "rectangle.on.rectangle") { self?.onAction?(.showAgent(a.id)) })
+                menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { self?.onAction?(.renameAgent(a.id)) })
+                menu.addItem(.separator())
+                menu.addItem(ClosureMenuItem("Delete \(a.name)", symbol: "trash") { self?.onAction?(.deleteAgent(a.id)) })
+                return menu
+            }
+            addSubview(p)
+            return p
+        }
+        needsLayout = true
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -138,6 +188,7 @@ final class ProjectStrip: NSView {
         index.title = words
         index.toolTip = tip
         reindexes = again
+        showAgents(f.agents)
         needsLayout = true
     }
 
@@ -178,10 +229,23 @@ final class ProjectStrip: NSView {
 
     override func layout() {
         super.layout()
+        // Its agents from the right: + last, the pills before it, as many
+        // as there's room for beside the left's buttons.
+        var right = bounds.width - 8
+        addAgent.frame = NSRect(x: right - 16, y: ((bounds.height - 16) / 2).rounded(), width: 16, height: 16)
+        right -= 16 + 6
+        let roomFrom: CGFloat = 220
+        for p in agentPills.reversed() {
+            let w = p.wantedWidth
+            p.isHidden = right - w < roomFrom
+            guard !p.isHidden else { continue }
+            p.frame = NSRect(x: right - w, y: ((bounds.height - ProjectAgentPill.height) / 2).rounded(), width: w, height: ProjectAgentPill.height)
+            right -= w + 5
+        }
         var x: CGFloat = 8
         for b in [branch, changes, index] where !b.isHidden {
             b.sizeToFit()
-            let w = min(b.frame.width, max(0, bounds.width - 8 - x))
+            let w = min(b.frame.width, max(0, right - 4 - x))
             b.frame = NSRect(x: x, y: ((bounds.height - Flat.buttonHeight) / 2).rounded(), width: w, height: Flat.buttonHeight)
             x += w + 2
         }
@@ -193,7 +257,101 @@ final class ProjectStrip: NSView {
     }
 
     var debugState: String {
-        [branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }.joined(separator: " | ")
+        ([branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }
+            + agents.map { "agent \($0.name) (\($0.state))" }).joined(separator: " | ")
+    }
+}
+
+/// A project's agent on its line (§3.12): its name in a pill of its
+/// colour — paler while it's asleep (asked, it starts again where it left
+/// off), a dot while it works, ringed in amber while it waits on you.
+/// Clicked, it's shown; its menu shows, renames, ends it. Pointed at, its
+/// tile is ringed where it's on screen.
+final class ProjectAgentPill: NSControl {
+    let chip: ProjectAgentChip
+    var onClick: (() -> Void)?
+    var onMenu: (() -> NSMenu)?
+    static let height: CGFloat = 18
+    private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+
+    init(_ chip: ProjectAgentChip) {
+        self.chip = chip
+        super.init(frame: .zero)
+        let state: String = switch chip.state {
+        case .working: "working"
+        case .waiting: "waiting on you"
+        case .idle: "idle"
+        case .asleep: "asleep — asked, it starts again where it left off"
+        }
+        toolTip = "\(chip.name), this project's agent — \(state)\(chip.detail.isEmpty ? "" : "\n" + chip.detail)\nClick to show it; drag it into a thread"
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { false }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private var dotRoom: CGFloat { chip.state == .working ? 9 : 0 }
+    var wantedWidth: CGFloat { ceil((chip.name as NSString).size(withAttributes: [.font: Self.font]).width) + 16 + dotRoom }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        chip.color.withAlphaComponent(chip.state == .asleep ? 0.4 : 1).setFill()
+        path.fill()
+        if chip.state == .waiting {
+            Status.attention.setStroke()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
+        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: chip.state == .asleep ? Theme.text : chip.ink]
+        let w = (chip.name as NSString).size(withAttributes: attrs).width
+        var x = ((bounds.width - w - dotRoom) / 2).rounded() + dotRoom
+        if dotRoom > 0 {
+            chip.ink.setFill()
+            NSBezierPath(ovalIn: NSRect(x: x - 9, y: bounds.midY - 2.5, width: 5, height: 5)).fill()
+        }
+        x = max(x, 0)
+        let f = Self.font
+        (chip.name as NSString).draw(at: NSPoint(x: x, y: (bounds.midY - f.capHeight / 2 + f.descender).rounded()), withAttributes: attrs)
+    }
+
+    override func mouseEntered(with event: NSEvent) { AgentLook.spotlight?(chip.id) }
+    override func mouseExited(with event: NSEvent) { AgentLook.spotlight?(nil) }
+
+    private var downAt: NSPoint?
+    override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+
+    /// Dragged: the agent, as a block — onto a thread's shelf, it joins.
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = downAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4 else { return }
+        downAt = nil
+        let item = NSPasteboardItem()
+        item.setString(chip.id.description, forType: .manifoldBlock)
+        let dragging = NSDraggingItem(pasteboardWriter: item)
+        let image = NSImage(size: bounds.size, flipped: false) { [weak self] _ in self?.draw(.zero); return true }
+        dragging.setDraggingFrame(bounds, contents: image)
+        beginDraggingSession(with: [dragging], event: event, source: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { downAt = nil }
+        guard downAt != nil, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let m = onMenu?()
+        m?.delegate = AgentMenuSpotlight.shared
+        return m
+    }
+}
+
+extension ProjectAgentPill: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .withinApplication ? [.link, .copy, .move, .generic] : []
     }
 }
 

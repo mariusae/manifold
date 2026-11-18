@@ -362,6 +362,32 @@ under Other spaces. A project's root's other spelling is
 the file system's (`realpath`: /private/tmp), not Foundation's, which
 gives /tmp back — a terminal's directory says the former.
 
+**A project's agents.** An agent can live in a project: made there (the
++ at the right of its strip, or New Agent in a thread's shelf, or asked
+in a thread about a place in it with none at work), it runs in the
+project's folder — its `CLAUDE.md`, its repository, its memory and
+sessions are the project's — on the project's host, with nothing
+showing it, and is a pill on the strip: its name in its colour, a dot
+while it works, ringed in amber while it waits on you, paler while it's
+asleep. Clicked, its tile is placed (or gone to); closed, the tile goes
+and the agent stays; dragged, it's a reference to it (onto a thread's
+shelf, it joins); its menu renames it or deletes it (with Undo, as any
+block). The project keeps it: its agents are roots (`Project.agents`,
+`projectAgent` on the desk), kept while the project is, on screen or
+not; deleted, or the folder no longer a project, they go. A thread about
+a place in a project asks the project's agents first — they lead a new
+thread there — so the nearest project says who answers. An agent whose
+process has ended — it exited, the host restarted (agents still marked
+running then are made dormant), it lay idle — is asleep, not gone:
+asked, or shown, the host starts it again where it left off (Claude
+Code's `--resume`, with the session of its last turn, from its
+transcript's name; its command as made, kept as `agent.command`, less
+the first prompt an agent started with was given), holding what's typed
+to it till its first hook says it's ready — and, not ready after a
+while (asking to trust its folder, where a Return is "No, exit"), it's
+said to wait on you rather than typed into. Its pill isn't in the
+sidebar: the project is where its agents are.
+
 ---
 
 ## 3. Spaces

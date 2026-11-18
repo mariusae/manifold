@@ -101,6 +101,8 @@ protocol DirectoryViewDelegate: AnyObject {
     /// What's at work in the project: terminals and agents there, notes
     /// about its files.
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence]
+    /// A project's agents (§3.12), each a pill on its line.
+    func directoryView(_ view: DirectoryView, agentsOf project: Project) -> [ProjectAgentChip]
     /// The project's languages, as its host counts them (as GitHub does).
     func directoryView(_ view: DirectoryView, languagesOf project: Project, done: @escaping ([Linguist.Count]?) -> Void)
 }
@@ -632,6 +634,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         f.git = git?.git
         f.languages = languages
         f.presence = presence
+        f.agents = delegate?.directoryView(self, agentsOf: project) ?? []
         f.gitPending = git == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) < 5
         guard f != facts else { return }
         facts = f

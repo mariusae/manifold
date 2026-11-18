@@ -1675,6 +1675,45 @@ enum DebugControl {
             guard let wc else { return "no window" }
             wc.togglePinInWorkspace(nil)
             return "ok"
+        case "agentcommand":
+            // "agentcommand <command>": the command agents are started with (Settings').
+            guard let wc else { return "no window" }
+            var s = wc.desk.settings
+            s.agentCommand = arg
+            wc.host.setSettings(s)
+            return "agents start with \(arg)"
+        case "projectagents":
+            // "projectagents [new <root>]": each project's agents and how each
+            // stands; "new": one made in the project at that root.
+            guard let wc, let client = wc.hosts.client(wc.host.host) else { return "no window" }
+            if arg.hasPrefix("delete ") {
+                // "delete <name>": as its pill's Delete does.
+                let name = String(arg.dropFirst(7))
+                guard let id = client.desk.projects.flatMap({ $0.agents ?? [] }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }) else { return "no agent \(name)" }
+                wc.deleteBlock(id)
+                return "deleting \(name)"
+            }
+            if arg.hasPrefix("new ") {
+                let root = String(arg.dropFirst(4))
+                guard let p = client.desk.projects.first(where: { $0.root == root || $0.alias == root }) else { return "no project at \(root)" }
+                return "made " + wc.newProjectAgent(in: p, on: client).description
+            }
+            var lines: [String] = []
+            for p in client.desk.projects {
+                var each: [String] = []
+                for id in p.agents ?? [] {
+                    guard let b = wc.hosts.block(id) else { each.append("\(id.ulid.suffix(6)) (gone)"); continue }
+                    let t = b.terminal
+                    let runs: String = MainWindowController.agentRuns(b) ? "running" : "asleep"
+                    let dormant: String = t?.dormantSince != nil ? ", dormant" : ""
+                    let pid: String = t?.pid.map { String($0) } ?? "-"
+                    let status = "\(b.statusState)"
+                    let turns: Int = t?.turns?.count ?? 0
+                    each.append("\(AgentLook.name(of: b)) [\(runs)\(dormant) pid \(pid) status \(status)] turns \(turns)")
+                }
+                lines.append(p.root + ": " + each.joined(separator: "; "))
+            }
+            return lines.joined(separator: "\n")
         case "settings":
             // "settings show [pane]", "settings tint <name>", "settings close",
             // or nothing: the Settings window's state.

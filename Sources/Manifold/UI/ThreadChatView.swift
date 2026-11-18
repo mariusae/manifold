@@ -28,6 +28,8 @@ protocol ThreadChatDelegate: AnyObject {
     /// into its context), and one taken off: by their addresses.
     func threadChat(_ view: ThreadChatView, addContext addresses: [String])
     func threadChat(_ view: ThreadChatView, removeContext address: String)
+    /// A new agent made in the project its place is in (§3.12), and put in it.
+    func threadChatNewAgent(_ view: ThreadChatView)
     /// Its place (the place line, the text it was written against) clicked:
     /// gone back to, where the thread was made.
     func threadChatGoToPlace(_ view: ThreadChatView)
@@ -43,6 +45,7 @@ extension ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, asksAll: Bool) {}
     func threadChat(_ view: ThreadChatView, addContext addresses: [String]) {}
     func threadChat(_ view: ThreadChatView, removeContext address: String) {}
+    func threadChatNewAgent(_ view: ThreadChatView) {}
     func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
@@ -94,6 +97,8 @@ struct ThreadChatModel {
     /// asks them all, or only the lead.
     var participants: [AskAgent] = []
     var invitable: [AskAgent] = []
+    /// The project its place is in (§3.12), where + makes a new agent.
+    var projectName: String?
     var asksAll = false
     /// Its shelf: the agents in its conversation (the lead first) and the
     /// references kept in its context.
@@ -236,6 +241,15 @@ final class ThreadChatView: NSView {
                 item.subtitle = a.detail.isEmpty ? nil : a.detail
                 item.representedObject = a.id
                 menu.addItem(item)
+            }
+            // One of its project's own, new (§3.12): its pill on the
+            // project's line, in this conversation from now on.
+            if let name = self.model.projectName, self.model.thread != nil {
+                if menu.items.count > 1 { menu.addItem(.separator()) }
+                menu.addItem(ClosureMenuItem("New Agent in \(name)", symbol: "plus") { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.threadChatNewAgent(self)
+                })
             }
             return menu.items.count > 1 ? menu : nil
         }

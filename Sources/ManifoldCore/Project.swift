@@ -21,6 +21,10 @@ public struct Project: Codable, Equatable, Sendable {
     /// Whether its index is made again when the repository's working copy
     /// moves (a checkout, a commit, a rebase); nil, yes.
     public var reindexOnCheckout: Bool?
+    /// Its agents (§3.12): the ones that live in it, whose folder it is —
+    /// kept while it is (a root, as a space is), on screen or not, and
+    /// started again where they left off when they're wanted.
+    public var agents: [BlockID]?
 
     public init(root: String, made: Stamp) {
         self.root = root

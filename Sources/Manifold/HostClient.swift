@@ -734,6 +734,14 @@ final class HostClient {
         return id
     }
 
+    /// An agent made in a project (§3.12): kept by it, started with
+    /// nothing showing it.
+    func newProjectAgent(root: String, command: String) -> BlockID {
+        let id = BlockID(host: host)
+        propose(.newProjectAgent(block: id, root: root, command: command))
+        return id
+    }
+
     /// The block for an image or PDF at a path, made if there isn't one.
     func mediaBlock(for path: String, kind: BlockKind) -> BlockID {
         if let b = block(kind: kind, path: path) { return b.id }

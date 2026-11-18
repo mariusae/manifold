@@ -425,6 +425,8 @@ public enum Event: Codable, Equatable, Sendable {
     case project(Project)
     /// A folder no longer a project.
     case unproject(String)
+    /// An agent made one of a project's (§3.12), or no longer.
+    case projectAgent(root: String, agent: BlockID, attached: Bool)
 
     // Registry.
     /// A block gone to: the trail's next step.
@@ -1102,6 +1104,11 @@ extension DeskState {
         case let .project(p):
             if let i = projects.firstIndex(where: { $0.root == p.root }) { projects[i] = p } else { projects.append(p) }
         case let .unproject(root): projects.removeAll { $0.root == root }
+        case let .projectAgent(root, agent, attached):
+            // Its own: in one project at most.
+            for i in projects.indices { projects[i].agents?.removeAll { $0 == agent } }
+            if attached, let i = projects.firstIndex(where: { $0.root == root }) { projects[i].agents = (projects[i].agents ?? []) + [agent] }
+            for i in projects.indices where projects[i].agents?.isEmpty == true { projects[i].agents = nil }
         case let .threadSeen(marks):
             for (thread, at) in marks where threadsSeen[thread].map({ at > $0 }) ?? true { threadsSeen[thread] = at }
         default: break

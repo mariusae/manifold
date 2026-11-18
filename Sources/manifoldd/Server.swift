@@ -867,6 +867,10 @@ final class Server {
         // An image Manifold kept for a note goes with its block.
         if b.kind == .image, let path = b.path, path.hasPrefix(Self.imagesFolder + "/") { try? FileManager.default.removeItem(atPath: path) }
         for l in node.links(host).links where l.from == block || l.to == block { append(.unlink(l.id), to: .links(host)) }
+        // A project's agent: no longer its.
+        for p in node.desk(host).projects where p.agents?.contains(block) == true {
+            append(.projectAgent(root: p.root, agent: block, attached: false), to: .desk(host))
+        }
         node.remove(.block(block))
         store.delete(.block(block))
         let entry = node.registry(host).blocks[block]
@@ -1030,6 +1034,10 @@ final class Server {
         case let .newAgent(block, cwd, command):
             if ensure(block, kind: .agent, cwd: cwd) {
                 append(.command(command), to: .block(block))
+                // What it's started again with: its command less the first
+                // prompt it was given (a quoted word at its end).
+                let base = command.replacingOccurrences(of: #" '(?:[^']|'\\'')*'$"#, with: "", options: .regularExpression)
+                append(.annotate([Self.agentCommandKey: base]), to: .block(block))
                 // Its repository as it starts, to show what it changed since.
                 if let cwd, let (root, vcs) = git.repository(of: cwd), vcs == .git {
                     git.snapshotTree(root) { [weak self] tree in
@@ -1338,12 +1346,21 @@ final class Server {
             // A terminal not shown since its shell ended (dormant, or before
             // this server started): its shell started, as attaching would,
             // at its last size; an attachment later takes it up.
-            if sessions[block] == nil, let b = node.block(block), b.kind == .terminal, let state = b.terminal {
-                let size = lastSizes[block] ?? (80, 24)
-                _ = startSession(block, state, cols: size.cols, rows: size.rows, env: attachedEnv ?? Session.unattachedEnvironment)
+            // An agent's started again too — where it left off, if it can
+            // be (`resumeCommand`) — what's typed held till it says it's
+            // ready (its first hook), as it would be lost while it starts.
+            if sessions[block] == nil, let b = node.block(block), b.kind == .terminal || b.kind == .agent, let state = b.terminal {
+                let size = lastSizes[block] ?? (b.kind == .agent ? (100, 32) : (80, 24))
+                if startSession(block, state, cols: size.cols, rows: size.rows, env: attachedEnv ?? Session.unattachedEnvironment) != nil, b.kind == .agent {
+                    holdInput(for: block)
+                }
             }
             guard let session = sessions[block] else { return done("that terminal has no shell running") }
-            session.type(text)
+            if heldInput[block] != nil {
+                heldInput[block]?.append(text)
+            } else {
+                session.type(text)
+            }
             done()
         case let .languageServers(configs):
             // The desk's table, with this host's own settings over it.
@@ -1388,6 +1405,9 @@ final class Server {
             p.alias = Self.alias(of: full)
             let old = node.desk(host).projects.first { $0.root == full }
             p.made = old?.made ?? clock.now()
+            // Its agents are the host's to keep (`projectAgent`), not a
+            // client's restating of the rest to undo.
+            p.agents = old?.agents
             if old != p { append(.project(p), to: .desk(host)) }
             // A new one indexed at once, if its language has an indexer;
             // one whose indexer changed, again.
@@ -1398,6 +1418,26 @@ final class Server {
             done()
         case let .unproject(root):
             if node.desk(host).projects.contains(where: { $0.root == root }) { append(.unproject(root), to: .desk(host)) }
+            done()
+        case let .newProjectAgent(block, root, command):
+            // A project's agent (§3.12): in its folder, kept by it, started at
+            // once with nothing showing it — a tile attaches to it if asked.
+            guard let p = node.desk(host).projects.first(where: { $0.root == root }) else { return done("\(root) isn't a project here") }
+            if ensure(block, kind: .agent, cwd: p.root) {
+                append(.command(command), to: .block(block))
+                append(.annotate([Self.agentCommandKey: command]), to: .block(block))
+            }
+            append(.projectAgent(root: p.root, agent: block, attached: true), to: .desk(host))
+            if sessions[block] == nil, let state = node.block(block)?.terminal,
+               startSession(block, state, cols: 100, rows: 32, env: attachedEnv ?? Session.unattachedEnvironment) != nil {
+                // What's typed to it held till it's ready (its first hook).
+                holdInput(for: block)
+            }
+            done()
+        case let .projectAgent(root, agent, attached):
+            guard node.block(agent)?.kind == .agent || node.block(agent)?.kind == .terminal else { return done("not an agent") }
+            guard !attached || node.desk(host).projects.contains(where: { $0.root == root }) else { return done("\(root) isn't a project here") }
+            append(.projectAgent(root: root, agent: agent, attached: attached), to: .desk(host))
             done()
         case let .smartlog(block, path):
             // The repository holding the path.
@@ -2090,8 +2130,11 @@ final class Server {
         if let since = state.dormantSince, !history.isEmpty {
             history.append(Session.seam(idle: state.dormantAfter ?? 0, since: since.date))
         }
+        // An agent that ran before: taken up where it left off, not begun
+        // again (its first prompt run twice).
+        let command = node.block(id).flatMap(resumeCommand) ?? state.command
         guard let s = Session(id: id, cwd: state.cwd, cols: cols, rows: rows,
-                              env: env, history: history, command: state.command,
+                              env: env, history: history, command: command,
                               shell: node.desk(host).preferences.shell, queue: queue) else { return nil }
         s.exitedWhat = Self.exitedWhat(state)
         s.onExit = { [weak self] status in self?.sessionExited(id, status: status) }
@@ -2108,6 +2151,53 @@ final class Server {
         sessions[id] = s
         append(.shell(.started(pid: s.pid)), to: .block(id))
         return s
+    }
+
+    /// The annotation that keeps the command an agent was made with,
+    /// without a first prompt: what it's started again with.
+    static let agentCommandKey = "agent.command"
+
+    /// What's typed into an agent while it starts: held, typed once it
+    /// says it's ready (its first hook). Not ready a while on, it's likely
+    /// asking something before it starts (to trust its folder), where
+    /// what's typed would answer it — a Return there is "No, exit" — so
+    /// it's kept, and the agent said to wait on you: shown, answered, it
+    /// starts, and gets it.
+    private var heldInput: [BlockID: [String]] = [:]
+
+    private func holdInput(for block: BlockID) {
+        log("agent \(block): started, what's typed to it held till it's ready")
+        heldInput[block] = []
+        queue.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.heldInput[block] != nil, self.sessions[block] != nil else { return }
+            self.append(.status(id: rootStatusID, StatusRecord(state: .blocked, kind: .question, app: "claude",
+                                                                     msg: "Hasn't started: it may be asking something — show it to answer", at: self.clock.now())),
+                        to: .block(block))
+        }
+    }
+
+    private func releaseInput(for block: BlockID) {
+        guard let held = heldInput.removeValue(forKey: block), let session = sessions[block] else { return }
+        log("agent \(block): ready, \(held.count) held typed")
+        // A moment for its prompt to take keys.
+        queue.asyncAfter(deadline: .now() + 0.5) {
+            for (i, text) in held.enumerated() {
+                self.queue.asyncAfter(deadline: .now() + 0.3 * Double(i)) { session.type(text) }
+            }
+        }
+    }
+
+    /// The command an agent that ran before is started again with, to go
+    /// on where it left off: Claude Code's `--resume`, with the session its
+    /// last turn was in (its transcript's name). Nil for one that never
+    /// took a turn, or an agent that can't be resumed so.
+    private func resumeCommand(_ b: Block) -> String? {
+        guard b.kind == .agent, let t = b.terminal, let path = t.turns?.last(where: { $0.transcript != nil })?.transcript else { return nil }
+        let session = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        guard UUID(uuidString: session) != nil else { return nil }
+        let base = b.annotations?[Self.agentCommandKey] ?? AgentCatalog.agent(inCommand: t.command ?? "")?.command
+        guard let base, AgentCatalog.agent(inCommand: base)?.command == "claude" else { return nil }
+        return base + " --resume " + session
     }
 
     // MARK: Forwarded ports (§8)
@@ -2336,8 +2426,14 @@ final class Server {
     private func nameAgent(_ b: Block) {
         guard AgentIdentity.color(of: b) == nil || AgentIdentity.name(of: b) == nil else { return }
         var taken = AgentIdentity.Taken()
-        for o in node.blocks where o.id != b.id && sessions[o.id] != nil {
-            if let c = AgentIdentity.color(of: o) { taken.colors.append(c) }
+        // Those at work, and every project's own (§3.12), asleep or not —
+        // a project's above all: its agents side by side on its strip are
+        // told apart first, a colour one of them has the last given another.
+        let projects = node.desk(host).projects
+        let kept = Set(projects.flatMap { $0.agents ?? [] })
+        let siblings = Set(projects.first { $0.agents?.contains(b.id) == true }?.agents ?? [])
+        for o in node.blocks where o.id != b.id && (sessions[o.id] != nil || kept.contains(o.id)) {
+            if let c = AgentIdentity.color(of: o) { taken.colors += Array(repeating: c, count: siblings.contains(o.id) ? 100 : 1) }
             if let n = AgentIdentity.name(of: o) { taken.names.insert(n) }
         }
         let seed = b.id.ulid.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
@@ -2372,6 +2468,7 @@ final class Server {
         switch event {
         case .started:
             status(.idle, msg: nil)
+            releaseInput(for: block)
         case let .prompt(agent, text, transcript):
             endTurn()
             finishTurns(block, message: nil, transcript: nil)
@@ -2696,6 +2793,12 @@ final class Server {
         if !node.has(.registry(host)) { append(.seen([], at: clock.now()), to: .registry(host)) }
         for block in node.blocks(of: .text) { watch(block) }
         for shard in node.shards.keys { shardChanged(shard) }
+        // Agents whose process went with the last server: asleep, not
+        // seeming to run — asked, or shown, each is started again where it
+        // left off (`resumeCommand`).
+        for b in node.blocks(of: .agent) where b.id.host == host && b.terminal?.pid != nil {
+            append(.shell(.dormant(idleSeconds: 0)), to: .block(b.id))
+        }
     }
 
     /// When the host last looked for agents, so a burst of asking looks once.

@@ -12,6 +12,9 @@ extension MainWindowController {
         var agent: BlockID
         var threads: [BlockID]
         var prompt: String
+        /// When it was asked: one to an agent not here yet (just made, the
+        /// host's word on the way) waits a while for it.
+        var made = Date()
     }
 
     static let asksInARow = 3
@@ -31,6 +34,36 @@ extension MainWindowController {
         guard let running = t.commands?.last(where: { !turns.contains($0.id) }), running.isRunning,
               let program = CommandProgram.program(in: running.text) else { return false }
         return program == a.command || (program as NSString).lastPathComponent == a.command
+    }
+
+    // MARK: A project's agents (§3.12)
+
+    /// The project an agent lives in, if it's one's.
+    func project(holding agent: BlockID) -> Project? {
+        hosts.client(agent.host)?.desk.projects.first { $0.agents?.contains(agent) == true }
+    }
+
+    /// The project a block is in, as its host has it.
+    func project(of block: BlockID) -> Project? {
+        guard let c = hosts.client(block.host), let root = c.node.graph.project(of: block) else { return nil }
+        return c.desk.projects.first { $0.root == root }
+    }
+
+    /// The project a thread's about: its place's.
+    func project(ofThread t: Block) -> Project? {
+        t.thread?.about.flatMap { project(of: $0.block) }
+    }
+
+    /// A project's agents, as blocks here.
+    func agents(of project: Project, on host: HostID) -> [Block] {
+        (project.agents ?? []).filter { $0.host == host }.compactMap { hosts.block($0) }
+    }
+
+    /// Whether an agent can be asked: it's running, or it's a project's —
+    /// asleep, it's started again where it left off (the host holds what's
+    /// typed till it's ready).
+    func askable(_ b: Block) -> Bool {
+        Self.agentRuns(b) || (b.agent != nil && project(holding: b.id) != nil)
     }
 
     /// A comment written in a thread (by you, or an agent through mani):
@@ -65,7 +98,7 @@ extension MainWindowController {
         }
         for word in ThreadText.tags(in: comment) {
             guard let kind = Self.agentKind(word, usual: desk.settings.agentCommand) else { continue }
-            let mine = parts.first { hosts.block($0)?.agent?.command == kind.command && hosts.block($0).map(Self.agentRuns) == true }
+            let mine = parts.first { hosts.block($0)?.agent?.command == kind.command && hosts.block($0).map(askable) == true }
             if let a = mine ?? agentFor(kind, near: th), a != author.agentBlock {
                 if !asked.contains(a) { asked.append(a) }
             } else if author.isYou {
@@ -85,7 +118,7 @@ extension MainWindowController {
         // With agents on its shelf, a comment that names no one asks the lead
         // (§3.12) — whether or not the thread was made asking.
         if author.isYou, asked.isEmpty, starting.isEmpty, !parts.isEmpty || asksAgent(of: t) != nil {
-            let working = parts.filter { hosts.block($0).map(Self.agentRuns) == true }
+            let working = parts.filter { hosts.block($0).map(askable) == true }
             if !working.isEmpty {
                 asked = asksAll(t) ? working : [working[0]]
             } else if let kind = asksAgent(of: t) ?? parts.compactMap({ hosts.block($0)?.agent }).first {
@@ -124,6 +157,11 @@ extension MainWindowController {
     /// An agent of a kind to ask about a thread: one running in the
     /// thread's space, else in the project of what it's about, else any.
     private func agentFor(_ kind: AgentCatalog.Agent, near th: ThreadState) -> BlockID? {
+        // The project's own, of its place (§3.12), the last talked to first.
+        if let about = th.about?.block, let p = project(of: about) {
+            let own = agents(of: p, on: about.host).filter { $0.agent?.command == kind.command }
+            if let b = own.max(by: { AgentRecency.when($0.id) < AgentRecency.when($1.id) }) { return b.id }
+        }
         let running = hosts.blocks.filter { b in
             guard let a = b.agent, a.command == kind.command, Self.agentRuns(b), b.terminal?.dormantSince == nil else { return false }
             return true
@@ -269,9 +307,11 @@ extension MainWindowController {
     /// prompt still settling from the turn before, the Return taken into
     /// the paste — is given Return again, twice at most; still not started,
     /// it's said (and in `threads`): what was typed is waiting in its prompt.
-    func say(_ text: String, to agent: BlockID, threads: [BlockID] = []) {
+    /// `waking`: an agent asleep, which the host starts again and types
+    /// to once it's ready — no Return again, no saying it didn't take it.
+    func say(_ text: String, to agent: BlockID, threads: [BlockID] = [], waking: Bool = false) {
         hosts.propose(.input(block: agent, text: text))
-        let reports = hosts.block(agent)?.statusRecord != nil
+        let reports = hosts.block(agent)?.statusRecord != nil && !waking
         let landed = 0.3 + min(0.7, Double(text.count) / 2000)
         DispatchQueue.main.asyncAfter(deadline: .now() + landed) { [weak self] in
             guard let self else { return }
@@ -321,10 +361,15 @@ extension MainWindowController {
         var waiting: [PendingAsk] = []
         var byAgent: [BlockID: [PendingAsk]] = [:]
         for a in threadUI.asks {
-            // Typed only into the agent itself: not into a shell it's left.
-            guard let b = hosts.block(a.agent), Self.agentRuns(b) else { continue }
+            // Typed only into the agent itself: not into a shell it's left —
+            // or a project's asleep, which the host starts again for it.
+            guard let b = hosts.block(a.agent) else {
+                if Date().timeIntervalSince(a.made) < 30 { waiting.append(a) }
+                continue
+            }
+            guard askable(b) else { continue }
             let state = b.statusState
-            if state == .working || state == .blocked { waiting.append(a); continue }
+            if Self.agentRuns(b), state == .working || state == .blocked { waiting.append(a); continue }
             byAgent[a.agent, default: []].append(a)
         }
         threadUI.asks = waiting
@@ -337,7 +382,8 @@ extension MainWindowController {
             let named = hosts.block(agent).flatMap(AgentIdentity.name(of:))
             let name = named ?? hosts.block(agent)?.agent?.name ?? "The agent"
             let who = named.map { "(You are \($0) in these threads.) " } ?? ""
-            say(who + text, to: agent, threads: Array(Set(asks.flatMap(\.threads))))
+            let waking = hosts.block(agent).map(Self.agentRuns) == false
+            say(who + text, to: agent, threads: Array(Set(asks.flatMap(\.threads))), waking: waking)
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }
         }
     }
@@ -349,6 +395,22 @@ extension MainWindowController {
         let about = th.about.flatMap { hosts.block($0.block) }
         let host = about?.id.host ?? t.id.host
         guard let client = hosts.client(host) else { return }
+        // In a project: one of its own (§3.12), started with nothing showing
+        // it — its pill on the project's line — and asked once it's ready.
+        if let about, let p = project(of: about.id), about.id.host == host {
+            let usual = desk.settings.agentCommand
+            let command = AgentCatalog.agent(inCommand: usual)?.command == kind.command ? usual : kind.command
+            let agent = client.newProjectAgent(root: p.root, command: command)
+            var parts = participants(of: t)
+            if !parts.contains(agent) {
+                if parts.contains(where: { hosts.block($0).map(askable) == true }) { parts.append(agent) } else { parts.insert(agent, at: 0) }
+                setParticipants(parts, of: t.id)
+            }
+            threadUI.asks.append(PendingAsk(agent: agent, threads: [t.id], prompt: prompt))
+            // Once its block's here (the host made it): asked.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.deliverAsks() }
+            return
+        }
         let cwd = about.flatMap { b -> String? in
             if let g = hosts.client(b.id.host)?.node.graph, let root = g.project(of: b.id) { return root }
             return b.place
