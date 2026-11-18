@@ -13,12 +13,41 @@ struct SummaryCardContent {
     /// Its status by its title (`StatusMark`): the title shimmering while
     /// it works, a pill when it needs you.
     var mark: StatusMark? = nil
+    /// An agent's name, in a pill of its colour before its title (§3.12),
+    /// as its tile's bar has it.
+    var agent: AgentTag? = nil
+
+    struct AgentTag: Equatable {
+        var name: String
+        var color: NSColor
+        var ink: NSColor
+
+        init?(_ block: Block?) {
+            guard let block, let color = AgentLook.color(of: block) else { return nil }
+            name = AgentLook.name(of: block)
+            self.color = color
+            ink = AgentLook.ink(on: block)
+        }
+
+        static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        var width: CGFloat { ceil((name as NSString).size(withAttributes: [.font: Self.font]).width) + 14 }
+
+        /// The pill, its name in the middle (by its capitals), in `r` (flipped).
+        func draw(in r: NSRect) {
+            color.setFill()
+            NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+            let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: ink]
+            let w = (name as NSString).size(withAttributes: attrs).width
+            let f = Self.font
+            (name as NSString).draw(at: NSPoint(x: (r.midX - w / 2).rounded(), y: (r.midY + f.capHeight / 2 - f.ascender).rounded()), withAttributes: attrs)
+        }
+    }
 
     /// Whether a card drawn from `other` would look different from this
     /// one in a note: its summary, its symbol, a picture come or gone.
     func differs(from other: SummaryCardContent?) -> Bool {
         guard let other else { return true }
-        return other.summary != summary || other.symbol != symbol || (other.thumbnail == nil) != (thumbnail == nil)
+        return other.summary != summary || other.symbol != symbol || (other.thumbnail == nil) != (thumbnail == nil) || other.agent != agent
     }
 }
 
@@ -172,6 +201,7 @@ final class SummaryCard: NSView {
             let ink = content.mark.map { $0.pill != nil || $0.shimmer } == true ? Theme.secondaryText : toneColor(s.tone)
             NSAttributedString(string: note, attributes: [.font: UIType.detail, .foregroundColor: ink]).draw(at: at)
         }
+        if let tag = content.agent, let r = head.agent { tag.draw(in: r) }
         if !head.shimmers { head.title.draw(with: head.titleRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin]) }
         let x = head.titleRect.minX
         // Its lines, under the title, set in from the symbol.
@@ -183,10 +213,16 @@ final class SummaryCard: NSView {
     /// status's, the note — for drawing, and for the title's own view
     /// while it shimmers.
     private func headline(card: NSRect, right: CGFloat)
-        -> (title: NSAttributedString, titleRect: NSRect, age: NSRect?, pill: NSRect?, note: NSPoint?, noteText: String?, shimmers: Bool) {
+        -> (title: NSAttributedString, titleRect: NSRect, age: NSRect?, pill: NSRect?, note: NSPoint?, noteText: String?, shimmers: Bool, agent: NSRect?) {
         let s = content.summary
         let pad: CGFloat = 12, top = card.minY + 10
-        let x = card.minX + pad + (Theme.symbol(content.symbol, size: UIType.symbolSize, weight: .medium) == nil ? 0 : 22)
+        var x = card.minX + pad + (Theme.symbol(content.symbol, size: UIType.symbolSize, weight: .medium) == nil ? 0 : 22)
+        // An agent's name first, in its pill.
+        var agent: NSRect?
+        if let tag = content.agent {
+            agent = NSRect(x: x - 2, y: top + 1, width: tag.width, height: 16)
+            x = agent!.maxX + 6
+        }
         var titleRight = right
         var age: NSRect?, pill: NSRect?, note: NSPoint?
         if let a = content.age {
@@ -214,7 +250,7 @@ final class SummaryCard: NSView {
         let rect = NSRect(x: x, y: top, width: max(0, titleRight - x), height: 18)
         // Shimmering only on screen: a card painted into a picture (a
         // pill's, a link's) draws its title as ever.
-        return (title, rect, age, pill, note, noteText, content.mark?.shimmer == true && !inTile && window != nil)
+        return (title, rect, age, pill, note, noteText, content.mark?.shimmer == true && !inTile && window != nil, agent)
     }
 
     /// The picture's room at the right, as `draw` leaves it.

@@ -85,6 +85,7 @@ struct Presence: Equatable {
     static func == (a: Presence, b: Presence) -> Bool {
         a.block == b.block && a.title == b.title && a.symbol == b.symbol && a.detail == b.detail && a.here == b.here
             && a.card?.summary == b.card?.summary && a.card?.mark == b.card?.mark && a.card?.symbol == b.card?.symbol
+            && a.card?.agent == b.card?.agent
     }
 }
 

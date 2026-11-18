@@ -32,6 +32,7 @@ extension MainWindowController: GridDelegate {
         }
         var c = SummaryCardContent(id: "", symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
         c.mark = StatusMark(of: b)
+        c.agent = .init(b)
         return c
     }
 
@@ -61,11 +62,13 @@ extension MainWindowController: GridDelegate {
         }
         var c = SummaryCardContent(id: id, symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
         c.mark = StatusMark(of: b)
+        c.agent = .init(b)
         // An $EDITOR's tile as its terminal, editing.
         if let t = stackedTerminal(id) {
             c.symbol = Theme.symbolName(for: t)
             c.summary.title = t.displayTitle
             c.mark?.pill = .note("Editing")
+            c.agent = .init(t)
         }
         return c
     }

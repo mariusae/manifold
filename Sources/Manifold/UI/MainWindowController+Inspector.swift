@@ -799,7 +799,8 @@ extension MainWindowController {
             if let t = stackedTerminal(p.id) {
                 n.title = t.displayTitle
                 n.symbol = Theme.symbolName(for: t)
-                n.image = nil
+                // An agent's its face still, as when it isn't editing.
+                n.image = AgentLook.face(of: t, size: 13)
                 n.pill = .note("Editing")
                 n.badge = "doc.fill"
                 n.trailing = nil
