@@ -189,6 +189,24 @@ enum NavJumps {
 
 /// A button a view puts on its tile's bar: its symbol, what it says when
 /// pointed at, whether it can be pressed now, and what it does.
+/// A note's tile turned between prose (its editor) and an outline, from
+/// the button on its bar (§7.9) — the window knows the tile.
+enum OutlineToggle {
+    /// Whether a block's tile has the button: a note.
+    static var offered: ((BlockID) -> Bool)?
+    /// The tile showing this view turned.
+    static var run: ((NSView) -> Void)?
+
+    /// The button, for a view of `block`: to an outline, or to prose.
+    static func button(for block: BlockID, in view: NSView, outline: Bool) -> [BarButton] {
+        guard offered?(block) == true else { return [] }
+        return [BarButton(symbol: outline ? "text.alignleft" : "list.bullet.indent",
+                          tooltip: outline ? "Edit as Prose (⌥⌘↩)" : "Edit as Outline (⌥⌘↩)", enabled: true) { [weak view] in
+            if let view { run?(view) }
+        }]
+    }
+}
+
 struct BarButton: Equatable {
     let symbol: String
     let tooltip: String

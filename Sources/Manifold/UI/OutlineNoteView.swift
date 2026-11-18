@@ -60,6 +60,9 @@ final class OutlineNoteView: NSView, PaneContent {
     }()
 
     /// Its folds, in the tile's menu.
+    /// A note's: back to prose.
+    var barButtons: [BarButton] { OutlineToggle.button(for: block, in: self, outline: true) }
+
     var pillItems: [NSMenuItem] {
         [ClosureMenuItem("Collapse All", symbol: "arrow.down.right.and.arrow.up.left") { [weak self] in _ = self?.outliner.run(.foldAll) },
          ClosureMenuItem("Expand All", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in _ = self?.outliner.run(.unfoldAll) },

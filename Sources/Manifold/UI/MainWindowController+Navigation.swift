@@ -205,6 +205,11 @@ extension MainWindowController {
         // A reference rested on (a pill, a card over the composer): its block's card.
         ReferenceCards.show = { [weak self] id, rect, window in self?.showBlockCard(id, beside: rect, in: window) }
         ReferenceCards.hide = { HoverCard.shared.hide() }
+        OutlineToggle.offered = { [weak self] id in self?.hosts.block(id)?.isNote == true }
+        OutlineToggle.run = { [weak self] view in
+            guard let self, let id = self.views.first(where: { ($0.value as AnyObject) === view })?.key else { return }
+            self.toggleOutliner(tile: id)
+        }
         ReferenceCards.showAddress = { [weak self] address, rect, window in
             guard let self else { return }
             var id: BlockID?

@@ -803,6 +803,9 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
     /// The font switched from the pill's menu: this tile's, kept with its view state.
     var onToggleFont: ((EditorFont) -> Void)?
 
+    /// A note's: to an outline (§7.9).
+    var barButtons: [BarButton] { OutlineToggle.button(for: block, in: self, outline: false) }
+
     var pillItems: [NSMenuItem] {
         var items: [NSMenuItem] = []
         if isMarkdownOutline {

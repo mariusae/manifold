@@ -2148,7 +2148,8 @@ nothing asks first, but the widget's tooltip says what it runs.
 ### 7.9 Outline
 
 A note — any Markdown text — as an outline (the `outliner` lens, ⌥⌘↩
-from its editor or preview, and back): Weft's outliner, after Bike 2,
+from its editor or preview, and back; a note's bar has a button for it at
+its right, ☰ to the outline, ≡ back to prose): Weft's outliner, after Bike 2,
 ported from prism into Manifold's own Swift — no prism, no Rust.
 
 **The engine** (`ManifoldCore/Outliner`, `Markup.*` behind `NoteEditor`)
