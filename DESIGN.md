@@ -379,10 +379,17 @@ a place in a project asks the project's agents first — they lead a new
 thread there — so the nearest project says who answers. An agent whose
 process has ended — it exited, the host restarted (agents still marked
 running then are made dormant), it lay idle — is asleep, not gone:
-asked, or shown, the host starts it again where it left off (Claude
-Code's `--resume`, with the session of its last turn, from its
-transcript's name; its command as made, kept as `agent.command`, less
-the first prompt an agent started with was given), holding what's typed
+asked, or shown, the host starts it again where it left off. Its
+conversation is named by Manifold: an agent that takes a name (Claude
+Code) is started under an id Manifold makes (`--session-id`), kept on
+its block (`AgentSessions`, `agent.session`) — the key from the block to
+the conversation — and taken up again by it (`--resume`, which keeps
+it); a turn in another session (after `/clear`, as its transcript's
+name says) moves the block to that one; one from before sessions were
+named resumes its last turn's; one that never took a turn starts under
+its id again. Its command as made is kept as `agent.command`, less the
+first prompt an agent started with was given. Agents that take no name
+start fresh. The host holds what's typed
 to it till its first hook says it's ready — and, not ready after a
 while (asking to trust its folder, where a Return is "No, exit"), it's
 said to wait on you rather than typed into. Its pill isn't in the

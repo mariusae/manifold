@@ -188,6 +188,44 @@ public enum AgentCatalog {
     }
 }
 
+/// An agent's conversation, named by Manifold (§3.12): the id it's
+/// started under, kept on its block (`agent.session`) — the key from the
+/// block to the conversation — and resumed by. Claude Code takes one
+/// (`--session-id <uuid>`, then `--resume <uuid>`, which keeps it); it
+/// moves to another on `/clear`, which its hooks say (each turn's
+/// transcript is named by its session), and the block follows. Agents
+/// that can't be told an id start fresh, as before.
+public enum AgentSessions {
+    /// The annotation holding the session's id.
+    public static let key = "agent.session"
+
+    /// Whether an agent's command can be started under an id of ours.
+    public static func names(_ command: String) -> Bool {
+        AgentCatalog.agent(inCommand: command)?.command == "claude"
+    }
+
+    /// A new id for a conversation.
+    public static func newID() -> String { UUID().uuidString.lowercased() }
+
+    /// Its command, started under `id`: the flag after the program and
+    /// what's given it, before `rest` (a first prompt).
+    public static func start(_ base: String, id: String, rest: String = "") -> String {
+        base + " --session-id " + id + rest
+    }
+
+    /// Its command, taking `id` up again.
+    public static func resume(_ base: String, id: String) -> String {
+        base + " --resume " + id
+    }
+
+    /// The session a turn's transcript is of (Claude Code's are named by it).
+    public static func id(fromTranscript path: String?) -> String? {
+        guard let path else { return nil }
+        let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        return UUID(uuidString: name) != nil ? name.lowercased() : nil
+    }
+}
+
 /// A host's own preferences, kept in its desk: every Mac attached to it
 /// sees and sets the same ones, and its server acts on them.
 public struct HostPreferences: Codable, Equatable, Sendable {

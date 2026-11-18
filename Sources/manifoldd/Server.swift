@@ -1033,11 +1033,19 @@ final class Server {
             done()
         case let .newAgent(block, cwd, command):
             if ensure(block, kind: .agent, cwd: cwd) {
-                append(.command(command), to: .block(block))
                 // What it's started again with: its command less the first
-                // prompt it was given (a quoted word at its end).
+                // prompt it was given (a quoted word at its end); its
+                // conversation named by us, if it takes a name.
                 let base = command.replacingOccurrences(of: #" '(?:[^']|'\\'')*'$"#, with: "", options: .regularExpression)
-                append(.annotate([Self.agentCommandKey: base]), to: .block(block))
+                var marks = [Self.agentCommandKey: base]
+                var run = command
+                if AgentSessions.names(base) {
+                    let id = AgentSessions.newID()
+                    run = AgentSessions.start(base, id: id, rest: String(command.dropFirst(base.count)))
+                    marks[AgentSessions.key] = id
+                }
+                append(.command(run), to: .block(block))
+                append(.annotate(marks), to: .block(block))
                 // Its repository as it starts, to show what it changed since.
                 if let cwd, let (root, vcs) = git.repository(of: cwd), vcs == .git {
                     git.snapshotTree(root) { [weak self] tree in
@@ -1424,8 +1432,15 @@ final class Server {
             // once with nothing showing it — a tile attaches to it if asked.
             guard let p = node.desk(host).projects.first(where: { $0.root == root }) else { return done("\(root) isn't a project here") }
             if ensure(block, kind: .agent, cwd: p.root) {
-                append(.command(command), to: .block(block))
-                append(.annotate([Self.agentCommandKey: command]), to: .block(block))
+                var marks = [Self.agentCommandKey: command]
+                var run = command
+                if AgentSessions.names(command) {
+                    let id = AgentSessions.newID()
+                    run = AgentSessions.start(command, id: id)
+                    marks[AgentSessions.key] = id
+                }
+                append(.command(run), to: .block(block))
+                append(.annotate(marks), to: .block(block))
             }
             append(.projectAgent(root: p.root, agent: block, attached: true), to: .desk(host))
             if sessions[block] == nil, let state = node.block(block)?.terminal,
@@ -2188,16 +2203,27 @@ final class Server {
     }
 
     /// The command an agent that ran before is started again with, to go
-    /// on where it left off: Claude Code's `--resume`, with the session its
-    /// last turn was in (its transcript's name). Nil for one that never
-    /// took a turn, or an agent that can't be resumed so.
+    /// on where it left off: Claude Code's `--resume`, with its session
+    /// (`agent.session`, ours from the start; else, one from before
+    /// sessions were named, its last turn's). Nil — its command as made,
+    /// under the id it was given — while that session has had no turn
+    /// (no conversation yet to take up), or for an agent that can't be
+    /// resumed so.
     private func resumeCommand(_ b: Block) -> String? {
-        guard b.kind == .agent, let t = b.terminal, let path = t.turns?.last(where: { $0.transcript != nil })?.transcript else { return nil }
-        let session = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-        guard UUID(uuidString: session) != nil else { return nil }
+        guard b.kind == .agent, let t = b.terminal else { return nil }
         let base = b.annotations?[Self.agentCommandKey] ?? AgentCatalog.agent(inCommand: t.command ?? "")?.command
-        guard let base, AgentCatalog.agent(inCommand: base)?.command == "claude" else { return nil }
-        return base + " --resume " + session
+        guard let base, AgentSessions.names(base) else { return nil }
+        let turns = (t.turns ?? []).compactMap { AgentSessions.id(fromTranscript: $0.transcript) }
+        guard let id = b.annotations?[AgentSessions.key] ?? turns.last, turns.contains(id) else { return nil }
+        return AgentSessions.resume(base, id: id)
+    }
+
+    /// An agent's turn said which session it's in: its block follows it
+    /// there (Claude Code's `/clear` starts another).
+    private func followSession(_ block: BlockID, transcript: String?) {
+        guard let id = AgentSessions.id(fromTranscript: transcript), let b = node.block(block), b.kind == .agent,
+              b.annotations?[AgentSessions.key] != id else { return }
+        append(.annotate([AgentSessions.key: id]), to: .block(block))
     }
 
     // MARK: Forwarded ports (§8)
@@ -2470,6 +2496,7 @@ final class Server {
             status(.idle, msg: nil)
             releaseInput(for: block)
         case let .prompt(agent, text, transcript):
+            followSession(block, transcript: transcript)
             endTurn()
             finishTurns(block, message: nil, transcript: nil)
             if let mark = line(text) {
@@ -2485,6 +2512,7 @@ final class Server {
             if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
             if case let .wrote(agent, path) = event { agentWrote(path, by: block, agent: agent) }
         case let .finished(_, message, transcript):
+            followSession(block, transcript: transcript)
             endTurn()
             finishTurns(block, message: message, transcript: transcript)
             status(.done, msg: line(message))
