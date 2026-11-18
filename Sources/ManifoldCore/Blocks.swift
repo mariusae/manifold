@@ -1204,6 +1204,11 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         s = s.replacingOccurrences(of: #"\[([^\]]*)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: #"(\*\*|__|`)"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"^\s*(#+|>|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
+        // What's written to be kept as it is, as itself: a space or a tab at
+        // a line's end written as its reference (`&#32;`, as the outline
+        // writes one), a character escaped (`\*`).
+        s = s.replacingOccurrences(of: "&#32;", with: " ").replacingOccurrences(of: "&#9;", with: "\t")
+        s = s.replacingOccurrences(of: #"\\([!-/:-@\[-`{-~])"#, with: "$1", options: .regularExpression)
         return s.trimmingCharacters(in: .whitespaces)
     }
 
