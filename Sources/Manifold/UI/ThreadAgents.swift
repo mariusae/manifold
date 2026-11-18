@@ -315,25 +315,28 @@ extension MainWindowController {
         let landed = 0.3 + min(0.7, Double(text.count) / 2000)
         DispatchQueue.main.asyncAfter(deadline: .now() + landed) { [weak self] in
             guard let self else { return }
-            // How it stood as Return went: a report after it, a new one.
+            // How it stood as Return went: a report after it, a new one; a
+            // turn more, taken.
             let before = self.hosts.block(agent)?.statusRecord
+            let turns = self.hosts.block(agent)?.terminal?.turns?.count ?? 0
             self.hosts.propose(.input(block: agent, text: "\r"))
             guard reports else { return }
-            self.pressAgain(agent, since: before, tries: 2, threads: threads)
+            self.pressAgain(agent, since: before, turns: turns, tries: 2, threads: threads)
         }
     }
 
     /// Return again if the agent hasn't said it's started since it said
     /// `since` (its report then; another host's clock isn't this Mac's);
     /// out of tries and still not, the send failed — said.
-    private func pressAgain(_ agent: BlockID, since: StatusRecord?, tries: Int, threads: [BlockID]) {
+    private func pressAgain(_ agent: BlockID, since: StatusRecord?, turns: Int, tries: Int, threads: [BlockID]) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, let b = self.hosts.block(agent), Self.agentRuns(b), let r = b.statusRecord else { return }
-            // Begun (or asking something) since: taken.
-            if r != since, r.state == .working || r.state == .blocked { return }
+            // Begun since — a turn more, or a report other than idle (working,
+            // asking something, or done already, a quick one): taken.
+            if (b.terminal?.turns?.count ?? 0) > turns || (r != since && r.state != .idle) { return }
             guard tries > 0 else { return self.notTaken(agent, threads: threads) }
             self.hosts.propose(.input(block: agent, text: "\r"))
-            self.pressAgain(agent, since: since, tries: tries - 1, threads: threads)
+            self.pressAgain(agent, since: since, turns: turns, tries: tries - 1, threads: threads)
         }
     }
 

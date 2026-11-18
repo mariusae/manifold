@@ -148,6 +148,13 @@ final class Session {
         self.master = master
         self.queue = queue
         self.size = (cols, rows)
+        // An agent's command shows no shell prompt to wait for: what's typed
+        // to it goes at once, each piece as it comes. Held for a prompt, an
+        // ask and the Returns after it were written as one — taken by the
+        // agent (Claude Code) for a paste, the Returns lines in it
+        // ("[Pasted text #1 +3 lines]"), never sent. (Typed to one still
+        // starting, the host holds it till it's ready: `holdInput`.)
+        prompted = command != nil
         readSource = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
         exitWatch = ProcessWatch(pid: pid, queue: queue)
         readSource.setEventHandler { [weak self] in self?.readOutput() }
