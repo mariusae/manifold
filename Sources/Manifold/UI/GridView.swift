@@ -634,6 +634,18 @@ final class GridView: NSView, NSDraggingSource {
             hs[i] -= take
             over -= take
         }
+        // The last takes what's left (to the column's foot).
+        hs[hs.count - 1] = max(Self.barHeight, usable - hs.dropLast().reduce(0, +))
+        // A tile too short for even a line of its content is down to its
+        // bar (`layout`): snapped to it, the room it had under its bar
+        // given to the nearest tile that shows more — above, else below —
+        // not left empty under the bar, the column unfilled.
+        for i in hs.indices where hs[i] > Self.barHeight && hs[i] - Self.barHeight < Self.collapseBelow {
+            let neighbours = Array((0..<i).reversed()) + Array((i + 1)..<hs.count)
+            guard let j = neighbours.first(where: { hs[$0] - Self.barHeight >= Self.collapseBelow }) else { continue }
+            hs[j] += hs[i] - Self.barHeight
+            hs[i] = Self.barHeight
+        }
         var y = f.maxY
         var out: [NSRect] = []
         for (i, h) in hs.enumerated() {
