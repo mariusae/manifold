@@ -131,6 +131,15 @@ final class ThreadChatView: NSView {
     private let askPick = IconButton("chevron.down", size: 9, tip: "Who's in this thread, and who it asks")
     /// Its context (§3.12): who's in the conversation, what's kept in it.
     let shelf = ThreadShelfView()
+
+    /// Its shelf, for a drop anywhere about its head (its place, the shelf,
+    /// a little round them): nothing else there takes one, and the shelf
+    /// alone is a narrow strip to hit. `p` in the window.
+    func shelfForDrop(at p: NSPoint) -> ThreadShelfView? {
+        guard !shelf.isHidden, shelf.window != nil else { return nil }
+        let head = header.convert(header.bounds, to: nil).insetBy(dx: -8, dy: -8)
+        return head.contains(p) ? shelf : nil
+    }
     /// Its participants, by name, after its place: who's in it.
     private let participantsLabel = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText)
     /// A new thread's agent, chosen before it's made (nil: the first).

@@ -906,6 +906,11 @@ enum DebugControl {
             guard let tiff = out.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return "no image" }
             try? png.write(to: URL(fileURLWithPath: w[1]))
             return "wrote \(w[1])"
+        case "shelfat":
+            // "shelfat x y": whether a block dragged there (window, from the top-left) lands on a thread's shelf.
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let wc else { return "usage: shelfat x y" }
+            return wc.content.debugShelf(at: NSPoint(x: a[0], y: a[1]))
         case "pathmenu":
             // The focused tile's ⌘-click path menu, the row held under the pointer marked ▸.
             guard let wc, let id = wc.arrangement?.focused, let (menu, here) = wc.gridPathMenu(for: id) else { return "no path menu" }

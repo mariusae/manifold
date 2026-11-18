@@ -1848,6 +1848,17 @@ final class GridView: NSView, NSDraggingSource {
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
         if convert(point, to: nil).x < 8 { delegate?.gridDragAtLeftEdge() }
+        // Over a thread's shelf: its to take (an agent into the conversation,
+        // anything else into its context), not the tile's to link — the
+        // catcher over the grid hid it from the drag.
+        let shelf = shelf(at: point)
+        if shelfDrop !== shelf { shelfDrop?.draggingExited(sender) }
+        shelfDrop = shelf
+        if let shelf {
+            hideDrop()
+            DropBadge.show(nil, for: sender, over: self)
+            return shelf.draggingUpdated(sender)
+        }
         let pb = sender.draggingPasteboard
         // A thing (§3.11): opened where it lands, or linked to the tile it's over.
         if Dragged(pb) != nil {
@@ -1874,8 +1885,42 @@ final class GridView: NSView, NSDraggingSource {
     override func draggingExited(_ sender: NSDraggingInfo?) {
         hideDrop()
         if let sender { DropBadge.show(nil, for: sender, over: self) }
+        shelfDrop?.draggingExited(sender)
+        shelfDrop = nil
     }
-    override func draggingEnded(_ sender: NSDraggingInfo) { hideDrop() }
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        hideDrop()
+        shelfDrop?.draggingExited(sender)
+        shelfDrop = nil
+    }
+
+    /// Debugging: with a block dragged (the catcher over the grid), whether
+    /// a point (window, from the top-left) is over a thread's shelf.
+    func debugShelf(at p: NSPoint) -> String {
+        let was = dragging
+        dragging = true
+        defer { dragging = was }
+        guard let window else { return "no window" }
+        let at = convert(NSPoint(x: p.x, y: window.contentView!.bounds.height - p.y), from: nil)
+        return shelf(at: at).map { "shelf: " + $0.debugState } ?? "no shelf (the tile's)"
+    }
+
+    /// The thread's shelf a drag is over, if it's over one.
+    private weak var shelfDrop: ThreadShelfView?
+
+    /// The shelf under a point (the grid's), the catcher looked past.
+    private func shelf(at point: NSPoint) -> ThreadShelfView? {
+        let hidden = dragCatcher.isHidden
+        dragCatcher.isHidden = true
+        defer { dragCatcher.isHidden = hidden }
+        var v = hitTest(convert(point, to: superview))
+        while let x = v, x !== self {
+            if let s = x as? ThreadShelfView, !s.isHidden { return s }
+            if let chat = x as? ThreadChatView { return chat.shelfForDrop(at: convert(point, to: nil)) }
+            v = x.superview
+        }
+        return nil
+    }
 
     private func showDrop(_ rect: NSRect) {
         if drop?.rect != rect || dropOverlay.isHidden {
@@ -2002,6 +2047,10 @@ final class GridView: NSView, NSDraggingSource {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         DropBadge.hush()
         defer { hideDrop() }
+        if let shelf = shelf(at: convert(sender.draggingLocation, from: nil)) {
+            shelfDrop = nil
+            return shelf.performDragOperation(sender)
+        }
         dropped = true
         let pb = sender.draggingPasteboard
         if Dragged(pb) != nil { return Dropping.perform(self, sender) }
