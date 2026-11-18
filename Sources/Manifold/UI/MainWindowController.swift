@@ -543,6 +543,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                     window.makeFirstResponder(view.focusView)
                 }
             }
+            // A thread's tile come to the focus (clicked, gone to): it's seen.
+            if real.focused != lastFocused, let f = real.focused, let t = views[f] as? ThreadTileView { threadChatSeen(t.chat) }
             lastFocused = real.focused
             let context = RenderContext(theme: hosts.state.appearance.theme, codeFont: codeFont, places: { [weak self] in self?.places(of: $0) ?? [] })
             for case let v as FollowsModel in views.values { v.modelChanged(context) }

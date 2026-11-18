@@ -315,7 +315,10 @@ final class ThreadChatView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    deinit { seenTimer?.invalidate() }
+    deinit {
+        seenTimer?.invalidate()
+        if let o = keyWatch { NotificationCenter.default.removeObserver(o) }
+    }
 
     // MARK: Showing
 
@@ -471,7 +474,17 @@ final class ThreadChatView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         commandLinks.watch(window)
+        // On screen when its window comes to the front (the app come back
+        // to): seen then, as when what's new came in with it in front.
+        if let o = keyWatch { NotificationCenter.default.removeObserver(o); keyWatch = nil }
+        if let window {
+            keyWatch = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.unchecked { self?.watchSeen() }
+            }
+            watchSeen()
+        }
     }
+    private var keyWatch: NSObjectProtocol?
 
     /// Used (clicked in, written in): its thread seen, up to the latest.
     @objc private func interacted() {
@@ -485,6 +498,8 @@ final class ThreadChatView: NSView {
         guard model.thread != nil else { return }
         seenTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
             guard let self, let w = self.window, w.isVisible, w.isKeyWindow || w.isMainWindow || (w as? NSPanel) != nil else { return }
+            // Shown, not only in the window (a tile down to its bar, docked, summed up).
+            guard !self.isHiddenOrHasHiddenAncestor, self.visibleRect.height > 40 else { return }
             self.delegate?.threadChatSeen(self)
         }
     }
