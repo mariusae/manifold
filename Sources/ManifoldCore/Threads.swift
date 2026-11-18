@@ -254,6 +254,30 @@ public enum ThreadText {
     public static let annotates = "annotates"
     public static let mentions = "mentions"
 
+    /// What an agent was asked, as its card says it, when it was asked in
+    /// a thread (the line Manifold types: "(You are Wren in these threads.)
+    /// [Manifold thread <ref>, about <place>] The user wrote: "…" — read it
+    /// with …"): the thread it's at work in and what was said there — not
+    /// the instructions. Several asked at once, the first and how many
+    /// more; threads handed over to address, how many. Nil for any other.
+    public static func askShown(_ prompt: String) -> String? {
+        let ns = prompt as NSString
+        let all = NSRange(location: 0, length: ns.length)
+        if let m = handOver.firstMatch(in: prompt, range: all) {
+            let n = ns.substring(with: m.range(at: 1))
+            return n == "1" ? "Addressing a thread" : "Addressing \(n) threads"
+        }
+        let asks = ask.matches(in: prompt, range: all)
+        guard let first = asks.first else { return nil }
+        let about = ns.substring(with: first.range(at: 1)), who = ns.substring(with: first.range(at: 2)), said = ns.substring(with: first.range(at: 3))
+        var out = "In the thread on \(about) — \(who): “\(said)”"
+        if asks.count > 1 { out += " (and \(asks.count - 1) more)" }
+        return out
+    }
+
+    private static let handOver = try! NSRegularExpression(pattern: #"\[Manifold\] Please address these (\d+) open threads?:"#)
+    private static let ask = try! NSRegularExpression(pattern: #"\[Manifold thread [^,\]]+, about ([^\]]*)\] (.+?) wrote: "(.*?)" — "#)
+
     /// The words tagged in a comment, `@word` (not in an address, not in
     /// code): `@claude`, `@codex` — agents asked by kind.
     public static func tags(in text: String) -> [String] {
