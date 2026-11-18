@@ -267,8 +267,9 @@ extension MainWindowController {
     /// long line given longer to land. An agent that reports how it
     /// stands (its hooks) and hasn't started on it a moment later — its
     /// prompt still settling from the turn before, the Return taken into
-    /// the paste — is given Return again, twice at most.
-    func say(_ text: String, to agent: BlockID) {
+    /// the paste — is given Return again, twice at most; still not started,
+    /// it's said (and in `threads`): what was typed is waiting in its prompt.
+    func say(_ text: String, to agent: BlockID, threads: [BlockID] = []) {
         hosts.propose(.input(block: agent, text: text))
         let reports = hosts.block(agent)?.statusRecord != nil
         let landed = 0.3 + min(0.7, Double(text.count) / 2000)
@@ -278,21 +279,33 @@ extension MainWindowController {
             let before = self.hosts.block(agent)?.statusRecord
             self.hosts.propose(.input(block: agent, text: "\r"))
             guard reports else { return }
-            self.pressAgain(agent, since: before, tries: 2)
+            self.pressAgain(agent, since: before, tries: 2, threads: threads)
         }
     }
 
     /// Return again if the agent hasn't said it's started since it said
-    /// `since` (its report then; another host's clock isn't this Mac's).
-    private func pressAgain(_ agent: BlockID, since: StatusRecord?, tries: Int) {
-        guard tries > 0 else { return }
+    /// `since` (its report then; another host's clock isn't this Mac's);
+    /// out of tries and still not, the send failed — said.
+    private func pressAgain(_ agent: BlockID, since: StatusRecord?, tries: Int, threads: [BlockID]) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self, let b = self.hosts.block(agent), Self.agentRuns(b), let r = b.statusRecord else { return }
             // Begun (or asking something) since: taken.
             if r != since, r.state == .working || r.state == .blocked { return }
+            guard tries > 0 else { return self.notTaken(agent, threads: threads) }
             self.hosts.propose(.input(block: agent, text: "\r"))
-            self.pressAgain(agent, since: since, tries: tries - 1)
+            self.pressAgain(agent, since: since, tries: tries - 1, threads: threads)
         }
+    }
+
+    /// An ask typed in that the agent never started on (Return taken into
+    /// a paste, its prompt busy): said where it was asked from and here,
+    /// the agent a click away — what was typed is still in its prompt.
+    private func notTaken(_ agent: BlockID, threads: [BlockID]) {
+        let name = hosts.block(agent).map(AgentLook.name(of:)) ?? "The agent"
+        for id in threads {
+            hosts.addToThread(id, .stopped("\(name) didn't start on it: the ask is still in its prompt — press Return there to send it"), author: .manifold)
+        }
+        toast.show("\(name) didn't take the ask — it's still in its prompt", action: "Show", for: 8) { [weak self] in self?.arrive(agent, from: nil) }
     }
 
     /// An agent asked: now if it's idle, else when its turn ends.
@@ -316,12 +329,15 @@ extension MainWindowController {
         }
         threadUI.asks = waiting
         for (agent, asks) in byAgent {
-            let text = asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: ")
+            // On one line: a line break typed in is a new line in its prompt,
+            // and the whole a paste ("[Pasted text +3 lines]").
+            let text = (asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: "))
+                .replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
             // Its name, as the threads call it: with other agents in them, which one it is.
             let named = hosts.block(agent).flatMap(AgentIdentity.name(of:))
             let name = named ?? hosts.block(agent)?.agent?.name ?? "The agent"
             let who = named.map { "(You are \($0) in these threads.) " } ?? ""
-            say(who + text, to: agent)
+            say(who + text, to: agent, threads: Array(Set(asks.flatMap(\.threads))))
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }
         }
     }
