@@ -758,16 +758,20 @@ extension MainWindowController {
     }
 
     /// The space shown (§3.6), one at a time — the others are the strip's,
-    /// at the sidebar's top: nothing nested, nothing to fold. Its pinned
-    /// blocks first, in the order pinned (each its tile, or, closed, a row
-    /// to recall it here); then what's on screen, as the grid has it —
-    /// column by column, top to bottom, a hairline between columns; then
-    /// those docked (§3.1), the latest first. The focused tile marked: the
-    /// table of contents of the screen.
+    /// at the sidebar's top: one list. First what needs you, in every
+    /// space (another's saying which), as the strip has them; then its
+    /// pinned blocks, in the order pinned (each its tile, or, closed, a
+    /// row to recall it here); then what's on screen, as the grid has it —
+    /// column by column, top to bottom, a hairline between columns — its
+    /// rows not saying again what their bars say (done, failed, when);
+    /// then those docked (§3.1), the latest first, folded under how many.
+    /// The focused tile marked: the table of contents of the screen.
     func deskTree() -> ([OrgNode], Set<String>) {
         guard let id = selected, let a = hosts.arrangement(id) else { return ([], []) }
         let aid = "arr/\(id)"
         let pinned = pins(of: id).map(\.to)
+        // What needs you here: risen to the top, out of its place below.
+        let urgent = Set(a.placements.filter { StatusGlyph.look(of: hosts.block($0.block)) == .needsYou }.map(\.id))
         func tile(_ p: Placement, docked isDock: Bool, column c: Int?) -> OrgNode? {
             let b = hosts.block(p.block)
             // An untitled note by its first words, as its links name it.
@@ -787,6 +791,15 @@ extension MainWindowController {
             n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) } ?? b.flatMap { AgentLook.face(of: $0, size: 13) }
             n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
             n.trailing = StatusGlyph.at(of: b).map(Age.short)
+            // On screen, its bar says done or failed, and when: not said again.
+            if !isDock, !urgent.contains(p.id) {
+                switch n.look {
+                case .done?: n.look = .done(read: true)
+                case .failed?: n.look = .failed(read: true)
+                default: break
+                }
+                n.trailing = nil
+            }
             if isDock {
                 n.docked = true
                 n.tooltip = (n.tooltip.map { $0 + "\n" } ?? "") + "Docked — click to put it back where it was (⌃⇥ goes to it too)"
@@ -824,13 +837,35 @@ extension MainWindowController {
             return n
         }
         var out: [OrgNode] = []
+        // What needs you: here, as the grid has them; then in the other
+        // spaces, as the strip has them — clicked, gone to there.
+        var needs: [OrgNode] = []
+        for (c, column) in a.columns.enumerated() {
+            needs += column.filter { urgent.contains($0.id) }.compactMap { tile($0, docked: false, column: c) }
+        }
+        needs += a.docked.reversed().filter { urgent.contains($0.placement.id) }.compactMap { tile($0.placement, docked: true, column: nil) }
+        for item in needsYouItems() where item.space != id {
+            guard let other = hosts.arrangement(item.space), let p = other.placement(item.tile), let b = hosts.block(p.block) else { continue }
+            // Its space by its name's last part (a folder's, not its path).
+            let space = title(of: other).components(separatedBy: " · ")[0]
+            let n = node(for: b, id: "\(aid)/needs/\(item.tile)", detail: "in " + (space.contains("/") ? space.lastPathComponent : space))
+            n.look = .needsYou
+            n.trailing = nil
+            n.blocked = b.statusRecord?.kind
+            n.tooltip = StatusGlyph.tooltip(b)
+            n.age = nil
+            n.arrangement = item.space
+            n.placement = item.tile
+            needs.append(n)
+        }
+        if !needs.isEmpty { out += needs + [rule("needs")] }
         // Pinned: each its tile (on screen or docked), else a row to recall it.
         var top: [OrgNode] = []
         for block in pinned {
-            let shown = a.columns.enumerated().flatMap { c, col in col.filter { $0.block == block }.compactMap { tile($0, docked: false, column: c) } }
-                + a.docked.filter { $0.placement.block == block }.compactMap { tile($0.placement, docked: true, column: nil) }
+            let shown = a.columns.enumerated().flatMap { c, col in col.filter { $0.block == block && !urgent.contains($0.id) }.compactMap { tile($0, docked: false, column: c) } }
+                + a.docked.filter { $0.placement.block == block && !urgent.contains($0.placement.id) }.compactMap { tile($0.placement, docked: true, column: nil) }
             top += shown
-            guard shown.isEmpty, let b = hosts.block(block) else { continue }
+            guard shown.isEmpty, !a.placements.contains(where: { $0.block == block }), let b = hosts.block(block) else { continue }
             let title = Self.linkTitle(b)
             let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
             n.arrangement = id
@@ -843,22 +878,29 @@ extension MainWindowController {
         // On screen, column by column.
         var grid: [OrgNode] = []
         for (c, column) in a.columns.enumerated() {
-            let rows = column.filter { !pinned.contains($0.block) }.compactMap { tile($0, docked: false, column: c) }
+            let rows = column.filter { !pinned.contains($0.block) && !urgent.contains($0.id) }.compactMap { tile($0, docked: false, column: c) }
             guard !rows.isEmpty else { continue }
             if !grid.isEmpty { grid.append(rule("col/\(c)")) }
             grid += rows
         }
-        if !grid.isEmpty { out += [label("On Screen", "screen")] + grid }
+        // On screen needs no heading: it's what the list is, under what's pinned.
+        if !grid.isEmpty {
+            if !top.isEmpty { out.append(rule("screen")) }
+            out += grid
+        }
         // A new tile, as Dia's New Tab: the kind last made (⌘N's picker
         // the first time, and from its button for another kind).
         out.append(newTileRow(in: id))
         // Docked, the latest first.
-        let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) && !stacked.contains($0.placement.id) }.compactMap { tile($0.placement, docked: true, column: nil) }
+        let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) && !stacked.contains($0.placement.id) && !urgent.contains($0.placement.id) }
+            .compactMap { tile($0.placement, docked: true, column: nil) }
         if !docked.isEmpty {
-            // Its label stands for the space, for a tile flown to it before its row is made.
-            let l = label("Docked", "docked", count: docked.count)
+            // Folded under how many, opened by hand (and kept so). Its label
+            // stands for the space, for a tile flown to it before its row is made.
+            let l = OrgNode(id: "\(aid)/docked", title: "Docked", symbol: "", detail: "", count: docked.count, children: docked)
+            l.style = .section
             l.arrangement = id
-            out += [l] + docked
+            out.append(l)
         }
         return (out, [])
     }

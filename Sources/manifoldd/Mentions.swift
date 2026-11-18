@@ -67,8 +67,8 @@ extension Server {
         }
     }
 
-    private func mentionedBlock(for path: String, among all: [Block]) -> BlockID? {
-        let kind = BlockKind.forFile(path)
+    func mentionedBlock(for path: String, among all: [Block], kind wanted: BlockKind? = nil) -> BlockID? {
+        let kind = wanted ?? BlockKind.forFile(path)
         let real = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
         if let b = all.first(where: { $0.kind == kind && ($0.path == path || $0.path.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path == real } ?? false) }) {
             return b.id

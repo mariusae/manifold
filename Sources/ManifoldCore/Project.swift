@@ -21,9 +21,11 @@ public struct Project: Codable, Equatable, Sendable {
     /// Whether its index is made again when the repository's working copy
     /// moves (a checkout, a commit, a rebase); nil, yes.
     public var reindexOnCheckout: Bool?
-    /// Its agents (§3.12): the ones that live in it, whose folder it is —
-    /// kept while it is (a root, as a space is), on screen or not, and
-    /// started again where they left off when they're wanted.
+    /// Its block (§2.6): the project in the graph — a root while the
+    /// project is, its pins (`pinned` links from it) kept as a space's are.
+    public var block: BlockID?
+    /// Its agents, as they were kept before pins: read once, by the host,
+    /// into pins from its block (`settlingProjects`), then let go of.
     public var agents: [BlockID]?
 
     public init(root: String, made: Stamp) {

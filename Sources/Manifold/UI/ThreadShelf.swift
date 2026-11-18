@@ -113,8 +113,11 @@ final class ThreadShelfView: NSView {
 
     /// What a drag carries, as addresses: a tile's block (its bar dragged),
     /// each thing's block (at its place), file, page.
-    private func addresses(_ sender: NSDraggingInfo) -> [String] {
-        let pb = sender.draggingPasteboard
+    private func addresses(_ sender: NSDraggingInfo) -> [String] { Self.addresses(sender.draggingPasteboard) }
+
+    /// What a pasteboard carries, as addresses (a drag's, onto a shelf or a
+    /// project's Pinned).
+    static func addresses(_ pb: NSPasteboard) -> [String] {
         if let s = pb.string(forType: .manifoldBlock), let id = BlockID(string: s) { return [MainWindowController.address(id)] }
         guard let d = Dragged(pb) else { return [] }
         return d.things.compactMap { t -> String? in

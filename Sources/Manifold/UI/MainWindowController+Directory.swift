@@ -80,16 +80,29 @@ extension MainWindowController: DirectoryViewDelegate {
         guard let client = hosts.client(of: view.block) else { return [] }
         var out: [Presence] = []
         let shownHere = Set(arrangement?.placements.map(\.block) ?? [])
+        func at(_ b: Block, pinned: Bool) -> Presence {
+            let cwd = b.terminal?.cwd ?? b.path ?? b.place
+            let where_ = cwd.map { project.holds($0) ? project.relative($0) : $0.abbreviatingHome } ?? ""
+            let doing = b.statusRecord?.msg ?? b.terminal?.commands?.last(where: { $0.isRunning })?.text
+            var p = Presence(block: b.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
+                             detail: [b.agent?.name, doing, where_.isEmpty ? nil : where_ + "/"].compactMap { $0 }.joined(separator: " · "),
+                             here: shownHere.contains(b.id), card: cardContent(for: b.id))
+            p.pinned = pinned
+            return p
+        }
+        // What's pinned in it (§2.6): its agents first, what most wants you
+        // of them first; then the rest, in the order pinned.
+        let pins = pinned(in: project).compactMap { hosts.block($0) }
+        let agents = pins.filter { $0.agent != nil }.enumerated().sorted { a, b in
+            let (x, y) = (Self.attention(a.element), Self.attention(b.element))
+            return x != y ? x > y : a.offset < b.offset
+        }.map(\.element)
+        for b in agents + pins.filter({ $0.agent == nil }) { out.append(at(b, pinned: true)) }
+        let pinnedIDs = Set(pins.map(\.id))
         // Terminals and agents with a shell there, what each is doing.
-        let own = Set(project.agents ?? [])
-        for b in client.node.blocks where (b.kind == .terminal || b.kind == .agent) && !own.contains(b.id) {
-            // (Its own agents are pills on its line.)
+        for b in client.node.blocks where (b.kind == .terminal || b.kind == .agent) && !pinnedIDs.contains(b.id) {
             guard let t = b.terminal, t.pid != nil || t.dormantSince == nil, let cwd = t.cwd, project.holds(cwd) else { continue }
-            let where_ = project.relative(cwd)
-            let doing = b.statusRecord?.msg ?? t.commands?.last(where: { $0.isRunning })?.text
-            out.append(Presence(block: b.id, title: Self.linkTitle(b), symbol: Theme.symbolName(for: b),
-                                detail: [b.agent?.name, doing, where_.isEmpty ? nil : where_ + "/"].compactMap { $0 }.joined(separator: " · "),
-                                here: shownHere.contains(b.id), card: cardContent(for: b.id)))
+            out.append(at(b, pinned: false))
         }
         // Notes about its files: linked to one of them.
         do {
@@ -102,14 +115,65 @@ extension MainWindowController: DirectoryViewDelegate {
                     notes[e.from] = project.relative(p)
                 }
             }
-            for (id, about) in notes.sorted(by: { $0.value < $1.value }) {
+            for (id, about) in notes.sorted(by: { $0.value < $1.value }) where !pinnedIDs.contains(id) {
                 guard let n = client.node.block(id) else { continue }
                 out.append(Presence(block: id, title: n.displayTitle, symbol: Theme.symbolName(for: n), detail: "about " + about,
                                     here: shownHere.contains(id), card: cardContent(for: id)))
             }
         }
-        // Those in the workspace shown first, each kind as it was.
-        return out.filter(\.here) + out.filter { !$0.here }
+        // Its latest open threads (§3.12), each its card.
+        let open = hosts.threads(inProject: project.root, on: client.host).filter { $0.thread?.resolved != true }
+            .sorted { ($0.thread?.lastActivity ?? $0.created) > ($1.thread?.lastActivity ?? $1.created) }
+        for t in open.prefix(5) {
+            var p = Presence(block: t.id, title: t.thread?.title ?? "A thread", symbol: Theme.symbolName(for: t), detail: "",
+                             here: false, card: cardContent(for: t.id))
+            p.isThread = true
+            out.append(p)
+        }
+        // Pinned first; then those in the workspace shown, each kind as it was.
+        return out.filter(\.pinned) + out.filter { !$0.pinned && $0.here } + out.filter { !$0.pinned && !$0.here }
+    }
+
+    /// Things dropped on a project's sidebar: each its block (a file's or a
+    /// page's made if it has none), pinned in it.
+    func pinDropped(_ addresses: [String], in project: Project) {
+        var pinned: [String] = []
+        for address in addresses {
+            guard let id = pinnable(address), id != project.block else { continue }
+            setPinned(id, inProject: project, true)
+            pinned.append(hosts.block(id).map { $0.agent != nil ? AgentLook.name(of: $0) : Self.linkTitle($0) } ?? "it")
+        }
+        if pinned.isEmpty { NSSound.beep() } else { toast.say("Pinned in \(project.name): " + pinned.joined(separator: ", "), .brief) }
+    }
+
+    /// The block an address names, to pin: a block's own; a file's or a
+    /// folder's block on its host, made if it has none; a page's, made.
+    func pinnable(_ address: String) -> BlockID? {
+        if let (id, _) = BlockID.link(address), hosts.block(id) != nil { return id }
+        if case let .file(h, path, _)? = ManifoldAddress.parse(address) {
+            let p = path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path
+            if path.hasSuffix("/") { return hosts.directoryBlock(for: p, on: h) }
+            let kind = BlockKind.forFile(p)
+            if kind == .image || kind == .pdf, let c = hosts.client(h) { return c.mediaBlock(for: p, kind: kind) }
+            return hosts.textBlock(for: p, on: h)
+        }
+        if let url = URL(string: address), ["http", "https"].contains(url.scheme ?? "") {
+            if let b = hosts.blocks.first(where: { $0.kind == .web && $0.web?.url == address }) { return b.id }
+            return host.newWeb(url: address)
+        }
+        return nil
+    }
+
+    /// How much an agent wants you, for its place in a list: waiting on
+    /// you or failed; done and not read; working; idle; asleep.
+    static func attention(_ b: Block) -> Int {
+        guard agentRuns(b) else { return 0 }
+        switch b.statusRecord?.state {
+        case .blocked?, .error?: return 4
+        case .done? where b.statusRecord?.read != true: return 3
+        case .working?: return 2
+        default: return 1
+        }
     }
 
     func directoryView(_ view: DirectoryView, popOut search: BlockID) {
@@ -140,19 +204,16 @@ extension MainWindowController: DirectoryViewDelegate {
             }
         case .newAgent:
             _ = newProjectAgent(in: project, on: client)
-        case let .showAgent(id):
-            arrive(id, from: view.placement)
-        case let .renameAgent(id):
-            renameProjectAgent(id, from: view.placement)
-        case let .deleteAgent(id):
-            // As any block's deleting: said, with Undo; gone for good, the
-            // project lets go of it (the host, as it discards it).
-            deleteBlock(id)
+        case let .pin(addresses):
+            pinDropped(addresses, in: project)
+        case .threads:
+            guard let pb = project.block else { return NSSound.beep() }
+            show(pb, lens: .threads, .besideOpener(view.placement), context: "\(project.name)'s threads")
         }
     }
 
-    /// An agent made in a project (§3.12): kept by it, started with
-    /// nothing showing it — its pill on the project's line, its name its own.
+    /// An agent made in a project (§3.12): pinned in it, started with
+    /// nothing showing it — its card under the project's Pinned, its name its own.
     @discardableResult
     func newProjectAgent(in project: Project, on client: HostClient) -> BlockID {
         let usual = desk.settings.agentCommand
@@ -160,20 +221,20 @@ extension MainWindowController: DirectoryViewDelegate {
         return client.newProjectAgent(root: project.root, command: command)
     }
 
-    /// A project's agents, as the pills on its line show them.
-    func directoryView(_ view: DirectoryView, agentsOf project: Project) -> [ProjectAgentChip] {
-        (project.agents ?? []).compactMap { id in hosts.block(id).map { agentChip($0, in: project) } }
-    }
-
-    /// The agents of every project the space shown reaches (§3.12) — one a
-    /// tile of it shows, or something from inside it — project by project,
-    /// in the space's order, as the pills at the sidebar's foot show them.
+    /// The pinned agents the space shown reaches (§3.12), as the pills at
+    /// the sidebar's foot show them: those pinned in it, then those pinned in
+    /// each project it shows (a tile of it, or something from inside it),
+    /// project by project, in the space's order.
     func spaceAgentChips() -> [ProjectAgentChip] {
         guard let id = selected, let a = hosts.arrangement(id) else { return [] }
-        var seen: Set<String> = [], out: [ProjectAgentChip] = []
+        var seen: Set<String> = [], ids: Set<BlockID> = [], out: [ProjectAgentChip] = []
+        for e in pins(of: id) {
+            guard let b = hosts.block(e.to), b.agent != nil, ids.insert(b.id).inserted else { continue }
+            out.append(agentChip(b, in: project(pinning: b.id) ?? project(of: b.id)))
+        }
         for p in a.placements {
             guard let proj = project(of: p.block), seen.insert("\(p.block.host)|\(proj.root)").inserted else { continue }
-            out += agents(of: proj, on: p.block.host).map { agentChip($0, in: proj) }
+            for b in agents(of: proj, on: p.block.host) where ids.insert(b.id).inserted { out.append(agentChip(b, in: proj)) }
         }
         return out
     }
@@ -186,6 +247,12 @@ extension MainWindowController: DirectoryViewDelegate {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Show \(name)", symbol: "rectangle.on.rectangle") { [weak self] in self?.arrive(id, from: nil) })
         menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { [weak self] in self?.renameProjectAgent(id) })
+        if let item = threadsItem(id) { menu.addItem(item) }
+        if let p = project(pinning: id) {
+            menu.addItem(ClosureMenuItem("Unpin from \(p.name)", symbol: "pin.slash") { [weak self] in self?.setPinned(id, inProject: p, false) })
+        } else if let s = selected, isPinned(id, in: s) {
+            menu.addItem(pinItem(id, in: s))
+        }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Delete \(name)", symbol: "trash") { [weak self] in self?.deleteBlock(id) })
         return menu
@@ -200,13 +267,19 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
-    /// An agent's card (§3.12), its pill pointed at: its name; what kind of
-    /// agent it is, the project it lives in, the host; and what it's doing —
-    /// the ask it's working on (a thread's said as the thread), waiting on
-    /// you for what, done or idle with what it was last asked and said, or
-    /// asleep — and its screen, if it's been seen.
+    /// An agent's card (§3.12), wherever an agent is pointed at — its
+    /// pill, a row, a reference: the block's card (`showBlockCard`), which
+    /// for an agent says what `agentCard` does.
     func showAgentCard(_ id: BlockID, beside rect: NSRect, in window: NSWindow) {
-        guard let b = hosts.block(id) else { return HoverCard.shared.hide() }
+        showBlockCard(id, beside: rect, in: window, delay: 0.35)
+    }
+
+    /// What an agent's card says (§3.12): its name; what kind of agent it
+    /// is, the project it lives in, the host; and what it's doing — the ask
+    /// it's working on (a thread's said as the thread), waiting on you for
+    /// what, done or idle with what it was last asked and said, or asleep.
+    func agentCard(_ b: Block) -> (title: String, detail: String, body: String) {
+        let id = b.id
         let t = b.terminal
         let turn = t?.turns?.last
         let now = Date()
@@ -223,7 +296,7 @@ extension MainWindowController: DirectoryViewDelegate {
         }
         func asked(_ p: String) -> String { Block.oneLine(named(ThreadText.askShown(p) ?? p), max: 200) }
         func ago(_ s: Stamp?) -> String { BlockSummary.since(s, now: now) ?? "" }
-        var detail = [b.agent?.name ?? "Agent", project(holding: id).map { "in \($0.name)" }].compactMap { $0 }.joined(separator: " · ")
+        var detail = [b.agent?.name ?? "Agent", (project(holding: id) ?? project(of: id)).map { "in \($0.name)" }].compactMap { $0 }.joined(separator: " · ")
         if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }
         var lines: [String] = []
         let last = turn.map { "Last asked \(ago($0.began)): \(asked($0.prompt))" }
@@ -251,12 +324,7 @@ extension MainWindowController: DirectoryViewDelegate {
                 lines += [last, said].compactMap { $0 }
             }
         }
-        // Its screen as it was last seen, if it has been (one with no tile
-        // ever shown has none).
-        var picture = tilePictures[id]
-        if let v = view(of: id, as: TerminalView.self), let image = HoverCard.surfacePicture(of: v) { picture = image }
-        HoverCard.shared.show(key: "agent:" + id.description, title: AgentLook.name(of: b), detail: detail, body: lines.joined(separator: "\n"),
-                              font: nil, picture: picture, summary: nil, beside: rect, in: window, delay: 0.35, above: false)
+        return (AgentLook.name(of: b), detail, lines.joined(separator: "\n"))
     }
 
     /// A project's agent as its pill shows it (§3.12): its name and colour,
@@ -314,7 +382,8 @@ extension MainWindowController: DirectoryViewDelegate {
     }
 
     func directoryView(_ view: DirectoryView, watchPresence changed: (() -> Void)?) {
-        if let changed { hosts.watch(kinds: [.terminal, .agent], by: view, changed) } else { hosts.unwatchKinds(by: view) }
+        // Its pins too: a link from its block is its block changing.
+        if let changed { hosts.watch(kinds: [.terminal, .agent, .project, .thread], by: view, changed) } else { hosts.unwatchKinds(by: view) }
     }
 
     func directoryView(_ view: DirectoryView, list path: String, done: @escaping ([DirectoryEntry]?) -> Void) {

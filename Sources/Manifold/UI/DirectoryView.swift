@@ -101,8 +101,6 @@ protocol DirectoryViewDelegate: AnyObject {
     /// What's at work in the project: terminals and agents there, notes
     /// about its files.
     func directoryView(_ view: DirectoryView, presenceIn project: Project) -> [Presence]
-    /// A project's agents (§3.12), each a pill on its line.
-    func directoryView(_ view: DirectoryView, agentsOf project: Project) -> [ProjectAgentChip]
     /// The project's languages, as its host counts them (as GitHub does).
     func directoryView(_ view: DirectoryView, languagesOf project: Project, done: @escaping ([Linguist.Count]?) -> Void)
 }
@@ -190,6 +188,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The homepage round the files, or the files alone: a project's,
     /// beside the modes; kept with the tile, on at first.
     private let homeButton = FlatButton("", symbol: "house", toggles: true)
+    /// The project's + (a new agent pinned in it), in the header when its
+    /// strip has nothing else to say and isn't shown.
+    private let newAgent = IconButton("plus", size: 10, tip: "New Agent — pinned in this project, asked in its threads; shown under Pinned")
+    @objc private func newAgentClicked() { projectAction(.newAgent) }
     private var homeShown = true
     /// The homepage shows: a project's, and not turned off.
     var home: Bool { homeShown && project != nil }
@@ -244,7 +246,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         toProject.target = self
         toProject.action = #selector(goToProject)
         toProject.isHidden = true
-        for v in [up, searchBox, modes, makeProject, toProject] as [NSView] { header.addSubview(v) }
+        newAgent.target = self
+        newAgent.action = #selector(newAgentClicked)
+        newAgent.isHidden = true
+        for v in [up, searchBox, modes, makeProject, toProject, newAgent] as [NSView] { header.addSubview(v) }
         addSubview(header)
         strip.isHidden = true
         strip.onAction = { [weak self] a in self?.projectAction(a) }
@@ -634,7 +639,6 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         f.git = git?.git
         f.languages = languages
         f.presence = presence
-        f.agents = delegate?.directoryView(self, agentsOf: project) ?? []
         f.gitPending = git == nil && Date().timeIntervalSince(gitAskedAt ?? .distantPast) < 5
         guard f != facts else { return }
         facts = f
@@ -733,7 +737,10 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// The tile's menu: the folder made a project, or no longer one.
     var pillItems: [NSMenuItem] {
         if project != nil {
-            return [ClosureMenuItem("Project Settings…", symbol: "gearshape") { [weak self] in self?.projectAction(.settings) },
+            // Its index made again (its chip shows only when there's
+            // something to do about it).
+            return [ClosureMenuItem("Index Again", symbol: "arrow.triangle.2.circlepath") { [weak self] in self?.projectAction(.reindex) },
+                    ClosureMenuItem("Project Settings…", symbol: "gearshape") { [weak self] in self?.projectAction(.settings) },
                     ClosureMenuItem("No Longer a Project", symbol: "shippingbox") { [weak self] in
                 guard let self else { return }
                 self.delegate?.directoryView(self, makeProject: false)
@@ -1362,6 +1369,40 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         needsLayout = true
     }
 
+    // MARK: How it's shown, under the pointer
+
+    /// How it's shown — Project Home, a tree or columns — only while the
+    /// pointer's on the tile (§3.1): quiet otherwise. Their room is kept.
+    private var pointerIn = false {
+        didSet {
+            guard pointerIn != oldValue else { return }
+            showViewButtons(animated: true)
+        }
+    }
+
+    private func showViewButtons(animated: Bool) {
+        let a: CGFloat = pointerIn || TilePill.buttonsAlways ? 1 : 0
+        guard animated, !Motion.reduced else { for v in [homeButton, modes] as [NSView] { v.alphaValue = a }; return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Motion.fast
+            for v in [homeButton, modes] as [NSView] { v.animator().alphaValue = a }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for t in trackingAreas where t.userInfo?["viewButtons"] != nil { removeTrackingArea(t) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self, userInfo: ["viewButtons": true]))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["viewButtons"] != nil { pointerIn = true } else { super.mouseEntered(with: event) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if event.trackingArea?.userInfo?["viewButtons"] != nil { pointerIn = false } else { super.mouseExited(with: event) }
+    }
+
     // MARK: Layout
 
     /// A project's sidebar shown at the right: room for less beside it.
@@ -1371,6 +1412,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         super.layout()
         let w = bounds.width, h = bounds.height
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
+        showViewButtons(animated: false)
         let midY = Self.headerHeight / 2
         up.frame = NSRect(x: 8, y: midY - 12, width: 26, height: 24)
         modes.sizeToFit()
@@ -1379,6 +1421,13 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         if !homeButton.isHidden {
             homeButton.frame = NSRect(x: fieldEnd - 28, y: (midY - Flat.buttonHeight / 2).rounded(), width: 28, height: Flat.buttonHeight)
             fieldEnd = homeButton.frame.minX - 6
+        }
+        // The strip with nothing but its +: not shown, the + here.
+        let stripShown = home && strip.hasChips
+        newAgent.isHidden = !home || stripShown
+        if !newAgent.isHidden {
+            newAgent.frame = NSRect(x: fieldEnd - 20, y: (midY - 8).rounded(), width: 16, height: 16)
+            fieldEnd = newAgent.frame.minX - 8
         }
         // Make Project is the tile menu's alone; the project's button gives
         // way before the field gets too narrow to type in.
@@ -1398,7 +1447,8 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         // A project's homepage: its strip under the header, its sidebar at
         // the right; the files and the README in what's left.
         var top = h - Self.headerHeight
-        if home {
+        strip.isHidden = !stripShown
+        if stripShown {
             strip.frame = NSRect(x: 0, y: top - ProjectStrip.height, width: w, height: ProjectStrip.height)
             top -= ProjectStrip.height
         }

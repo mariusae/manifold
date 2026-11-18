@@ -99,8 +99,10 @@ extension MainWindowController {
             case .connected: standing = c.watching ? "watching" : nil
             }
         }
+        // Its host said only where there's more than one to tell apart.
         sidebar.setSpace(title: title(of: a), host: hosts.label(of: id.host), standing: standing,
-                         pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil, remote: c?.isRemote == true)
+                         pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil, remote: c?.isRemote == true,
+                         showsHost: hosts.ordered.count > 1 || c?.isRemote == true)
         if sidebar.spaceHost.onHover == nil {
             sidebar.spaceHost.onHover = { [weak self] rect in
                 guard let self, let rect, let window = self.window, let host = self.selected?.host, let c = self.hosts.client(host) else { return HoverCard.shared.hide() }

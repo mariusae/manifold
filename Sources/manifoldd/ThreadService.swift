@@ -98,7 +98,7 @@ extension Server {
         default: return
         }
         let line = "[thread manifold:\(block) “\(t.title ?? "")”] \(what)"
-        for agent in ThreadContext.participants(of: b) where agent != e.author.agentBlock {
+        for agent in node.participants(of: block) where agent != e.author.agentBlock {
             var queue = agentNews[agent] ?? []
             queue.append((block, line))
             // The last forty: an agent away a long while reads the thread.

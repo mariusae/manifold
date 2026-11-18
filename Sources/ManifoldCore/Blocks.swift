@@ -30,6 +30,10 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
     case ui
     /// A conversation about a place, or a space (§3.12).
     case thread
+    /// A project (§2.6): its node in the graph, standing for the folder
+    /// made one — kept while the project is, holding what's pinned in it
+    /// (its agents among them) as a space holds its pins.
+    case project
 
     public var defaultTitle: String {
         switch self {
@@ -50,6 +54,7 @@ public enum BlockKind: String, Codable, Sendable, CaseIterable {
         case .arrangement: "Untitled"
         case .ui: "Panel"
         case .thread: "Thread"
+        case .project: "Project"
         }
     }
 }
@@ -119,6 +124,9 @@ public enum Lens: String, Codable, Sendable, CaseIterable {
         case .arrangement: return .card
         case .ui: return .ui
         case .thread: return .thread
+        // A project's own view is its threads; gone to, it's its folder's
+        // tile, its homepage (the app sees to that).
+        case .project: return .threads
         }
     }
 
@@ -1234,10 +1242,27 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         return nil
     }
 
+    /// A terminal's title without the mark a program puts before it to say
+    /// how it stands (Claude Code's ✳ idle, its ✶✻✽✢· working, a braille
+    /// spinner): Manifold says that itself, by the name (§3.7).
+    public static func withoutStatusMark(_ title: String) -> String {
+        let marks: [ClosedRange<UInt32>] = [0x2700...0x27BF, 0x2800...0x28FF, 0xB7...0xB7, 0x2022...0x2022, 0x2219...0x2219]
+        var scalars = Substring(title).unicodeScalars[...]
+        var dropped = false
+        while let c = scalars.first, marks.contains(where: { $0.contains(c.value) }) || (dropped && c.properties.isWhitespace) || c.value == 0xFE0F {
+            scalars = scalars.dropFirst()
+            dropped = true
+        }
+        return dropped ? String(String.UnicodeScalarView(scalars)) : title
+    }
+
     public var displayTitle: String {
-        if let title, !title.isEmpty { return title }
+        // A terminal's, as its program set it, its status mark left out.
+        if let title, !title.isEmpty { return terminal == nil ? title : Self.withoutStatusMark(title).isEmpty ? title : Self.withoutStatusMark(title) }
         if let t = thread?.title { return t }
-        if let t = terminal?.title, !t.isEmpty { return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t }
+        if let raw = terminal?.title, case let t = Self.withoutStatusMark(raw), !t.isEmpty {
+            return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t
+        }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
         if kind == .git, let path { return (git?.scope.map { $0.lastPathComponent } ?? path.lastPathComponent) + (git?.branch.map { " (\($0))" } ?? "") }

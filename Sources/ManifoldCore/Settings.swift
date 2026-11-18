@@ -127,6 +127,9 @@ public struct Settings: Codable, Equatable, Sendable {
     /// brought into them (§4): done once, not at every collection — a
     /// named space removed by hand was put back on the desk each time.
     public var rootsSettled: Bool = false
+    /// Threads' shelves, kept as annotations before, made links (§3.12):
+    /// done once.
+    public var shelvesSettled: Bool = false
 
     public init() {}
 
@@ -139,6 +142,7 @@ public struct Settings: Codable, Equatable, Sendable {
         c.opt(&terminalHistoryDays, .terminalHistoryDays)
         c.opt(&undoDepth, .undoDepth)
         c.opt(&rootsSettled, .rootsSettled)
+        c.opt(&shelvesSettled, .shelvesSettled)
         c.opt(&languageServers, .languageServers)
         c.opt(&agentCommand, .agentCommand)
         c.opt(&copyOnSelect, .copyOnSelect)

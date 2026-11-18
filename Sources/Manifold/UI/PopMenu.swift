@@ -258,8 +258,9 @@ final class ChipButton: ClickView {
 /// chosen on; chosen, its action sent.
 final class ChipGroup: NSControl {
     private var chips: [ChipButton] = []
-    var labels: [String] = [] {
-        didSet {
+    var labels: [String] = [] { didSet { makeChips() } }
+
+    private func makeChips() {
             chips.forEach { $0.removeFromSuperview() }
             chips = labels.enumerated().map { i, l in
                 let c = ChipButton(l)
@@ -273,7 +274,6 @@ final class ChipGroup: NSControl {
             }
             selectedSegment = min(selectedSegment, max(0, labels.count - 1))
             needsLayout = true
-        }
     }
     var selectedSegment = 0 { didSet { for (i, c) in chips.enumerated() { c.isOn = i == selectedSegment } } }
     var segmentCount: Int { labels.count }
@@ -281,7 +281,10 @@ final class ChipGroup: NSControl {
     convenience init(labels: [String]) {
         self.init(frame: .zero)
         self.labels = labels
+        // (Set in its own initializer, `labels` says nothing to `didSet`.)
+        makeChips()
         self.selectedSegment = 0
+        chips.first?.isOn = true
     }
 
     var wantedWidth: CGFloat { chips.reduce(0) { $0 + $1.wantedWidth } + CGFloat(max(0, chips.count - 1)) * 6 }

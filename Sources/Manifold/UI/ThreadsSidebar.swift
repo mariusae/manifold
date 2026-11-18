@@ -46,6 +46,10 @@ extension MainWindowController {
                 menu.addItem(item)
             }
         }
+        // Its open threads handed to an agent (a button of its own before).
+        let n = v.openShown.count
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem(n > 0 ? "Hand \(n) Open Thread\(n == 1 ? "" : "s") to Agent" : "Hand Open Threads to Agent", symbol: "sparkle") { v.handOver() })
         return menu
     }
 

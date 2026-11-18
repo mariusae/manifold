@@ -11,8 +11,13 @@ extension Node {
         var roots: Set<BlockID> = []
         for id in desk(host).order where id.host == host { roots.insert(id) }
         for h in registry(host).holds.values where h.block.host == host { roots.insert(h.block) }
-        // A project's agents (§3.12): kept while it is.
-        for p in desk(host).projects { for a in p.agents ?? [] where a.host == host { roots.insert(a) } }
+        // A project (§2.6), its block standing for it: kept while it is, and
+        // what's pinned in it with it. (Its agents as they were kept before
+        // pins, till the host reads them into pins.)
+        for p in desk(host).projects {
+            if let b = p.block, b.host == host { roots.insert(b) }
+            for a in p.agents ?? [] where a.host == host { roots.insert(a) }
+        }
         return roots
     }
 
@@ -56,24 +61,24 @@ extension Node {
         return out
     }
 
-    /// Everything on a host that its roots reach, over its own graph — and
-    /// what an open thread holds on its shelf.
+    /// Everything on a host that its roots reach, over its own graph.
     public func reachable(on host: HostID) -> Set<BlockID> {
-        var seen = roots(on: host)
-        var frontier = Array(seen)
-        while let b = frontier.popLast() {
-            for t in graph.strongEdges(from: b).map(\.to) + shelfHeld(by: b) where seen.insert(t).inserted { frontier.append(t) }
-        }
-        return seen
+        graph.reachable(from: roots(on: host), edgesFrom: strongEdges(from:))
     }
 
-    /// The agents an open thread holds (§3.12): those on its shelf, kept
-    /// while it's open — with nothing else showing them (a tile closed), an
-    /// agent in a conversation isn't let go mid-thread. Resolved, it lets
-    /// go of them (what else keeps them, keeps them). Not an edge of the
-    /// graph: the shelf is the thread's annotation.
-    public func shelfHeld(by id: BlockID) -> [BlockID] {
-        guard let b = block(id), b.kind == .thread, b.thread?.resolved != true else { return [] }
-        return ThreadContext.participants(of: b)
+    /// Whether an edge keeps what it leads to (§4): a strong one that holds
+    /// now — and one on a thread's shelf (`ThreadContext.whileOpen`) only
+    /// while the thread is open: an agent in a conversation isn't let go
+    /// mid-thread, nor what was put there to read; resolved, it lets go of
+    /// them (what else keeps them, keeps them).
+    public func keeps(_ e: Edge) -> Bool {
+        guard e.kind.isStrong, e.isLive else { return false }
+        if let r = e.relation, ThreadContext.whileOpen.contains(r) { return block(e.from)?.thread?.resolved != true }
+        return true
+    }
+
+    /// The edges out of a block that keep what they lead to.
+    public func strongEdges(from block: BlockID) -> [Edge] {
+        graph.strongEdges(from: block).filter(keeps)
     }
 }

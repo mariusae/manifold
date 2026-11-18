@@ -38,9 +38,24 @@ extension MainWindowController {
 
     // MARK: A project's agents (§3.12)
 
-    /// The project an agent lives in, if it's one's.
-    func project(holding agent: BlockID) -> Project? {
-        hosts.client(agent.host)?.desk.projects.first { $0.agents?.contains(agent) == true }
+    /// The project a block is pinned in (§2.6), if one: its block's
+    /// `pinned` link to it. An agent pinned in a project is the project's
+    /// own — kept by it, asked in its threads.
+    func project(pinning id: BlockID) -> Project? {
+        for c in hosts.all {
+            for e in c.node.graph.edges(to: id, kind: .link(.pinned)) {
+                if let p = c.desk.projects.first(where: { $0.block == e.from }) { return p }
+            }
+        }
+        return nil
+    }
+
+    /// The project an agent is pinned in, if one.
+    func project(holding agent: BlockID) -> Project? { project(pinning: agent) }
+
+    /// What's pinned in a project, in the order pinned.
+    func pinned(in project: Project) -> [BlockID] {
+        project.block.map { pins(of: $0).map(\.to) } ?? []
     }
 
     /// The project a block is in, as its host has it.
@@ -54,9 +69,9 @@ extension MainWindowController {
         t.thread?.about.flatMap { project(of: $0.block) }
     }
 
-    /// A project's agents, as blocks here.
+    /// A project's agents: those pinned in it, as blocks here.
     func agents(of project: Project, on host: HostID) -> [Block] {
-        (project.agents ?? []).filter { $0.host == host }.compactMap { hosts.block($0) }
+        pinned(in: project).compactMap { hosts.block($0) }.filter { $0.agent != nil }
     }
 
     /// Whether an agent can be asked: it's running, or it's a project's —
@@ -83,8 +98,8 @@ extension MainWindowController {
             annotateThread(id, [Self.asksKey: asks.command])
             t.annotations = (t.annotations ?? [:]).merging([Self.asksKey: asks.command]) { $1 }
         }
-        if let chosen, t.annotations?[Self.asksAgentKey] != chosen.description {
-            annotateThread(id, [Self.participantsKey: chosen.description, Self.asksAgentKey: chosen.description])
+        if let chosen, participants(of: t).first != chosen {
+            setParticipants([chosen] + participants(of: t).filter { $0 != chosen }, of: id)
             t.annotations = (t.annotations ?? [:]).merging([Self.asksAgentKey: chosen.description]) { $1 }
         }
         guard let th = t.thread else { return }
@@ -198,34 +213,21 @@ extension MainWindowController {
     /// Things put on a thread's shelf, by their addresses: an agent into
     /// its conversation, anything else into its context (a reference kept
     /// with it, read with it by those asked) — each said in the thread.
-    /// A thread's references: as last written here, while that hasn't come back.
-    private func references(_ thread: BlockID, _ t: Block) -> [String] {
-        let now = ThreadContext.references(of: t)
-        guard let pending = threadUI.pendingReferences[thread] else { return now }
-        if pending == now { threadUI.pendingReferences[thread] = nil }
-        return pending
-    }
-
-    private func setReferences(_ refs: [String], of thread: BlockID) {
-        threadUI.pendingReferences[thread] = refs
-        annotateThread(thread, [ThreadContext.referencesKey: refs.joined(separator: "\n")])
-    }
-
     func addToContext(_ thread: BlockID, _ addresses: [String], author: ThreadAuthor = Hosts.you) {
         guard let t = hosts.block(thread) else { return }
-        var refs = references(thread, t)
+        var refs = shelfReferences(of: t)
         var added: [(String, String)] = []
         for address in addresses {
             if let (id, fragment) = BlockID.link(address), fragment == nil, hosts.block(id)?.agent != nil {
                 invite(id, to: thread, author: author)
                 continue
             }
-            guard !refs.contains(address), address != Self.address(thread) else { continue }
+            guard !refs.contains(where: { sameShelfItem($0, address) }), address != Self.address(thread) else { continue }
             refs.append(address)
             added.append((address, contextTitle(address)))
         }
         guard !added.isEmpty else { return }
-        setReferences(refs, of: thread)
+        setShelf(thread, references: refs)
         for (address, title) in added { hosts.addToThread(thread, .context(added: true, address: address, title: title), author: author) }
     }
 
@@ -234,14 +236,28 @@ extension MainWindowController {
     func removeFromContext(_ thread: BlockID, _ address: String, author: ThreadAuthor = Hosts.you) {
         guard let t = hosts.block(thread) else { return }
         let title = contextTitle(address)
-        if let (id, _) = BlockID.link(address), ThreadContext.participants(of: t).contains(id) {
-            setParticipants(ThreadContext.participants(of: t).filter { $0 != id }, of: thread)
+        if let (id, _) = BlockID.link(address), participants(of: t).contains(id) {
+            setParticipants(participants(of: t).filter { $0 != id }, of: thread)
         } else {
-            let refs = references(thread, t)
-            guard refs.contains(address) else { return }
-            setReferences(refs.filter { $0 != address }, of: thread)
+            let refs = shelfReferences(of: t)
+            guard refs.contains(where: { sameShelfItem($0, address) }) else { return }
+            setShelf(thread, references: refs.filter { !sameShelfItem($0, address) })
         }
         hosts.addToThread(thread, .context(added: false, address: address, title: title), author: author)
+    }
+
+    /// Whether two addresses are the same thing on a shelf: the same, or a
+    /// file's and its block's (the shelf keeps blocks; a file put there
+    /// by its path is its block from then on).
+    func sameShelfItem(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        func file(_ s: String) -> (HostID, String)? {
+            if case let .file(h, path, _)? = ManifoldAddress.parse(s) { return (h, path.count > 1 && path.hasSuffix("/") ? String(path.dropLast()) : path) }
+            if let (id, frag) = BlockID.link(s), frag == nil, let p = hosts.block(id)?.path { return (id.host, p) }
+            return nil
+        }
+        guard let x = file(a), let y = file(b) else { return false }
+        return x.0 == y.0 && x.1 == y.1
     }
 
     /// What a thing on a shelf is called: an agent by its name, a block by
@@ -259,7 +275,7 @@ extension MainWindowController {
     /// conversation, the lead first, then what's kept in its context.
     func contextItems(of t: Block) -> [ThreadShelfView.Item] {
         // Every agent put there, running or not (one gone quiet stays, dimmed).
-        let parts = ThreadContext.participants(of: t).filter { hosts.block($0) != nil }
+        let parts = participants(of: t)
         var out: [ThreadShelfView.Item] = parts.enumerated().compactMap { i, id in
             guard let b = hosts.block(id) else { return nil }
             let runs = Self.agentRuns(b)
@@ -267,7 +283,7 @@ extension MainWindowController {
                                         symbol: "sparkle", agent: id, isLead: i == 0 && parts.count > 1 && !asksAll(t),
                                         detail: runs ? AgentLook.description(of: b) : "not running: a comment asks another of its kind, or starts one", quiet: !runs)
         }
-        for address in references(t.id, t) {
+        for address in shelfReferences(of: t) {
             var symbol = "doc"
             var image: NSImage?
             if case let .file(_, path, _)? = ManifoldAddress.parse(address) {

@@ -30,6 +30,8 @@ protocol ThreadChatDelegate: AnyObject {
     func threadChat(_ view: ThreadChatView, removeContext address: String)
     /// A new agent made in the project its place is in (§3.12), and put in it.
     func threadChatNewAgent(_ view: ThreadChatView)
+    /// Another thread about what this one's about, begun: its composer.
+    func threadChatNewThread(_ view: ThreadChatView)
     /// Its place (the place line, the text it was written against) clicked:
     /// gone back to, where the thread was made.
     func threadChatGoToPlace(_ view: ThreadChatView)
@@ -46,6 +48,7 @@ extension ThreadChatDelegate {
     func threadChat(_ view: ThreadChatView, addContext addresses: [String]) {}
     func threadChat(_ view: ThreadChatView, removeContext address: String) {}
     func threadChatNewAgent(_ view: ThreadChatView) {}
+    func threadChatNewThread(_ view: ThreadChatView) {}
     func threadChatGoToPlace(_ view: ThreadChatView) {}
 }
 
@@ -130,6 +133,11 @@ final class ThreadChatView: NSView {
     private var placeholder: NSTextField { box.placeholder }
     private let resolveButton = FlatButton("Resolve", symbol: "checkmark", font: UIType.detail)
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
+    /// Another thread about the same thing: a thread's place brings the
+    /// thread back (⌥⌘M), and this begins a new one there instead.
+    private let newThreadButton = IconButton("square.and.pencil", size: 11, tip: "New Thread About This")
+    /// Debugging: whether it's shown.
+    var debugNewThreadButton: Bool { !newThreadButton.isHidden }
     /// Ask Claude: the thread the agent's, every comment asking it untagged.
     private let askButton = FlatButton("Ask Claude", symbol: "sparkle", toggles: true, font: UIType.detail)
     /// Which agent Ask asks, when the space has more than one of its kind.
@@ -201,7 +209,7 @@ final class ThreadChatView: NSView {
         agentMark.heightAnchor.constraint(equalToConstant: 14).isActive = true
         participantsLabel.lineBreakMode = .byTruncatingTail
         participantsLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let placeRow = NSStackView(views: [agentMark, placeLabel, driftLabel, participantsLabel, NSView(), tileButton])
+        let placeRow = NSStackView(views: [agentMark, placeLabel, driftLabel, participantsLabel, NSView(), newThreadButton, tileButton])
         placeRow.orientation = .horizontal
         placeRow.spacing = 6
         header.orientation = .vertical
@@ -256,6 +264,9 @@ final class ThreadChatView: NSView {
         contextView.widthAnchor.constraint(equalTo: header.widthAnchor).isActive = true
         tileButton.target = self
         tileButton.action = #selector(openTile)
+        newThreadButton.target = self
+        newThreadButton.action = #selector(newThread)
+        newThreadButton.isHidden = true
         // Its place, and what it was written against: clicked, gone back to.
         for v in [placeLabel, contextView] as [NSView] {
             let click = NSClickGestureRecognizer(target: self, action: #selector(goToPlace))
@@ -348,6 +359,7 @@ final class ThreadChatView: NSView {
         driftLabel.textColor = m.gone ? NSColor.systemRed : Theme.tertiaryText
         // A new one's too: taken to a tile as a draft.
         tileButton.isHidden = !showsTileButton || m.inTile || (m.thread == nil && newPlace == nil)
+        newThreadButton.isHidden = t?.about == nil
         // Ask: the agent's thread, or (a new one) as switched; its mark in the header.
         // Who it asks: a new thread's, which of its kind (more than one in
         // the space); a thread's, its lead by name, or all of them.
@@ -873,6 +885,7 @@ final class ThreadChatView: NSView {
     }
 
     @objc private func openTile() { delegate?.threadChatOpenTile(self) }
+    @objc private func newThread() { delegate?.threadChatNewThread(self) }
 
     @objc private func goToPlace() {
         guard model.thread != nil else { return }

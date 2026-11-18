@@ -645,8 +645,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         s.version = hosts.client(of: p.block)?.node.seq(.block(p.block)) ?? 0
         // A space's timeline (§3.12): said so, not the space's name.
         if p.lens == .threads {
-            let n = hosts.threads(inSpace: p.block).reduce(0) { $0 + hosts.unseen($1).count }
-            s.caption = "Threads" + (n > 0 ? " · \(n) new" : "")
+            // A block's threads (a project's, an agent's, a file's): said whose.
+            let (list, title) = s.block.flatMap { $0.kind == .arrangement ? nil : threads(of: $0) } ?? (hosts.threads(inSpace: p.block), "Threads")
+            let n = list.reduce(0) { $0 + hosts.unseen($1).count }
+            s.caption = title + (n > 0 ? " · \(n) new" : "")
         }
         return s
     }
@@ -824,6 +826,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             v = s
         case .threads:
             let t = ThreadsTimelineTileView(placement: p.id, block: p.block)
+            // Not a space's: a block's threads (§3.12) — a project's, an
+            // agent's, a file's — as a list of their cards.
+            if let b = hosts.block(p.block), b.kind != .arrangement {
+                t.timeline.space = nil
+                t.timeline.subject = p.block
+                t.timeline.mode = .list
+            }
             watch(t.timeline)
             v = t
         case .thread:
@@ -1297,8 +1306,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         var parent: [BlockID: (BlockID, String)] = [:]
         var seen = roots, frontier = Array(roots)
         while let b = frontier.popLast() {
-            for e in hosts.client(of: b)?.node.graph.strongEdges(from: b) ?? [] where seen.insert(e.to).inserted {
-                parent[e.to] = (b, "\(e.kind)")
+            for e in hosts.client(of: b)?.node.strongEdges(from: b) ?? [] where seen.insert(e.to).inserted {
+                parent[e.to] = (b, "\(e.kind)" + (e.relation.map { " (\($0))" } ?? ""))
                 frontier.append(e.to)
             }
         }

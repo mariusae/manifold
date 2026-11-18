@@ -171,7 +171,8 @@ extension MainWindowController {
         }
         // What it alone reached, which goes to Recently Closed with it.
         let alone = hosts.reachable().subtracting(hosts.reachable(without: block)).subtracting([block]).count
-        var text = "Deleted “\(title)”"
+        // A project's block: the folder no longer a project (§2.6), itself kept.
+        var text = b.kind == .project ? "“\(title)” is no longer a project (its folder stays)" : "Deleted “\(title)”"
         if !loses.isEmpty { text += ", " + loses.joined(separator: " and ") }
         if alone > 0 { text += alone == 1 ? "; 1 block only it reached to Recently Closed" : "; \(alone) blocks only it reached to Recently Closed" }
         toast.show(text, action: "Undo", for: loses.isEmpty ? 4 : 6, countdown: true, then: { [weak self] in

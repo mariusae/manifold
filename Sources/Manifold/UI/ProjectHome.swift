@@ -13,12 +13,12 @@ enum ProjectAction {
     case settings
     /// A block at work in it (a terminal, an agent, a note), gone to.
     case go(BlockID)
-    /// Its agents (§3.12): one shown (a tile placed for it), a new one
-    /// made, one renamed, one ended.
-    case showAgent(BlockID)
+    /// A new agent (§3.12), pinned in it.
     case newAgent
-    case renameAgent(BlockID)
-    case deleteAgent(BlockID)
+    /// Its threads (§3.12): all of them, as a list in a tile of its own.
+    case threads
+    /// Things dropped on its sidebar, by address: pinned in it (§2.6).
+    case pin([String])
 }
 
 /// One of a project's agents (§3.12), as its pill shows it — on the
@@ -51,10 +51,9 @@ struct ProjectFacts: Equatable {
     var gitPending = false
     /// Its code's languages, by their share of its code's bytes, most first.
     var languages: [LanguageShare] = []
-    /// What's at work in it: terminals and agents there, notes about its files.
+    /// What's pinned in it, its agents first; what's at work in it:
+    /// terminals and agents there, notes about its files.
     var presence: [Presence] = []
-    /// Its agents (§3.12), each a pill on its line.
-    var agents: [ProjectAgentChip] = []
 }
 
 /// A language's share of a project's code (§2.6).
@@ -102,11 +101,15 @@ struct Presence: Equatable {
     var detail: String
     /// Placed in the workspace shown: listed first.
     var here = false
+    /// Pinned in the project: under Pinned, above the rest.
+    var pinned = false
+    /// One of its threads (§3.12), the latest open ones: under Threads.
+    var isThread = false
     /// Its card, as a tile has it in a stack.
     var card: SummaryCardContent?
 
     static func == (a: Presence, b: Presence) -> Bool {
-        a.block == b.block && a.title == b.title && a.symbol == b.symbol && a.detail == b.detail && a.here == b.here
+        a.block == b.block && a.title == b.title && a.symbol == b.symbol && a.detail == b.detail && a.here == b.here && a.pinned == b.pinned && a.isThread == b.isThread
             && a.card?.summary == b.card?.summary && a.card?.mark == b.card?.mark && a.card?.symbol == b.card?.symbol
             && a.card?.agent == b.card?.agent
     }
@@ -122,10 +125,9 @@ final class ProjectStrip: NSView {
     private let changes = FlatButton("", symbol: "plusminus", font: UIType.detail)
     private let index = FlatButton("", symbol: "circle.dashed", font: UIType.detail)
     private var reindexes = false
-    /// Its agents (§3.12), at its right: a pill each, and + for another.
-    private var agentPills: [ProjectAgentPill] = []
-    private var agents: [ProjectAgentChip] = []
-    private let addAgent = IconButton("plus", size: 10, tip: "New Agent — one that lives in this project, asked in its threads; click its pill to show it")
+    /// + for a new agent (§3.12), at its right: pinned in the project,
+    /// started with nothing showing it — its card under Pinned.
+    private let addAgent = IconButton("plus", size: 10, tip: "New Agent — pinned in this project, asked in its threads; shown under Pinned")
     static let height: CGFloat = 30
 
     override init(frame: NSRect) {
@@ -144,27 +146,6 @@ final class ProjectStrip: NSView {
 
     @objc private func newAgent() { onAction?(.newAgent) }
 
-    private func showAgents(_ list: [ProjectAgentChip]) {
-        guard list != agents else { return }
-        agents = list
-        agentPills.forEach { $0.removeFromSuperview() }
-        agentPills = list.map { a in
-            let p = ProjectAgentPill(a)
-            p.onClick = { [weak self] in self?.onAction?(.showAgent(a.id)) }
-            p.onMenu = { [weak self] in
-                let menu = NSMenu()
-                menu.addItem(ClosureMenuItem("Show \(a.name)", symbol: "rectangle.on.rectangle") { self?.onAction?(.showAgent(a.id)) })
-                menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { self?.onAction?(.renameAgent(a.id)) })
-                menu.addItem(.separator())
-                menu.addItem(ClosureMenuItem("Delete \(a.name)", symbol: "trash") { self?.onAction?(.deleteAgent(a.id)) })
-                return menu
-            }
-            addSubview(p)
-            return p
-        }
-        needsLayout = true
-    }
-
     required init?(coder: NSCoder) { fatalError() }
 
     @objc private func openGit() { onAction?(.openGit) }
@@ -180,9 +161,12 @@ final class ProjectStrip: NSView {
                 + (g.scope.map { " — this project is \($0) in it" } ?? "")
             changes.title = g.refreshedAt == nil ? "" : g.status.isEmpty ? "No changes" : g.status.count == 1 ? "1 change" : "\(g.status.count) changes"
             changes.isHidden = changes.title.isEmpty
+            branch.isHidden = false
         } else {
-            branch.title = f.gitPending ? "Reading…" : "Not in a repository"
+            // Not a repository: nothing to say, nothing to do — no chip.
+            branch.title = "Reading…"
             branch.toolTip = f.git?.error
+            branch.isHidden = !f.gitPending
             changes.isHidden = true
         }
         let (symbol, words, tip, again) = Self.indexWords(f)
@@ -191,8 +175,26 @@ final class ProjectStrip: NSView {
         index.title = words
         index.toolTip = tip
         reindexes = again
-        showAgents(f.agents)
+        index.isHidden = !Self.indexWorthSaying(f)
         needsLayout = true
+        // With nothing to say, the strip goes (its + to the header): laid out again.
+        superview?.needsLayout = true
+    }
+
+    /// Something on it besides its +: a branch, changes, an index to see to.
+    var hasChips: Bool { ![branch, changes, index].allSatisfy(\.isHidden) }
+
+    /// The index's chip only when there's something to do or to wait
+    /// for: not made (Index), being made, behind its code, failed — not
+    /// when there's no indexer for it, nor when it's current (the tile's
+    /// menu indexes it again).
+    static func indexWorthSaying(_ f: ProjectFacts) -> Bool {
+        if f.indexMissing != nil { return false }
+        guard let s = f.index else { return false }
+        switch s.state {
+        case .none, .indexing, .failed: return true
+        case .current: return (s.changed ?? 0) > 0
+        }
     }
 
     /// The index's chip: its symbol, words, tip, and whether a click
@@ -232,19 +234,10 @@ final class ProjectStrip: NSView {
 
     override func layout() {
         super.layout()
-        // Its agents from the right: + last, the pills before it, as many
-        // as there's room for beside the left's buttons.
+        // + at its right.
         var right = bounds.width - 8
         addAgent.frame = NSRect(x: right - 16, y: ((bounds.height - 16) / 2).rounded(), width: 16, height: 16)
         right -= 16 + 6
-        let roomFrom: CGFloat = 220
-        for p in agentPills.reversed() {
-            let w = p.wantedWidth
-            p.isHidden = right - w < roomFrom
-            guard !p.isHidden else { continue }
-            p.frame = NSRect(x: right - w, y: ((bounds.height - ProjectAgentPill.height - 3) / 2).rounded(), width: w, height: ProjectAgentPill.height + 3)
-            right -= w + 5
-        }
         var x: CGFloat = 8
         for b in [branch, changes, index] where !b.isHidden {
             b.sizeToFit()
@@ -260,18 +253,16 @@ final class ProjectStrip: NSView {
     }
 
     var debugState: String {
-        ([branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }
-            + agents.map { "agent \($0.name) (\($0.asleep ? "asleep" : $0.status.map { "\($0)" } ?? "idle"))" }).joined(separator: " | ")
+        [branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }.joined(separator: " | ")
     }
 }
 
-/// A project's agent (§3.12) as a pill, in the style that's its own: its
-/// colour as a tint, edged in it, its name — or, `letter`, its initial in
-/// a ring — in it; paler, its edge dashed, while it's asleep (asked, it
-/// starts again where it left off); at its top right what most wants you
-/// of it, as a space's square has it (a dot: needs you, failed, done and
-/// not read; an open ring: working). Hollow, where an agent in a tile is
-/// solid: one that lives in a project, not on the screen. Clicked, it's
+/// A project's agent (§3.12) as a pill: `letter`, its face, as an agent
+/// has it everywhere (its initial on a disc of its colour), paler while
+/// it's asleep (asked, it starts again where it left off); else its colour
+/// as a tint, edged in it, its name in it, its edge dashed asleep. At its
+/// top right what most wants you of it, as a space's square has it (a dot:
+/// needs you, failed, done and not read; an open ring: working). Clicked, it's
 /// shown; its menu shows, renames, deletes it; dragged, it's a reference to
 /// it (onto a thread's shelf, it joins); pointed at, its tile is ringed.
 final class ProjectAgentPill: NSControl {
@@ -315,6 +306,7 @@ final class ProjectAgentPill: NSControl {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if letter { return drawFace() }
         // Room at the top right for its dot, outside the pill.
         let body = letter
             ? NSRect(x: 0.75, y: (bounds.height - Self.letterSize) / 2 + 0.75, width: Self.letterSize - 1.5, height: Self.letterSize - 1.5)
@@ -338,6 +330,22 @@ final class ProjectAgentPill: NSControl {
         let baseline = body.midY - font.capHeight / 2
         (words as NSString).draw(at: NSPoint(x: (body.midX - size.width / 2).rounded(), y: baseline + font.ascender - size.height), withAttributes: attrs)
         if !chip.asleep { Self.drawStatus(chip.status, on: body) }
+    }
+
+    /// As its face is everywhere (`AgentLook`): a disc of its colour, its
+    /// initial on it — paler asleep; what most wants you at its corner.
+    private func drawFace() {
+        let r = NSRect(x: 0.5, y: (bounds.height - Self.letterSize) / 2 + 0.5, width: Self.letterSize - 1, height: Self.letterSize - 1)
+        chip.color.withAlphaComponent(chip.asleep ? 0.4 : 1).setFill()
+        NSBezierPath(ovalIn: r).fill()
+        let font = AgentLook.initialFont((r.height * 0.6).rounded())
+        // Dark on the light colours, as a face's ink is.
+        let ink: NSColor = Tints.luminance(chip.color) > 0.45 ? NSColor(white: 0.12, alpha: 1) : .white
+        let a: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink.withAlphaComponent(chip.asleep ? 0.7 : 1)]
+        let words = initial as NSString
+        let width = words.size(withAttributes: a).width
+        words.draw(at: NSPoint(x: r.midX - width / 2, y: r.midY - font.capHeight / 2 + font.descender), withAttributes: a)
+        if !chip.asleep { Self.drawStatus(chip.status, on: r) }
     }
 
     /// What most wants you, at a pill's top right, as a space's square has
@@ -423,9 +431,23 @@ final class ProjectSidebar: NSView {
     private let stack = FlippedView()
     private var shown: ProjectFacts?
     static let width: CGFloat = 280
+    /// Something that can be pinned is over it.
+    private var dropping = false {
+        didSet {
+            guard dropping != oldValue else { return }
+            // Ringed in the accent, over its rows, while it would take the drop.
+            wantsLayer = true
+            layer?.borderColor = Theme.accent.cgColor
+            layer?.borderWidth = dropping ? 2 : 0
+            layer?.cornerRadius = 6
+        }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        // Anything dropped on it — a tile's bar, a row, a file, a page — is
+        // pinned in the project (§2.6), under Pinned.
+        registerForDraggedTypes([.manifoldBlock] + Dragged.types)
         scroll.documentView = stack
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -448,12 +470,15 @@ final class ProjectSidebar: NSView {
             add(SectionLabel("Languages"))
             add(LanguageBar(f.languages))
         }
-        // What's at work in it now, each as its card: in the workspace
-        // shown first, then those in others under their own heading.
-        let here = f.presence.filter(\.here), elsewhere = f.presence.filter { !$0.here }
-        for (title, list) in [("Here now", here), ("Other spaces", elsewhere)] where !list.isEmpty {
+        // What's pinned in it, its agents first; then what's at work in it
+        // now, each as its card: in the workspace shown first, then those
+        // in others under their own heading.
+        let pinned = f.presence.filter(\.pinned), rest = f.presence.filter { !$0.pinned && !$0.isThread }
+        let here = rest.filter(\.here), elsewhere = rest.filter { !$0.here }
+        let threads = f.presence.filter(\.isThread)
+        for (title, list, most) in [("Pinned", pinned, 12), ("Here now", here, 8), ("Other spaces", elsewhere, 8), ("Open threads", threads, 5)] where !list.isEmpty {
             add(SectionLabel(title))
-            for p in list.prefix(8) {
+            for p in list.prefix(most) {
                 let row = p.card.map { HomeRow(card: $0) } ?? HomeRow(mark: nil, markColor: nil, title: p.title, detail: p.detail, symbol: p.symbol)
                 row.onClick = { [weak self] in self?.onAction?(.go(p.block)) }
                 // The block at work, dragged: itself, as a tile's bar ⇧-dragged is.
@@ -461,6 +486,11 @@ final class ProjectSidebar: NSView {
                 add(row)
             }
         }
+        // Every thread of it, open and resolved: a list of its own.
+        let all = HomeRow(mark: nil, markColor: nil, title: "All threads →", detail: nil, quiet: true)
+        all.onClick = { [weak self] in self?.onAction?(.threads) }
+        if threads.isEmpty { add(SectionLabel("Threads")) }
+        add(all)
         guard let g = f.git, g.refreshedAt != nil, f.repo != nil, g.error == nil else { return relayout() }
         let repo = f.repo ?? "", host = host
         // Where a path of the repository's is, from the project's root.
@@ -575,13 +605,34 @@ final class ProjectSidebar: NSView {
         NSRect(x: 0, y: 0, width: 1, height: bounds.height).fill()
     }
 
+    // MARK: Dropped on: pinned
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        // Not a row of its own dragged within it, unless to Pinned.
+        let ok = !ThreadShelfView.addresses(sender.draggingPasteboard).isEmpty
+        dropping = ok
+        return ok ? .link : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { dropping = false }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        dropping = false
+        let found = ThreadShelfView.addresses(sender.draggingPasteboard)
+        guard !found.isEmpty else { return false }
+        onAction?(.pin(found))
+        return true
+    }
+
     var debugState: String {
         stack.subviews.map { ($0 as? HomeRow)?.debugState ?? ($0 as? SectionLabel)?.stringValue.uppercased() ?? ($0 as? LanguageBar)?.debugState ?? "?" }.joined(separator: "\n")
     }
 }
 
 /// A heading in a homepage's sidebar.
-private final class SectionLabel: NSTextField {
+final class SectionLabel: NSTextField {
     let height: CGFloat = 24
     init(_ words: String) {
         super.init(frame: .zero)
@@ -632,14 +683,20 @@ final class HomeRow: NSView, NSDraggingSource {
     /// two say what's at work.
     static let cardLines = 2
 
-    convenience init(card content: SummaryCardContent) {
+    convenience init(card content: SummaryCardContent, flat: Bool = false) {
         self.init(mark: nil, markColor: nil, title: content.summary.title, detail: nil, symbol: content.symbol)
         var shown = content
         shown.summary.lines = Array(content.summary.lines.prefix(Self.cardLines))
         let c = SummaryCard(shown)
+        c.plain = flat
+        self.flat = flat
         card = c
         addSubview(c)
     }
+
+    /// A card's words without the card (a list's row): on the list's own
+    /// ground, a band under the pointer, a hairline under it.
+    private var flat = false
 
     override func layout() {
         super.layout()
@@ -728,7 +785,16 @@ final class HomeRow: NSView, NSDraggingSource {
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func draw(_ dirtyRect: NSRect) {
-        // A card draws itself (ringed, chosen).
+        // A card draws itself (ringed, chosen); a flat one, its band and hairline here.
+        if card != nil, flat {
+            if hovering || chosen {
+                (chosen ? Flat.chosen(emphasized: false) : Flat.hovered).setFill()
+                NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 1), xRadius: Radius.control, yRadius: Radius.control).fill()
+            }
+            Theme.divider.setFill()
+            NSRect(x: 10, y: bounds.maxY - 1, width: bounds.width - 20, height: 1).fill()
+            return
+        }
         guard card == nil else { return }
         if chosen {
             Flat.chosen(emphasized: false).setFill()

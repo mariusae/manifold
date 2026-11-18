@@ -2073,32 +2073,64 @@ private final class Seen: @unchecked Sendable {
     #expect(b.focused == back.id && b.heights[back.id] == 1)
 }
 
-@Test func anOpenThreadKeepsTheAgentsOnItsShelfAndAProjectItsOwn() {
+@Test func anOpenThreadKeepsWhatsOnItsShelfAndAProjectWhatsPinnedInIt() {
     let node = Node()
     let host = HostID("h")
     func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
     func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
-    // A space keeping a thread (its `thread` link); an agent on the
-    // thread's shelf, its tile closed; another, a project's, on no tile.
+    // A space keeping a thread (its `thread` link); an agent and a note on
+    // the thread's shelf, their tiles closed; another agent pinned in a
+    // project, on no tile.
     let ws = BlockID(host: host), thread = BlockID(host: host), agent = BlockID(host: host), own = BlockID(host: host)
+    let note = BlockID(host: host), proj = BlockID(host: host)
     put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 1)
     put(.order([ws]), to: .desk(host), at: 2)
     put(.create(kind: .thread, title: nil, path: nil), to: .block(thread), at: 3)
     put(.link(Link(from: ws, to: thread, kind: .thread, at: stamp(4))), to: .links(host), at: 4)
     for a in [agent, own] { put(.create(kind: .agent, title: nil, path: nil), to: .block(a), at: 5) }
-    put(.annotate([ThreadContext.participantsKey: agent.description]), to: .block(thread), at: 6)
-    put(.project(Project(root: "/p", made: stamp(7))), to: .desk(host), at: 7)
-    put(.projectAgent(root: "/p", agent: own, attached: true), to: .desk(host), at: 8)
+    put(.create(kind: .text, title: nil, path: nil), to: .block(note), at: 5)
+    let part = Link(from: thread, to: agent, kind: .linked, at: stamp(6), relation: ThreadContext.participant)
+    put(.link(part), to: .links(host), at: 6)
+    put(.link(Link(from: thread, to: note, kind: .linked, at: stamp(6), toAnchor: "L3", relation: ThreadContext.shelved)), to: .links(host), at: 6)
+    put(.create(kind: .project, title: "p", path: nil), to: .block(proj), at: 7)
+    var p = Project(root: "/p", made: stamp(7))
+    p.block = proj
+    put(.project(p), to: .desk(host), at: 7)
+    let pin = Link(from: proj, to: own, kind: .pinned, at: stamp(8))
+    put(.link(pin), to: .links(host), at: 8)
 
+    #expect(node.participants(of: thread) == [agent])
+    #expect(node.shelved(of: thread).map(\.block) == [note] && node.shelved(of: thread).first?.anchor == "L3")
+    #expect(node.threads(of: agent) == [thread] && node.threads(of: note) == [thread])
+    // Named in a comment: one of its threads too.
+    let named = BlockID(host: host)
+    put(.create(kind: .text, title: nil, path: "/p/a.swift"), to: .block(named), at: 8)
+    put(.link(Link(from: thread, to: named, kind: .opened, at: stamp(8), relation: ThreadText.mentions)), to: .links(host), at: 8)
+    #expect(node.threads(of: named) == [thread])
+    #expect(!node.reachable(on: host).contains(named))
     var r = node.reachable(on: host)
-    #expect(r.contains(thread) && r.contains(agent) && r.contains(own))
+    #expect(r.contains(thread) && r.contains(agent) && r.contains(note) && r.contains(proj) && r.contains(own))
 
-    // Resolved, the thread lets go of its agent; the project keeps its own.
+    // Resolved, the thread lets go of its shelf; the project keeps its pin.
     put(.threadEntry(ThreadEntry(at: stamp(9), author: .manifold, kind: .resolved)), to: .block(thread), at: 9)
     r = node.reachable(on: host)
-    #expect(r.contains(thread) && !r.contains(agent) && r.contains(own))
+    #expect(r.contains(thread) && !r.contains(agent) && !r.contains(note) && r.contains(own))
+    // Still there to read: the thread's links are as they were.
+    #expect(node.participants(of: thread) == [agent])
 
-    // No longer the project's, it goes too.
-    put(.projectAgent(root: "/p", agent: own, attached: false), to: .desk(host), at: 10)
+    // Unpinned, it goes too; the project gone, its block with it.
+    put(.unlink(pin.id), to: .links(host), at: 10)
     #expect(!node.reachable(on: host).contains(own))
+    put(.unproject("/p"), to: .desk(host), at: 11)
+    #expect(!node.reachable(on: host).contains(proj))
+}
+
+@Test func aTerminalsTitleLeavesOutTheMarkItsProgramPutsBeforeIt() {
+    #expect(Block.withoutStatusMark("✳ Port the outliner") == "Port the outliner")
+    #expect(Block.withoutStatusMark("✶ Reading files") == "Reading files")
+    #expect(Block.withoutStatusMark("⠋ npm install") == "npm install")
+    #expect(Block.withoutStatusMark("· thinking") == "thinking")
+    #expect(Block.withoutStatusMark("~/src/manifold") == "~/src/manifold")
+    #expect(Block.withoutStatusMark("vim notes.md") == "vim notes.md")
+    #expect(Block.withoutStatusMark("✳") == "")
 }

@@ -218,7 +218,8 @@ extension Block {
             // Its place, and the last word said and by whom.
             if let about = t.about { s.place = [about.title, about.name].compactMap { $0 }.joined(separator: " · ") }
             if let last = t.lastComment, let words = last.comment {
-                s.lines = [last.author.name + ": " + Self.oneLine(words)]
+                // As it reads: a link by its words, not its address.
+                s.lines = [last.author.name + ": " + Self.oneLine(InlineMarkup.plainText(words))]
             }
             let n = t.comments.count
             s.lines.append((t.resolved ? "resolved · " : "") + "\(n) comment\(n == 1 ? "" : "s")")
@@ -232,7 +233,7 @@ extension Block {
             s.lines = ["\(processes?.entries.count ?? 0) processes"]
         case .smartlog:
             s.wantsThumbnail = true
-        case .arrangement:
+        case .arrangement, .project:
             break
         }
         s.lines = s.lines.filter { !$0.isEmpty }

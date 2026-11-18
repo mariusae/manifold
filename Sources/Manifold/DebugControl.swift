@@ -1689,15 +1689,29 @@ enum DebugControl {
             if arg.hasPrefix("card ") {
                 // "card <name>": its card, as its pill pointed at shows it.
                 let name = String(arg.dropFirst(5))
-                guard let id = client.desk.projects.flatMap({ $0.agents ?? [] }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }),
+                guard let id = client.desk.projects.flatMap({ wc.agents(of: $0, on: client.host).map(\.id) }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }),
                       let window = wc.window else { return "no agent \(name)" }
                 wc.showAgentCard(id, beside: NSRect(x: 40, y: 60, width: 20, height: 20), in: window)
                 return "shown"
             }
+            if arg.hasPrefix("pin ") {
+                // "pin <root> <address>": as if dropped on its homepage's sidebar.
+                let w = arg.split(separator: " ").map(String.init)
+                guard w.count == 3, let p = client.desk.projects.first(where: { $0.root == w[1] || $0.alias == w[1] }) else { return "usage: pin <root> <address>" }
+                wc.pinDropped([w[2]], in: p)
+                return "pinned: " + wc.pinned(in: p).compactMap { wc.hosts.block($0).map(MainWindowController.linkTitle) }.joined(separator: ", ")
+            }
+            if arg.hasPrefix("deleteproject ") {
+                // "deleteproject <root>": its project's block deleted, as ⌘D on it does.
+                let root = String(arg.dropFirst(14))
+                guard let b = client.desk.projects.first(where: { $0.root == root || $0.alias == root })?.block else { return "no project at \(root)" }
+                wc.deleteBlock(b)
+                return "deleting \(b)"
+            }
             if arg.hasPrefix("delete ") {
                 // "delete <name>": as its pill's Delete does.
                 let name = String(arg.dropFirst(7))
-                guard let id = client.desk.projects.flatMap({ $0.agents ?? [] }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }) else { return "no agent \(name)" }
+                guard let id = client.desk.projects.flatMap({ wc.agents(of: $0, on: client.host).map(\.id) }).first(where: { wc.hosts.block($0).map(AgentLook.name(of:)) == name }) else { return "no agent \(name)" }
                 wc.deleteBlock(id)
                 return "deleting \(name)"
             }
@@ -1709,7 +1723,7 @@ enum DebugControl {
             var lines: [String] = []
             for p in client.desk.projects {
                 var each: [String] = []
-                for id in p.agents ?? [] {
+                for id in wc.agents(of: p, on: client.host).map(\.id) {
                     guard let b = wc.hosts.block(id) else { each.append("\(id.ulid.suffix(6)) (gone)"); continue }
                     let t = b.terminal
                     let runs: String = MainWindowController.agentRuns(b) ? "running" : "asleep"

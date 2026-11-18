@@ -550,6 +550,18 @@ extension MainWindowController: GridDelegate {
             }
         }
         menu.addItem(pinItem(block, in: id, key: true))
+        if let item = projectPinItem(block) { menu.addItem(item) }
+        if let item = threadsItem(block) { menu.addItem(item) }
+        // A thread list's: how it's shown (its view menu), and its open
+        // threads handed to an agent.
+        if let t = (views[placement] as? ThreadsTimelineTileView)?.timeline {
+            let view = NSMenuItem(title: "Show", action: nil, keyEquivalent: "")
+            view.setSymbol("line.3.horizontal.decrease", size: 12)
+            view.submenu = t.viewMenu()
+            menu.addItem(view)
+            let n = t.openShown.count
+            menu.addItem(ClosureMenuItem(n > 0 ? "Hand \(n) Open Thread\(n == 1 ? "" : "s") to Agent" : "Hand Open Threads to Agent", symbol: "sparkle") { t.handOver() })
+        }
         if views[placement]?.outline != nil {
             menu.addItem(ClosureMenuItem("Find in Outline…", symbol: "list.bullet.rectangle", key: "P") { [weak self] in
                 guard let self else { return }

@@ -351,6 +351,7 @@ final class GridView: NSView, NSDraggingSource {
                     badgeRects.removeValue(forKey: id)
                     pill.linkWanted = 0
                     pill.fanEdge = nil
+                    pill.onChromeShown = nil
                 } else {
                     let badge = badges[id] ?? {
                         let b = LinkBadge()
@@ -361,6 +362,17 @@ final class GridView: NSView, NSDraggingSource {
                     badge.cards = tile.links
                     badge.onFocusedBar = tile.shown.id == focused
                     pill.linkWanted = badge.capsuleWantedWidth
+                    // The links' pill is the bar's: shown as its buttons are.
+                    pill.onChromeShown = { [weak badge] shown, animate in
+                        guard let badge else { return }
+                        let a: CGFloat = shown ? 1 : 0
+                        guard animate else { badge.alphaValue = a; return }
+                        NSAnimationContext.runAnimationGroup { ctx in
+                            ctx.duration = Motion.fast
+                            badge.animator().alphaValue = a
+                        }
+                    }
+                    badge.alphaValue = pill.chromeShown ? 1 : 0
                     // The bar's buttons or the links' room changed without
                     // the grid laying out (a status come or gone): placed
                     // again where it was, against the bar as it is now.
@@ -2764,6 +2776,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if self.focused != focused {
             self.focused = focused
             updateColors()
+            showButtons(animated: true)
         }
         needsLayout = true
     }
@@ -2995,17 +3008,31 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The pointer on the bar: its buttons shown; else only its icon,
     /// name and status. Their room is kept, so nothing moves as they come.
     var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true); inkButtons() } } }
-    /// Buttons always shown: a tile's controls stay visible (hidden till
-    /// hovered, they moved the links' pill and hid what could be done).
-    static var buttonsAlways = true
+    /// Every bar's controls shown, not only the focused tile's and the
+    /// one under the pointer.
+    static var buttonsAlways = false
+    /// Its controls shown (§3.1): the pointer on it, or its tile focused —
+    /// the bar a quiet name and status otherwise. Their room is kept, so
+    /// nothing moves as they come and go.
+    var chromeShown: Bool { pointerIn || focused || Self.buttonsAlways }
+    /// The controls laid over the bar by the grid (the links' pill), shown
+    /// and hidden with its own: whether shown, and whether to fade.
+    var onChromeShown: ((Bool, Bool) -> Void)?
 
     private func showButtons(animated: Bool) {
-        let a: CGFloat = pointerIn || Self.buttonsAlways ? 1 : 0
+        let shown = chromeShown
+        let a: CGFloat = shown ? 1 : 0
+        // The place too, but a page's address (what's clicked to type
+        // another) and a bar standing for its tile (its summary).
+        let place: CGFloat = shown || collapsed || lastShown?.block?.web != nil ? 1 : 0
         let all = [close, corner, sidebarButton] + ownButtons
-        guard animated, !Motion.reduced else { for b in all { b.alphaValue = a }; return }
+        let animate = animated && !Motion.reduced
+        onChromeShown?(shown, animate)
+        guard animate else { for b in all { b.alphaValue = a }; subtitle.alphaValue = place; return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.fast
             for b in all { b.animator().alphaValue = a }
+            subtitle.animator().alphaValue = place
         }
     }
 
@@ -3593,17 +3620,18 @@ final class AgentNamePill: NSControl {
     override func mouseUp(with event: NSEvent) { superview?.mouseUp(with: event) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    /// Drawn bottom up, as a plain view is: a control is flipped, and the
-    /// name, drawn from its top, sat a point high.
+    /// Drawn bottom up, as a plain view is.
     override var isFlipped: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
         let s = name as NSString
-        let w = s.size(withAttributes: attributes).width
-        // The baseline under the capitals' middle at the pill's.
+        let size = s.size(withAttributes: attributes)
+        // The baseline under the capitals' middle at the pill's. The line
+        // is drawn from its bottom, and it's taller than the font's ascent
+        // and descent: set from its top, where the ascent begins.
         let font = Self.font
         let baseline = bounds.midY - font.capHeight / 2
-        s.draw(at: NSPoint(x: ((bounds.width - w) / 2).rounded(), y: (isFlipped ? bounds.midY + font.capHeight / 2 - font.ascender : baseline + font.descender).rounded()),
+        s.draw(at: NSPoint(x: ((bounds.width - size.width) / 2).rounded(), y: baseline + font.ascender - size.height),
                withAttributes: attributes)
     }
 }

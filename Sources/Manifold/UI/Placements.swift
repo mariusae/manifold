@@ -44,7 +44,7 @@ struct Shown: Equatable {
     /// Where it is, for subtitles: a folder, or a working directory.
     var place: String? { block?.place }
     var isDirty: Bool { block?.text?.isDirty == true }
-    var isDormant: Bool { block?.terminal?.dormantSince != nil && block?.terminal?.pid == nil }
+    var isDormant: Bool { lens != .threads && block?.terminal?.dormantSince != nil && block?.terminal?.pid == nil }
     /// Its shell exited, none started since: said after its name, as
     /// "(exited)", with the status if it wasn't 0.
     var exitedWords: String? {

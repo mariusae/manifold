@@ -358,56 +358,77 @@ HTML. They're drawn as shares (`LanguageShare`, a language's colour as code
 hosts colour it), and its Here Now the client's own reading of the
 host's blocks (`Presence`): terminals and agents whose directory is in
 it, notes linked to a file of it — each as its card (`SummaryCard`), those placed in the space shown first and the rest
-under Other spaces. A project's root's other spelling is
+under Other spaces. Above them, **Pinned**: what's pinned in the project
+(below), its agents first (what most wants you of them first), each its
+card; under them, its latest open threads, and All threads →, the
+project's threads as a list (§3.12). A project's root's other spelling is
 the file system's (`realpath`: /private/tmp), not Foundation's, which
 gives /tmp back — a terminal's directory says the former.
 
-**A project's agents.** An agent can live in a project: made there (the
-+ at the right of its strip, or New Agent in a thread's shelf, or asked
-in a thread about a place in it with none at work), it runs in the
-project's folder — its `CLAUDE.md`, its repository, its memory and
-sessions are the project's — on the project's host, with nothing
-showing it, and is a pill on the strip, in a style of its own: hollow,
-where an agent in a tile is solid — its colour as a tint, edged in it,
-its name in it; paler, its edge dashed, while it's asleep — and at its
-top right what most wants you of it, as a space's square has it (a dot:
-needs you, failed, done and not read; an open ring: working). The agents
-of every project the space shows (a tile of it, or anything from inside
-it) are a row at the sidebar's foot, over Threads: each its initial in
-its ring, its badge at its corner, "+n" for those past the room — clicked,
-shown; their menu as on the strip. Pointed at, either pill shows the
-agent's card: its name; what kind of agent, the project it lives in, the
-host; and what it's doing — working on what it was asked (a thread's ask
-said as the thread and what was written there, its references by their
-names), and what it's doing now; waiting on you, for what; done (read or
-not) or idle, with what it was last asked and said; asleep — with its
-screen, if it's been seen. So that row reads, an agent's name is
-given an initial no agent kept or at work has, and while there are some,
-one unlike any taken (not Q beside O, nor L beside I); the names (a
-plant's or a bird's) start with every letter. Clicked, its tile is placed (or gone to); closed, the tile goes
-and the agent stays; dragged, it's a reference to it (onto a thread's
-shelf, it joins); its menu renames it or deletes it (with Undo, as any
-block). The project keeps it: its agents are roots (`Project.agents`,
-`projectAgent` on the desk), kept while the project is, on screen or
-not; deleted, or the folder no longer a project, they go. A thread about
-a place in a project asks the project's agents first — they lead a new
-thread there — so the nearest project says who answers. An agent whose
-process has ended — it exited, the host restarted (agents still marked
-running then are made dormant), it lay idle — is asleep, not gone:
-asked, or shown, the host starts it again where it left off. Its
-conversation is named by Manifold: an agent that takes a name (Claude
-Code) is started under an id Manifold makes (`--session-id`), kept on
-its block (`AgentSessions`, `agent.session`) — the key from the block to
-the conversation — and taken up again by it (`--resume`, which keeps
-it); a turn in another session (after `/clear`, as its transcript's
-name says) moves the block to that one; one from before sessions were
-named resumes its last turn's; one that never took a turn starts under
-its id again. Its command as made is kept as `agent.command`, less the
-first prompt an agent started with was given. Agents that take no name
-start fresh. The host holds what's typed
-to it till its first hook says it's ready — and, not ready after a
-while (asking to trust its folder, where a Return is "No, exit"), it's
-said to wait on you rather than typed into. Its name pill is the project's; the sidebar has its initial.
+**A project, in the graph; and its pins.** A project has a block of its
+own (`BlockKind.project`, `Project.block`, made by the host with the
+project): the project as a node — an ordinary block, but for what keeps
+it: its folder. While the folder is a project, its block is a root, as
+if the folder held it by a strong edge; the folder gone from its host
+for the collection's grace (not a moment: a volume unmounted a while),
+or made a folder again by hand, the project is no more, and its block,
+no longer kept, is collected as anything nothing reaches is (Recently
+Closed has it a while). Deleting the block (⌘D) is the other way round:
+the folder no longer a project, the folder itself left alone. Anything
+can be **pinned** in it, as in a space — Pin in <project>, in a tile's
+or a row's menu, for a block in a project; Unpin from <project>; or
+dropped on the homepage's sidebar (a tile's bar, a row, a file, a page)
+— a `pinned` link from its block, which keeps what it pins, on screen or
+not; the project gone, what only it kept goes with it. Gone to (a link,
+a reference), a project's block is its folder's tile, its homepage.
+
+**A project's agents.** There's no kind of agent apart: an agent is in
+the project its folder is in, and **pinned** there, it's kept by the
+project — on screen or not, asleep or not. + at the right of the
+project's strip (in its header when the strip has nothing else to say), New Agent in a thread's shelf, or a thread about a
+place in it asking with none at work, makes one pinned there, run in
+the project's folder — its `CLAUDE.md`, its repository, its memory and
+sessions are the project's — on the project's host, with nothing showing
+it: its card is under the project's Pinned. An agent with no tile, kept
+by a pin, is what was once called ambient; its tile is a view of it,
+closed, the agent stays; unpinned with no tile, it goes as a closed tile
+does (Recently Closed has it a while). The pinned agents the space shown
+reaches — pinned in it, or in a project it shows (a tile of it, or
+anything from inside it) — are a row at the sidebar's foot, over
+Threads, each its face as an agent has it everywhere — its initial on
+a disc of its colour, paler while it's asleep — at its top right what
+most wants you of it, as a space's square has it (a dot: needs you,
+failed, done and not read; an open ring: working), "+n" for those past
+the room; clicked, shown; their menu shows, renames, unpins, deletes.
+Pointed at — a pill, a card, a row, a reference, a face — an agent shows
+the one card agents have everywhere (`agentCard`, in the block's card):
+its name; what kind of agent, the project it's in, the host; and what
+it's doing — working on what it was asked (a thread's ask said as the
+thread and what was written there, its references by their names), and
+what it's doing now; waiting on you, for what; done (read or not) or
+idle, with what it was last asked and said; asleep — over its screen, if
+it's been seen. So that row reads, an agent's name is given an initial
+no agent pinned or at work has, and while there are some, one unlike any
+taken (not Q beside O, nor L beside I); the names (a plant's or a
+bird's) start with every letter. Dragged, it's a reference to it (onto
+a thread's shelf, it joins). A thread about a place in a project asks
+the agents pinned there first — they lead a new thread there — so the
+nearest project says who answers. An agent whose process has ended — it
+exited, the host restarted (agents still marked running then are made
+dormant), it lay idle — is asleep, not gone: asked, or shown, the host
+starts it again where it left off. Its conversation is named by
+Manifold: an agent that takes a name (Claude Code) is started under an
+id Manifold makes (`--session-id`), kept on its block (`AgentSessions`,
+`agent.session`) — the key from the block to the conversation — and
+taken up again by it (`--resume`, which keeps it); a turn in another
+session (after `/clear`, as its transcript's name says) moves the block
+to that one; one from before sessions were named resumes its last
+turn's; one that never took a turn starts under its id again. Its
+command as made is kept as `agent.command`, less the first prompt an
+agent started with was given. Agents that take no name start fresh. The
+host holds what's typed to it till its first hook says it's ready — and,
+not ready after a while (asking to trust its folder, where a Return is
+"No, exit"), it's said to wait on you rather than typed into.
 
 ---
 
@@ -449,7 +470,14 @@ in the accent) when that isn't the space's host — the last thing the
 bar gives up as it narrows — its **links** (the linked blocks' faces,
 stacked), its status's
 pill (§3.7, the program it names in the tooltip), and maximize and
-close. The bar is the
+close. Only the focused tile's bar, and the one under the pointer, show
+where it is, its links and its buttons; the others are a quiet name and
+status (a page's address stays, being what's clicked to type another),
+their room kept so nothing moves as they come and go. (Shown on every
+bar, a screen of tiles was a screen of buttons; hidden till hovered,
+they once moved the links' pill — now they don't.) A view's own controls
+follow the same rule: a folder's Project Home, tree and columns show
+while the pointer's on its tile. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌥-click
 fills its column, docking the others under it — ⌥ is "over", below —
 Tile ▸ Fill the Column, ⌃⌥⌘=; ⇧-click fills all of it but the
@@ -772,18 +800,20 @@ the graph has to capture everything any organization needs:
 
 | organization | a view of | roots |
 |---|---|---|
-| **Spaces** | the space shown and what it places and pins (§3), one space at a time: its pinned blocks, what's on screen as the grid has it (column by column, a hairline between), its docked tiles — nothing nested, nothing folding | the space shown; the others in the strip at the foot |
+| **Spaces** | the space shown and what it places and pins (§3), one space at a time: what needs you (in every space), its pinned blocks, what's on screen as the grid has it (column by column, a hairline between), its docked tiles folded under how many | the space shown; the others in the strip at the top |
 | **Files** | blocks with paths, folded into their folders, across hosts; a sparse tree, runs of single folders one row, counts and recency aggregated beneath | hosts → repositories (git or Sapling roots) → `~` → `/` |
 
 Two — and the space's threads (§3.12), which are other things than
-blocks in a tree: the three are icons along the sidebar's top, by its pin, the one
-shown on a band, Threads with a count of those with something not seen.
+blocks in a tree: one button along the sidebar's top, by its pin, its
+icon the one shown, the others in its menu (⌥⌘1–3), in its corner how
+many threads have something not seen. (Three icons, the one shown on a
+band, were one more row of chrome than choosing among them asked for.)
 (A filter over either tree, to blocks with a status — the lighthouse
 beside them, ⌥⌘. — was tried and left: what needs you, always at the
-foot, does what it was mostly for.) The links live on the tile's bar and in the neighborhood map
+top of the space's list, does what it was mostly for.) The links live on the tile's bar and in the neighborhood map
 (⇧⌥⌘M, or a link's menu) as the one big view of them; what's working,
-done or needing you is what needs you at the sidebar's foot, the
-strip's dots, and Overview; and time is ⌘O with nothing typed, which is the
+done or needing you is what needs you at the top of the space's list,
+the strip's dots, and Overview; and time is ⌘O with nothing typed, which is the
 trail.
 
 Two edges make the first two possible. **`contains`** (folder → file or
@@ -801,13 +831,21 @@ instead), a filter, a row at the foot (by space, by file, the inbox,
 the counts), and the same row — symbol, title, a count, a detail,
 fading with age — with the same gestures everywhere (the one rule,
 §3.7), a picture of the tile on hover, the Neighborhood Map in the menu.
-Under Spaces, **one space at a time**: its name heads the list (with
-how many tiles are on screen and docked, and its host when there's more
-than one), then its tiles in sections that don't fold — Pinned, in the
-order pinned; On Screen, as the grid has them, column by column, a
-hairline between columns; Docked, the latest first — the focused one
-marked, so the sidebar is the table of contents of the screen; clicking
-a tile row focuses it (a docked one comes back where it was). The other
+Under Spaces, **one space at a time**: its name heads the list (its
+host under it when there's more than one to tell apart), then **one
+list**. First what **needs you**, in every space — this space's tiles
+risen out of their places below, then the other spaces' as the strip
+has them, each saying which space (clicked, gone to there); a hairline;
+Pinned, in the order pinned; then what's on screen, unheaded, as the
+grid has it, column by column, a hairline between columns — its rows
+not saying again what their bars say (done, failed, and when); then
+Docked, folded under how many, the latest first once opened (and kept
+open). The focused one marked, so the sidebar is the table of contents
+of the screen; clicking a tile row focuses it (a docked one comes back
+where it was). (What needs you was once a section of its own at the
+sidebar's foot, `NeedsYouView`, and On Screen and Docked headed
+sections that didn't fold: three places to look, where one list ordered
+by what wants you does.) The other
 spaces are **the strip** along the top, under the window's buttons
 (as Dia's favourites are), as Arc's spaces are
 (`SpaceStripView`): a small square each in its colour; its mark in it,
@@ -830,12 +868,7 @@ goes to the next, or the one before, and the grid slides sideways as
 the strip has them, the sidebar's list sliding with it. A tile, or a
 row, dropped on a square goes to that space docked (⌥, a copy there
 too), flying into the square, and the window stays; held over it a
-moment, the space opens, for the drop to land where it's wanted. Over
-the footer, there while anything is, is what **needs you** in every space
-(`NeedsYouView`): a row each, its space's square, its symbol and name,
-what it needs in a pill; clicked, gone to in its space; five at most,
-then how many more, which shows them all (and "Fewer" again); none,
-not there at all. Squares too many for a row wrap onto another, the
+moment, the space opens, for the drop to land where it's wanted. Squares too many for a row wrap onto another, the
 strip as tall as it takes. A square's menu shows its colours and
 symbols as they'll look.
 After the space's tiles on screen, a **New** row, as Dia's New Tab:
@@ -915,7 +948,10 @@ dismissing for the blocks it leads, on the client's `attend` proposal.
 
 **Indicators** (`StatusMark`), wherever a block's title is — its bar,
 its sidebar row, a summary card (the Overview's) — add ink only when
-the block needs you. `working`: the title **shimmers** (`Shimmer`: its
+the block needs you, and say a thing once in a view: a tile on screen
+has its Done, Failed and when on its bar, not again on its sidebar row.
+A terminal's title loses the mark its program puts before it to say
+how it stands (Claude Code's ✳, a spinner): the indicators say that. `working`: the title **shimmers** (`Shimmer`: its
 layer masked so a wide band — about 40% of the title, 60 to 160
 points — faded to 30% sweeps across it in 2 s every 3 s, the title at
 full strength between, by the clock, so every working title moves in
@@ -1421,6 +1457,25 @@ anchor through them (`edit`, `content`), so the timeline is the merge of
 thread logs, nothing else. Filters: open only, mine, an agent's,
 resolved too. Replying in the timeline replies in the thread.
 
+**A block's threads, as a list.** The threads lens shows any block's
+threads, not only a space's: a project's (its block: those about
+anything in it), an agent's (those it's in), anything else's (those
+about it, keeping it on their shelf, or naming it in a comment) — read off the thread links
+(`Node.threads(of:)`, `Hosts.threads(of:)`), open and resolved alike.
+Such a tile opens as a **list**, each thread a row — its card's words
+without the card, a hairline under it — clicked opened: by how each
+stands (not read, an agent at work in it, open, resolved), by what it's
+about, or by the agents in it (a thread under each of them); All, Open
+or Unread; a space's opens as the timeline. How it's shown is one line
+of words over it, "Open · By State", a menu under them: which threads,
+from where (the space, its project), a timeline or a list and how it
+groups, Mark All Read, and Hand to Agent (the tile's menu has them too,
+the sidebar's threads' filter menu the last). Its title is its tile's
+bar's, not said again. (Three rows of chips and a button floating at
+its foot, before.) A list has no composer, and its rows aren't its
+threads read. It's reached from a block's menu (Threads (n), where
+it's in any), an agent's pill's, and a project's homepage (All threads →).
+
 **What you've seen** is kept as Quip keeps it: per thread, the last of
 its entries you've seen — a mark in the host's desk (`.seen(thread,
 upTo)`, the greatest kept, so every Mac's attached app moves it and
@@ -1479,15 +1534,25 @@ anything else is a reference — and + offers the agents at work; a chip's
 clicked is gone to, an agent's pointed at rings its tile, a
 reference's shows its card (a file's block made for it, if there's none);
 a long name is cut, "…" at its end; an agent not running stays, dimmed.
-An open thread **keeps** the agents on its shelf (`Node.shelfHeld`, in the
-host's collector and the app's reckoning, a hold for one on another
-host): its tile closed, an agent in a conversation isn't let go
-mid-thread; resolved, the thread lets go of them, and what else keeps
-them (a tile, their project) keeps them. Only what's dropped on the shelf is on it: a
-reference in a comment is that comment's. Each change is an event in the
-thread ("You added Readme.md to its context"), so its history says who
-was in the room when (`ThreadContext`: the annotations `participants`,
-a comma list, and `context`, an address a line). Those on the shelf are
+What's on the shelf is the thread's links (`ThreadContext`): a
+`linked` link from the thread to each agent, meaning `participant` (its
+lead annotated, `asks.agent`), and to each thing kept, meaning `shelved`
+(at a place in it, its anchor; a file's or a page's address made its
+block) — beside its link to what it's about (`annotates`) and to what
+its comments mention (`mentions`). So they're the graph's, as anything
+is: an agent's links list its threads, a file's the threads about it or
+keeping it, and a block's threads are a walk back along them. The app
+asks for the shelf as it's to be (`threadShelf`) and the host makes the
+links match. An open thread **keeps** what's on its shelf (`Node.keeps`:
+those two relations hold only from a thread not resolved — in the host's
+collector, the app's reckoning, and a hold for one on another host): its
+tile closed, an agent in a conversation isn't let go mid-thread, nor
+what was put there to read; resolved, the thread lets go of them, and
+what else keeps them (a tile, a pin) keeps them. Only what's dropped on
+the shelf is on it: a reference in a comment is that comment's. Each
+change is an event in the thread ("You added Readme.md to its
+context"), so its history says who was in the room when. (Shelves were
+once annotations; the host made them links, once, `shelvesSettled`.) Those on the shelf are
 **told** everything said in the thread, as it's said — not typed to: the
 host keeps what each hasn't heard (`agentNews`), and an agent's prompt
 hook (Claude Code's, whose output goes into its turn) is answered with
@@ -1596,10 +1661,12 @@ from a **root** to it. The roots on a host are
 | root | why |
 |---|---|
 | a space | what you made; removed only by hand (§3.3) |
+| a project's block | the project (§2.6), while the folder is one |
 | a **hold** | another host's standing reference (below) |
 
 and every block a root places, pins, links by hand, or reaches through
-what it places and links, is kept. The host is the collector: once a
+what it places and links, is kept — and what an open thread has on its
+shelf (§3.12), while it's open. The host is the collector: once a
 minute it walks its own shards from its roots, notes each block nothing
 reaches with the moment that began, and **collects** any that has been
 so for the grace (`collectAfterMinutes`, 30 by default, a setting): its
@@ -1992,7 +2059,10 @@ Finder and other placements, and git status badges.
 A project's folder (§2.6) shows its homepage round the files, in
 columns at first (the homepage a toggle beside the views, kept with
 the tile): a strip under the header (`ProjectStrip`: the branch, the
-changes, the index — each a flat button) and a sidebar at the right
+changes, the index — each a flat button, and each only when there's
+something to say or do: no "Not in a repository", no chip for an index
+there's no indexer for or one that's current (Index Again is in the
+tile's menu); with nothing to say, no strip, its + in the header) and a sidebar at the right
 (`ProjectSidebar`: its changes and recent commits, from its scoped git
 block, read on the listing's timer since that block isn't placed), the
 README under the files as ever, as wide as the tile — the sidebar

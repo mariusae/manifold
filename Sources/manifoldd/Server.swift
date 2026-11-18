@@ -283,6 +283,10 @@ final class Server {
             }
             watchProject(p)
         }
+        // Projects' blocks, and what was kept before pins and links made
+        // pins and links (§2.6, §3.12).
+        settleProjects()
+        settleShelves()
         let fd = try UnixSocket.listen(path: Paths.socket)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let listener = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
@@ -850,6 +854,8 @@ final class Server {
     /// When each block was first found unreachable; forgotten when it is
     /// reached again, or collected.
     private var unreachableSince: [BlockID: Date] = [:]
+    /// Projects whose folder was found gone, since when (`projectsFollowTheirFolders`).
+    var folderGoneSince: [String: Date] = [:]
 
     /// A block gone for good: its session ended, its file unwatched, its
     /// links here gone, its log deleted, and the registry told, which
@@ -867,10 +873,8 @@ final class Server {
         // An image Manifold kept for a note goes with its block.
         if b.kind == .image, let path = b.path, path.hasPrefix(Self.imagesFolder + "/") { try? FileManager.default.removeItem(atPath: path) }
         for l in node.links(host).links where l.from == block || l.to == block { append(.unlink(l.id), to: .links(host)) }
-        // A project's agent: no longer its.
-        for p in node.desk(host).projects where p.agents?.contains(block) == true {
-            append(.projectAgent(root: p.root, agent: block, attached: false), to: .desk(host))
-        }
+        // A project's block deleted: the folder no longer a project.
+        for p in node.desk(host).projects where p.block == block { append(.unproject(p.root), to: .desk(host)) }
         node.remove(.block(block))
         store.delete(.block(block))
         let entry = node.registry(host).blocks[block]
@@ -917,6 +921,9 @@ final class Server {
     /// it is simply kept.
     private func collect() {
         settleRoots()
+        settleProjects()
+        settleShelves()
+        projectsFollowTheirFolders()
         let minutes = node.desk(host).settings.collectAfterMinutes
         guard minutes > 0 else { return }
         let reachable = node.reachable(on: host)
@@ -1109,6 +1116,9 @@ final class Server {
             done()
         case let .threadSpace(block, space):
             setThreadSpace(block, space)
+            done()
+        case let .threadShelf(block, participants, references):
+            setThreadShelf(block, participants: participants, references: references)
             done()
         case let .captureOutput(block, terminal, command, fallback):
             // A command's output as a block of its own (§3.8): the bytes the
@@ -1413,10 +1423,12 @@ final class Server {
             p.alias = Self.alias(of: full)
             let old = node.desk(host).projects.first { $0.root == full }
             p.made = old?.made ?? clock.now()
-            // Its agents are the host's to keep (`projectAgent`), not a
-            // client's restating of the rest to undo.
+            // Its block is the host's to keep, not a client's restating of
+            // the rest to undo.
             p.agents = old?.agents
+            p.block = old?.block
             if old != p { append(.project(p), to: .desk(host)) }
+            projectBlock(full)
             // A new one indexed at once, if its language has an indexer;
             // one whose indexer changed, again.
             if old == nil || old?.indexer != p.indexer || old?.indexCommand != p.indexCommand {
@@ -1425,6 +1437,8 @@ final class Server {
             watchProject(p)
             done()
         case let .unproject(root):
+            // Its block, no longer a root, is collected as anything nothing
+            // keeps is — and with it what it pinned, unless else kept.
             if node.desk(host).projects.contains(where: { $0.root == root }) { append(.unproject(root), to: .desk(host)) }
             done()
         case let .newProjectAgent(block, root, command):
@@ -1442,17 +1456,12 @@ final class Server {
                 append(.command(run), to: .block(block))
                 append(.annotate(marks), to: .block(block))
             }
-            append(.projectAgent(root: p.root, agent: block, attached: true), to: .desk(host))
+            if let pb = projectBlock(p.root) { pin(block, in: pb) }
             if sessions[block] == nil, let state = node.block(block)?.terminal,
                startSession(block, state, cols: 100, rows: 32, env: attachedEnv ?? Session.unattachedEnvironment) != nil {
                 // What's typed to it held till it's ready (its first hook).
                 holdInput(for: block)
             }
-            done()
-        case let .projectAgent(root, agent, attached):
-            guard node.block(agent)?.kind == .agent || node.block(agent)?.kind == .terminal else { return done("not an agent") }
-            guard !attached || node.desk(host).projects.contains(where: { $0.root == root }) else { return done("\(root) isn't a project here") }
-            append(.projectAgent(root: root, agent: agent, attached: attached), to: .desk(host))
             done()
         case let .smartlog(block, path):
             // The repository holding the path.
@@ -2455,9 +2464,9 @@ final class Server {
         // Those at work, and every project's own (§3.12), asleep or not —
         // a project's above all: its agents side by side on its strip are
         // told apart first, a colour one of them has the last given another.
-        let projects = node.desk(host).projects
-        let kept = Set(projects.flatMap { $0.agents ?? [] })
-        let siblings = Set(projects.first { $0.agents?.contains(b.id) == true }?.agents ?? [])
+        let byProject = projectAgentsByProject
+        let kept = Set(byProject.values.joined())
+        let siblings = Set(byProject.values.first { $0.contains(b.id) } ?? [])
         for o in node.blocks where o.id != b.id && (sessions[o.id] != nil || kept.contains(o.id)) {
             if let c = AgentIdentity.color(of: o) { taken.colors += Array(repeating: c, count: siblings.contains(o.id) ? 100 : 1) }
             if let n = AgentIdentity.name(of: o) { taken.names.insert(n) }

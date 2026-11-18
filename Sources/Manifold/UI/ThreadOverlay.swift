@@ -59,7 +59,9 @@ final class ThreadOverlayView: PopoverView {
 extension MainWindowController {
     /// ⌥⌘M where there's no editor's or diff's place: the overlay, on the
     /// place you're at (`place`, else the space), or a thread asked for.
-    func showThreadOverlay(_ place: ThreadPlace?, thread: BlockID? = nil, tab: Int? = nil) {
+    /// `fresh`: a new thread's composer about the place, its threads there
+    /// or not.
+    func showThreadOverlay(_ place: ThreadPlace?, thread: BlockID? = nil, tab: Int? = nil, fresh: Bool = false) {
         if let o = threadUI.overlay, o.superview != nil, place == nil, thread == nil { return closeThreadOverlay() }
         threadUI.popover?.close()
         let o = threadUI.overlay ?? ThreadOverlayView()
@@ -80,7 +82,7 @@ extension MainWindowController {
         }
         o.herePlace = here
         o.hereThreads = thread.map { [$0] } ?? here.map { p in hosts.threads(about: p.block, anchor: p.anchor).sorted { $0.created > $1.created }.map(\.id) } ?? []
-        let openHere = o.hereThreads.first { hosts.block($0)?.thread?.resolved != true } ?? o.hereThreads.first
+        let openHere = fresh ? nil : o.hereThreads.first { hosts.block($0)?.thread?.resolved != true } ?? o.hereThreads.first
         o.chat.threadID = openHere
         o.chat.newPlace = openHere == nil ? here : nil
         o.chat.newSpace = selected

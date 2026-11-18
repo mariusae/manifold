@@ -172,7 +172,9 @@ extension MainWindowController: OrganizationViewDelegate {
         // last pictured — no live view, the summary card saying the rest.
         let key = id.description
         var picture: NSImage? = nil
-        if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window }) {
+        // (An agent's, its terminal: not a list of its threads.)
+        if let shown = content.views.first(where: { $0.block == id && $0.superview != nil && !$0.isHiddenOrHasHiddenAncestor && $0.window === window
+                                                     && (b.agent == nil || $0 is TerminalView) }) {
             switch shown {
             case let t as TerminalView:
                 picture = HoverCard.picture(of: t)
@@ -196,7 +198,7 @@ extension MainWindowController: OrganizationViewDelegate {
             if let t = view(of: id, as: TerminalView.self),
                let image = HoverCard.surfacePicture(of: t) {
                 picture = image
-            } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is Snapshotting) }),
+            } else if let hidden = views.values.first(where: { $0.block == id && $0.window === window && !($0 is Snapshotting) && (b.agent == nil || $0 is TerminalView) }),
                       let image = HoverCard.picture(of: hidden, evenHidden: true) {
                 // Still drawn, out of sight (another workspace's grid kept,
                 // stacked): pictured now, as it is.
@@ -209,7 +211,14 @@ extension MainWindowController: OrganizationViewDelegate {
         // Under it, the block in a few lines, as a switcher's cards have it
         // (an arrangement, which has none, as it was).
         let summary = b.kind == .arrangement ? nil : cardContent(for: id)
-        HoverCard.shared.show(key: key, title: b.displayTitle, detail: detail, body: body, font: font, picture: picture,
+        // An agent's, the same wherever it's pointed at (§3.12): what it's
+        // doing, in words, over its screen.
+        var title = b.displayTitle
+        if b.agent != nil {
+            (title, detail, body) = agentCard(b)
+            font = nil
+        }
+        HoverCard.shared.show(key: key, title: title, detail: detail, body: body, font: font, picture: picture,
                               summary: summary, beside: rect, in: window, delay: delay, above: above)
     }
 
@@ -290,6 +299,8 @@ extension MainWindowController: OrganizationViewDelegate {
         guard let id = node.block else { return nil }
         if let arr = node.arrangement, node.style == .row {
             menu.addItem(pinItem(id, in: arr))
+            if let item = projectPinItem(id) { menu.addItem(item) }
+            if let item = threadsItem(id) { menu.addItem(item) }
             menu.addItem(.separator())
         }
         if let clear = clearStatusItem(id) {
@@ -336,6 +347,39 @@ extension MainWindowController: OrganizationViewDelegate {
         }
         if key { item.keyEquivalentModifierMask = [.command, .control] }
         return item
+    }
+
+    /// Its threads (§3.12), when it's in any — about it, with it on their
+    /// shelf, or (an agent) with it in their conversation: a list of them
+    /// as a tile beside.
+    func threadsItem(_ block: BlockID) -> NSMenuItem? {
+        guard let b = hosts.block(block), b.kind != .thread, b.kind != .arrangement else { return nil }
+        let n = threads(of: b).0.count
+        guard n > 0 else { return nil }
+        return ClosureMenuItem("Threads (\(n))", symbol: "bubble.left.and.bubble.right") { [weak self] in
+            self?.show(block, lens: .threads, .here, context: "threads")
+        }
+    }
+
+    /// Pin in its project (§2.6), or Unpin from the one it's pinned in:
+    /// kept by the project, on screen or not — under its Pinned, an agent
+    /// asked in its threads. None where it's in no project.
+    func projectPinItem(_ block: BlockID) -> NSMenuItem? {
+        if let p = project(pinning: block) {
+            return ClosureMenuItem("Unpin from \(p.name)", symbol: "pin.slash") { [weak self] in self?.setPinned(block, inProject: p, false) }
+        }
+        guard hosts.block(block)?.kind != .project, let p = project(of: block), p.block != nil else { return nil }
+        return ClosureMenuItem("Pin in \(p.name)", symbol: "pin") { [weak self] in self?.setPinned(block, inProject: p, true) }
+    }
+
+    /// Pinned in a project, or let go of there. An agent with no tile let
+    /// go of goes as a tile closed does (Recently Closed has it a while).
+    func setPinned(_ block: BlockID, inProject p: Project, _ on: Bool) {
+        guard let pb = p.block else { return }
+        setPinned(block, in: pb, on)
+        if !on, hosts.block(block)?.agent != nil, !isPlaced(block) {
+            toast.say("\(hosts.block(block).map(AgentLook.name(of:)) ?? "The agent") is no longer \(p.name)'s: it goes, as a closed tile does, unless something else keeps it", .brief)
+        }
     }
 
     /// Clear Status, if it has one.

@@ -101,7 +101,7 @@ extension ManiDesk {
                 return ""
             }
             let parts = wc.participants(of: t)
-            let refs = ThreadContext.references(of: t)
+            let refs = wc.shelfReferences(of: t)
             if parts.isEmpty && refs.isEmpty { return "Nothing in its context yet." }
             return (parts.map { id in "agent \(hosts.block(id).map(AgentLook.name(of:)) ?? "?") — \(MainWindowController.address(id))" }
                 + refs.map { "ref \(wc.contextTitle($0)) — \($0)" }).joined(separator: "\n")
@@ -160,7 +160,7 @@ extension ManiDesk {
                 out.append("  - \(a.map(AgentLook.name(of:)) ?? "an agent") — \(MainWindowController.address(id))\(a.map { " · " + AgentLook.description(of: $0) } ?? "")")
             }
         }
-        let refs = ThreadContext.references(of: b)
+        let refs = wc.shelfReferences(of: b)
         if !refs.isEmpty {
             out.append("context (kept with it — read these for what it's about):")
             out += refs.map { "  - \(wc.contextTitle($0)) — \($0)" }

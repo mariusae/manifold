@@ -29,10 +29,18 @@ final class ThreadUI {
     /// What was written for a new thread taken to a tile (a draft), for
     /// the tile's composer once it's made.
     var drafts: [BlockID: NSAttributedString] = [:]
-    /// A thread's references as last written here, till its block says so
-    /// too: changes made one after another build on each other, not on
-    /// what hasn't come back yet.
-    var pendingReferences: [BlockID: [String]] = [:]
+    /// A thread's shelf as last written here, till its links say so too:
+    /// changes made one after another build on each other, not on what
+    /// hasn't come back yet. With the links as they were then, and when.
+    var pendingShelf: [BlockID: PendingShelf] = [:]
+}
+
+/// A shelf asked of a thread's host, not yet come back as links.
+struct PendingShelf {
+    var participants: [BlockID]?
+    var references: [String]?
+    var was: String
+    var at: Date
 }
 
 /// A thread as a tile of its own (§3.12): its chat, filling the tile.
@@ -177,7 +185,7 @@ extension MainWindowController: ThreadChatDelegate {
             let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
             // Its place's project's own agents first (§3.12), asleep or not —
             // the nearest project's are who a thread about it asks.
-            let own = Set(about.flatMap { project(of: $0.block) }?.agents ?? [])
+            let own = Set(about.flatMap { project(of: $0.block) }.map { pinned(in: $0) } ?? [])
             m.askAgents = hosts.blocks.filter { $0.agent != nil && (Self.agentRuns($0) || own.contains($0.id)) }
                 .sorted { a, b in
                     if own.contains(a.id) != own.contains(b.id) { return own.contains(a.id) }
@@ -198,7 +206,7 @@ extension MainWindowController: ThreadChatDelegate {
             m.participants = parts.compactMap { id in hosts.block(id).map { ThreadChatModel.AskAgent(id: id, title: AgentLook.name(of: $0)) } }
             m.asksAll = asksAll(t)
             let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
-            let own = Set(project(ofThread: t)?.agents ?? [])
+            let own = Set(project(ofThread: t).map { pinned(in: $0) } ?? [])
             m.invitable = hosts.blocks.filter { !parts.contains($0.id) && $0.agent != nil && (Self.agentRuns($0) || own.contains($0.id)) }
                 .sorted { a, b in
                     if own.contains(a.id) != own.contains(b.id) { return own.contains(a.id) }
@@ -220,30 +228,57 @@ extension MainWindowController: ThreadChatDelegate {
     /// The agent (its tile's block) an agent's thread asks: kept from its
     /// first ask, so with two of a kind in the space it asks one, not
     /// whichever comes first that time.
-    static let asksAgentKey = "asks.agent"
+    static let asksAgentKey = ThreadContext.leadKey
 
     /// A thread's participants (§3.12): the agents in it, its lead first —
     /// those it was asked in, invited, tagged in it, started for it. Only
-    /// they are asked by a comment that tags no one. Kept on it
-    /// (`participants`); a thread from before, the one it was held to,
-    /// then those that wrote in it.
-    static let participantsKey = "participants"
+    /// they are asked by a comment that tags no one. Its `participant`
+    /// links, the lead annotated.
     /// "all": a comment that tags no one asks every participant; else only its lead.
     static let addressesKey = "asks.whom"
 
     func participants(of t: Block) -> [BlockID] {
-        if let s = t.annotations?[Self.participantsKey] {
-            return s.split(separator: ",").compactMap { BlockID(string: String($0)) }.filter { hosts.block($0)?.agent != nil }
+        let ids = pending(t.id)?.participants ?? hosts.client(of: t.id)?.node.participants(of: t.id) ?? []
+        return ids.filter { hosts.block($0)?.agent != nil }
+    }
+
+    /// What's kept on a thread's shelf besides its agents, by address: a
+    /// block's, at a place in it.
+    func shelfReferences(of t: Block) -> [String] {
+        if let refs = pending(t.id)?.references { return refs }
+        return (hosts.client(of: t.id)?.node.shelved(of: t.id) ?? []).map { Self.address($0.block, anchor: $0.anchor) }
+    }
+
+    /// The shelf last asked of a thread here, while its links haven't
+    /// caught up (a few seconds at most).
+    private func pending(_ thread: BlockID) -> PendingShelf? {
+        guard let p = threadUI.pendingShelf[thread] else { return nil }
+        if shelfSignature(thread) != p.was || Date().timeIntervalSince(p.at) > 5 {
+            threadUI.pendingShelf[thread] = nil
+            return nil
         }
-        var out: [BlockID] = []
-        if let p = pinnedAgent(of: t) { out.append(p) }
-        for a in t.thread?.agents ?? [] where !out.contains(a.block) && hosts.block(a.block)?.agent != nil { out.append(a.block) }
-        return out
+        return p
+    }
+
+    /// A thread's shelf links as they stand, to tell when they've changed.
+    private func shelfSignature(_ thread: BlockID) -> String {
+        (hosts.client(of: thread)?.node.graph.edges(from: thread, kind: .link(.linked)) ?? [])
+            .filter { ThreadContext.whileOpen.contains($0.relation ?? "") }.map(\.id).sorted().joined(separator: ",")
+    }
+
+    /// A thread's shelf asked of its host: its participants (the lead
+    /// first), or what's kept on it, or both — made its links there.
+    func setShelf(_ thread: BlockID, participants: [BlockID]? = nil, references: [String]? = nil) {
+        var p = pending(thread) ?? PendingShelf(was: shelfSignature(thread), at: Date())
+        if let participants { p.participants = participants }
+        if let references { p.references = references }
+        p.at = Date()
+        threadUI.pendingShelf[thread] = p
+        hosts.propose(.threadShelf(block: thread, participants: participants, references: references))
     }
 
     func setParticipants(_ ids: [BlockID], of thread: BlockID) {
-        annotateThread(thread, [Self.participantsKey: ids.map(\.description).joined(separator: ","),
-                                Self.asksAgentKey: ids.first?.description ?? ""])
+        setShelf(thread, participants: ids)
     }
 
     /// Keys kept on a thread, till they hold: a thread is its host's to
@@ -584,7 +619,8 @@ extension MainWindowController: ThreadChatDelegate {
             if let error { self?.toast.say("The thread wasn't made: \(error)", .brief) }
         }
         if view.asksNew, let lead = view.leadForNew, let kind = hosts.block(lead)?.agent {
-            annotateThread(id, [Self.asksKey: kind.command, Self.participantsKey: lead.description, Self.asksAgentKey: lead.description])
+            annotateThread(id, [Self.asksKey: kind.command])
+            setParticipants([lead], of: id)
         }
         threadUI.drafts[id] = NSAttributedString(attributedString: view.composer.attributedString())
         threadUI.popover?.close()
@@ -610,6 +646,24 @@ extension MainWindowController: ThreadChatDelegate {
         threadUI.popover?.close()
         if threadUI.overlay?.chat === view { closeThreadOverlay() }
         popOutThread(id)
+    }
+
+    /// Another thread about what the one shown is about: the card's or the
+    /// overlay's composer for it, there; a tile's, the overlay's.
+    func threadChatNewThread(_ view: ThreadChatView) {
+        guard let about = view.threadID.flatMap({ hosts.block($0) })?.thread?.about else { return }
+        let space = view.threadID.flatMap { hosts.block($0) }?.thread?.space ?? selected
+        if let o = threadUI.overlay, o.chat === view {
+            return showThreadOverlay(about, fresh: true)
+        }
+        if let card = threadUI.card, card.chat === view {
+            view.threadID = nil
+            view.newPlace = about
+            view.newSpace = space
+            watch(view)
+            return view.focusComposer()
+        }
+        showThreadOverlay(about, fresh: true)
     }
 
     func threadChatSeen(_ view: ThreadChatView) {
@@ -734,7 +788,8 @@ extension MainWindowController: ThreadChatDelegate {
 extension MainWindowController {
     /// Debugging threads (§3.12): `threads` lists them; `threads comment
     /// <text>` comments where you are (⌥⌘M, then the text sent); `reply
-    /// <text>`, `resolve`, `card`, `tile` act on the card shown; `choose a
+    /// <text>`, `resolve`, `card`, `tile` act on the card shown; `new`
+    /// begins another thread about the shown one's place; `choose a
     /// b` chooses a focused diff's lines on screen; `places` the focused
     /// editor's places with threads; `mark <line>` clicks one's mark.
     func debugThreads(_ arg: String) -> String {
@@ -758,7 +813,8 @@ extension MainWindowController {
                 }
                 return "\(e.author.shownName): \(what)"
             }.joined(separator: " | ") ?? ""
-            return "\(t.id.ulid.suffix(6)) [\(th?.resolved == true ? "resolved" : "open")\(hosts.unseen(t).isEmpty ? "" : ", \(hosts.unseen(t).count) unseen")] about \(about) in \(th?.space.map { String($0.ulid.suffix(6)) } ?? "-"): \(entries)"
+            let shelf = participants(of: t).map { hosts.block($0).map(AgentLook.name(of:)) ?? "?" } + shelfReferences(of: t).map(contextTitle)
+            return "\(t.id.ulid.suffix(6)) {\(shelf.joined(separator: ", "))} [\(th?.resolved == true ? "resolved" : "open")\(hosts.unseen(t).isEmpty ? "" : ", \(hosts.unseen(t).count) unseen")] about \(about) in \(th?.space.map { String($0.ulid.suffix(6)) } ?? "-"): \(entries)"
         }
         switch words.first {
         case nil, "list":
@@ -783,6 +839,15 @@ extension MainWindowController {
         case "close":
             threadUI.popover?.close()
             return "closed"
+        case "new":
+            // "threads new": the overlay's (else the card's, else the focused
+            // thread tile's) New Thread About This pressed.
+            let tile = arrangement?.focused.flatMap { views[$0] as? ThreadTileView }?.chat
+            guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat ?? tile else { return "no chat" }
+            guard chat.debugNewThreadButton else { return "no button" }
+            threadChatNewThread(chat)
+            let now = threadUI.overlay?.chat ?? threadUI.card?.chat
+            return "now " + (now.map { $0.threadID.map { String($0.ulid.suffix(6)) } ?? "new about \($0.newPlace.map { self.describe($0).title } ?? "-")" } ?? "nothing")
         case "ask":
             // "threads ask [on|off]": the overlay's (else the card's) Ask switched.
             guard let chat = threadUI.overlay?.chat ?? threadUI.card?.chat else { return "no chat" }
@@ -915,24 +980,37 @@ extension MainWindowController: ThreadTimelineDelegate {
     /// a thread's entries that came together one run; the last 400.
     func timelineModel(for v: ThreadTimelineView) -> TimelineModel {
         var m = TimelineModel()
-        guard let space = v.space ?? selected else { return m }
-        let spaceTitle = hosts.arrangement(space).map(title(of:)) ?? "this space"
-        let project = project(ofSpace: space)
-        m.scopes = project.map { ["Space", $0.root.lastPathComponent] } ?? ["Space"]
-        m.scope = min(v.model.scope, m.scopes.count - 1)
         var threads: [Block]
-        if m.scope == 1, let project {
-            threads = hosts.threads(inProject: project.root, on: project.host)
-            m.title = "Threads in " + project.root.lastPathComponent
+        if let subject = v.subject, let b = hosts.block(subject), b.kind != .arrangement {
+            // A block's threads (§3.12): a project's, an agent's, a file's.
+            (threads, m.title) = self.threads(of: b)
+            m.scopes = []
             m.composesNew = false
         } else {
-            threads = hosts.threads(inSpace: space)
-            m.title = "Threads in " + spaceTitle
+            guard let space = v.space ?? selected else { return m }
+            let spaceTitle = hosts.arrangement(space).map(title(of:)) ?? "this space"
+            let project = project(ofSpace: space)
+            m.scopes = project.map { ["Space", $0.root.lastPathComponent] } ?? ["Space"]
+            m.scope = min(v.model.scope, m.scopes.count - 1)
+            if m.scope == 1, let project {
+                threads = hosts.threads(inProject: project.root, on: project.host)
+                m.title = "Threads in " + project.root.lastPathComponent
+                m.composesNew = false
+            } else {
+                threads = hosts.threads(inSpace: space)
+                m.title = "Threads in " + spaceTitle
+            }
         }
         switch v.filter {
         case .all: break
         case .open: threads = threads.filter { $0.thread?.resolved != true }
         case .unread: threads = threads.filter { !hosts.unseen($0).isEmpty }
+        }
+        m.shown = threads
+        if v.mode == .list {
+            m.groups = threadGroups(threads, by: v.grouping)
+            m.unseen = threads.reduce(0) { $0 + hosts.unseen($1).count }
+            return m
         }
         if v.marksWhenOpened == nil {
             v.marksWhenOpened = Dictionary(uniqueKeysWithValues: threads.compactMap { t in hosts.seenMark(t.id).map { (t.id, $0) } })
@@ -963,6 +1041,61 @@ extension MainWindowController: ThreadTimelineDelegate {
             return AgentIcons.image(a.command, size: 12)
         }
         return m
+    }
+
+    /// A block's threads, and what its list is called: a project's (about
+    /// anything in it), an agent's (those it's in), anything else's (about
+    /// it, or with it on their shelf).
+    func threads(of b: Block) -> ([Block], String) {
+        if b.kind == .project, let c = hosts.client(b.id.host), let p = c.desk.projects.first(where: { $0.block == b.id }) {
+            let list = hosts.threads(inProject: p.root, on: b.id.host)
+                .sorted { ($0.thread?.lastActivity ?? $0.created) > ($1.thread?.lastActivity ?? $1.created) }
+            return (list, "Threads in " + p.name)
+        }
+        if b.agent != nil { return (hosts.threads(of: b.id), AgentLook.name(of: b) + "'s threads") }
+        return (hosts.threads(of: b.id), "Threads about " + Self.linkTitle(b))
+    }
+
+    /// Threads in groups, each its card (§3.12): by how each stands — not
+    /// read, an agent at work in it, open, resolved; by what it's about,
+    /// the latest first; by the agents in it (one in several, under each).
+    func threadGroups(_ threads: [Block], by grouping: ThreadTimelineView.Grouping) -> [ThreadGroup] {
+        let latest: (Block) -> Stamp = { $0.thread?.lastActivity ?? $0.created }
+        let sorted = threads.sorted { latest($0) > latest($1) }
+        func row(_ t: Block) -> (id: BlockID, card: SummaryCardContent)? { cardContent(for: t.id).map { (t.id, $0) } }
+        switch grouping {
+        case .state:
+            var unread: [Block] = [], working: [Block] = [], open: [Block] = [], resolved: [Block] = []
+            for t in sorted {
+                if t.thread?.resolved == true { resolved.append(t); continue }
+                if !hosts.unseen(t).isEmpty { unread.append(t); continue }
+                let busy = participants(of: t).contains { hosts.block($0)?.statusState == .working }
+                if busy, case .asked? = t.thread?.entries.last?.kind { working.append(t) } else { open.append(t) }
+            }
+            return [("Not read", unread), ("At work", working), ("Open", open), ("Resolved", resolved)]
+                .map { ThreadGroup(title: $0.0, rows: $0.1.compactMap(row)) }
+        case .place:
+            var order: [String] = [], byPlace: [String: [Block]] = [:]
+            for t in sorted {
+                let place = t.thread?.about.map { describe($0).title.components(separatedBy: " · ").first ?? "" } ?? "Elsewhere"
+                if byPlace[place] == nil { order.append(place) }
+                byPlace[place, default: []].append(t)
+            }
+            return order.map { ThreadGroup(title: $0, rows: byPlace[$0]!.compactMap(row)) }
+        case .agent:
+            var order: [String] = [], byAgent: [String: [Block]] = [:]
+            var none: [Block] = []
+            for t in sorted {
+                let names = participants(of: t).compactMap { hosts.block($0).map(AgentLook.name(of:)) }
+                if names.isEmpty { none.append(t) }
+                for n in names {
+                    if byAgent[n] == nil { order.append(n) }
+                    byAgent[n, default: []].append(t)
+                }
+            }
+            return order.map { ThreadGroup(title: $0, rows: byAgent[$0]!.compactMap(row)) }
+                + [ThreadGroup(title: "No agent", rows: none.compactMap(row))]
+        }
     }
 
     func refresh(_ v: ThreadTimelineView) {
@@ -1057,7 +1190,22 @@ extension MainWindowController {
     /// and what it shows.
     func debugTimeline(_ arg: String) -> String {
         let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
-        let tile = views.values.compactMap { $0 as? ThreadsTimelineTileView }.first
+        if w.first == "of" {
+            // "timeline of <agent's name>|project <root>|<block id's end>": that block's threads, as a tile.
+            let what = w.dropFirst().first ?? ""
+            var id: BlockID?
+            if what.hasPrefix("project ") {
+                let root = String(what.dropFirst(8))
+                id = hosts.all.flatMap { $0.desk.projects }.first { $0.root == root || $0.alias == root }?.block
+            } else {
+                id = hosts.blocks.first { ($0.agent != nil && AgentLook.name(of: $0) == what) || $0.id.description.hasSuffix(what) }?.id
+            }
+            guard let id else { return "nothing \(what)" }
+            show(id, lens: .threads, .here, context: "threads")
+            return "opened \(id)"
+        }
+        let tile = views.values.compactMap { $0 as? ThreadsTimelineTileView }.first { arrangement?.focused == $0.placement }
+            ?? views.values.compactMap { $0 as? ThreadsTimelineTileView }.first
         if w.first == "open" || (tile == nil && w.isEmpty) {
             showThreads(nil)
             return "opened"
@@ -1071,9 +1219,17 @@ extension MainWindowController {
         case "read": timeline(t, seen: t.model.runs.map(\.thread.id))
         case "choose": if let i = Int(w.dropFirst().first ?? ""), t.model.runs.indices.contains(i) { t.choose(t.model.runs[i].thread.id) }
         case "send": timeline(t, send: w.dropFirst().first ?? "", to: t.chosen)
+        case "mode": t.mode = w.dropFirst().first == "list" ? .list : .timeline; timelineChanged(t)
+        case "group": t.grouping = ["state": .state, "place": .place, "agent": .agent][w.dropFirst().first ?? "state"] ?? .state; timelineChanged(t)
+        // "view [title]": the view menu's items, or one chosen by its title's start.
+        case "view": return t.debugView(w.dropFirst().joined(separator: " "))
         default: break
         }
         let m = t.model
+        if t.mode == .list {
+            return "\(m.title) · list by \(t.grouping) · filter \(t.filter) · \(m.shown.count) shown · \(t.debugLayout)\n"
+                + m.groups.filter { !$0.rows.isEmpty }.map { g in "\(g.title): " + g.rows.map { $0.card.summary.title.prefix(30) }.joined(separator: " | ") }.joined(separator: "\n")
+        }
         let runs = m.runs.map { r in "[\(r.placeTitle)\(r.firstUnseen.map { " NEW@\($0)" } ?? "")] " + r.entries.map { e in e.author.shownName + ":" + (e.comment.map { String($0.prefix(30)) } ?? "\(e.kind)".prefix(20).description) }.joined(separator: ", ") }
         return "\(m.title) · scopes \(m.scopes) at \(m.scope) · filter \(t.filter) · \(m.unseen) unseen · replying to \(t.chosen.map { String($0.ulid.suffix(6)) } ?? "none")\n" + runs.joined(separator: "\n")
     }

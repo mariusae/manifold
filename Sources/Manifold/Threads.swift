@@ -41,6 +41,16 @@ extension Hosts {
         }
     }
 
+    /// The threads a block is in (§3.12): about it, with it on their shelf,
+    /// or — an agent — with it in their conversation; by the links to it,
+    /// on every host. Newest activity first.
+    func threads(of block: BlockID) -> [Block] {
+        var ids = Set<BlockID>()
+        for c in all { ids.formUnion(c.node.threads(of: block)) }
+        return ids.compactMap { self.block($0) }.filter { $0.kind == .thread && !Self.isDraft($0) }
+            .sorted { ($0.thread?.lastActivity ?? $0.created) > ($1.thread?.lastActivity ?? $1.created) }
+    }
+
     /// The threads about a block, or a place in it (its anchor).
     func threads(about block: BlockID, anchor: String? = nil, anyPlace: Bool = false) -> [Block] {
         var out: [Block] = []

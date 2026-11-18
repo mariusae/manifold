@@ -345,6 +345,11 @@ final class HostClient {
             if let self, case let .block(id) = shard { self.delegate?.client(self, blockChanged: id) }
             self?.scheduleChange()
         }
+        node.onLinkChange = { [weak self] from, to in
+            guard let self else { return }
+            self.delegate?.client(self, blockChanged: from)
+            self.delegate?.client(self, blockChanged: to)
+        }
     }
 
     var isRemote: Bool {

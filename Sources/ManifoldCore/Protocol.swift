@@ -4,7 +4,7 @@ import Foundation
 /// a type the server decodes gaining a value (a theme, a block kind): a
 /// server from before it would read the value as its default and hand
 /// every client that default back, so the app asks for it to be restarted.
-public let protocolVersion = 71
+public let protocolVersion = 72
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
@@ -224,11 +224,10 @@ public enum Proposal: Codable, Sendable {
     case project(Project)
     /// A folder no longer a project.
     case unproject(root: String)
-    /// An agent made in a project (§3.12): run in its folder, kept by it,
-    /// started at once with nothing showing it (a tile shows it if asked).
+    /// An agent made in a project (§3.12): run in its folder, pinned in
+    /// it (kept by its block), started at once with nothing showing it (a
+    /// tile shows it if asked).
     case newProjectAgent(block: BlockID, root: String, command: String)
-    /// An agent made a project's, or let go of (`attached` false).
-    case projectAgent(root: String, agent: BlockID, attached: Bool)
     case refreshGit(block: BlockID)
     /// The repository's branch pulled from its upstream (fast-forward only)
     /// or pushed to it, as its host's shells would; refreshed after. What
@@ -318,6 +317,11 @@ public enum Proposal: Codable, Sendable {
     case threadSeen([BlockID: Stamp])
     /// A thread's space (the space it was made in, else where its agent is).
     case threadSpace(block: BlockID, space: BlockID)
+    /// A thread's shelf (§3.12) as it's to be: its participants, the lead
+    /// first; what's kept in its context, by address (a block's, at a place
+    /// in it; a file's; a page's) — each a link from the thread, made or
+    /// let go of to match (protocol 72). Nil: as it is.
+    case threadShelf(block: BlockID, participants: [BlockID]?, references: [String]?)
 }
 
 public extension Proposal {
@@ -343,10 +347,10 @@ public extension Proposal {
         case let .newTerminal(block, _), let .endTerminal(block), let .readFile(block), let .writeFile(block, _),
              let .directory(block, _), let .listDirectory(block), let .search(block, _), let .cancelSearch(block),
              let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .gitSync(block, _), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
-             let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .newProjectAgent(block, _, _), let .projectAgent(_, block, _), let .processes(block),
+             let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .newProjectAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
              let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
-             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .editThreadEntry(block, _, _, _), let .threadSpace(block, _),
+             let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .editThreadEntry(block, _, _, _), let .threadSpace(block, _), let .threadShelf(block, _, _),
              let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
             return block
         case let .lsp(request):

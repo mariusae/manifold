@@ -412,6 +412,9 @@ extension MainWindowController {
                 detail = block.kind == .pdf ? "PDF" : "Image"
             case .process:
                 continue
+            case .project:
+                // Found as its folder (the project's homepage), not as itself.
+                continue
             case .agent:
                 secondary = "agent " + (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
                 detail = "\(agent?.name ?? "Agent") in \(block.terminal?.cwd?.abbreviatingHome ?? "~")"
@@ -602,6 +605,10 @@ extension MainWindowController {
         hideStateView()
         warpPointerToFocus()
         if block.kind == .arrangement { return hosts.select(id) }
+        // A project's block: its folder, its homepage (§2.6).
+        if block.kind == .project, let p = hosts.client(id.host)?.desk.projects.first(where: { $0.block == id }) {
+            return goTo(hosts.directoryBlock(for: p.root, on: id.host), near: near)
+        }
         if let a = arrangement, let t = nearest(a.placements(of: id), to: near, in: a), let here = selected {
             // Here already: out of its stack, from behind a maximized
             // tile, and focused.

@@ -69,6 +69,10 @@ public final class Node {
     public var keptEntries = 4096
     /// Called with each shard that changed.
     public var onChange: ((ShardID) -> Void)?
+    /// A link made or let go of: its two ends, after `onChange` — for
+    /// whoever watches a block, its links being part of how it stands (a
+    /// thread's shelf, a space's or a project's pins).
+    public var onLinkChange: ((BlockID, BlockID) -> Void)?
 
     public init() {}
 
@@ -143,6 +147,15 @@ public final class Node {
     /// (a gap, or a repeat) is refused: the caller should fetch a snapshot.
     @discardableResult
     public func apply(_ entry: Entry, to shard: ShardID) -> Bool {
+        var ends: (BlockID, BlockID)?
+        if case .links = shard, onLinkChange != nil {
+            switch entry.event {
+            case let .link(l): ends = (l.from, l.to)
+            case let .unlink(id): ends = graph.edge(id).map { ($0.from, $0.to) }
+            default: break
+            }
+        }
+        defer { if let ends { onLinkChange?(ends.0, ends.1) } }
         if let seq = shards[shard]?.seq {
             guard entry.seq == seq + 1 else { return entry.seq <= seq }
             changing(shard)

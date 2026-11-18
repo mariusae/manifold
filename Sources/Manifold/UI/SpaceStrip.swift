@@ -1454,9 +1454,10 @@ extension MainWindowController {
             v.onPick = { [weak self] item in self?.go(to: Settled(space: item.space, tile: item.tile)) }
             v.onResize = { [weak self] in self?.sidebar.needsLayout = true }
         }
-        let before = v.wantedHeight
+        // Shown at the top of the space's list: made again when they change.
+        let before = v.items
         v.show(needsYouItems())
-        if v.wantedHeight != before { sidebar.needsLayout = true }
+        if v.items != before, organization == .desk { refreshOrganization() }
     }
 }
 

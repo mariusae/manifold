@@ -39,11 +39,14 @@ final class SidebarView: NSView {
     private let header = WindowDragView()
     private let resizeHandle = ResizeHandleView()
     var pinned = false { didSet { updateChrome() } }
-    /// The tree; the tabs at the top: what it lists — spaces, files or
-    /// threads, an icon each.
+    /// The tree; at the top, what it lists — spaces, files or threads —
+    /// one button, its icon, the others in its menu (⌥⌘1–3), with how many
+    /// threads have something new in its corner.
     let organizationView = OrganizationView()
     private(set) var organization: Organization = .desk
-    private let tabs: [SidebarTab] = [.desk, .files, .threads].map { SidebarTab($0) }
+    private let orgTab = SidebarTab(.desk)
+    /// Threads with something new, the space's: on the button, and in its menu.
+    private var threadsUnseen = 0
     /// The space's threads (§3.12): the timeline, in place of the tree; at
     /// the right of their header, the filter (which, and where) and Mark
     /// All Read.
@@ -62,7 +65,8 @@ final class SidebarView: NSView {
     /// Every space (§3.6), a square each, above the bar: the sidebar shows
     /// one at a time, and these are the rest.
     let spaces = SpaceStripView()
-    /// What needs you, in every space, over the strip: always there.
+    /// What needs you, in every space: kept for its items (the space's
+    /// list shows them at its top), not shown.
     let needsYou = NeedsYouView()
     /// The hosts to make a space on, over the strip's +.
     let hostPicker = HostPickerView()
@@ -113,13 +117,8 @@ final class SidebarView: NSView {
         pushedTitle.lineBreakMode = .byTruncatingTail
         for v in [backButton, pushedTitle, pushedSubtitle, spaceHost] { v.isHidden = true; card.addSubview(v) }
 
-        for t in tabs {
-            t.onClick = { [weak self, weak t] in
-                guard let self, let t else { return }
-                self.chooseOrganization(t.organization)
-            }
-            card.addSubview(t)
-        }
+        orgTab.onClick = { [weak self] in self?.popOrganizations() }
+        card.addSubview(orgTab)
         for v in [spaces, needsYou, transfers, toasts, footer] { card.addSubview(v) }
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
@@ -151,12 +150,8 @@ final class SidebarView: NSView {
         layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
         header.frame = NSRect(x: 0, y: bounds.height - Self.headerHeight, width: bounds.width, height: Self.headerHeight)
         pinButton.frame = NSRect(x: bounds.width - 30, y: bounds.height - 30, width: 20, height: 20)
-        // What it lists, an icon each, along the top beside the pin.
-        var tx = pinButton.frame.minX - 6 - CGFloat(tabs.count) * (SidebarTab.size + 2) + 2
-        for t in tabs {
-            t.frame = NSRect(x: tx, y: pinButton.frame.midY - SidebarTab.size / 2, width: SidebarTab.size, height: SidebarTab.size)
-            tx += SidebarTab.size + 2
-        }
+        // What it lists, beside the pin.
+        orgTab.frame = NSRect(x: pinButton.frame.minX - 4 - SidebarTab.size, y: pinButton.frame.midY - SidebarTab.size / 2, width: SidebarTab.size, height: SidebarTab.size)
         var top = bounds.height - Self.headerHeight
         // The spaces at the top, under the window's buttons, as Dia's
         // favourites: whichever list shows under them.
@@ -167,7 +162,7 @@ final class SidebarView: NSView {
         backButton.isHidden = !pushed
         pushedTitle.isHidden = !titled
         pushedSubtitle.isHidden = !titled || organization == .desk
-        spaceHost.isHidden = !titled || organization != .desk
+        spaceHost.isHidden = !titled || organization != .desk || !showsHost
         for v in threadsControls { v.isHidden = organization != .threads }
         if titled {
             // The back button (a list pushed over the tree) and the list's
@@ -191,7 +186,7 @@ final class SidebarView: NSView {
                 pushedTitle.font = .systemFont(ofSize: 13, weight: .semibold)
                 pushedTitle.frame = NSRect(x: left, y: top - 20, width: max(0, right - left), height: 18)
                 spaceHost.frame = NSRect(x: left, y: top - 42, width: max(0, right - left), height: 18)
-                top -= 48
+                top -= showsHost ? 48 : 28
             } else {
                 pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
                 pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
@@ -204,10 +199,9 @@ final class SidebarView: NSView {
         let fh = footer.wantedHeight
         footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: fh)
         var bottom = fh
-        let nh = needsYou.wantedHeight
-        needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
-        needsYou.isHidden = nh == 0
-        bottom += nh > 0 ? nh + 4 : 0
+        // What needs you is at the top of the space's list now (§3.6):
+        // its own section at the foot no longer shown.
+        needsYou.isHidden = true
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
@@ -242,7 +236,7 @@ final class SidebarView: NSView {
     /// Shows an organization's tree.
     func setOrganization(_ org: Organization) {
         organization = org
-        for t in tabs { t.chosen = t.organization == org }
+        orgTab.organization = org
         pushedTitle.stringValue = org.title
         if org != .threads { pushedSubtitle.stringValue = "" }
         needsLayout = true
@@ -321,11 +315,14 @@ final class SidebarView: NSView {
     }
 
     /// The space shown (§3.6): its name over its tiles, and how many.
-    func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false) {
+    func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false, showsHost: Bool = true) {
         guard organization == .desk else { return }
         pushedTitle.stringValue = title
         spaceHost.show(host: host, standing: standing, pings: pings, remote: remote)
+        if self.showsHost != showsHost { self.showsHost = showsHost; needsLayout = true }
     }
+    /// The space's host under its name: not when there's only the one.
+    private var showsHost = true
 
     /// How many are closed awaiting collection, under Recently Closed's
     /// title while it's shown (⇧⌘A's menu has them otherwise).
@@ -338,7 +335,8 @@ final class SidebarView: NSView {
     /// The space's threads: how many, how many open, and how many with
     /// something not seen (the count on their tab).
     func setFoot(threads n: Int, open: Int, unseen: Int) {
-        tabs.first { $0.organization == .threads }?.count = unseen
+        threadsUnseen = unseen
+        orgTab.count = unseen
         if organization == .threads {
             var words = [open == 1 ? "1 open" : "\(open) open"]
             if n > open { words.append("\(n - open) resolved") }
@@ -356,6 +354,25 @@ final class SidebarView: NSView {
     @objc private func threadsReadClicked() { delegate?.sidebarMarkThreadsRead() }
 
 
+
+    /// What it can list, in a menu under its button: the one shown checked.
+    func organizationMenu() -> NSMenu {
+        let menu = NSMenu()
+        for (org, key) in [(Organization.desk, "1"), (.files, "2"), (.threads, "3")] {
+            let title = org == .threads && threadsUnseen > 0 ? "Threads (\(threadsUnseen) new)" : org.title
+            let item = ClosureMenuItem(title, symbol: org.symbol, key: key) { [weak self] in self?.chooseOrganization(org) }
+            item.keyEquivalentModifierMask = [.command, .option]
+            item.state = organization == org ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    private func popOrganizations() {
+        orgTab.open = true
+        organizationMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: orgTab)
+        orgTab.open = false
+    }
 
     private func chooseOrganization(_ org: Organization) {
         setOrganization(org)
@@ -515,8 +532,16 @@ final class ClosureMenuItem: NSMenuItem {
 /// a count of what's new in it, in a dot at its corner.
 final class SidebarTab: ClickView {
     static let size: CGFloat = 26
-    let organization: Organization
+    var organization: Organization {
+        didSet {
+            guard organization != oldValue else { return }
+            icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
+            updateTip()
+        }
+    }
     var chosen = false { didSet { if chosen != oldValue { update() } } }
+    /// Its menu open: on a band, as it is pressed.
+    var open = false { didSet { if open != oldValue { update() } } }
     var count = 0 { didSet { if count != oldValue { update() } } }
     private let icon = NSImageView()
     /// A grey count, as the pills are.
@@ -531,9 +556,12 @@ final class SidebarTab: ClickView {
         badge.drawsBackground = false
         badge.themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.14).cgColor }
         for v in [icon, badge] { addSubview(v) }
-        let keys: [Organization: String] = [.desk: "⌥⌘1", .files: "⌥⌘2", .threads: "⌥⌘3"]
-        toolTip = organization.title + (keys[organization].map { " (\($0))" } ?? "")
+        updateTip()
         update()
+    }
+
+    private func updateTip() {
+        toolTip = "Showing \(organization.title) — Spaces, Files or Threads (⌥⌘1–3)"
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -554,8 +582,8 @@ final class SidebarTab: ClickView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard chosen || hovering else { return }
-        (chosen ? Theme.selectionInactive : Theme.hover).setFill()
+        guard chosen || hovering || open else { return }
+        (chosen ? Theme.selectionInactive : open ? Flat.pressed : Theme.hover).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
     }
 }

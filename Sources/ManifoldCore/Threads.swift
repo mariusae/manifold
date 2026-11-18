@@ -59,21 +59,70 @@ public enum ThreadEntryKind: Codable, Equatable, Sendable {
 }
 
 /// A thread's context — the shelf: the agents in its conversation (its
-/// participants, the lead first), and the references put there to stay
-/// part of it — kept as its block's annotations, written by whoever
-/// changes it with an event saying so.
+/// participants, the lead first), and the blocks put there to stay part
+/// of it (at a place in one, its anchor). Each is a link from the thread
+/// (`linked`, meaning `participant` or `shelved`), strong while the
+/// thread is open: what's on an open thread's shelf is kept, as what a
+/// space shows is; resolved, it lets go of them.
 public enum ThreadContext {
-    /// The agents, lead first: their ids, comma-separated.
+    public static let participant = "participant"
+    public static let shelved = "shelved"
+    /// The relations that hold only while their thread is open.
+    public static let whileOpen: Set<String> = [participant, shelved]
+    /// The agent a thread asks first (its lead), by id: kept as its
+    /// annotation, the lead being a choice rather than a relation.
+    public static let leadKey = "asks.agent"
+
+    /// As the shelf was kept before its links: annotations, read once by
+    /// the host into links (`settlingThreads`).
     public static let participantsKey = "participants"
-    /// The references: their addresses, a line each.
     public static let referencesKey = "context"
 
-    public static func participants(of t: Block) -> [BlockID] {
-        (t.annotations?[participantsKey] ?? "").split(separator: ",").compactMap { BlockID(string: String($0)) }
+    public static func legacyParticipants(of t: Block) -> [BlockID]? {
+        t.annotations?[participantsKey].map { $0.split(separator: ",").compactMap { BlockID(string: String($0)) } }
     }
 
-    public static func references(of t: Block) -> [String] {
-        (t.annotations?[referencesKey] ?? "").split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    public static func legacyReferences(of t: Block) -> [String]? {
+        t.annotations?[referencesKey].map { $0.split(separator: "\n").map(String.init).filter { !$0.isEmpty } }
+    }
+}
+
+extension Node {
+    /// A thread's participants (§3.12): its `participant` links, the lead
+    /// first, then the rest in the order they came.
+    public func participants(of thread: BlockID) -> [BlockID] {
+        var ids: [BlockID] = []
+        for e in graph.edges(from: thread, kind: .link(.linked)).sorted(by: { $0.at < $1.at })
+        where e.relation == ThreadContext.participant && !ids.contains(e.to) { ids.append(e.to) }
+        if let s = block(thread)?.annotations?[ThreadContext.leadKey], let lead = BlockID(string: s), let i = ids.firstIndex(of: lead), i > 0 {
+            ids.remove(at: i)
+            ids.insert(lead, at: 0)
+        }
+        return ids
+    }
+
+    /// What's kept on a thread's shelf besides its agents: each block, at
+    /// a place in it if one was put there, in the order they came.
+    public func shelved(of thread: BlockID) -> [(block: BlockID, anchor: String?)] {
+        var out: [(block: BlockID, anchor: String?)] = []
+        for e in graph.edges(from: thread, kind: .link(.linked)).sorted(by: { $0.at < $1.at })
+        where e.relation == ThreadContext.shelved && !out.contains(where: { $0.block == e.to && $0.anchor == e.toAnchor }) {
+            out.append((e.to, e.toAnchor))
+        }
+        return out
+    }
+
+    /// The threads a block is in (§3.12): about it, with it on their shelf,
+    /// named in a comment of theirs, or — an agent — with it in their
+    /// conversation; by the links to it in this host's graph, newest first.
+    public func threads(of block: BlockID) -> [BlockID] {
+        var seen = Set<BlockID>()
+        let held = graph.edges(to: block, kind: .link(.linked))
+            .filter { [ThreadText.annotates, ThreadContext.participant, ThreadContext.shelved].contains($0.relation ?? "") }
+        let named = graph.edges(to: block, kind: .link(.opened)).filter { $0.relation == ThreadText.mentions }
+        return (held + named).sorted { $0.at > $1.at }
+            .filter { graph.kind(of: $0.from) == .thread || self.block($0.from)?.kind == .thread }
+            .compactMap { seen.insert($0.from).inserted ? $0.from : nil }
     }
 }
 
