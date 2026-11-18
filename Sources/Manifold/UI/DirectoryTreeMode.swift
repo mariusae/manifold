@@ -69,6 +69,8 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: true)
         outline.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
         scroll.hold(outline)
+        // Following its pane as the split sizes it, not only as the tile lays out.
+        scroll.autoresizingMask = [.width, .height]
         left.addSubview(scroll)
         preview.makePage = { [weak owner] path, source in owner?.makePage(path, source: source) }
         preview.resolve = { [weak owner] path, done in
@@ -102,6 +104,9 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
             if wide { placeDivider() }
         }
         if !dividerPlaced, wide, bounds.width > 0 { placeDivider() }
+        // The preview hidden, the tree has all of it — not half, the hidden
+        // pane's room left empty beside it (seen once at launch).
+        if right.isHidden, abs(left.frame.width - split.bounds.width) > 1 { split.adjustSubviews() }
         scroll.frame = left.bounds
         outline.tableColumns.first?.width = scroll.contentSize.width
         preview.frame = right.bounds.insetBy(dx: 12, dy: 12)
@@ -360,8 +365,16 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
         }
     }
 
+    /// Debugging: how wide each part is — the pane, its scroll, the outline,
+    /// its column, the first row's cell.
+    var debugGeometry: String {
+        func w(_ r: NSRect) -> String { "\(Int(r.minX))+\(Int(r.width))" }
+        let cell = outline.numberOfRows > 0 ? outline.view(atColumn: 0, row: 0, makeIfNecessary: false) : nil
+        return "geometry self \(w(bounds)) split \(w(split.frame)) left \(w(left.frame)) scroll \(w(scroll.frame)) clip \(Int(scroll.contentSize.width)) outline \(w(outline.frame)) column \(Int(outline.tableColumns.first?.width ?? -1)) cell0 \(cell.map { w($0.frame) } ?? "-")"
+    }
+
     var debugRows: String {
-        "preview \(right.isHidden ? "hidden" : "\(Int(right.frame.width)) wide: " + (preview.node?.name ?? "nothing") + " (" + preview.debugState + ")") tree \(Int(left.frame.width))\n"
+        debugGeometry + "\n" + "preview \(right.isHidden ? "hidden" : "\(Int(right.frame.width)) wide: " + (preview.node?.name ?? "nothing") + " (" + preview.debugState + ")") tree \(Int(left.frame.width))\n"
             + (0..<min(outline.numberOfRows, 60)).compactMap { r -> String? in
                 guard let n = outline.item(atRow: r) as? BrowserNode else { return nil }
                 let mark = n.isDirectory ? (outline.isItemExpanded(n) ? "▾ " : "▸ ") : "  "
@@ -378,6 +391,26 @@ final class DirectoryTreeMode: NSView, DirectoryMode, NSOutlineViewDataSource, N
 final class TreeOutline: FlatOutline {
     /// How wide a folder's chevron is, as measured from one.
     private(set) var chevronWidth: CGFloat = 16
+
+    /// Its one column as wide as it, whenever it's resized: set only from
+    /// its pane's size as the tile laid out, the column kept a width from
+    /// before the split had sized the pane (a tile restored at launch,
+    /// one down to its bar), and every name was cut to a letter or two
+    /// while the rows stretched across.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        fitColumn()
+    }
+
+    override func layout() {
+        fitColumn()
+        super.layout()
+    }
+
+    private func fitColumn() {
+        let width = enclosingScrollView?.contentSize.width ?? frame.width
+        if let c = tableColumns.first, width > 0, abs(c.width - width) > 0.5 { c.width = width }
+    }
 
     override func frameOfCell(atColumn column: Int, row: Int) -> NSRect {
         var f = super.frameOfCell(atColumn: column, row: row)
