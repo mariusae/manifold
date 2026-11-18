@@ -344,11 +344,18 @@ final class Hosts {
     /// Everything the roots reach over strong edges, across hosts: a
     /// block's edges are in its own host's graph (its placements in its
     /// workspace's host's, its links by hand in its own links shard).
+    /// An open thread's shelf holds its agents too (`Node.shelfHeld`).
     func reachable(without gone: BlockID? = nil) -> Set<BlockID> {
         // (`gone`: as if it weren't there — what deleting it would let go.)
-        local.node.graph.reachable(from: roots().filter { $0 != gone }) { [weak self] b in
-            b == gone ? [] : self?.client(of: b)?.node.graph.strongEdges(from: b).filter { $0.to != gone } ?? []
-        }.subtracting(gone.map { [$0] } ?? [])
+        var seen = roots().filter { $0 != gone }
+        var frontier = Array(seen)
+        while let b = frontier.popLast() {
+            guard b != gone, let node = client(of: b)?.node else { continue }
+            for t in node.graph.strongEdges(from: b).map(\.to) + node.shelfHeld(by: b) where t != gone && seen.insert(t).inserted {
+                frontier.append(t)
+            }
+        }
+        return seen
     }
 
     func pin(_ block: BlockID, _ on: Bool) { propose(.pin(block, on)) }
@@ -374,6 +381,13 @@ final class Hosts {
             }
             for l in c.links.links where l.kind == .linked && l.to.host != s && l.from.host == s && reachable.contains(l.from) {
                 wanted[l.to.host, default: [:]][l.id] = Hold(id: l.id, block: l.to, holder: s, at: c.clock.now())
+            }
+            // An open thread's shelf, holding an agent on another host.
+            for b in c.node.blocks where b.id.host == s && reachable.contains(b.id) {
+                for a in c.node.shelfHeld(by: b.id) where a.host != s {
+                    let hid = "shelf:\(b.id.ulid):\(a.ulid)"
+                    wanted[a.host, default: [:]][hid] = Hold(id: hid, block: a, holder: s, at: c.clock.now())
+                }
             }
             for id in c.desk.order where id.host != s {
                 let hid = "desk:\(s.raw):\(id.ulid)"

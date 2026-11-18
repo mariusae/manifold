@@ -2072,3 +2072,33 @@ private final class Seen: @unchecked Sendable {
     #expect(abs(b.fractions.reduce(0, +) - 1) < 0.001)
     #expect(b.focused == back.id && b.heights[back.id] == 1)
 }
+
+@Test func anOpenThreadKeepsTheAgentsOnItsShelfAndAProjectItsOwn() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    // A space keeping a thread (its `thread` link); an agent on the
+    // thread's shelf, its tile closed; another, a project's, on no tile.
+    let ws = BlockID(host: host), thread = BlockID(host: host), agent = BlockID(host: host), own = BlockID(host: host)
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 1)
+    put(.order([ws]), to: .desk(host), at: 2)
+    put(.create(kind: .thread, title: nil, path: nil), to: .block(thread), at: 3)
+    put(.link(Link(from: ws, to: thread, kind: .thread, at: stamp(4))), to: .links(host), at: 4)
+    for a in [agent, own] { put(.create(kind: .agent, title: nil, path: nil), to: .block(a), at: 5) }
+    put(.annotate([ThreadContext.participantsKey: agent.description]), to: .block(thread), at: 6)
+    put(.project(Project(root: "/p", made: stamp(7))), to: .desk(host), at: 7)
+    put(.projectAgent(root: "/p", agent: own, attached: true), to: .desk(host), at: 8)
+
+    var r = node.reachable(on: host)
+    #expect(r.contains(thread) && r.contains(agent) && r.contains(own))
+
+    // Resolved, the thread lets go of its agent; the project keeps its own.
+    put(.threadEntry(ThreadEntry(at: stamp(9), author: .manifold, kind: .resolved)), to: .block(thread), at: 9)
+    r = node.reachable(on: host)
+    #expect(r.contains(thread) && !r.contains(agent) && r.contains(own))
+
+    // No longer the project's, it goes too.
+    put(.projectAgent(root: "/p", agent: own, attached: false), to: .desk(host), at: 10)
+    #expect(!node.reachable(on: host).contains(own))
+}

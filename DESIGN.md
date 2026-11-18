@@ -1478,7 +1478,12 @@ anything else is a reference — and + offers the agents at work; a chip's
 × or its menu takes it off, an agent's menu makes it the lead; a chip
 clicked is gone to, an agent's pointed at rings its tile, a
 reference's shows its card (a file's block made for it, if there's none);
-a long name is cut, "…" at its end; an agent not running stays, dimmed. Only what's dropped on the shelf is on it: a
+a long name is cut, "…" at its end; an agent not running stays, dimmed.
+An open thread **keeps** the agents on its shelf (`Node.shelfHeld`, in the
+host's collector and the app's reckoning, a hold for one on another
+host): its tile closed, an agent in a conversation isn't let go
+mid-thread; resolved, the thread lets go of them, and what else keeps
+them (a tile, their project) keeps them. Only what's dropped on the shelf is on it: a
 reference in a comment is that comment's. Each change is an event in the
 thread ("You added Readme.md to its context"), so its history says who
 was in the room when (`ThreadContext`: the annotations `participants`,

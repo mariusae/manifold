@@ -56,8 +56,24 @@ extension Node {
         return out
     }
 
-    /// Everything on a host that its roots reach, over its own graph.
+    /// Everything on a host that its roots reach, over its own graph — and
+    /// what an open thread holds on its shelf.
     public func reachable(on host: HostID) -> Set<BlockID> {
-        graph.reachable(from: roots(on: host))
+        var seen = roots(on: host)
+        var frontier = Array(seen)
+        while let b = frontier.popLast() {
+            for t in graph.strongEdges(from: b).map(\.to) + shelfHeld(by: b) where seen.insert(t).inserted { frontier.append(t) }
+        }
+        return seen
+    }
+
+    /// The agents an open thread holds (§3.12): those on its shelf, kept
+    /// while it's open — with nothing else showing them (a tile closed), an
+    /// agent in a conversation isn't let go mid-thread. Resolved, it lets
+    /// go of them (what else keeps them, keeps them). Not an edge of the
+    /// graph: the shelf is the thread's annotation.
+    public func shelfHeld(by id: BlockID) -> [BlockID] {
+        guard let b = block(id), b.kind == .thread, b.thread?.resolved != true else { return [] }
+        return ThreadContext.participants(of: b)
     }
 }
