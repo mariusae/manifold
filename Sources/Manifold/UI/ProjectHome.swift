@@ -331,8 +331,12 @@ final class ProjectAgentPill: NSControl {
         let font = letter ? Self.letterFont : Self.font
         let words = letter ? initial : chip.name
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
-        let w = (words as NSString).size(withAttributes: attrs).width
-        (words as NSString).draw(at: NSPoint(x: (body.midX - w / 2).rounded(), y: (body.midY - font.capHeight / 2 + font.descender).rounded()), withAttributes: attrs)
+        // Its capitals' middle at the pill's: the baseline set from the top
+        // of the line drawn (its height the line's, taller than the font's
+        // ascent and descent — set from the bottom, it rode a point high).
+        let size = (words as NSString).size(withAttributes: attrs)
+        let baseline = body.midY - font.capHeight / 2
+        (words as NSString).draw(at: NSPoint(x: (body.midX - size.width / 2).rounded(), y: baseline + font.ascender - size.height), withAttributes: attrs)
         if !chip.asleep { Self.drawStatus(chip.status, on: body) }
     }
 
