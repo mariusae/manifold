@@ -29,4 +29,28 @@ import Testing
     @Test func namesAreUnique() {
         #expect(Set(AgentIdentity.names).count == AgentIdentity.names.count)
     }
+
+    @Test func everyLetterStartsANameSoInitialsCanDiffer() {
+        let initials = Set(AgentIdentity.names.compactMap(\.first))
+        #expect(initials == Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+    }
+
+    @Test func anInitialLikeOneTakenIsGivenLast() {
+        // O taken: Q, C, G and D wait while others are free.
+        let taken = AgentIdentity.Taken(names: ["Olive"], colors: [])
+        for seed in UInt64(0)..<80 {
+            let (name, _) = AgentIdentity.choose(taken: taken, seed: seed)
+            #expect(!"OQCGD".contains(name.first!))
+        }
+    }
+
+    @Test func withOnlyLookAlikesLeftOneOfThemIsGiven() {
+        // Every initial taken but G (like C and O, both taken): G still.
+        let others = AgentIdentity.names.filter { $0.first != "G" }
+        var byInitial: [Character: String] = [:]
+        for n in others where byInitial[n.first!] == nil { byInitial[n.first!] = n }
+        let taken = AgentIdentity.Taken(names: Set(byInitial.values), colors: [])
+        let (name, _) = AgentIdentity.choose(taken: taken, seed: 3)
+        #expect(name.first == "G")
+    }
 }

@@ -201,8 +201,9 @@ final class SidebarView: NSView {
         }
         // The footer along the very bottom; over it what needs you, the
         // transfers and the toasts, each only when there's something.
-        footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: SidebarFooter.height)
-        var bottom = SidebarFooter.height
+        let fh = footer.wantedHeight
+        footer.frame = NSRect(x: 0, y: 0, width: bounds.width, height: fh)
+        var bottom = fh
         let nh = needsYou.wantedHeight
         needsYou.frame = NSRect(x: 0, y: bottom, width: bounds.width, height: nh)
         needsYou.isHidden = nh == 0

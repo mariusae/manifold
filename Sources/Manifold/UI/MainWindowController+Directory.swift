@@ -143,12 +143,7 @@ extension MainWindowController: DirectoryViewDelegate {
         case let .showAgent(id):
             arrive(id, from: view.placement)
         case let .renameAgent(id):
-            // Its tile, and its name edited in its bar.
-            arrive(id, from: view.placement)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, let p = self.arrangement?.placements.first(where: { $0.block == id }) else { return }
-                self.gridRenameAgent(p.id)
-            }
+            renameProjectAgent(id, from: view.placement)
         case let .deleteAgent(id):
             // As any block's deleting: said, with Undo; gone for good, the
             // project lets go of it (the host, as it discards it).
@@ -167,13 +162,50 @@ extension MainWindowController: DirectoryViewDelegate {
 
     /// A project's agents, as the pills on its line show them.
     func directoryView(_ view: DirectoryView, agentsOf project: Project) -> [ProjectAgentChip] {
-        (project.agents ?? []).compactMap { id in
-            guard let b = hosts.block(id), let color = AgentLook.color(of: b) ?? Optional(Theme.accent) else { return nil }
-            let state: ProjectAgentChip.State = !Self.agentRuns(b) ? .asleep
-                : b.statusState == .working ? .working : b.statusState == .blocked ? .waiting : .idle
-            return ProjectAgentChip(id: id, name: AgentLook.name(of: b), color: color, ink: AgentLook.color(of: b) == nil ? .white : AgentLook.ink(on: b),
-                                    state: state, detail: AgentLook.description(of: b))
+        (project.agents ?? []).compactMap { id in hosts.block(id).map { agentChip($0, in: project) } }
+    }
+
+    /// The agents of every project the space shown reaches (§3.12) — one a
+    /// tile of it shows, or something from inside it — project by project,
+    /// in the space's order, as the pills at the sidebar's foot show them.
+    func spaceAgentChips() -> [ProjectAgentChip] {
+        guard let id = selected, let a = hosts.arrangement(id) else { return [] }
+        var seen: Set<String> = [], out: [ProjectAgentChip] = []
+        for p in a.placements {
+            guard let proj = project(of: p.block), seen.insert("\(p.block.host)|\(proj.root)").inserted else { continue }
+            out += agents(of: proj, on: p.block.host).map { agentChip($0, in: proj) }
         }
+        return out
+    }
+
+    /// A project's agent's menu, wherever its pill is: show it, rename it,
+    /// delete it (with Undo, as any block).
+    func projectAgentMenu(_ id: BlockID) -> NSMenu? {
+        guard let b = hosts.block(id) else { return nil }
+        let name = AgentLook.name(of: b)
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Show \(name)", symbol: "rectangle.on.rectangle") { [weak self] in self?.arrive(id, from: nil) })
+        menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { [weak self] in self?.renameProjectAgent(id) })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Delete \(name)", symbol: "trash") { [weak self] in self?.deleteBlock(id) })
+        return menu
+    }
+
+    /// Its tile, and its name edited in its bar.
+    func renameProjectAgent(_ id: BlockID, from placement: PlacementID? = nil) {
+        arrive(id, from: placement)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let p = self.arrangement?.placements.first(where: { $0.block == id }) else { return }
+            self.gridRenameAgent(p.id)
+        }
+    }
+
+    /// A project's agent as its pill shows it (§3.12): its name and colour,
+    /// what most wants you of it, whether it's asleep.
+    func agentChip(_ b: Block, in project: Project?) -> ProjectAgentChip {
+        ProjectAgentChip(id: b.id, name: AgentLook.name(of: b), color: AgentLook.color(of: b) ?? Theme.accent,
+                         status: StatusGlyph.look(of: b), asleep: !Self.agentRuns(b),
+                         detail: AgentLook.description(of: b), project: project?.name ?? "")
     }
 
     /// "?text" in a folder's filter: the files under it searched, the

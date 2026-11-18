@@ -367,9 +367,18 @@ gives /tmp back — a terminal's directory says the former.
 in a thread about a place in it with none at work), it runs in the
 project's folder — its `CLAUDE.md`, its repository, its memory and
 sessions are the project's — on the project's host, with nothing
-showing it, and is a pill on the strip: its name in its colour, a dot
-while it works, ringed in amber while it waits on you, paler while it's
-asleep. Clicked, its tile is placed (or gone to); closed, the tile goes
+showing it, and is a pill on the strip, in a style of its own: hollow,
+where an agent in a tile is solid — its colour as a tint, edged in it,
+its name in it; paler, its edge dashed, while it's asleep — and at its
+top right what most wants you of it, as a space's square has it (a dot:
+needs you, failed, done and not read; an open ring: working). The agents
+of every project the space shows (a tile of it, or anything from inside
+it) are a row at the sidebar's foot, over Threads: each its initial in
+its ring, its badge at its corner, "+n" for those past the room — clicked,
+shown; their menu as on the strip. So that row reads, an agent's name is
+given an initial no agent kept or at work has, and while there are some,
+one unlike any taken (not Q beside O, nor L beside I); the names (a
+plant's or a bird's) start with every letter. Clicked, its tile is placed (or gone to); closed, the tile goes
 and the agent stays; dragged, it's a reference to it (onto a thread's
 shelf, it joins); its menu renames it or deletes it (with Undo, as any
 block). The project keeps it: its agents are roots (`Project.agents`,
@@ -392,8 +401,7 @@ first prompt an agent started with was given. Agents that take no name
 start fresh. The host holds what's typed
 to it till its first hook says it's ready — and, not ready after a
 while (asking to trust its folder, where a Return is "No, exit"), it's
-said to wait on you rather than typed into. Its pill isn't in the
-sidebar: the project is where its agents are.
+said to wait on you rather than typed into. Its name pill is the project's; the sidebar has its initial.
 
 ---
 

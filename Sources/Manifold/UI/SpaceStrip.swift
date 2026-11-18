@@ -948,7 +948,10 @@ extension MainWindowController {
             wirePlus()
             sidebar.footer.threads.onClick = { [weak self] in self?.showFooterMenu(.threads) }
             sidebar.footer.tiles.onClick = { [weak self] in self?.showFooterMenu(.tiles) }
+            sidebar.footer.onAgent = { [weak self] id in self?.arrive(id, from: nil) }
+            sidebar.footer.agentMenu = { [weak self] id in self?.projectAgentMenu(id) }
         }
+        sidebar.footer.showAgents(spaceAgentChips())
         // Threads with something not seen, in the space shown.
         if let space = selected {
             let n = hosts.threads(inSpace: space).filter { !hosts.unseen($0).isEmpty }.count

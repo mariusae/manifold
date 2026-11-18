@@ -21,16 +21,19 @@ enum ProjectAction {
     case deleteAgent(BlockID)
 }
 
-/// One of a project's agents, as its pill on the project's line shows it.
+/// One of a project's agents (§3.12), as its pill shows it — on the
+/// project's line, its name; at the sidebar's foot, its initial.
 struct ProjectAgentChip: Equatable {
-    enum State: Equatable { case working, waiting, idle, asleep }
     var id: BlockID
     var name: String
     var color: NSColor
-    var ink: NSColor
-    var state: State
-    /// What it is and does, for its tip.
+    /// What most wants you of it (`StatusGlyph`), at its corner.
+    var status: StatusGlyph.Look?
+    /// Its process ended: asked, or shown, it starts again where it left off.
+    var asleep: Bool
+    /// What it is and does, and the project it's in, for its tip.
     var detail: String
+    var project = ""
 }
 
 /// How a project stands, as its homepage shows it: its repository's
@@ -239,7 +242,7 @@ final class ProjectStrip: NSView {
             let w = p.wantedWidth
             p.isHidden = right - w < roomFrom
             guard !p.isHidden else { continue }
-            p.frame = NSRect(x: right - w, y: ((bounds.height - ProjectAgentPill.height) / 2).rounded(), width: w, height: ProjectAgentPill.height)
+            p.frame = NSRect(x: right - w, y: ((bounds.height - ProjectAgentPill.height - 3) / 2).rounded(), width: w, height: ProjectAgentPill.height + 3)
             right -= w + 5
         }
         var x: CGFloat = 8
@@ -258,32 +261,43 @@ final class ProjectStrip: NSView {
 
     var debugState: String {
         ([branch, changes, index].filter { !$0.isHidden }.map { $0.title + ($0.spins ? " (turning)" : "") }
-            + agents.map { "agent \($0.name) (\($0.state))" }).joined(separator: " | ")
+            + agents.map { "agent \($0.name) (\($0.asleep ? "asleep" : $0.status.map { "\($0)" } ?? "idle"))" }).joined(separator: " | ")
     }
 }
 
-/// A project's agent on its line (§3.12): its name in a pill of its
-/// colour — paler while it's asleep (asked, it starts again where it left
-/// off), a dot while it works, ringed in amber while it waits on you.
-/// Clicked, it's shown; its menu shows, renames, ends it. Pointed at, its
-/// tile is ringed where it's on screen.
+/// A project's agent (§3.12) as a pill, in the style that's its own: its
+/// colour as a tint, edged in it, its name — or, `letter`, its initial in
+/// a ring — in it; paler, its edge dashed, while it's asleep (asked, it
+/// starts again where it left off); at its top right what most wants you
+/// of it, as a space's square has it (a dot: needs you, failed, done and
+/// not read; an open ring: working). Hollow, where an agent in a tile is
+/// solid: one that lives in a project, not on the screen. Clicked, it's
+/// shown; its menu shows, renames, deletes it; dragged, it's a reference to
+/// it (onto a thread's shelf, it joins); pointed at, its tile is ringed.
 final class ProjectAgentPill: NSControl {
     let chip: ProjectAgentChip
+    let letter: Bool
     var onClick: (() -> Void)?
     var onMenu: (() -> NSMenu)?
     static let height: CGFloat = 18
+    static let letterSize: CGFloat = 20
     private static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    private static let letterFont = NSFont.systemFont(ofSize: 10.5, weight: .bold)
 
-    init(_ chip: ProjectAgentChip) {
+    init(_ chip: ProjectAgentChip, letter: Bool = false) {
         self.chip = chip
+        self.letter = letter
         super.init(frame: .zero)
-        let state: String = switch chip.state {
-        case .working: "working"
-        case .waiting: "waiting on you"
-        case .idle: "idle"
-        case .asleep: "asleep — asked, it starts again where it left off"
+        let doing: String = switch chip.status {
+        case .working?, .busy?: "working"
+        case .needsYou?: "waiting on you"
+        case .done(read: false)?: "done — not read yet"
+        case .failed(read: false)?: "failed"
+        default: "idle"
         }
-        toolTip = "\(chip.name), this project's agent — \(state)\(chip.detail.isEmpty ? "" : "\n" + chip.detail)\nClick to show it; drag it into a thread"
+        let state = chip.asleep ? "asleep — asked, it starts again where it left off" : doing
+        let whose = chip.project.isEmpty ? "this project's agent" : "\(chip.project)'s agent"
+        toolTip = "\(chip.name), \(whose) — \(state)\(chip.detail.isEmpty ? "" : "\n" + chip.detail)\nClick to show it; drag it into a thread"
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
 
@@ -293,29 +307,51 @@ final class ProjectAgentPill: NSControl {
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var dotRoom: CGFloat { chip.state == .working ? 9 : 0 }
-    var wantedWidth: CGFloat { ceil((chip.name as NSString).size(withAttributes: [.font: Self.font]).width) + 16 + dotRoom }
+    private var initial: String { chip.name.first.map { String($0).uppercased() } ?? "?" }
+
+    /// Its width as it's drawn, its corner's dot within it.
+    var wantedWidth: CGFloat {
+        letter ? Self.letterSize + 3 : ceil((chip.name as NSString).size(withAttributes: [.font: Self.font]).width) + 16 + 3
+    }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        chip.color.withAlphaComponent(chip.state == .asleep ? 0.4 : 1).setFill()
+        // Room at the top right for its dot, outside the pill.
+        let body = letter
+            ? NSRect(x: 0.75, y: (bounds.height - Self.letterSize) / 2 + 0.75, width: Self.letterSize - 1.5, height: Self.letterSize - 1.5)
+            : NSRect(x: 0.75, y: 0.75, width: bounds.width - 3 - 1.5, height: bounds.height - 1.5 - 1.5)
+        let path = NSBezierPath(roundedRect: body, xRadius: body.height / 2, yRadius: body.height / 2)
+        chip.color.withAlphaComponent(chip.asleep ? 0.08 : 0.22).setFill()
         path.fill()
-        if chip.state == .waiting {
-            Status.attention.setStroke()
-            path.lineWidth = 1.5
-            path.stroke()
+        chip.color.withAlphaComponent(chip.asleep ? 0.55 : 1).setStroke()
+        path.lineWidth = 1.5
+        if chip.asleep { path.setLineDash([2.5, 2], count: 2, phase: 0) }
+        path.stroke()
+        // Its words in its colour, drawn toward the text's, to read on the tint.
+        let ink = (chip.color.blended(withFraction: 0.35, of: Theme.text) ?? chip.color).withAlphaComponent(chip.asleep ? 0.6 : 1)
+        let font = letter ? Self.letterFont : Self.font
+        let words = letter ? initial : chip.name
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
+        let w = (words as NSString).size(withAttributes: attrs).width
+        (words as NSString).draw(at: NSPoint(x: (body.midX - w / 2).rounded(), y: (body.midY - font.capHeight / 2 + font.descender).rounded()), withAttributes: attrs)
+        if !chip.asleep { Self.drawStatus(chip.status, on: body) }
+    }
+
+    /// What most wants you, at a pill's top right, as a space's square has
+    /// it: a dot (needs you, failed, done and not read), an open ring (at work).
+    static func drawStatus(_ look: StatusGlyph.Look?, on r: NSRect) {
+        guard let tone = SpaceStripView.tone(look) else { return }
+        let d = NSRect(x: r.maxX - 4.5, y: r.maxY - 4.5, width: 7, height: 7)
+        Theme.panel.setFill()
+        NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
+        if case .working = look {
+            let ring = NSBezierPath(ovalIn: d.insetBy(dx: 0.75, dy: 0.75))
+            ring.lineWidth = 1.5
+            tone.setStroke()
+            ring.stroke()
+        } else {
+            tone.setFill()
+            NSBezierPath(ovalIn: d).fill()
         }
-        let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: chip.state == .asleep ? Theme.text : chip.ink]
-        let w = (chip.name as NSString).size(withAttributes: attrs).width
-        var x = ((bounds.width - w - dotRoom) / 2).rounded() + dotRoom
-        if dotRoom > 0 {
-            chip.ink.setFill()
-            NSBezierPath(ovalIn: NSRect(x: x - 9, y: bounds.midY - 2.5, width: 5, height: 5)).fill()
-        }
-        x = max(x, 0)
-        let f = Self.font
-        (chip.name as NSString).draw(at: NSPoint(x: x, y: (bounds.midY - f.capHeight / 2 + f.descender).rounded()), withAttributes: attrs)
     }
 
     override func mouseEntered(with event: NSEvent) { AgentLook.spotlight?(chip.id) }

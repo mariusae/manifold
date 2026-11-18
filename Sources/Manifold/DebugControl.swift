@@ -1713,6 +1713,7 @@ enum DebugControl {
                 }
                 lines.append(p.root + ": " + each.joined(separator: "; "))
             }
+            lines.append("sidebar: " + wc.sidebar.footer.debugAgents)
             return lines.joined(separator: "\n")
         case "settings":
             // "settings show [pane]", "settings tint <name>", "settings close",
