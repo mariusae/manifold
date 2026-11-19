@@ -1697,6 +1697,15 @@ it. With macOS's Increase Contrast on, whichever theme is set is drawn
 firmer: fainter text darkened or lifted to 7:1, rules and edges firmer,
 the focus ring stronger, its character kept.
 
+**Icons** are [Pierre's](https://pierre.computer/writing/on-drawing-icons)
+(@pierre/icons, Apache-2.0, in Resources/PierreIcons), drawn for file
+trees, diffs and code review — a terminal and a note are squircles, a
+prompt and a pencil; a file is a page with a badge for its kind; a git
+change is a squircle with its letter, filled when it's staged; a thread
+is a comment — or the system's SF Symbols (Settings ▸ Appearance ▸
+Icons). What Pierre has nothing for, a space's symbol (chosen from the
+system's) and agents' and programs' marks are the same in either.
+
 ## Host and app
 
 Everything lives in `manifoldd`, a server (one per host) the app starts

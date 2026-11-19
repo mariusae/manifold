@@ -3452,7 +3452,8 @@ final class IconHandle: NSView {
     private func makeStrokes(_ mark: String, tint: NSColor) -> Bool {
         let box = Marks.box(Self.markSize)
         let r = CGRect(x: (bounds.width - box.width) / 2, y: (bounds.height - box.height) / 2, width: box.width, height: box.height)
-        guard let parts = Marks.parts(mark, size: Self.markSize, weight: .regular, in: r) else { return false }
+        // Pierre's in its place: it swings as any other icon does.
+        guard PierreIcons.use(mark) == nil, let parts = Marks.parts(mark, size: Self.markSize, weight: .regular, in: r) else { return false }
         removeStrokes()
         var color = tint.cgColor
         effectiveAppearance.performAsCurrentDrawingAppearance { color = tint.cgColor }

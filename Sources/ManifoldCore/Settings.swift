@@ -72,6 +72,8 @@ public struct Appearance: Codable, Equatable, Sendable {
     public var typography: Typography = .apple
     /// Settings ▸ Typography shown, and the Custom theme offered.
     public var advancedTypography = false
+    /// Which icons the app's own are: Pierre's, or the system's.
+    public var icons: IconSet = .pierre
 
     public init(theme: FontTheme = .apple, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
@@ -98,6 +100,7 @@ public struct Appearance: Codable, Equatable, Sendable {
         // On for those who set a custom theme before there was the switch.
         advancedTypography = theme == .custom
         c.opt(&advancedTypography, .advancedTypography)
+        c.opt(&icons, .icons)
     }
 }
 
@@ -434,6 +437,12 @@ public enum Tint: String, Codable, CaseIterable, Sendable {
 }
 
 /// The editor's text: the theme's proportional font, or its fixed-width one.
+/// The set the app's own icons are drawn from: Pierre's (@pierre/icons),
+/// or the system's SF Symbols.
+public enum IconSet: String, Codable, CaseIterable, Sendable {
+    case pierre, system
+}
+
 public enum EditorFont: String, Codable, CaseIterable, Sendable {
     case proportional, monospaced
 }

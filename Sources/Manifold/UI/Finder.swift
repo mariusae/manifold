@@ -1175,13 +1175,17 @@ final class FileCell: NSTableCellView {
 
     /// A symbol's image, made once.
     static func image(_ name: String) -> NSImage {
-        if let i = images[name] { return i }
+        let key = Icons.current.rawValue + "/" + name
+        if let i = images[key] { return i }
         // A coding agent's mark, at the size the row's symbols are.
         let i = (name.hasPrefix(AgentIcons.prefix) ? AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: 15) : nil)
             ?? (name.hasPrefix(ProgramIcons.prefix) ? ProgramIcons.image(String(name.dropFirst(ProgramIcons.prefix.count)), size: 15) : nil)
+            ?? PierreIcons.image(name, size: UIType.symbolSize)
             ?? Marks.image(name, size: UIType.symbolSize, weight: .medium)
-            ?? NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
-        images[name] = i
+            ?? ([name] + (Theme.symbolFallbacks[name] ?? [])).lazy.compactMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }.first
+            ?? NSImage()
+        images[key] = i
+        Icons.noteMade(i) { image(name) }
         return i
     }
 
@@ -1201,8 +1205,8 @@ final class FileCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 
     func show(title text: String, detail folder: String, symbol name: String, note text2: String, level: Int = 0, age: String? = nil) {
-        if name != symbolName {
-            symbolName = name
+        if Icons.current.rawValue + name != symbolName {
+            symbolName = Icons.current.rawValue + name
             let image = Self.image(name)
             symbol.image = image
         }

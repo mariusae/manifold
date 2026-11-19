@@ -336,6 +336,7 @@ final class ProjectSidebar: NSView {
                 let letter = s.isUntracked ? "?" : (s.workTree != " " ? s.workTree : s.index)
                 let row = HomeRow(mark: letter, markColor: s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor),
                                   title: inProject(s.path), detail: nil)
+                row.staged = !s.isUntracked && s.workTree == " "
                 row.toolTip = repo.appendingPathComponent(s.path).abbreviatingHome
                 row.onClick = { [weak self] in self?.onAction?(.openChange(s, repo: repo)) }
                 row.drag = { Drags.file(repo.appendingPathComponent(s.path), isDirectory: false, on: host) }
@@ -490,9 +491,7 @@ final class DropNote: NSView {
 
     func say(_ words: String) {
         let s = NSMutableAttributedString()
-        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))) {
+        if let image = Theme.symbol(symbol, size: 11, weight: .semibold, color: .white) {
             let a = NSTextAttachment()
             a.image = image
             s.append(NSAttributedString(attachment: a))
@@ -557,6 +556,8 @@ final class HomeRow: NSView, NSDraggingSource {
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true; card?.chosen = chosen } } }
     private let mark: String?
     private let markColor: NSColor?
+    /// A change's mark: staged (all in the index), so its squircle's filled.
+    var staged = false
     private let symbol: String?
     private let title: String
     private let detail: String?
@@ -693,8 +694,14 @@ final class HomeRow: NSView, NSDraggingSource {
         }
         var x: CGFloat = 14
         if let mark {
-            let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemMono(ofSize: 11, weight: .semibold), .foregroundColor: markColor ?? Theme.secondaryText]
-            (mark as NSString).draw(at: NSPoint(x: x, y: 5), withAttributes: a)
+            // A change's squircle where Pierre's are the icons (filled, staged); else its letter.
+            if let c = mark.first, let image = PierreIcons.change(c, staged: staged, size: 11) {
+                image.draw(in: image.centered(in: NSRect(x: x - 1, y: 4, width: 16, height: 16)), from: .zero, operation: .sourceOver, fraction: 1,
+                           respectFlipped: true, hints: nil)
+            } else {
+                let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemMono(ofSize: 11, weight: .semibold), .foregroundColor: markColor ?? Theme.secondaryText]
+                (mark as NSString).draw(at: NSPoint(x: x, y: 5), withAttributes: a)
+            }
             x += 16
         }
         if let symbol, let image = Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText) {

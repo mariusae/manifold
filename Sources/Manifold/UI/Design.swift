@@ -201,7 +201,7 @@ enum LinkCapsule {
     private static var tintedSymbols: [String: NSImage] = [:]
     /// A symbol in a colour, for drawing by hand.
     static func tinted(_ name: String, size: CGFloat, color: NSColor) -> NSImage? {
-        let key = "\(name)/\(size)/\(color.description)"
+        let key = "\(Icons.current.rawValue)/\(name)/\(size)/\(color.description)"
         if let i = tintedSymbols[key] { return i }
         guard let symbol = Theme.symbol(name, size: size) else { return nil }
         let image = NSImage(size: symbol.size, flipped: false) { rect in

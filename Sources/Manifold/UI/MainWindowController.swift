@@ -396,6 +396,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Threads in tiles are set in the editing face: drawn again in the new one.
             refreshThreadChats()
         }
+        // The icons' set (Settings ▸ Appearance ▸ Icons): what shows one, shown in the other.
+        Icons.use(appearance.icons)
         settingsWindow?.refresh(tables: false)
         sidebar.pinned = pinned
         if pinned && !sidebarShown { showSidebar(animated: false) }

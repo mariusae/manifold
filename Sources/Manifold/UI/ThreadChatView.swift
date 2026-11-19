@@ -135,7 +135,7 @@ final class ThreadChatView: NSView {
     private let tileButton = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
     /// Another thread about the same thing: a thread's place brings the
     /// thread back (⌥⌘M), and this begins a new one there instead.
-    private let newThreadButton = IconButton("square.and.pencil", size: 11, tip: "New Thread About This")
+    private let newThreadButton = IconButton("thread.new", size: 11, tip: "New Thread About This")
     /// Debugging: whether it's shown.
     var debugNewThreadButton: Bool { !newThreadButton.isHidden }
     /// Ask Claude: the thread the agent's, every comment asking it untagged.
@@ -1150,7 +1150,7 @@ final class Avatar: NSView {
 
     init(_ author: ThreadAuthor, icon: NSImage?) {
         self.author = author
-        self.icon = icon ?? (author.agentBlock != nil ? NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) : nil)
+        self.icon = icon ?? (author.agentBlock != nil ? Theme.symbol("sparkle") : nil)
         super.init(frame: .zero)
         toolTip = author.isYou ? nil : author.shownName
     }

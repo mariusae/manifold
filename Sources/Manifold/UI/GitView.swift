@@ -642,7 +642,9 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         case let .change(s):
             let letters = (s.index == " " ? "·" : s.index) + (s.workTree == " " ? "·" : s.workTree)
             let color: NSColor = s.isUntracked ? Theme.secondaryText : (s.index != " " ? TextView.addedColor : TextView.modifiedColor)
-            let a = NSMutableAttributedString(string: letters + "  ", attributes: [.font: mono, .foregroundColor: color])
+            // Pierre's squircles where they're the icons: the index's filled, the work tree's outlined.
+            let a = PierreIcons.changeMarks(index: s.index, workTree: s.workTree, font: mono).map(NSMutableAttributedString.init)
+                ?? NSMutableAttributedString(string: letters + "  ", attributes: [.font: mono, .foregroundColor: color])
             a.append(NSAttributedString(string: s.path, attributes: [.font: UIType.row, .foregroundColor: Theme.text]))
             f.attributedStringValue = a.truncatingTail()
         case .allChanges:

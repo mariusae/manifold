@@ -1639,6 +1639,11 @@ enum DebugControl {
             guard let wc, let p = Palette.all.first(where: { $0.id == arg }) else { return Palette.all.map(\.id).joined(separator: ", ") }
             wc.changeAppearance { $0.colorTheme = p.id }
             return "ok: \(p.title)"
+        case "icons":
+            // "icons pierre|system": the icons' set, as Settings sets it.
+            guard let wc, let set = IconSet(rawValue: arg) else { return "\(Icons.current.rawValue) (pierre, system)" }
+            wc.changeAppearance { $0.icons = set }
+            return "ok: \(set.rawValue)"
         case "theme":
             guard let wc, let theme = FontTheme(rawValue: arg) else { return FontTheme.allCases.map(\.rawValue).joined(separator: ", ") }
             wc.changeAppearance { $0.theme = theme }

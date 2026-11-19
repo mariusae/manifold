@@ -30,7 +30,7 @@ enum SpaceSquare {
             let z = t.size()
             t.draw(at: NSPoint(x: (r.midX - z.width / 2).rounded(), y: (r.midY - z.height / 2).rounded()))
         case .symbol(let name):
-            Theme.symbol(name, size: max(7, (r.height * 0.46).rounded()), weight: r.height >= 24 ? .semibold : .bold, color: ink)?
+            Theme.symbol(name, size: max(7, (r.height * 0.46).rounded()), weight: r.height >= 24 ? .semibold : .bold, color: ink, pierre: false)?
                 .draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
         if let badge { drawBadge(badge, on: r) }
@@ -46,7 +46,10 @@ enum SpaceSquare {
         let flipped = NSGraphicsContext.current?.isFlipped ?? false
         let inset = size * 0.18
         let at = NSPoint(x: r.maxX - inset, y: flipped ? r.maxY - inset : r.minY + inset)
-        Theme.symbol(symbol, size: size, weight: .bold, color: Theme.text.withAlphaComponent(0.92))?.draw(centeredAt: at)
+        let ink = Theme.text.withAlphaComponent(0.92)
+        // Pierre's, where it has the shape and its icons are the set.
+        let pierre = Icons.pierre ? PierreIcons.badges[symbol].flatMap { PierreIcons.image($0, size: size * 0.9)?.tinted(ink) } : nil
+        (pierre ?? Theme.symbol(symbol, size: size, weight: .bold, color: ink, pierre: false))?.draw(centeredAt: at)
     }
 }
 
@@ -1099,7 +1102,13 @@ extension MainWindowController {
             let item = NSMenuItem(title: name.capitalized, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = (id, SpaceLook.badgeKey, name)
-            item.setSymbol(sym, size: 12)
+            // As it'll be drawn: Pierre's shape, where it has one and they're the set.
+            if Icons.pierre, let u = PierreIcons.badges[sym], let image = PierreIcons.image(u, size: 12) {
+                item.image = image
+                item.showImage()
+            } else {
+                item.setSymbol(sym, size: 12)
+            }
             item.state = chosenBadge == name ? .on : .off
             badges.addItem(item)
         }

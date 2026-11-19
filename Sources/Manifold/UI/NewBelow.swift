@@ -39,8 +39,8 @@ final class NewBelowButton: NSView {
             s.shadowOffset = NSSize(width: 0, height: -1)
             return s
         }()
-        arrow.image = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: "To the end")?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
+        arrow.image = Theme.symbol("arrow.down", size: 13, weight: .semibold)
+        arrow.setAccessibilityLabel("To the end")
         arrow.imageScaling = .scaleNone
         for v in [arrow, label] as [NSView] { addSubview(v) }
         isHidden = true

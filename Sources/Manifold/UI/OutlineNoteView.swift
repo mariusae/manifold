@@ -453,8 +453,7 @@ final class NoteOutlinePath: NSView {
         button.tag = index ?? -1
         button.lineBreakMode = .byTruncatingTail
         if let symbol {
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: font.pointSize, weight: .semibold))
+            button.image = Theme.symbol(symbol, size: font.pointSize, weight: .semibold)
             button.imagePosition = .imageLeading
         }
         button.toolTip = index == nil ? "Unfocus: the whole note" : "Focus on “\(title)”"

@@ -190,6 +190,7 @@ class SettingsPane: NSViewController {
 final class AppearancePane: SettingsPane {
     private var showScheme: ((ColorScheme) -> Void)?
     private var showEditor: ((EditorFont) -> Void)?
+    private var showIcons: ((IconSet) -> Void)?
     private var showContrast: ((ContrastCorrection) -> Void)?
     private let tints = TintPicker()
     private let colorThemes = ColorThemePicker()
@@ -221,6 +222,11 @@ final class AppearancePane: SettingsPane {
         }
         showEditor = e
         row("Editor Text", editor)
+        let (icons, i) = segments(["Pierre", "SF Symbols"], [IconSet.pierre, .system]) { [weak self] v in
+            self?.source.change { (a: inout Appearance) in a.icons = v }
+        }
+        showIcons = i
+        row("Icons", icons, note: "Pierre's, drawn for files, diffs and threads, or the system's.")
         gap()
         let (contrast, c) = segments(["Off", "Typical Vision", "Typical and Deuteranopia"], [ContrastCorrection.off, .typical, .deuteranopia]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.contrastCorrection = v }
@@ -239,6 +245,7 @@ final class AppearancePane: SettingsPane {
         themes.theme = a.theme
         advanced.state = a.advancedTypography ? .on : .off
         showEditor?(a.editorFont)
+        showIcons?(a.icons)
         showContrast?(a.contrastCorrection)
     }
 

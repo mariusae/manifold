@@ -154,6 +154,10 @@ enum Theme {
         "sparkle": ["sparkles"],
         "arrow.triangle.pull": ["arrow.triangle.branch"],
         "number": ["number.square", "textformat"],
+        // Names of our own for what Pierre tells apart and the system
+        // doesn't: a diff's "more above"; a new thread.
+        "diff.more.above": ["arrow.up.to.line"],
+        "thread.new": ["square.and.pencil"],
     ]
 
     /// A symbol at a size and weight. Made once and kept: an image made
@@ -162,23 +166,27 @@ enum Theme {
     static func symbol(_ name: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
         let key = "\(name)/\(size)/\(weight.rawValue)"
         if let image = symbols[key] { return image }
-        // A coding agent's mark, drawn to the size a symbol would be; one of our own.
+        let image = made(name, size: size, weight: weight)
+        if let image {
+            symbols[key] = image
+            Icons.noteMade(image) { symbol(name, size: size, weight: weight) }
+        }
+        return image
+    }
+
+    /// A symbol made: an agent's mark, a program's, Pierre's (where it has
+    /// one and they're the set), one of our own, else the system's.
+    private static func made(_ name: String, size: CGFloat, weight: NSFont.Weight) -> NSImage? {
         if name.hasPrefix(AgentIcons.prefix), let image = AgentIcons.image(String(name.dropFirst(AgentIcons.prefix.count)), size: size) {
-            symbols[key] = image
             return image
         }
-        // A program's mark (what runs in a terminal), drawn as a symbol would be.
         if name.hasPrefix(ProgramIcons.prefix), let image = ProgramIcons.image(String(name.dropFirst(ProgramIcons.prefix.count)), size: size) {
-            symbols[key] = image
             return image
         }
-        if let image = Marks.image(name, size: size, weight: weight) {
-            symbols[key] = image
-            return image
-        }
+        if let image = PierreIcons.image(name, size: size) { return image }
+        if let image = Marks.image(name, size: size, weight: weight) { return image }
         for candidate in [name] + (symbolFallbacks[name] ?? []) + ["circle.fill"] {
             if let image = NSImage(systemSymbolName: candidate, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: size, weight: weight)) {
-                symbols[key] = image
                 return image
             }
         }
@@ -187,15 +195,21 @@ enum Theme {
 
     private static var symbols: [String: NSImage] = [:]
 
+    /// What was made forgotten: the icons' set changed.
+    static func forgetSymbols() { symbols = [:] }
+
     /// A symbol drawn in a colour, at a size and weight — the system's, one
-    /// of our own (`Marks`), or an agent's mark (in its own colours).
-    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSImage? {
+    /// of our own (`Marks`), Pierre's (unless `pierre` is false: a symbol
+    /// chosen from the system's, a space's, is the system's), or an
+    /// agent's mark (in its own colours).
+    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, pierre: Bool = true) -> NSImage? {
         if name.hasPrefix(AgentIcons.prefix) { return symbol(name, size: size, weight: weight) }
         if name.hasPrefix(ProgramIcons.prefix) { return symbol(name, size: size, weight: weight)?.tinted(color) }
+        if pierre, let icon = PierreIcons.image(name, size: size) { return icon.tinted(color) }
         if let mark = Marks.image(name, size: size, weight: weight) { return mark.tinted(color) }
         return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: size, weight: weight).applying(.init(paletteColors: [color])))
-            ?? symbol(name, size: size, weight: weight)
+            ?? symbol(name, size: size, weight: weight)?.tinted(color)
     }
 }
 

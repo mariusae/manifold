@@ -434,7 +434,8 @@ final class OutlinerLayoutManager: NSLayoutManager {
     static func draw(symbol: String, in rect: CGRect, pointSize: CGFloat, weight: NSFont.Weight, colors: [NSColor]) {
         let configuration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight).applying(.init(paletteColors: colors))
         // The system's symbol; else one of Manifold's own (a note's, a terminal's, an agent's), in the first colour.
-        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
+        guard let image = PierreIcons.image(symbol, size: pointSize)?.tinted(colors.last ?? .labelColor)
+            ?? NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
             ?? Theme.symbol(symbol, size: pointSize, weight: weight, color: colors.last ?? .labelColor) else { return }
         let fitted = CGRect(x: rect.midX - image.size.width / 2, y: rect.midY - image.size.height / 2, width: image.size.width, height: image.size.height)
         image.draw(in: fitted, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

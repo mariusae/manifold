@@ -1026,8 +1026,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
     func drawFileHeading(_ name: String, in band: NSRect, textY: CGFloat) {
         Theme.hover.setFill(); band.fill()
         let folded = collapsedFiles.contains(name)
-        if let image = NSImage(systemSymbolName: folded ? "chevron.right" : "chevron.down", accessibilityDescription: folded ? "Unfold" : "Fold")?
-            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold).applying(.init(paletteColors: [Theme.secondaryText]))) {
+        if let image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 9, weight: .semibold, color: Theme.secondaryText) {
             image.draw(in: NSRect(x: band.minX + 12, y: band.minY + (rowHeight - 10) / 2, width: 10, height: 10), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: font.pointSize, weight: .semibold), .foregroundColor: Theme.text]
@@ -1082,8 +1081,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
 
     /// A hunk's header that can show more above it: an arrow at its left.
     private func drawMoreAbove(y: CGFloat) {
-        guard expandable, let image = NSImage(systemSymbolName: "arrow.up.to.line", accessibilityDescription: "More above")?
-            .withSymbolConfiguration(.init(pointSize: 9, weight: .medium).applying(.init(paletteColors: [Theme.secondaryText]))) else { return }
+        guard expandable, let image = Theme.symbol("diff.more.above", size: 9, weight: .medium, color: Theme.secondaryText) else { return }
         image.draw(in: NSRect(x: 22, y: y + (rowHeight - 11) / 2, width: 11, height: 11), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
     }
 

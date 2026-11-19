@@ -438,6 +438,8 @@ extension BrowserNode {
         let ext = lower.pathExtension
         let kinds = Palette.current.kinds
         if lower.hasPrefix(".git") { return ("arrow.triangle.branch", kinds.git.color) }
+        // A lockfile (Package.resolved's, Cargo's, npm's): what's pinned.
+        if ext == "lock" || ["package.resolved", "package-lock.json", "go.sum"].contains(lower) { return ("lock.doc", kinds.data.color) }
         switch ext {
         case "swift", "swiftinterface": return ("swift", kinds.swift.color)
         case "sh", "bash", "zsh", "fish", "command": return ("apple.terminal", kinds.shell.color)
@@ -446,6 +448,7 @@ extension BrowserNode {
         case "png", "jpg", "jpeg", "gif", "heic", "webp", "svg", "ico", "tiff", "bmp": return ("photo", kinds.image.color)
         case "json", "yaml", "yml", "toml", "plist", "ini", "conf", "cfg", "xcconfig", "lock": return ("curlybraces", kinds.data.color)
         case "patch", "diff": return ("plus.forwardslash.minus", kinds.patch.color)
+        case "csv", "tsv", "xlsx", "xls", "numbers": return ("tablecells", kinds.data.color)
         case "zip", "tar", "gz", "tgz", "xz", "bz2", "zst", "dmg": return ("archivebox", kinds.archive.color)
         case "mp3", "wav", "m4a", "aac", "flac": return ("waveform", kinds.media.color)
         case "mp4", "mov", "m4v", "webm": return ("film", kinds.media.color)

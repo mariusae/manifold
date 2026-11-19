@@ -1194,6 +1194,7 @@ document window's title's is. The pointer on it swings the icon itself
 out of the bar toward you, about 40°, hinged at its left edge in a
 little perspective (a depth of 90 points to its 16), and grows by a
 fifth, so it shows past the open hand over it — and a mark of our own
+(the system's set's; Pierre's squircles swing as any icon does)
 unfolds as it swings, so even a slight one has edges to turn: a
 terminal's `>_` steps up and in as a window draws itself round it, a
 note's turned corner peels half as far again, its back shaded
@@ -3198,6 +3199,35 @@ picker draws each card on its wash. What isn't a theme's: a language's colour in
 a project's bar (the code hosts'); masks (black or white at an alpha);
 shadows, a theme's deeper shade of its ground under a tile, and under a
 page's cards a breath by day and none by night; the page's neutral greys, which read on either ground.
+
+**Icons** are a set, as the colours are a theme (`Appearance.icons`,
+Settings ▸ Appearance ▸ Icons; debug `icons pierre|system`): Pierre's,
+the default, or the system's SF Symbols. Pierre's (@pierre/icons, the
+Pierre Computer Company's, Apache-2.0) were drawn for a file tree, a diff
+and a review's comments — what Manifold shows most — as one family: a
+file a page with a badge for its kind (code, an image, a zip, a lock, a
+spreadsheet, a gear for configuration), a project's folder one with code
+in it, a git change a squircle with its letter, work's states circles,
+a thread a comment; a terminal a squircle with its prompt and a note one
+with a pencil, the pair of what's run and what's written. Each is drawn
+at 12, 16 and 24 pixels, not scaled from one, and the drawing nearest the
+size asked for is taken (`PierreIcons`). The app asks for a symbol by its
+SF name, as before, and one table says what of Pierre's stands for it
+(`PierreIcons.replacing`) — what has none stays the system's: a space's
+symbol, chosen from the system's, and the few shapes Pierre hasn't (the
+reload arrow: its two arrows read as a swap); a space's badge is
+Pierre's where it has the shape, filled. A few names of our own say what
+Pierre tells apart and the system doesn't, the system's under them
+(`diff.more.above`, `thread.new`). In the git lens a change's two letters
+(porcelain's, the index's and the work tree's) are two squircles in their
+columns, the index's filled — staged — the work tree's outlined, an
+untracked file's dashed. The set changes in place: every image made from
+a symbol knows how it was made (`Icons.noteMade`), and what shows one —
+a button, an image — is given the other set's; a list's visible rows are
+made again. `scripts/update-pierre-icons.sh` copies in, from a checkout
+of the library, the icons the table names, pinned to a version
+(Resources/PierreIcons/VERSION) — it's in beta, its names may change —
+and a test holds that every one named is there.
 
 ---
 

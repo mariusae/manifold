@@ -658,7 +658,7 @@ final class LinkLabel: ClickView {
         onClick = action
         firesOnDown = true
         label.stringValue = words
-        image.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        image.image = Theme.symbol(symbol, size: 10, weight: .semibold)
         let s = NSStackView(views: [image, label])
         s.spacing = 4
         s.translatesAutoresizingMaskIntoConstraints = false

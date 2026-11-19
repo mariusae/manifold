@@ -158,8 +158,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         well.themed { v in v.layer?.backgroundColor = NSColor.themed { $0.chrome.well }.cgColor }
         well.identifier = .init("well")
         ground.addSubview(well)
-        glass.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
+        glass.image = Theme.symbol("magnifyingglass", size: 12, weight: .medium)
         glass.contentTintColor = Theme.secondaryText
         ground.addSubview(glass)
         field.isBordered = false
@@ -587,8 +586,8 @@ private final class PathCell: NSTableCellView {
         identifier = Self.identifier
         label.lineBreakMode = .byTruncatingHead
         label.maximumNumberOfLines = 1
-        clock.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Recent")?
-            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+        clock.image = Theme.symbol("clock.arrow.circlepath", size: 12, weight: .regular)
+        clock.setAccessibilityLabel("Recent")
         for v in [icon, label, clock] { addSubview(v) }
     }
 
