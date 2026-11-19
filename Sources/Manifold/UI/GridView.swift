@@ -2256,7 +2256,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             return (img, at)
         }
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            pinBadge.image = TilePill.ribbon(width: r.width, height: r.height, color: Theme.secondaryText.usingColorSpace(.sRGB) ?? Theme.secondaryText, cut: cut)
+            pinBadge.image = TilePill.ribbon(width: r.width, height: r.height, color: Theme.barInk.usingColorSpace(.sRGB) ?? Theme.barInk, cut: cut)
         }
     }
     private func updatePinBadge() {
@@ -2898,9 +2898,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
-        // The bar's height, inside a focused tile's ring, down the icon's
-        // left side: the icon over it, its shape cut out of the ribbon.
-        pinBadge.frame = NSRect(x: icon.frame.minX - 2, y: 1.5, width: 9, height: h - 3)
+        // From the bar's top edge (a focused tile's ring over it, as if
+        // it hung from the frame) down the icon's left side, ending clear
+        // of the bar's foot: the icon over it, its shape cut out of it.
+        pinBadge.frame = NSRect(x: icon.frame.minX - 2, y: 3, width: 9, height: h - 3)
         if isPinned { drawRibbon() }
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
@@ -3082,7 +3083,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             p.move(to: NSPoint(x: r.minX, y: r.maxY))
             p.line(to: NSPoint(x: r.maxX, y: r.maxY))
             p.line(to: NSPoint(x: r.maxX, y: r.minY))
-            p.line(to: NSPoint(x: r.midX, y: r.minY + min(height * 0.3, 3.5)))
+            p.line(to: NSPoint(x: r.midX, y: r.minY + min(height * 0.3, 2.5)))
             p.line(to: NSPoint(x: r.minX, y: r.minY))
             p.close()
             color.setFill()
