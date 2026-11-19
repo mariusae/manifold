@@ -146,7 +146,9 @@ final class SummaryCard: NSView {
         let path = NSBezierPath(roundedRect: card, xRadius: Radius.surface, yRadius: Radius.surface)
         if !plain {
         NSGraphicsContext.saveGraphicsState()
-        Elevation.resting.shadow.set()
+        // A breath of shadow by day; by night none, the card's tone and
+        // edge enough.
+        if !effectiveAppearance.isDark { Elevation.card.shadow.set() }
         Self.fill.setFill()
         path.fill()
         NSGraphicsContext.restoreGraphicsState()

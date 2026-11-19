@@ -59,6 +59,9 @@ enum UIType {
 /// window. One shadow each.
 enum Elevation {
     case resting, tile, float
+    /// A card on a page (a project's Pinned, Here Now): a breath, its
+    /// hairline edge doing the rest.
+    case card
 
     /// As an AppKit shadow, for what draws itself.
     var shadow: NSShadow {
@@ -77,13 +80,13 @@ enum Elevation {
         l.shadowOffset = CGSize(width: 0, height: offset)
     }
 
-    private var opacity: CGFloat { switch self { case .resting: 0.18; case .tile: 0.10; case .float: Self.floatOpacity } }
+    private var opacity: CGFloat { switch self { case .resting: 0.18; case .tile: 0.10; case .float: Self.floatOpacity; case .card: 0.08 } }
 
     /// A floating panel's shadow at full strength (the sidebar fades it).
     static let floatOpacity: CGFloat = 0.16
-    private var radius: CGFloat { switch self { case .resting: 3; case .tile: 10; case .float: 12 } }
+    private var radius: CGFloat { switch self { case .resting: 3; case .tile: 10; case .float: 12; case .card: 4 } }
     /// Light from above: the shadow falls below (negative is down).
-    private var offset: CGFloat { switch self { case .resting: -1; case .tile: -4; case .float: -3 } }
+    private var offset: CGFloat { switch self { case .resting: -1; case .tile: -4; case .float: -3; case .card: -1 } }
 }
 
 /// How long things take to move: a fade or a reveal on hover, a thing

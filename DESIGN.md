@@ -3034,7 +3034,10 @@ focused, a test run in its palette with a word selected and its cursor
 a terminal's caret and selection are its palette's own; any other tint
 is set over the theme's everywhere, Ghostty's caret and selection
 written after the palette's, each tint in the theme's own shade of it
-(`Palette.tints`). An extended palette may be made rather than given
+(`Palette.tints`, `Palette.calibratedTints`): the tint's hue, its chroma
+eased to the theme's (Classic's quietest), its lightness made to stand
+at 3.5:1 on the theme's panels — a ring round a tile reads, and isn't
+the system's loud green — what's selected a wash of it on the window. An extended palette may be made rather than given
 (`TerminalPalette.generated`, as Ghostty's `palette-generate`): the
 cube's eight corners the background, the sixteen's red to cyan and the
 text, each step between taken in CIELAB, the greys from the background
@@ -3044,37 +3047,22 @@ to the text — from the background whatever it is (Ghostty's
 **Merino**, the default, is GitHub's Primer as Rex's Merino sets it: GitHub
 Light's sixteen (its yellows deepened) on white, GitHub Dark's on #161b22;
 Primer's inks, blue, success, attention and danger; a tile's bar the page's
-own with a hairline round each tile; code and pages on its subtle canvas.
+own by night and a breath off it by day (GitHub's subtle #F6F8FA), with a
+hairline round each tile; code and pages on its subtle canvas.
 It took the place of Paper, Manifold's look from before there were themes,
 which was all but the same. Debug `colordump <path>` writes every named
 colour in both appearances, the terminal's config and the 256 colours
-Ghostty makes of it, to compare two builds' looks. **Newsprint** is ink on
-newsprint: paper #F2F2F0 and ink #333331, muted inks (brick red #B3402E,
-sage, ochre, slate blue, plum, teal), its accent the slate blue — an
-editor's pencil; the red is what failed — and a red caret on a grey
-selection (#DDDDD6), its extended palette made from its own; by night
-paper #1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the
-six 4.5:1 on the paper), warm greys throughout (a step less blue).
-Four **quiet** themes are of medium contrast, where the rest are ink on
-near-white or near-black: a paper a step off white by day (lightness
-about 0.9) and off black by night (about 0.3), tinted, its ink at some
-8:1 rather than 12 to 20, its inks muted — **Stone** warm grey (paper
-#E3DFD7, by night #2D2B28) with an ochre accent; **Slate** grey-blue
-(#DFE3E7, #292E35) with a steel blue; **Sage** grey-green (#DFE4DC,
-#2A2F29) with a moss accent, what's done a teal so it isn't the accent;
-**Dusk** lavender-grey (#E2E0E7, and by night #33323C, dark lifted as
-twilight is) with a soft violet. What every theme keeps to bounds them:
-the secondary, the tertiary, a status and a line number at 4.5:1 at
-least, so the ink is above that and the paper can't go far from white or
-black. Each is made (`Palette.quiet`) from its paper, its panels', its
-inks and its terminal's sixteen by day and by night, the rest mixed from
-them.
+Ghostty makes of it, to compare two builds' looks.
 **Classic** is apex's Classic palette (~/src/apex,
-`crates/apex-client/src/theme.rs`): paper #FCFCF2, ink #202224,
+`crates/apex-client/src/theme.rs`), made of natural materials: paper a
+parchment #FFFAEB, ink #202224,
 secondary #6E7072, the tags' pale blue (#EAF4F7, the sidebar #E8EFF1)
 for panels and sheets, acme's yellow selection #F1E9A6, Go blue #007D9C
-the accent and caret; by night go.dev's #202224 paper, #E6E6E6 ink, link
-blue #50B7E0, selection #4A4526. Its colour-blind pairs as apex's: B3's
+for links and the caret, its accent sage — olive #56783A by day, a muted
+#91A986 by night — its bars warmed toward its parchment (#FFFDEF). By
+night it's the one warm theme: go.dev's greys taken toward umber, a warm
+charcoal #26211B paper, #E9E5E0 ink, its panels #312C26; link blue
+#50B7E0, selection #4A4526. Its colour-blind pairs as apex's: B3's
 blue #2A5DB0 for added, done and passed, B2's burnt orange #C85A00 for
 removed and warnings, the fenced fuchsia #CE3262 for errors and what
 failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
@@ -3082,27 +3070,46 @@ past them). Where apex's don't read as text at 4.5:1 they're a step
 darker by day (the faint grey #737577, stale's ochre #8F6B00) and lighter
 by night (the blue #6494E2, the fuchsia #F16388). **Financial Times** is
 github.com/mariusae/financial-times-theme's, from FT Origami's palette:
-paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected, teal #0D7680
-the accent and links, an ink caret (as its Ghostty theme's); jade,
+paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected (each of its
+salmons a tenth less coloured, `Palette.eased`: the paper still, less
+pink over an afternoon), teal #0D7680 the accent and links, an ink caret (as its Ghostty theme's); jade,
 mandarin and crimson for what passed, wants attention and failed; FT's
 warm greys (black-5 to black-30) for the chrome. By night its inverse:
 slate #262A33, ink #E9EAEB (white for strong), black-70 #4D4845
-selected, teal-80 #14BDCC, the inks lifted (#66CC99, #FF8833,
-#FF6666). The terminal's sixteen are the theme's own Ghostty palette
+selected, teal-80 #14BDCC for links (the accent a calmer #5FA7B0, a
+ring round a tile that doesn't glow), the inks lifted (#66CC99, #FF8833,
+#FF6666), the terminal's brights a quarter less coloured. The terminal's sixteen are the theme's own Ghostty palette
 (Origami's colours eased to 5.5:1 on the paper), the rest made from
 them. FT's muted grey #807973 reads at 3.9:1, so secondary text is
 black-60 #66605C; jade and mandarin are deepened where read as text
 (#007A3D, #A35214). **Claude** is Claude's desktop app as shipped: its
-Code tab's neutral greys (white pages by day, #191919 on #1f1f1f by
-night), its ink, clay #D97757 (#C6613F on white) the accent, Claude Code's
-own terminal sixteen and its blue caret and selection. **Claude Warm** is
-claude.ai's classic set: ivory #FAF9F5 on #F5F4ED and white cards, by
-night #262624 on #1F1E1D and #30302E cards, its warm inks, clay, its blue
-for links, the terminal's sixteen in Claude's own inks made for the ivory.
-In both, what failed is a crimson (#A4273E, by night #FF93A1), not
+Code tab's neutral greys (white pages by day, its bars a faint
+violet-grey #F6F5F8; by night a breath of plum in them, #1B1A1D and
+#312F34, so the pages belong with the backdrop's purple), its ink, clay
+#D97757 (#C6613F on white) the accent, Claude Code's own terminal
+sixteen and its blue caret and selection. What failed is a crimson (#A4273E, by night #FF93A1), not
 Claude's danger red, which was a step from the clay — a focus ring read
-as a failure. (Claude Classic, Claude's app before its neutral greys,
-was all but Claude, and went.)
+as a failure. Its focused tile's bar is a wash of clay (#F9E8DE, by night
+#40312C), as the ring round it is — Claude's own colour on what's at
+work, which no other theme does. **Graphite** is a neutral instrument
+(InstrumentPalettes.swift, `Palette.instrument`, as Signal is): greys
+throughout — tiles #FAFAFA on a ground a step darker (#E4E4E6), by night
+#1E1F21 on one a step lighter (#2F2F31) so the gaps show — the ground
+all but flat; a firm hairline round each tile and hardly a shadow; its
+inks the strongest (secondary 6:1 and more); a quiet slate blue
+(#4F6380, #9AA8BE) the accent. Colour is kept for what says something —
+statuses, diffs, agents, spaces, the terminal's sixteen — and so reads as
+information, not atmosphere. **Signal** is an instrument for watching
+many things run: by night midnight-navy tiles (#141B29, bars #1B2335)
+edged in steel (#2A3A50), cyan (#7FB8CF) for what's chosen, amber
+(#D4AE6B) for what wants you; by day a blueprint's cold white (#F6F8FB)
+on its pale blue, blueprint blue #36618C and a bronze amber; a chart's
+series cyan, amber and green. Neither instrument's ground is taken by the
+day's light (`Backdrop.daylight`): it's the same at every hour.
+(Claude Classic, Claude's app before its neutral greys,
+was all but Claude, and went; so did Claude Warm, Newsprint and the
+quiet themes, whose settings take Claude, Classic, Financial Times,
+Graphite (Slate's) or Merino.)
 
 Every theme keeps to the same promises, and a test holds each to them by
 day and by night (`ThemeContractTests`): text, secondary and tertiary,
@@ -3110,29 +3117,46 @@ the statuses and line numbers each 4.5:1 on what they're drawn on; its
 accent apart from what failed; a terminal's inks 4.5:1 on its paper (by
 day its white a grey and its brights 3:1, as a light terminal's are; by
 night bright black, the dim text of suggestions and comments, 3.7:1);
-and a diff's added and removed lines apart to a deuteranope — what's
+the sidebar's words — its text, secondary and tertiary — 4.5:1 on the
+backdrop too, its wash and its pools (`Palette.legible` lifts them by
+night and deepens them by day only as far as that takes); a listing's
+folders, its terminal's blue, apart from its files, the ink; and a
+diff's added and removed lines apart to a deuteranope — what's
 added a pale blue, what's taken away a pale orange, hunks a grey, as
-Classic and GitHub's colour-blind themes have them. What tells a space
+Classic and GitHub's colour-blind themes have them.
+
+**Increased contrast** isn't a theme but a way of drawing any of them:
+with the system's Increase Contrast on (Accessibility ▸ Display; debug
+`hicontrast on|off|system`), the theme in use is made firmer
+(`Palette.firmer`), its character kept — its secondary and tertiary inks
+7:1 on its panels and its backdrop, its primary 12:1, its rules, borders
+and the hairline round each tile firmer, its accent and tints 4.5:1 (a
+focus ring, a chosen row), a bar's details its secondary ink, and its
+backdrop by night a third darker so its faint inks needn't climb to its
+primary to read on it. It follows the setting as it changes
+(`Palette.reapply`), and a test holds every theme to it. What tells a space
 or an agent apart — the system's colours a space is given, an agent's
 Paul Tol hues — is eased to the theme's inks (`NSColor.identity`): its
 hue and lightness kept, its chroma brought to the theme's terminal's (as
-Merino's are, at most; at least 0.6 of them), so Newsprint's and
+Merino's are, at most; at least 0.6 of them), so Classic's and
 Financial Times' aren't loud in them.
 
 The backdrop is a theme's too, so the window is of
 a piece: its wash's four stops and how its pools are lit, in each
 appearance (`Palette.Backdrop`) — Merino's heathered slate into teal
-and green (by night slate, deep teal, forest), Newsprint's off-whites
-a shade warmer or cooler than its paper with a faint breath of its blue
-(by night its paper unlit), Classic's acme pale blue into its cream and
-yellow (by night go.dev's slate into acme's dark yellow), Financial
-Times' FT pink into its paper and wheat (by night slate with a claret
-dusk), Claude's sky into lavender, clay and peach, Claude Warm's clay
-into kraft, manilla and oat — still turned
-by the day, lit by the hour, its first pool the tint's; the Settings
+and green (by night slate, deep teal, forest), Classic's sage and
+parchment into ochre, acme's pale blue faint at a corner (by night olive
+and sage into bronze), Financial Times' FT pink into its paper and wheat
+(by night ink-blue into its teal, the salmon an ember at a corner — no
+plum, so it isn't Claude's), Claude's sky into lavender, clay and peach
+(by night lighter than its bars, ink-blue into plum into a clay ember),
+Graphite's all but flat grey, Signal's deeper navy and blueprint blue —
+still turned by the day, lit by the hour (the instruments' not), its
+first pool the tint's; the Settings
 picker draws each card on its wash. What isn't a theme's: a language's colour in
-a project's bar (the code hosts'); masks and shadows (black or white at
-an alpha); the page's neutral greys, which read on either ground.
+a project's bar (the code hosts'); masks (black or white at an alpha);
+shadows, a theme's deeper shade of its ground under a tile, and under a
+page's cards a breath by day and none by night; the page's neutral greys, which read on either ground.
 
 ---
 

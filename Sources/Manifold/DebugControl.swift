@@ -1,6 +1,7 @@
 import AppKit
 import CoreImage
 import GhosttyKit
+import WebKit
 import ManifoldCore
 
 /// A development aid, on only when MANIFOLD_DEBUG is set: a socket at
@@ -1216,6 +1217,14 @@ enum DebugControl {
             guard let p = Pointer.lastWarp, let window = wc?.window else { return "none" }
             let w = window.convertPoint(fromScreen: p)
             return "\(Int(w.x)) \(Int(window.contentView!.bounds.height - w.y))"
+        case "make":
+            // "make <kind> [what]": made beside the focused tile, as the New… picker
+            // makes it (a terminal's what: a command typed in once its shell is up).
+            guard let wc else { return "no window" }
+            let words = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard let name = words.first, let kind = BlockKinds.named(name) else { return "usage: make <kind> [what]" }
+            wc.makeFromPicker(kind, words.count > 1 ? words[1] : nil)
+            return "ok"
         case "openfile":
             // "openfile <path>": opened as ⌘O opens a file it found.
             guard let wc else { return "no window" }
@@ -1601,8 +1610,24 @@ enum DebugControl {
             guard let wc, let scheme = ColorScheme(rawValue: arg) else { return "system, light or dark" }
             wc.changeAppearance { $0.colorScheme = scheme }
             return "ok"
+        case "tint":
+            // "tint <theme|system|blue|orange|purple|pink|green|graphite>": the app's tint.
+            guard let wc, let t = Tint(rawValue: arg) else { return Tint.allCases.map(\.rawValue).joined(separator: ", ") }
+            wc.changeAppearance { $0.tint = t }
+            return "ok"
+        case "hicontrast":
+            // "hicontrast <on|off|system>": increased contrast forced on or off,
+            // or as the system's accessibility setting has it.
+            switch arg {
+            case "on": Palette.forcedContrast = true
+            case "off": Palette.forcedContrast = false
+            case "system": Palette.forcedContrast = nil
+            default: return "on, off or system (now \(Palette.increasedContrast ? "on" : "off"))"
+            }
+            Palette.reapply()
+            return "ok: \(Palette.increasedContrast ? "on" : "off")"
         case "colortheme":
-            // "colortheme <id>": the colour theme (paper, newsprint, classic, …).
+            // "colortheme <id>": the colour theme (merino, classic, graphite, …).
             guard let wc, let p = Palette.all.first(where: { $0.id == arg }) else { return Palette.all.map(\.id).joined(separator: ", ") }
             wc.changeAppearance { $0.colorTheme = p.id }
             return "ok: \(p.title)"
@@ -1857,6 +1882,21 @@ enum DebugControl {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         let ctx = NSGraphicsContext.current!.cgContext
 
+        // A page draws itself only as its own snapshot (its web content
+        // isn't in the view's layers): each one's taken first, waited for.
+        var pages: [ObjectIdentifier: CGImage] = [:]
+        func webViews(_ v: NSView) -> [WKWebView] { (v as? WKWebView).map { [$0] } ?? v.subviews.flatMap(webViews) }
+        var waiting = 0
+        for w in webViews(root) where !w.isHiddenOrHasHiddenAncestor && w.bounds.width > 1 && w.bounds.height > 1 {
+            waiting += 1
+            w.takeSnapshot(with: nil) { image, _ in
+                if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) { pages[ObjectIdentifier(w)] = cg }
+                waiting -= 1
+            }
+        }
+        let deadline = Date().addingTimeInterval(3)
+        while waiting > 0, Date() < deadline { RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
+
         // Clipped only where the screen clips: by a view or layer that clips
         // to its bounds (not, any more, by a scroll view's clip view, which
         // on the screen lets its rows run on past it).
@@ -1901,6 +1941,10 @@ enum DebugControl {
             ctx.clip(to: inside)
             if let g = v as? PredictionGlow {
                 g.drawSnapshot(ctx, in: r)
+                return
+            }
+            if let page = pages[ObjectIdentifier(v)] {
+                ctx.draw(page, in: r)
                 return
             }
             if let t = v as? TerminalView {

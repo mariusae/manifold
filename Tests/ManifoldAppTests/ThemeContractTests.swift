@@ -68,5 +68,68 @@ private func each(_ check: (Palette, Bool, String) -> Void) {
 @Test func themesThatWereAreThoseThatReplacedThem() {
     #expect(Palette.named("paper").id == "merino")
     #expect(Palette.named("claude-classic").id == "claude")
+    #expect(Palette.named("claude-warm").id == "claude")
+    #expect(Palette.named("newsprint").id == "classic")
+    #expect(Palette.named("stone").id == "financial-times")
+    #expect(Palette.named("dusk").id == "merino")
+    #expect(Palette.named("slate").id == "graphite")
     #expect(Palette.named("nonesuch").id == "merino")
+}
+
+// The sidebar's words are on the backdrop, not a panel: its wash and its
+// pools of light, as drawn — every theme's text reads there too (4.5:1),
+// its faintest included.
+@MainActor
+@Test func everyThemesSidebarTextReadsOnItsBackdrop() {
+    each { p, dark, name in
+        let wash = p.backdrop.wash(dark: dark)
+        let pools = wash.stops.map { NSColor(calibratedHue: $0.0, saturation: wash.pool.saturation, brightness: wash.pool.brightness, alpha: 1) }
+        for ground in BackdropView.colors(of: wash) + pools {
+            let g = ground.usingColorSpace(.sRGB)!
+            for (role, shade) in [("primary", p.text.primary), ("secondary", p.text.secondary), ("tertiary", p.text.tertiary)] {
+                let r = Tints.contrast(over(shade.color(dark: dark), g), g)
+                #expect(r >= 4.5, "\(name): \(role) on the backdrop \(r)")
+            }
+        }
+    }
+}
+
+// A listing's folders (blue, as ls has them) are told from its files (the
+// terminal's ink) in every theme, by day and by night.
+@Test func everyThemesTerminalTellsFoldersFromFiles() {
+    each { p, dark, name in
+        let t = dark ? p.terminal.dark : p.terminal.light
+        let d = ColorVision.typical.difference(t.colors[4], t.foreground)
+        #expect(d >= 0.15, "\(name): blue and the ink \(d) apart")
+    }
+}
+
+// With contrast increased (the system's Increase Contrast), every theme's
+// faint inks read at 7:1 on its panels and its backdrop, its accent and
+// tints at 4.5:1 on its panels, and its rules are firmer than they were —
+// its secondary ink still below its primary.
+@MainActor
+@Test func everyThemeIsFirmerWithContrastIncreased() {
+    each { base, dark, name in
+        let p = base.firmer()
+        let panel = over(p.chrome.panel.color(dark: dark), p.window.color(dark: dark))
+        let wash = p.backdrop.wash(dark: dark)
+        for ground in BackdropView.colors(of: wash) + [panel] {
+            let g = ground.usingColorSpace(.sRGB)!
+            for (role, shade) in [("secondary", p.text.secondary), ("tertiary", p.text.tertiary)] {
+                let r = Tints.contrast(over(shade.color(dark: dark), g), g)
+                #expect(r >= 6.9, "\(name): \(role) \(r)")
+            }
+        }
+        let primary = Tints.contrast(over(p.text.primary.color(dark: dark), panel), panel)
+        let secondary = Tints.contrast(over(p.text.secondary.color(dark: dark), panel), panel)
+        #expect(primary > secondary, "\(name): primary \(primary), secondary \(secondary)")
+        for accent in [p.accent.accent] + p.tints.values.map(\.accent) {
+            let r = Tints.contrast(over(accent.color(dark: dark), panel), panel)
+            #expect(r >= 4.4, "\(name): an accent \(r)")
+        }
+        let before = Tints.contrast(over(base.chrome.divider.color(dark: dark), panel), panel)
+        let after = Tints.contrast(over(p.chrome.divider.color(dark: dark), panel), panel)
+        #expect(after > before, "\(name): rules \(before) → \(after)")
+    }
 }

@@ -99,6 +99,8 @@ final class BackdropView: NSView {
     /// A colour in the light: each channel, linearized, taken by the cast.
     private func lit(_ color: NSColor) -> CGColor {
         guard let c = color.usingColorSpace(.deviceRGB) else { return color.cgColor }
+        // An instrument's ground is the same at every hour.
+        guard Palette.current.backdrop.daylight else { return c.cgColor }
         func f(_ v: CGFloat, _ k: Double) -> CGFloat { CGFloat(pow(pow(Double(v), 2.2) * k, 1 / 2.2)) }
         return NSColor(deviceRed: f(c.redComponent, cast.red), green: f(c.greenComponent, cast.green),
                        blue: f(c.blueComponent, cast.blue), alpha: c.alphaComponent).cgColor

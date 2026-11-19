@@ -285,10 +285,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.deadRetries = [:]; self?.render() }
         }
         // Reduce motion turned on or off: working's names shimmer, or hold
-        // still with a dot (`StatusMark`), everywhere at once.
+        // still with a dot (`StatusMark`), everywhere at once. Increase
+        // contrast: the theme made firmer, or as it's defined.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
+            Palette.reapply()
             self?.render()
             self?.refreshOrganization(now: true)
         }
