@@ -364,7 +364,14 @@ final class IconButton: NSButton {
     convenience init(_ symbol: String, size: CGFloat = 11, weight: NSFont.Weight = .semibold, tip: String? = nil, _ onClick: (() -> Void)? = nil) {
         self.init(symbol: symbol, size: size, weight: weight, target: nil, action: nil)
         toolTip = tip
-        if let onClick { self.onClick = onClick }
+        // Set here, `onClick`'s didSet doesn't run (an initializer's own
+        // assignments don't call observers): wired by hand, or a click
+        // did nothing — every row's ×, from 8 Nov to 18 Nov.
+        if let onClick {
+            self.onClick = onClick
+            target = self
+            action = #selector(runClick)
+        }
     }
 
     /// A ×: closes what it's on (a toast, a panel, a list).

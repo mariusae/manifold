@@ -1171,6 +1171,8 @@ enum DebugControl {
             if a.first == "hover", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugHover(row: row) }
             // "org spring <row>|off": a drag resting on that row; "org spring": its band.
             if a.first == "spring" { return wc.debugOrganization.debugSpring(a.count >= 2 ? a[1] : "") }
+            // "org bpress <row> <button tip>": that button pressed, through its own action.
+            if a.first == "bpress", a.count >= 3, let row = Int(a[1]) { return wc.debugOrganization.debugPressButton(row: row, tip: a.dropFirst(2).joined(separator: " ")) }
             // "org tip <row> [button tip]": its tooltip and buttons, or one pressed.
             if a.first == "tip", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugAccessory(row: row, press: a.dropFirst(2).joined(separator: " ")) }
             if a.first == "menu", a.count >= 2, let row = Int(a[1]) { return wc.debugOrganization.debugMenu(row: row, choose: a.dropFirst(2).joined(separator: " ")) }

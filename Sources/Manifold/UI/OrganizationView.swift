@@ -1181,6 +1181,14 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "hovered \(trackedRow)" + (buttons.map { "\n" + $0 } ?? "")
     }
 
+    /// A row's button (by its tip) pressed as a click does — through the
+    /// button's own target and action, the pointer on the row first.
+    func debugPressButton(row: Int, tip: String) -> String {
+        _ = debugHover(row: row)
+        guard let v = outline.view(atColumn: 0, row: row, makeIfNecessary: false) as? OrgRowView else { return "no row" }
+        return v.debugPressButton(tip) ? "pressed" : "no such button"
+    }
+
     /// A row's tooltip and its buttons' tips; with `press`, the button with
     /// that tip pressed (as its ✕ clicked).
     func debugAccessory(row: Int, press: String) -> String {
@@ -1513,6 +1521,13 @@ final class OrgRowView: NSTableCellView {
             }
         }
         recheckHover()
+    }
+
+    /// Debugging: a button (by its tip) pressed, as a click on it does.
+    func debugPressButton(_ tip: String) -> Bool {
+        guard let b = accessoryButtons.first(where: { $0.toolTip == tip }) else { return false }
+        b.performClick(nil)
+        return true
     }
 
     /// Debugging: as the pointer coming onto it (or leaving): its buttons
