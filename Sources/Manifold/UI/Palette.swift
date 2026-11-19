@@ -330,7 +330,7 @@ extension Palette {
     private(set) static var current: Palette = .merino
 
     /// Every theme there is.
-    static let all: [Palette] = [.merino, .newsprint, .classic, .financialTimes, .claude, .claudeWarm]
+    static let all: [Palette] = [.merino, .newsprint, .stone, .slate, .sage, .dusk, .classic, .financialTimes, .claude, .claudeWarm]
 
     /// Themes there were, by what took their place: Paper's is Merino;
     /// Claude Classic's, Claude (all but the same).
@@ -1078,13 +1078,15 @@ extension Palette {
                 attention: attention),
             // Under its grey pages, Claude's illustrations' colours: sky
             // into lavender into clay into peach; by night ink-blue into
-            // plum into a clay ember. Clay's pool of light in it.
+            // plum into a clay ember — lighter than the bars and more
+            // coloured, so the gaps between tiles show, as by day. Clay's
+            // pool of light in it.
             // (Brightness as the calibrated space has it.)
             backdrop: Backdrop(
                 light: .init(stops: [(0.58, 0.22, 0.97), (0.74, 0.18, 0.97), (0.035, 0.30, 0.99), (0.09, 0.22, 1.0)],
                              pool: (0.2, 1), tintPool: (0.38, 1)),
-                dark: .init(stops: [(0.61, 0.42, 0.2), (0.77, 0.34, 0.18), (0.03, 0.48, 0.2), (0.07, 0.3, 0.11)],
-                            pool: (0.45, 0.3), tintPool: (0.6, 0.34))))
+                dark: .init(stops: [(0.61, 0.55, 0.36), (0.77, 0.45, 0.33), (0.03, 0.58, 0.37), (0.07, 0.45, 0.26)],
+                            pool: (0.5, 0.34), tintPool: (0.62, 0.36))))
     }()
 }
 

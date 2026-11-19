@@ -468,12 +468,13 @@ takes a fair share of the width from every column in proportion, and
 gives it back in proportion when it goes — the widths as they were, not
 made equal. Every copy of the space works the loans out alike from the
 same events.
-Each tile has a **bar** across its top: the block's symbol — over a ribbon
-the bar's height down its left side, as a bookmark in a book (the
-symbol's shape cut out of the ribbon, so the symbol lies on it), where the
-block is pinned (in its project if it's in one, else in the space; the
-tooltip says which, and the place says what project; the ribbon is
-pinning's mark throughout, its menus' Pin and the drop that pins) — and its
+Each tile has a **bar** across its top: the block's symbol — behind it,
+where the block is pinned (in its project if it's in one, else in the
+space; the tooltip says which, and the place says what project), a few
+strokes of a highlighter in the theme's accent, rising to the right,
+see-through and darker where they cross, the symbol over them. The
+bookmark (a ribbon) is pinning's mark elsewhere, its menus' Pin and
+the drop that pins — and its
 **title** (a dot after it while edited and unsaved), where it is — in
 a project (§2.6), from the project: its name set apart, a shade darker
 and heavier than a folder's, after its box, on the title's baseline as an agent's name in its pill is, then the path in it, `brick/src/net`; the name
@@ -3054,6 +3055,20 @@ editor's pencil; the red is what failed — and a red caret on a grey
 selection (#DDDDD6), its extended palette made from its own; by night
 paper #1F1F1D and ink #D6D6D0, the inks lifted to read on it (each of the
 six 4.5:1 on the paper), warm greys throughout (a step less blue).
+Four **quiet** themes are of medium contrast, where the rest are ink on
+near-white or near-black: a paper a step off white by day (lightness
+about 0.9) and off black by night (about 0.3), tinted, its ink at some
+8:1 rather than 12 to 20, its inks muted — **Stone** warm grey (paper
+#E3DFD7, by night #2D2B28) with an ochre accent; **Slate** grey-blue
+(#DFE3E7, #292E35) with a steel blue; **Sage** grey-green (#DFE4DC,
+#2A2F29) with a moss accent, what's done a teal so it isn't the accent;
+**Dusk** lavender-grey (#E2E0E7, and by night #33323C, dark lifted as
+twilight is) with a soft violet. What every theme keeps to bounds them:
+the secondary, the tertiary, a status and a line number at 4.5:1 at
+least, so the ink is above that and the paper can't go far from white or
+black. Each is made (`Palette.quiet`) from its paper, its panels', its
+inks and its terminal's sixteen by day and by night, the rest mixed from
+them.
 **Classic** is apex's Classic palette (~/src/apex,
 `crates/apex-client/src/theme.rs`): paper #FCFCF2, ink #202224,
 secondary #6E7072, the tags' pale blue (#EAF4F7, the sidebar #E8EFF1)

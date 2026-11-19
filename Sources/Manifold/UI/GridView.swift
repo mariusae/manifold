@@ -2228,9 +2228,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         v.toolTip = "Editing: closing the editor brings the terminal back"
         return v
     }()
-    /// A ribbon hanging from the bar's top edge over the icon, as a
-    /// bookmark from a book: the tile's block is pinned — in its project
-    /// (the place says which), else the space.
+    /// Pinned: a few strokes of a highlighter, in the theme's accent,
+    /// behind the icon — the tile's block pinned in its project (the
+    /// place says which), else the space.
     private let pinBadge: NSImageView = {
         let v = NSImageView()
         v.isHidden = true
@@ -2238,29 +2238,19 @@ final class TilePill: NSView, NSTextFieldDelegate {
         return v
     }()
     private var isPinned = false
-    /// The ribbon as last drawn: the icon's shape is cut out of it, the
-    /// icon over it.
-    private var ribbonKey: String?
-    private func drawRibbon() {
-        let r = pinBadge.frame
-        let image = icon.image
-        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)|\(r)|\(icon.frame)|\(image.map { ObjectIdentifier($0).hashValue } ?? 0)"
-        guard key != ribbonKey, r.width > 0 else { return }
-        ribbonKey = key
-        // Where the icon's image is drawn (centred, made smaller to fit), in the ribbon's terms.
-        let cut = image.map { img -> (NSImage, NSRect) in
-            let f = icon.frame
-            let k = min(1, f.width / max(img.size.width, 1), f.height / max(img.size.height, 1))
-            let size = NSSize(width: img.size.width * k, height: img.size.height * k)
-            let at = NSRect(x: f.midX - size.width / 2 - r.minX, y: f.midY - size.height / 2 - r.minY, width: size.width, height: size.height)
-            return (img, at)
-        }
+    private var highlightKey: String?
+    private func drawHighlight() {
+        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)"
+        guard key != highlightKey else { return }
+        highlightKey = key
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            pinBadge.image = TilePill.ribbon(width: r.width, height: r.height, color: Theme.barInk.usingColorSpace(.sRGB) ?? Theme.barInk, cut: cut)
+            let ink = Theme.accent.usingColorSpace(.sRGB) ?? Theme.accent
+            pinBadge.image = TilePill.highlighted(ink: ink, dark: effectiveAppearance.isDark)
         }
     }
     private func updatePinBadge() {
-        pinBadge.isHidden = !isPinned || handle.out
+        pinBadge.isHidden = !isPinned
+        if isPinned { drawHighlight() }
     }
     private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
     /// A field over the place while the pill edits it (a page's
@@ -2448,7 +2438,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.isHidden = true
         handle.onIn = { [weak self] in self?.icon.isHidden = false; self?.updatePinBadge() }
         for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
-        // Behind the icon: the icon over the ribbon it hangs on.
+        // The highlight behind the icon: the icon over it.
         addSubview(pinBadge, positioned: .below, relativeTo: icon)
         inkButtons()
         hostPill.isHidden = true
@@ -2898,11 +2888,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
-        // From the bar's top edge (a focused tile's ring over it, as if
-        // it hung from the frame) down the icon's left side, ending clear
-        // of the bar's foot: the icon over it, its shape cut out of it.
-        pinBadge.frame = NSRect(x: icon.frame.minX - 2, y: 3, width: 9, height: h - 3)
-        if isPinned { drawRibbon() }
+        // Pinned: its strokes drawn, then under the icon, rising to the right.
+        updatePinBadge()
+        let size = pinBadge.image?.size ?? .zero
+        let at = NSPoint(x: icon.frame.midX + 1, y: h / 2)
+        pinBadge.frame = NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height)
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
@@ -3073,25 +3063,33 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the project's name.
     func isOnProject(_ p: NSPoint) -> Bool { projectRect?.contains(p) ?? false }
 
-    /// A ribbon, as a bookmark's: square at the top, a notch cut into
-    /// its foot — the mark of what's pinned.
-    /// `cut`: an image (where it's drawn) whose shape, a point wider, is
-    /// cut out of the ribbon — what lies over it.
-    static func ribbon(width: CGFloat, height: CGFloat, color: NSColor, cut: (NSImage, NSRect)? = nil) -> NSImage {
-        NSImage(size: NSSize(width: width, height: height), flipped: false) { r in
-            let p = NSBezierPath()
-            p.move(to: NSPoint(x: r.minX, y: r.maxY))
-            p.line(to: NSPoint(x: r.maxX, y: r.maxY))
-            p.line(to: NSPoint(x: r.maxX, y: r.minY))
-            p.line(to: NSPoint(x: r.midX, y: r.minY + min(height * 0.3, 2.5)))
-            p.line(to: NSPoint(x: r.minX, y: r.minY))
-            p.close()
-            color.setFill()
-            p.fill()
-            if let (image, at) = cut {
-                for dx in [-1.0, 0, 1] { for dy in [-1.0, 0, 1] {
-                    image.draw(in: at.offsetBy(dx: dx, dy: dy), from: .zero, operation: .destinationOut, fraction: 1)
-                } }
+    /// A few strokes of a highlighter over the icon: rising to the right,
+    /// each a little uneven, its ends cut by the chisel tip, see-through —
+    /// darker where they cross, as a marker's are.
+    static func highlighted(ink: NSColor, dark: Bool) -> NSImage {
+        let size = NSSize(width: 28, height: 22)
+        // Each stroke: from, to (its middle line), how thick.
+        let strokes: [(NSPoint, NSPoint, CGFloat)] = [
+            (NSPoint(x: 3, y: 6), NSPoint(x: 23, y: 11), 6),
+            (NSPoint(x: 5, y: 9), NSPoint(x: 25, y: 14.5), 6),
+            (NSPoint(x: 3.5, y: 12), NSPoint(x: 21.5, y: 17), 5.5),
+        ]
+        return NSImage(size: size, flipped: false) { _ in
+            let alpha: CGFloat = dark ? 0.42 : 0.32
+            for (i, (a, b, t)) in strokes.enumerated() {
+                // The chisel's ends, upright and a little slanted.
+                let slant: CGFloat = 1.2
+                let bow = NSPoint(x: (a.x + b.x) / 2 + (i == 1 ? 0.4 : -0.3), y: (a.y + b.y) / 2 + (i == 1 ? -0.5 : 0.4))
+                let p = NSBezierPath()
+                p.move(to: NSPoint(x: a.x - slant, y: a.y + t / 2))
+                p.curve(to: NSPoint(x: b.x - slant, y: b.y + t / 2),
+                        controlPoint1: NSPoint(x: bow.x - slant, y: bow.y + t / 2), controlPoint2: NSPoint(x: bow.x - slant, y: bow.y + t / 2))
+                p.line(to: NSPoint(x: b.x + slant, y: b.y - t / 2))
+                p.curve(to: NSPoint(x: a.x + slant, y: a.y - t / 2),
+                        controlPoint1: NSPoint(x: bow.x + slant, y: bow.y - t / 2), controlPoint2: NSPoint(x: bow.x + slant, y: bow.y - t / 2))
+                p.close()
+                ink.withAlphaComponent(alpha).setFill()
+                p.fill()
             }
             return true
         }
