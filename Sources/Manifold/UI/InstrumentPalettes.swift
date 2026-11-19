@@ -235,8 +235,8 @@ extension Palette {
     /// face, a flight deck's, an engineering workstation's, without their
     /// glow. By night its tiles a midnight navy raised from a deeper one,
     /// edged in steel, cyan for what's chosen and amber for what wants
-    /// you; by day a blueprint's cold white on its pale blue, a blueprint
-    /// blue and a bronze amber. Its contrast high, its states told apart
+    /// you; by day a blueprint's cold white on its pale blue, the cyan
+    /// deepened to a petrol, blueprint-blue links and a bronze amber. Its contrast high, its states told apart
     /// at a glance; a chart's series cyan, amber and green.
     static let signal: Palette = instrument(Instrument(
         id: "signal",
@@ -253,8 +253,8 @@ extension Palette {
         strong: .hex(0x0B1220, 0xF4F7FB),
         secondary: .hex(0x45536A, 0xA2B0C4),
         tertiary: .hex(0x526078, 0x8E9DB3),
-        accent: .hex(0x36618C, 0x7FB8CF),
-        selection: .hex(0xCCDDEE, 0x24435A),
+        accent: .hex(0x1F6F8B, 0x7FB8CF),
+        selection: .hex(0xCCE2EC, 0x24435A),
         link: .hex(0x2B5F96, 0x8CC6DC),
         done: .hex(0x23794F, 0x6CC79A),
         attention: .hex(0x86602A, 0xD4AE6B),
@@ -266,19 +266,21 @@ extension Palette {
         removed: .hex(0xFBE7D8, 0x3C2A1A),
         chartTwo: .hex(0x86602A, 0xD4AE6B),
         terminal: (
-            light: (bg: "#f6f8fb", fg: "#1c2636", cursor: "#36618c", selection: "#ccddee", ansi: [
+            light: (bg: "#f6f8fb", fg: "#1c2636", cursor: "#1f6f8b", selection: "#cce2ec", ansi: [
                 "#1c2636", "#b83a30", "#23794f", "#86602a", "#2b5f96", "#6b55b0", "#1c7488", "#556379",
                 "#45536a", "#cf4c40", "#2f9262", "#a57a37", "#4479b3", "#8670c9", "#2a8da3", "#7a879c"]),
             dark: (bg: "#141b29", fg: "#e2e8f0", cursor: "#7fb8cf", selection: "#24435a", ansi: [
                 "#2a3a50", "#f2837a", "#6cc79a", "#d4ae6b", "#7aa7dc", "#afa0e6", "#7fb8cf", "#b4c0d0",
                 "#6e819c", "#ff9d94", "#8ddbb2", "#e6c58a", "#9cc0ea", "#c8bcf2", "#a0d0e2", "#f0f4f9"])),
-        // A deeper navy round the tiles, all but flat, steel at one corner;
-        // by day the blueprint's pale blue. The tint's pool faint.
+        // By night a deeper navy round the tiles, all but flat, steel at
+        // one corner — the one theme whose tiles are raised from their
+        // ground by night, as a panel's faces from its bezel; by day the
+        // blueprint's pale blue. The tint's pool faint.
         backdrop: Backdrop(
             light: .init(stops: [(0.61, 0.17, 0.85), (0.60, 0.13, 0.87), (0.58, 0.15, 0.84), (0.62, 0.11, 0.875)],
                          pool: (0.08, 0.92), tintPool: (0.2, 0.92)),
-            dark: .init(stops: [(0.61, 0.50, 0.105), (0.60, 0.45, 0.095), (0.58, 0.40, 0.12), (0.62, 0.45, 0.085)],
-                        pool: (0.35, 0.14), tintPool: (0.45, 0.16)),
+            dark: .init(stops: [(0.615, 0.66, 0.068), (0.61, 0.62, 0.062), (0.58, 0.52, 0.078), (0.62, 0.62, 0.056)],
+                        pool: (0.5, 0.09), tintPool: (0.5, 0.1)),
             tileShadow: (Theme.hex(0x1C2636), 0.05),
             tileEdge: .hex(0xC3CCDC, 0x2A3A50),
             daylight: false)))

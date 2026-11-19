@@ -1686,8 +1686,9 @@ where color is information.
   firm edges, the strongest text; color kept for statuses, diffs, agents
   and the terminal.
 - **Signal**: an instrument for watching many things run — midnight navy
-  edged in steel, cyan for what's chosen and amber for what wants you;
-  by day a blueprint's white on pale blue.
+  edged in steel, raised from a deeper navy, cyan for what's chosen and
+  amber for what wants you; by day a blueprint's white on pale blue, the
+  cyan a petrol.
 
 A theme has its own accent, which the Theme accent follows — a
 terminal's caret and selection then the theme's; any other accent is set

@@ -486,13 +486,14 @@ final class ColorThemePicker: NSView {
             shape.addClip()
             body.setFill()
             t.fill()
-            c(p.chrome.panel).setFill()
+            // Its bar as the theme has it (Spectrum's focused one clay).
+            c((focused ? p.chrome.barFocused : nil) ?? p.chrome.bar ?? p.chrome.panel).setFill()
             NSRect(x: t.minX, y: t.minY, width: t.width, height: 12).fill()
             c(p.chrome.divider).setFill()
             NSRect(x: t.minX, y: t.minY + 12, width: t.width, height: 0.5).fill()
             words([(title, c(p.text.primary), barFont)], at: NSPoint(x: t.minX + 6, y: t.minY + 2))
             NSGraphicsContext.restoreGraphicsState()
-            (focused ? accent : c(p.chrome.panelBorder)).setStroke()
+            (focused ? accent : c(p.backdrop.tileEdge ?? p.chrome.panelBorder)).setStroke()
             shape.lineWidth = focused ? 1.2 : 0.5
             shape.stroke()
             return NSRect(x: t.minX, y: t.minY + 12.5, width: t.width, height: t.height - 12.5)
@@ -543,6 +544,15 @@ final class ColorThemePicker: NSView {
                 NSRect(x: term.minX + 30, y: y, width: 26, height: 8.5).fill()
             }
             words(line, at: NSPoint(x: term.minX + 5, y: y))
+            if k == 2 {
+                // The word selected in the selection's own ink (Field's is
+                // the text and paper swapped).
+                NSGraphicsContext.saveGraphicsState()
+                NSRect(x: term.minX + 30, y: y, width: 26, height: 8.5).clip()
+                let ink = TerminalPalette.hex(terminal.selectionForegroundHex)
+                words(line.map { ($0.0, ink, $0.2) }, at: NSPoint(x: term.minX + 5, y: y))
+                NSGraphicsContext.restoreGraphicsState()
+            }
             if k == lines.count - 1 {
                 TerminalPalette.hex(terminal.cursorHex).setFill()
                 NSRect(x: term.minX + 13, y: y + 0.5, width: 1.5, height: 7.5).fill()

@@ -913,15 +913,16 @@ extension Palette {
                 failed: crimson,
                 running: teal,
                 attention: mandarin),
-            // FT pink into its paper and wheat; by night ink-blue into its
-            // teal, the paper's salmon an ember at one corner — no plum, so
-            // it isn't Spectrum's night. The tint's pool, teal.
+            // FT pink into its paper and wheat; by night ink-blue and
+            // Oxford's, the paper's salmon an ember at one corner — no plum,
+            // so it isn't Spectrum's night, and no teal, so it isn't Field's.
+            // The tint's pool, teal.
             backdrop: Backdrop(
                 // The salmon paper deepened under the tiles, more from
                 // corner to corner: the pages set apart from it.
                 light: .init(stops: [(0.07, 0.27, 0.93), (0.08, 0.162, 0.96), (0.075, 0.234, 0.84), (0.075, 0.108, 0.93)],
                              pool: (0.198, 0.98), tintPool: (0.35, 0.98)),
-                dark: .init(stops: [(0.61, 0.32, 0.24), (0.52, 0.42, 0.21), (0.06, 0.32, 0.21), (0.61, 0.22, 0.14)],
+                dark: .init(stops: [(0.61, 0.32, 0.24), (0.595, 0.40, 0.21), (0.06, 0.32, 0.21), (0.61, 0.22, 0.14)],
                             pool: (0.4, 0.3), tintPool: (0.6, 0.4)),
                 // A warm ink, as FT's black-80: the paper deepened, not greyed.
                 tileShadow: (Theme.hex(0x4D3A2A), 0.07)))

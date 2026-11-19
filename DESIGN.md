@@ -3029,7 +3029,7 @@ appearance has them — a sidebar with a row chosen in the accent and
 blocks' states, an editor's tile with its gutter, the caret's line lit,
 the caret, changes marked and a link's colour, and a terminal's tile,
 focused, a test run in its palette with a word selected and its cursor
-— its name under it). A theme has its own accent
+— each tile's bar and edge as the theme draws them, its name under it). A theme has its own accent
 (`Palette.accent`), which the **Theme** tint — the default — is: with it
 a terminal's caret and selection are its palette's own; any other tint
 is set over the theme's everywhere, Ghostty's caret and selection
@@ -3134,9 +3134,13 @@ information, not atmosphere.
 **Signal** — computational, instrument-like, purposeful: a control
 surface for watching many terminals and agents run. By night
 midnight-navy tiles (#141B29, bars #1B2335) edged in steel (#2A3A50),
-cyan (#7FB8CF) for what's chosen, amber (#D4AE6B) for what wants you; by
-day a blueprint's cold white (#F6F8FB) on its pale blue, blueprint blue
-#36618C and a bronze amber; a chart's series cyan, amber and green;
+raised from a ground deeper than they are, as a panel's faces from its
+bezel — the one theme whose tiles stand up from their ground by night
+rather than sink into a lighter one — cyan (#7FB8CF) for what's chosen,
+amber (#D4AE6B) for what wants you; by day a blueprint's cold white
+(#F6F8FB) on its pale blue, the cyan deepened to a petrol (#1F6F8B: its
+own by day as by night, and apart from Graphite's slate), blueprint-blue
+links (#2B5F96) and a bronze amber; a chart's series cyan, amber and green;
 states told apart at a glance, nothing glowing. Neither instrument's
 ground is taken by the day's light (`Backdrop.daylight`): it's the same
 at every hour.
@@ -3183,10 +3187,11 @@ appearance (`Palette.Backdrop`) — Field's heathered slate into teal
 and green (by night slate, deep teal, forest), Terra's stone —
 lichen, linen, sandstone, slate, hardly coloured, grained (by night dark
 stone and smoked oak, a slate at a corner), Folio's FT pink into its paper and wheat
-(by night ink-blue into its teal, the salmon an ember at a corner — no
-plum, so it isn't Spectrum's), Spectrum's sky into lavender, clay and peach
+(by night ink-blue and Oxford's blue, the salmon an ember at a corner —
+no plum, so it isn't Spectrum's, and no teal, so it isn't Field's), Spectrum's sky into lavender, clay and peach
 (by night lighter than its bars, ink-blue into plum into a clay ember),
-Graphite's all but flat grey, Signal's deeper navy and blueprint blue —
+Graphite's all but flat grey, Signal's blueprint blue (by night a navy
+deeper than its tiles) —
 still turned by the day, lit by the hour (the instruments' not), its
 first pool the tint's; the Settings
 picker draws each card on its wash. What isn't a theme's: a language's colour in
