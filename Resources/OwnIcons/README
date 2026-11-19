@@ -1,0 +1,8 @@
+Manifold's own icons in Pierre's style (Resources/PierreIcons), for what
+its set hasn't yet, made from its parts:
+
+IconSquircleSparkle: an agent — Pierre's squircle (@pierre/icons
+2.0.0-beta.5, beta/svg/IconSquircle) with the sparkle of its first set
+(svg/IconSparkle) inside it, as its other squircles hold a glyph: 6, 8
+and 12 pixels across at 12, 16 and 24. Apache-2.0, as theirs (see
+../PierreIcons/LICENSE). When Pierre's set has its own sparkle, use that.

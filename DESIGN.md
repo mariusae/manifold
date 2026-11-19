@@ -3208,8 +3208,15 @@ and a review's comments — what Manifold shows most — as one family: a
 file a page with a badge for its kind (code, an image, a zip, a lock, a
 spreadsheet, a gear for configuration), a project's folder one with code
 in it, a git change a squircle with its letter, work's states circles,
-a thread a comment; a terminal a squircle with its prompt and a note one
-with a pencil, the pair of what's run and what's written. Each is drawn
+a thread a comment; a terminal a squircle with its prompt, a note one
+with a pencil and an agent one with a sparkle — what's run, what's
+written and what thinks — and a diff one with its ±, as git's changes
+are. An agent's own mark (Claude's, Codex's, Pi's…) is still what its
+block wears, in either set; the sparkle is for an agent without one. The
+sparkle's squircle is ours, of Pierre's parts — its squircle and its
+first set's sparkle, 6, 8 and 12 pixels across at 12, 16 and 24, as its
+squircles hold a glyph (Resources/OwnIcons) — till its set has a sparkle
+of its own. Each is drawn
 at 12, 16 and 24 pixels, not scaled from one, and the drawing nearest the
 size asked for is taken (`PierreIcons`). The app asks for a symbol by its
 SF name, as before, and one table says what of Pierre's stands for it

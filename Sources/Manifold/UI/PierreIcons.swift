@@ -98,13 +98,17 @@ enum PierreIcons {
         "photo": Use("FileImage"),
         "globe": Use("Globe"),
         "magnifyingglass": Use("MagnifyingGlass"),
-        "plus.forwardslash.minus": Use("DiffStacked"),
+        // A diff: the changes' ± in a squircle, as git's changes are.
+        "plus.forwardslash.minus": Use("SquircleDiffstat"),
         "arrow.triangle.branch": Use("Branch"),
         "arrow.triangle.pull": Use("Commit"),
         "arrow.triangle.merge": Use("Merge"),
         "gauge.medium": Use("LineGraph"),
         "chart.bar": Use("BarChart"),
-        "sparkle": Use("Agent"),
+        // An agent: a squircle with a sparkle — beside the terminal's and
+        // the note's, what thinks beside what runs and what's written (ours,
+        // of Pierre's parts, till its set has a sparkle: Resources/OwnIcons).
+        "sparkle": Use("SquircleSparkle"),
         "text.alignleft": Use("Logs"),
         "list.bullet.rectangle": Use("ListBullet"),
         "list.bullet": Use("ListBullet"),
@@ -271,6 +275,8 @@ enum PierreIcons {
     }
 
     static let folder = Bundle.main.resourceURL?.appendingPathComponent("PierreIcons")
+    /// Ours in its style, for what its set hasn't yet (Resources/OwnIcons).
+    static let own = Bundle.main.resourceURL?.appendingPathComponent("OwnIcons")
 
     /// The icon standing for a symbol, while Pierre's are the set.
     static func use(_ symbol: String) -> Use? { Icons.pierre ? replacing[symbol] : nil }
@@ -292,7 +298,8 @@ enum PierreIcons {
         // The drawing nearest the size: each is its own, not one scaled.
         let px = side <= 13 ? 12 : side <= 20 ? 16 : 24
         let kinds = [u.fill ? "fill" : "outline", "outline"]
-        guard let url = kinds.lazy.compactMap({ k in folder?.appendingPathComponent("Icon\(u.icon)/\(k)-\(px)px.svg") })
+        let places = [folder, own].compactMap { $0 }
+        guard let url = kinds.lazy.flatMap({ k in places.map { $0.appendingPathComponent("Icon\(u.icon)/\(k)-\(px)px.svg") } })
                 .first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let svg = NSImage(contentsOf: url) else { return nil }
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { r in

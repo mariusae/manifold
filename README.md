@@ -1699,8 +1699,9 @@ the focus ring stronger, its character kept.
 
 **Icons** are [Pierre's](https://pierre.computer/writing/on-drawing-icons)
 (@pierre/icons, Apache-2.0, in Resources/PierreIcons), drawn for file
-trees, diffs and code review — a terminal and a note are squircles, a
-prompt and a pencil; a file is a page with a badge for its kind; a git
+trees, diffs and code review — a terminal, a note and an agent are
+squircles, a prompt, a pencil and a sparkle (an agent's maker's mark
+still shown where there is one), a diff one with its ±; a file is a page with a badge for its kind; a git
 change is a squircle with its letter, filled when it's staged; a thread
 is a comment — or the system's SF Symbols (Settings ▸ Appearance ▸
 Icons). What Pierre has nothing for, a space's symbol (chosen from the

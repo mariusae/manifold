@@ -19,6 +19,8 @@ names=$( { grep -o 'Use("[A-Za-z0-9]*"' Sources/Manifold/UI/PierreIcons.swift | 
 missing=0
 for n in $names; do
     d="$svg/Icon$n"
+    # Ours, in its style (Resources/OwnIcons): not the library's.
+    [ -d "Resources/OwnIcons/Icon$n" ] && continue
     if [ ! -d "$d" ]; then echo "missing: Icon$n" >&2; missing=1; continue; fi
     mkdir -p "$out/Icon$n"
     for f in "$d"/outline-*px.svg "$d"/fill-*px.svg; do [ -e "$f" ] && cp "$f" "$out/Icon$n/"; done

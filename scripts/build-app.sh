@@ -71,6 +71,8 @@ cp Resources/ProgramIcons/*.svg Resources/ProgramIcons/*LICENSE* "$app/Contents/
 # Pierre's icons (@pierre/icons, Apache-2.0; scripts/update-pierre-icons.sh), their licence beside them.
 rm -rf "$app/Contents/Resources/PierreIcons"
 cp -R Resources/PierreIcons "$app/Contents/Resources/PierreIcons"
+rm -rf "$app/Contents/Resources/OwnIcons"
+cp -R Resources/OwnIcons "$app/Contents/Resources/OwnIcons"
 # Pele (pele.run), drawing Mermaid's diagrams in Markdown previews (MIT; its licence beside it).
 rm -rf "$app/Contents/Resources/Mermaid"
 mkdir -p "$app/Contents/Resources/Pele"

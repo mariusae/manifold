@@ -6,12 +6,14 @@ import Testing
 // (scripts/update-pierre-icons.sh), at each size — or it'd be drawn as the
 // system's without a word.
 @Test func everyPierreIconNamedIsBundled() {
-    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("Resources/PierreIcons")
+    let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Resources")
+    let root = resources.appendingPathComponent("PierreIcons"), own = resources.appendingPathComponent("OwnIcons")
     for icon in PierreIcons.named {
         for px in [12, 16, 24] {
-            let path = root.appendingPathComponent("Icon\(icon)/outline-\(px)px.svg").path
-            #expect(FileManager.default.fileExists(atPath: path), "Icon\(icon) at \(px)px")
+            // The library's, or ours in its style.
+            let there = [root, own].contains { FileManager.default.fileExists(atPath: $0.appendingPathComponent("Icon\(icon)/outline-\(px)px.svg").path) }
+            #expect(there, "Icon\(icon) at \(px)px")
         }
     }
     for use in PierreIcons.replacing.values where use.fill {
