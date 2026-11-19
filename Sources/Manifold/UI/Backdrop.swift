@@ -25,6 +25,8 @@ final class BackdropView: NSView {
     /// full screen, a display), every theme or tint, every change of light.
     private let wash = CAGradientLayer()
     private let pools = [CAGradientLayer(), CAGradientLayer()]
+    /// A theme's grain over it all (Terra's): a tile of noise, repeated.
+    private let grain = CALayer()
     /// Each pool's centre and radius, as fractions of the view (its centre
     /// across and up; its radius of the longer side).
     private var poolPlaces: [(x: CGFloat, y: CGFloat, r: CGFloat)] = []
@@ -42,6 +44,8 @@ final class BackdropView: NSView {
             p.locations = [0, 1]
             layer?.addSublayer(p)
         }
+        grain.opacity = 0
+        layer?.addSublayer(grain)
         cast = Daylight.cast(at: Date(), from: Daylight.place())
         // The tint changed: its pool drawn again, cross-faded.
         tinted = NotificationCenter.default.addObserver(forName: .manifoldTintChanged, object: nil, queue: .main) { [weak self] _ in
@@ -117,6 +121,7 @@ final class BackdropView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         wash.frame = bounds
+        grain.frame = bounds
         let w = max(bounds.width, 1), h = max(bounds.height, 1), long = max(w, h)
         for (p, at) in zip(pools, poolPlaces) {
             p.frame = bounds
@@ -151,6 +156,44 @@ final class BackdropView: NSView {
         }
     }
 
+    /// The grain: 128 pixels square of noise, each light or dark at a
+    /// random strength, set a pixel to a pixel at the screen's scale (two
+    /// to a point on a Retina display, one on another, so it's as fine and
+    /// as strong on each) and repeated; how strong it shows is the layer's
+    /// opacity.
+    private static var grainPatterns: [CGFloat: CGColor] = [:]
+    private static func grainPattern(scale: CGFloat) -> CGColor {
+        if let made = grainPatterns[scale] { return made }
+        let made = makeGrain(scale: scale)
+        grainPatterns[scale] = made
+        return made
+    }
+
+    private static func makeGrain(scale: CGFloat) -> CGColor {
+        let n = 128
+        var px = [UInt8](repeating: 0, count: n * n * 4)
+        var r = Seeded(state: 0x9E37_79B9_7F4A_7C15)
+        for i in 0..<(n * n) {
+            let v = r.next()
+            let a = UInt8(min(255, abs(v - 0.5) * 2 * 255))
+            let c: UInt8 = v > 0.5 ? a : 0   // white or black, premultiplied
+            px[i * 4] = c; px[i * 4 + 1] = c; px[i * 4 + 2] = c; px[i * 4 + 3] = a
+        }
+        let image = px.withUnsafeMutableBytes { buf -> CGImage? in
+            CGContext(data: buf.baseAddress, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
+                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+        }
+        guard let image else { return NSColor.clear.cgColor }
+        let side = CGFloat(n) / max(scale, 1)
+        return NSColor(patternImage: NSImage(cgImage: image, size: NSSize(width: side, height: side))).cgColor
+    }
+
+    /// The grain made again at the screen's scale (moved to another display).
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        grain.backgroundColor = Self.grainPattern(scale: window?.backingScaleFactor ?? 2)
+    }
+
     /// A wash's colours, its hues turned by `turn`, before the light.
     static func colors(of wash: Palette.Backdrop.Wash, turn: CGFloat = 0) -> [NSColor] {
         wash.stops.map { h, s, b in NSColor(calibratedHue: (h + turn + 1).truncatingRemainder(dividingBy: 1), saturation: s, brightness: b, alpha: 1) }
@@ -180,6 +223,11 @@ final class BackdropView: NSView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         self.wash.colors = Self.colors(of: wash, turn: turn).map(lit)
+        let g = Palette.current.backdrop.grain
+        grain.opacity = Float(dark ? g.dark : g.light)
+        if g.light > 0 || g.dark > 0, grain.backgroundColor == nil {
+            grain.backgroundColor = Self.grainPattern(scale: window?.backingScaleFactor ?? 2)
+        }
         // The tint's hue and how colored it is (graphite: hardly).
         var tintHue: CGFloat = 0, tintSaturation: CGFloat = 0
         effectiveAppearance.performAsCurrentDrawingAppearance {

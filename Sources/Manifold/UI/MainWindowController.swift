@@ -130,6 +130,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
     var recentlyClosed: Set<BlockID> = []
+    /// Blocks being deleted: their tiles go in a puff (`departure(of:)`).
+    var deleting: Set<BlockID> = []
     /// Terminals whose shell exited, a new one asked for: their views'
     /// next attach starts it (`terminalRestart`).
     var restartingShells: Set<BlockID> = []
@@ -436,7 +438,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Seen going, where it was, as its neighbours take its room —
             // if it's gone: not an $EDITOR come off its terminal, nor a
             // tile replaced in place.
-            if view.superview === content, departure(of: view, flown: nil) == .closed { content.poof(view) }
+            if view.superview === content {
+                switch departure(of: view, flown: nil) {
+                case .closed: content.putAway(view)
+                case .deleted: content.poof(view)
+                case .flown, .moved: break
+                }
+            }
             view.removeFromSuperview()
             view.destroy()
             views.removeValue(forKey: id)
@@ -515,6 +523,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             let flights = dockFlights(before: a)
             content.departure = { [weak self] v in self?.departure(of: v, flown: flights) ?? .moved }
+            // A closed tile whose block is pinned — in the space, or in a
+            // project — is kept in its row, which stays as a row to recall it.
+            content.keptAt = { [weak self] v in
+                guard let self, let space = self.selected,
+                      self.isPinned(v.block, in: space) || self.project(pinning: v.block) != nil,
+                      let row = self.sidebar.organizationView.row(of: v.placement, in: space, in: self.root) else { return nil }
+                return self.content.convert(row, from: self.root)
+            }
             content.show(tiles, fractions: a.fractions, heights: a.heights, focused: a.focused, full: a.full)
             flyDock(flights)
             window.title = title(of: a)

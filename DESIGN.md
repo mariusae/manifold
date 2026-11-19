@@ -3008,7 +3008,7 @@ marks, diagnostics, `==highlight==`), diffs, what search found (a PDF's
 matches too), a machine's charts, the colours that tell kinds apart (a
 file's type, a link's), a terminal's palette in each appearance (its
 paper, text, caret, selection and all 256 colours: the sixteen, then the
-extended palette's 6×6×6 cube and 24 greys — xterm's, in Classic, as
+extended palette's 6×6×6 cube and 24 greys — xterm's, in Terra, as
 Ghostty's own were), and the preview's page. One is in use (`Palette.current`), and what draws asks it as it
 draws: the named colours (`Theme.text`, `Status.failed`,
 `TextView.addedColor`…) are each one object (`NSColor.themed`) whose
@@ -3022,8 +3022,8 @@ cells are drawn in the same. The preview's page takes the
 theme's as CSS variables (`--page-text`, `--page-link`…, light and
 under `prefers-color-scheme: dark`), set again in an open page when the
 theme changes. The theme is a setting (`Appearance.colorTheme`, by id,
-Merino for one there isn't, and a theme there was by the one that
-replaced it: Paper's by Merino, Claude Classic's by Claude), set from Settings ▸ Appearance ▸ Theme
+Field for one there isn't, and a theme there was by the one that
+replaced it: Paper's by Field, Claude Classic's by Spectrum), set from Settings ▸ Appearance ▸ Theme
 (`ColorThemePicker`: each a small window drawn in its colours as the
 appearance has them — a sidebar with a row chosen in the accent and
 blocks' states, an editor's tile with its gutter, the caret's line lit,
@@ -3035,7 +3035,7 @@ a terminal's caret and selection are its palette's own; any other tint
 is set over the theme's everywhere, Ghostty's caret and selection
 written after the palette's, each tint in the theme's own shade of it
 (`Palette.tints`, `Palette.calibratedTints`): the tint's hue, its chroma
-eased to the theme's (Classic's quietest), its lightness made to stand
+eased to the theme's (Terra's quietest), its lightness made to stand
 at 3.5:1 on the theme's panels — a ring round a tile reads, and isn't
 the system's loud green — what's selected a wash of it on the window. An extended palette may be made rather than given
 (`TerminalPalette.generated`, as Ghostty's `palette-generate`): the
@@ -3044,72 +3044,108 @@ text, each step between taken in CIELAB, the greys from the background
 to the text — from the background whatever it is (Ghostty's
 "harmonious"), or turned round for a light one to go dark to light.
 
-**Merino**, the default, is GitHub's Primer as Rex's Merino sets it: GitHub
+Six themes, each a different place to work rather than a colourway —
+four atmospheres, where colour is the environment, and two instruments,
+where colour is information. Each is named for what it's like, not where
+its colours came from.
+
+**Field**, the default — cool, spatial, atmospheric: a continuous field
+things stand in. Contemporary and precise, for most people most of the
+time. GitHub's Primer, as the terminal theme Merino sets it: GitHub
 Light's sixteen (its yellows deepened) on white, GitHub Dark's on #161b22;
 Primer's inks, blue, success, attention and danger; a tile's bar the page's
 own by night and a breath off it by day (GitHub's subtle #F6F8FA), with a
-hairline round each tile; code and pages on its subtle canvas.
-It took the place of Paper, Manifold's look from before there were themes,
-which was all but the same. Debug `colordump <path>` writes every named
-colour in both appearances, the terminal's config and the 256 colours
-Ghostty makes of it, to compare two builds' looks.
-**Classic** is apex's Classic palette (~/src/apex,
-`crates/apex-client/src/theme.rs`), made of natural materials: paper a
-parchment #FFFAEB, ink #202224,
-secondary #6E7072, the tags' pale blue (#EAF4F7, the sidebar #E8EFF1)
-for panels and sheets, acme's yellow selection #F1E9A6, Go blue #007D9C
-for links and the caret, its accent sage — olive #56783A by day, a muted
-#91A986 by night — its bars warmed toward its parchment (#FFFDEF). By
-night it's the one warm theme: go.dev's greys taken toward umber, a warm
-charcoal #26211B paper, #E9E5E0 ink, its panels #312C26; link blue
-#50B7E0, selection #4A4526. Its colour-blind pairs as apex's: B3's
-blue #2A5DB0 for added, done and passed, B2's burnt orange #C85A00 for
-removed and warnings, the fenced fuchsia #CE3262 for errors and what
-failed; the terminal's sixteen GitHub's colour-blind ones (xterm's cube
-past them). Where apex's don't read as text at 4.5:1 they're a step
-darker by day (the faint grey #737577, stale's ochre #8F6B00) and lighter
-by night (the blue #6494E2, the fuchsia #F16388). **Financial Times** is
-github.com/mariusae/financial-times-theme's, from FT Origami's palette:
-paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected (each of its
-salmons a tenth less coloured, `Palette.eased`: the paper still, less
-pink over an afternoon), teal #0D7680 the accent and links, an ink caret (as its Ghostty theme's); jade,
-mandarin and crimson for what passed, wants attention and failed; FT's
-warm greys (black-5 to black-30) for the chrome. By night its inverse:
-slate #262A33, ink #E9EAEB (white for strong), black-70 #4D4845
-selected, teal-80 #14BDCC for links (the accent a calmer #5FA7B0, a
-ring round a tile that doesn't glow), the inks lifted (#66CC99, #FF8833,
-#FF6666), the terminal's brights a quarter less coloured. The terminal's sixteen are the theme's own Ghostty palette
+hairline round each tile; code and pages on its subtle canvas; under it
+heathered slate into teal and green. It took the place of Paper,
+Manifold's look from before there were themes, which was all but the
+same. Debug `colordump <path>` writes every named colour in both
+appearances, the terminal's config and the 256 colours Ghostty makes of
+it, to compare two builds' looks.
+
+**Folio** — editorial, literary, of paper and print: a place for reading
+and thinking, the serif pages at home in it. The Financial Times' as
+github.com/mariusae/financial-times-theme has it, from FT Origami's
+palette: paper #FFF1E5 and body ink #33302E, wheat #F2DFCE selected (each
+of its salmons a tenth less coloured, `Palette.eased`: the paper still,
+less pink over an afternoon), teal #0D7680 the accent and links, an ink
+caret (as its Ghostty theme's); jade, mandarin and crimson for what
+passed, wants attention and failed; FT's warm greys (black-5 to black-30)
+for the chrome. By night its inverse: slate #262A33, ink #E9EAEB (white
+for strong), black-70 #4D4845 selected, teal-80 #14BDCC for links (the
+accent a calmer #5FA7B0, a ring round a tile that doesn't glow), the inks
+lifted (#66CC99, #FF8833, #FF6666), the terminal's brights a quarter less
+coloured. The terminal's sixteen are the theme's own Ghostty palette
 (Origami's colours eased to 5.5:1 on the paper), the rest made from
 them. FT's muted grey #807973 reads at 3.9:1, so secondary text is
 black-60 #66605C; jade and mandarin are deepened where read as text
-(#007A3D, #A35214). **Claude** is Claude's desktop app as shipped: its
-Code tab's neutral greys (white pages by day, its bars a faint
-violet-grey #F6F5F8; by night a breath of plum in them, #1B1A1D and
-#312F34, so the pages belong with the backdrop's purple), its ink, clay
-#D97757 (#C6613F on white) the accent, Claude Code's own terminal
-sixteen and its blue caret and selection. What failed is a crimson (#A4273E, by night #FF93A1), not
-Claude's danger red, which was a step from the clay — a focus ring read
-as a failure. Its focused tile's bar is a wash of clay (#F9E8DE, by night
-#40312C), as the ring round it is — Claude's own colour on what's at
-work, which no other theme does. **Graphite** is a neutral instrument
-(InstrumentPalettes.swift, `Palette.instrument`, as Signal is): greys
+(#007A3D, #A35214).
+
+**Terra** — earthy, grounded, organic: natural materials, and the one
+warm night. Linen paper (#FAF7F0) on a stone table — its ground lichen,
+linen, sandstone and a slate stone, hardly coloured (saturation 0.04 to
+0.09), a step under the tiles so they stand on it — with a grain over it,
+as paper and stone have (`Backdrop.grain`, a tile of noise at 5%, a
+pixel to a pixel on any display), and
+the tiles' shadows soft and wide, umber (`Backdrop.tileShadowSpread`).
+Walnut ink (#2A2520), warm grey-brown secondaries (5.5:1 on its
+ground, not 4.5: dusty, not dim), stone panels and hovers (#EFEAE0), its
+bars a step further (#F0EBE1), warm hairlines; a mossy sage accent (#55703A, by night
+#94A982); indigo (#3B5B7A, a natural dye) for links and the caret; straw
+(#EFE3B8) for what's selected. What says something is pigment: indigo for
+what's added, done and passed, burnt sienna (#A4501F) for what's taken
+away and warnings, rose madder (#9B2C4A, bluer and deeper than the
+sienna) for what failed, ochre for what's stale — and as apex's Classic,
+which it grew from, has it for a colour-blind reader, blue and orange
+where others have green and red. Its terminal's sixteen are earth
+pigments too — rust, a verdigris moss for green (bluer than most, so a
+deuteranope tells git's added from its removed; a test holds it), ochre,
+indigo, mulberry, verdigris, warm greys — by day its brights 4:1 on the
+paper, not a light terminal's 3:1, so none is faint. What tells a space
+or an agent apart keeps at least 0.75 of its chroma, not 0.6, so it
+isn't a pastel on the stone. By night warm charcoal and smoked oak
+(#221E1B, panels #2D2924, what's read a step lifted, #27231F), bone
+ink, the ground dark stone with a hint of sage, a muted clay and a
+slate — not olive, not sepia.
+
+**Spectrum** — chromatic, expressive, softly prismatic: the personal one,
+colour as personality. From Claude's desktop app as shipped: its Code
+tab's neutral greys (white pages by day, its bars a faint violet-grey
+#F6F5F8; by night a breath of plum in them, #1B1A1D and #312F34, so the
+pages belong with the backdrop's purple), its ink, clay #D97757 (#C6613F
+on white) the accent, Claude Code's own terminal sixteen and its blue
+caret and selection; under it sky into lavender, clay and peach. What
+failed is a crimson (#A4273E, by night #FF93A1), not the app's danger
+red, which was a step from the clay — a focus ring read as a failure.
+Its focused tile's bar is a wash of clay (#F9E8DE, by night #40312C), as
+the ring round it is — its own colour on what's at work, which no other
+theme does.
+
+**Graphite** — neutral, industrial, precise: a material rather than a
+decorative palette, for those who'd otherwise turn theming off
+(InstrumentPalettes.swift, `Palette.instrument`, as Signal is). Greys
 throughout — tiles #FAFAFA on a ground a step darker (#E4E4E6), by night
 #1E1F21 on one a step lighter (#2F2F31) so the gaps show — the ground
 all but flat; a firm hairline round each tile and hardly a shadow; its
 inks the strongest (secondary 6:1 and more); a quiet slate blue
 (#4F6380, #9AA8BE) the accent. Colour is kept for what says something —
 statuses, diffs, agents, spaces, the terminal's sixteen — and so reads as
-information, not atmosphere. **Signal** is an instrument for watching
-many things run: by night midnight-navy tiles (#141B29, bars #1B2335)
-edged in steel (#2A3A50), cyan (#7FB8CF) for what's chosen, amber
-(#D4AE6B) for what wants you; by day a blueprint's cold white (#F6F8FB)
-on its pale blue, blueprint blue #36618C and a bronze amber; a chart's
-series cyan, amber and green. Neither instrument's ground is taken by the
-day's light (`Backdrop.daylight`): it's the same at every hour.
-(Claude Classic, Claude's app before its neutral greys,
-was all but Claude, and went; so did Claude Warm, Newsprint and the
-quiet themes, whose settings take Claude, Classic, Financial Times,
-Graphite (Slate's) or Merino.)
+information, not atmosphere.
+
+**Signal** — computational, instrument-like, purposeful: a control
+surface for watching many terminals and agents run. By night
+midnight-navy tiles (#141B29, bars #1B2335) edged in steel (#2A3A50),
+cyan (#7FB8CF) for what's chosen, amber (#D4AE6B) for what wants you; by
+day a blueprint's cold white (#F6F8FB) on its pale blue, blueprint blue
+#36618C and a bronze amber; a chart's series cyan, amber and green;
+states told apart at a glance, nothing glowing. Neither instrument's
+ground is taken by the day's light (`Backdrop.daylight`): it's the same
+at every hour.
+
+The four atmospheres were named Merino, Financial Times, Classic and
+Claude; a setting with an old name takes the new. Claude Classic,
+Claude's app before its neutral greys, was all but Spectrum, and went; so
+did Claude Warm, Newsprint and the quiet themes, whose settings take
+Spectrum, Terra, Folio, Graphite (Slate's) or Field.
 
 Every theme keeps to the same promises, and a test holds each to them by
 day and by night (`ThemeContractTests`): text, secondary and tertiary,
@@ -3123,7 +3159,7 @@ night and deepens them by day only as far as that takes); a listing's
 folders, its terminal's blue, apart from its files, the ink; and a
 diff's added and removed lines apart to a deuteranope — what's
 added a pale blue, what's taken away a pale orange, hunks a grey, as
-Classic and GitHub's colour-blind themes have them.
+Terra and GitHub's colour-blind themes have them.
 
 **Increased contrast** isn't a theme but a way of drawing any of them:
 with the system's Increase Contrast on (Accessibility ▸ Display; debug
@@ -3138,17 +3174,17 @@ primary to read on it. It follows the setting as it changes
 or an agent apart — the system's colours a space is given, an agent's
 Paul Tol hues — is eased to the theme's inks (`NSColor.identity`): its
 hue and lightness kept, its chroma brought to the theme's terminal's (as
-Merino's are, at most; at least 0.6 of them), so Classic's and
-Financial Times' aren't loud in them.
+Field's are, at most; at least 0.6 of them, Terra's 0.75), so Terra's and
+Folio's aren't loud in them.
 
 The backdrop is a theme's too, so the window is of
 a piece: its wash's four stops and how its pools are lit, in each
-appearance (`Palette.Backdrop`) — Merino's heathered slate into teal
-and green (by night slate, deep teal, forest), Classic's sage and
-parchment into ochre, acme's pale blue faint at a corner (by night olive
-and sage into bronze), Financial Times' FT pink into its paper and wheat
+appearance (`Palette.Backdrop`) — Field's heathered slate into teal
+and green (by night slate, deep teal, forest), Terra's stone —
+lichen, linen, sandstone, slate, hardly coloured, grained (by night dark
+stone and smoked oak, a slate at a corner), Folio's FT pink into its paper and wheat
 (by night ink-blue into its teal, the salmon an ember at a corner — no
-plum, so it isn't Claude's), Claude's sky into lavender, clay and peach
+plum, so it isn't Spectrum's), Spectrum's sky into lavender, clay and peach
 (by night lighter than its bars, ink-blue into plum into a clay ember),
 Graphite's all but flat grey, Signal's deeper navy and blueprint blue —
 still turned by the day, lit by the hour (the instruments' not), its
@@ -3281,9 +3317,14 @@ purpose — set down so a later audit reads them as choices, not slips.
   as the strip has it (from the right for one further along, from the
   left for one before), the sidebar's list sliding with it; a tile placed comes
   in where it lands, seen at once and growing from 86% about its
-  middle, one closed goes in a puff — swelling a little as it fades,
-  a small cloud bursting where it was and drifting apart, as the Dock's
-  poof (only fading, with less motion); one moved to another space
+  middle; one closed is put away, not destroyed — shrinking to 94% as
+  it fades, quickly (a fifth of a second: closing is done often), and
+  drifting a few points toward its row in the sidebar if its block is
+  pinned there (in the space, or in a project), so it's seen where it's
+  kept; one whose block is deleted goes in a puff — swelling a little as
+  it fades, a small cloud bursting where it was and drifting apart, as
+  the Dock's poof, which is what it means there: gone (each only fading,
+  with less motion); one moved to another space
   shrinks to 86% and fades where it was, or goes into its space's
   square in the strip, dropped there; one docked goes into its row in
   the sidebar (the window's left edge, where the sidebar slides out

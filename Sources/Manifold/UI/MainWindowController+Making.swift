@@ -180,7 +180,11 @@ extension MainWindowController {
         }) { [weak self] in
             self?.reopenClosed(block: block, tiles: tiles)
         }
+        // Its tiles seen going in a puff, not put away (as they're taken
+        // off, which may be a turn or two of the run loop later).
+        deleting.insert(block)
         layoutViews()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.deleting.remove(block) }
     }
 
     /// The deletion, its time up: unless it was placed again meanwhile.

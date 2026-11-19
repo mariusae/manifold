@@ -1659,30 +1659,42 @@ their own: links, find matches, status, diffs, a terminal's palette.
 Every color is a **theme**'s — the chrome, the texts, the tints, the
 colors that say something, a terminal's palette in light and dark (all
 256 colors: the sixteen, the 6×6×6 cube, the greys), the
-preview's page, and the backdrop under the tiles (Paper's pastel wash,
-Newsprint's off-whites, Classic's pale blue into cream, the Financial
-Times' pink into its paper) — so a theme
-recolors all of it at once. Settings ▸
-Appearance ▸ Theme shows each as a small Manifold window in its own
-colors — a sidebar with a block chosen and their states, a file being
-edited (its line numbers, the caret's line lit, changes marked) and a
-terminal, focused, running tests in its palette, a word selected: **Paper**, Manifold's look, and **Newsprint**, ink on a
-faintly warm grey paper with muted inks (a brick red, sage, ochre, slate
-blue, plum, teal), and by night the same paper unlit; and **Classic**,
-apex's: acme's cream paper with its tags a pale blue and a yellow
-selection, in go.dev's colors (its ink, Go blue), by night go.dev's own
-dark, and as apex has it for a colour-blind reader, blue for what's
-added or passed and orange for what's removed or failed; and **Financial
-Times**, github.com/mariusae/financial-times-theme's: the FT's paper and
-ink, wheat selections, teal links, its terminal palette, and by night its
-inverse on slate. A theme has its own
-accent (Paper's blue, Newsprint's red, Classic's Go blue, the FT's teal), which the Theme accent follows —
-a terminal's caret and selection then the theme's (Newsprint's red caret
-on a grey selection); any other accent is set over the theme's
-everywhere, terminals too, in the theme's own shade of it. Newsprint's
-256 colors are made from its own: its cube's corners are its paper, its
-six colors and its ink, the steps between taken evenly to the eye, so a
-program's colors sit in the theme.
+preview's page, and the backdrop under the tiles — so a theme recolors
+all of it at once. Settings ▸ Appearance ▸ Theme shows each as a small
+Manifold window in its own colors — a sidebar with a block chosen and
+their states, a file being edited (its line numbers, the caret's line
+lit, changes marked) and a terminal, focused, running tests in its
+palette, a word selected. There are six, each a different place to work:
+four atmospheres, where color is the environment, and two instruments,
+where color is information.
+
+- **Field**, the default: cool, spatial, contemporary — GitHub's
+  colors on white or deep navy, over a heathered slate, teal and green.
+- **Folio**: editorial and literary, for reading and thinking — the
+  Financial Times' salmon paper, ink and teal, by night its inverse on
+  slate.
+- **Terra**: earthy and organic, natural materials — linen paper on a
+  grained stone ground, walnut ink, a sage accent, indigo links, straw
+  selections, and pigments for what says something (indigo, burnt
+  sienna, rose madder, ochre); by night walnut and charcoal over olive
+  and bronze, the one warm theme. Colour-blind safe throughout: blue for
+  what's added or passed, orange for what's removed.
+- **Spectrum**: chromatic and expressive, the personal one — neutral
+  pages over sky, lavender, clay and peach, clay the accent and the
+  focused tile's bar.
+- **Graphite**: neutral and precise — greys throughout, a flat ground,
+  firm edges, the strongest text; color kept for statuses, diffs, agents
+  and the terminal.
+- **Signal**: an instrument for watching many things run — midnight navy
+  edged in steel, cyan for what's chosen and amber for what wants you;
+  by day a blueprint's white on pale blue.
+
+A theme has its own accent, which the Theme accent follows — a
+terminal's caret and selection then the theme's; any other accent is set
+over the theme's everywhere, terminals too, in the theme's own shade of
+it. With macOS's Increase Contrast on, whichever theme is set is drawn
+firmer: fainter text darkened or lifted to 7:1, rules and edges firmer,
+the focus ring stronger, its character kept.
 
 ## Host and app
 

@@ -318,6 +318,19 @@ extension MainWindowController {
         return "no tile \(title)"
     }
     var debugDirty: String { content.debugDirty }
+
+    /// "depart close|delete <title>": a shown tile closed, or its block
+    /// deleted, as its × or its Delete does.
+    func debugDepart(_ how: String, _ title: String) -> String {
+        guard let a = arrangement, let space = selected else { return "no workspace" }
+        guard let p = a.columns.joined().first(where: { hosts.block($0.block)?.displayTitle == title }) else { return "no tile \(title)" }
+        switch how {
+        case "close": closeTile(p.id, in: space)
+        case "delete": deleteBlock(p.block)
+        default: return "close or delete"
+        }
+        return "ok"
+    }
     func debugPushDown(column: Int, row: Int) -> String { content.debugPushDown(column: column, row: row) }
     func debugDirtyClick() -> String {
         guard let f = focusedShown, let t = hosts.block(f.placement.block)?.text, t.isDirty else { return "nothing dirty focused" }

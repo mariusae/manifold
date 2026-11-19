@@ -94,8 +94,8 @@ extension MainWindowController {
     }
 
     /// How a tile leaving the grid is seen to go: flown, docked with
-    /// somewhere to fly to; in a puff, closed (gone from the desk, or on
-    /// its way); else moved.
+    /// somewhere to fly to; in a puff, its block deleted; put away, closed
+    /// (gone from the desk, or on its way); else moved.
     func departure(of v: PaneContent, flown f: DockFlights?) -> GridView.Departure {
         // Going under an $EDITOR: gone as it takes its place, nothing seen.
         if stacked.contains(v.placement) { return .flown }
@@ -111,6 +111,8 @@ extension MainWindowController {
         // Replaced in place (another mode, a folder gone into): the tile
         // that takes its place is what's seen, nothing going.
         if replacedInPlace.remove(v.placement) != nil { return .flown }
+        // Its block deleted: gone in a puff.
+        if deleting.contains(v.block) { return .deleted }
         if recentlyClosed.contains(v.block) { return .closed }
         // Still on the desk — this tile, or its block in another space's
         // (moved there) — it's moved; else closed.

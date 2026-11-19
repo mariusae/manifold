@@ -66,14 +66,21 @@ private func each(_ check: (Palette, Bool, String) -> Void) {
 }
 
 @Test func themesThatWereAreThoseThatReplacedThem() {
-    #expect(Palette.named("paper").id == "merino")
-    #expect(Palette.named("claude-classic").id == "claude")
-    #expect(Palette.named("claude-warm").id == "claude")
-    #expect(Palette.named("newsprint").id == "classic")
-    #expect(Palette.named("stone").id == "financial-times")
-    #expect(Palette.named("dusk").id == "merino")
+    // Renamed.
+    #expect(Palette.named("merino").id == "field")
+    #expect(Palette.named("classic").id == "terra")
+    #expect(Palette.named("financial-times").id == "folio")
+    #expect(Palette.named("claude").id == "spectrum")
+    // Replaced.
+    #expect(Palette.named("paper").id == "field")
+    #expect(Palette.named("claude-classic").id == "spectrum")
+    #expect(Palette.named("claude-warm").id == "spectrum")
+    #expect(Palette.named("newsprint").id == "terra")
+    #expect(Palette.named("stone").id == "folio")
     #expect(Palette.named("slate").id == "graphite")
-    #expect(Palette.named("nonesuch").id == "merino")
+    #expect(Palette.named("sage").id == "terra")
+    #expect(Palette.named("dusk").id == "field")
+    #expect(Palette.named("nonesuch").id == "field")
 }
 
 // The sidebar's words are on the backdrop, not a panel: its wash and its
@@ -131,5 +138,29 @@ private func each(_ check: (Palette, Bool, String) -> Void) {
         let before = Tints.contrast(over(base.chrome.divider.color(dark: dark), panel), panel)
         let after = Tints.contrast(over(p.chrome.divider.color(dark: dark), panel), panel)
         #expect(after > before, "\(name): rules \(before) → \(after)")
+    }
+}
+
+// Terra is the colour-blind theme: its terminal's red (a rust) and green
+// (a verdigris moss) — git's taken-away and added — are apart to a
+// deuteranope, as its diffs' are, by day and by night.
+@Test func terrasTerminalRedAndGreenAreApartToADeuteranope() {
+    for dark in [false, true] {
+        let t = dark ? Palette.terra.terminal.dark : Palette.terra.terminal.light
+        for (r, g) in [(1, 2), (9, 10)] {
+            let d = ColorVision.deuteranopia.difference(t.colors[r], t.colors[g])
+            #expect(d >= 0.1, "terra \(dark ? "dark" : "light"): colours \(r) and \(g) \(d) apart")
+        }
+    }
+}
+
+// Terra's terminal is pigment, not light: by day its brights (but white)
+// read at 4:1 on its paper, not a light terminal's usual 3:1, so they're
+// never faint.
+@Test func terrasBrightsReadByDay() {
+    let t = Palette.terra.terminal.light
+    for i in 9...14 {
+        let r = Tints.contrast(t.colors[i], t.background)
+        #expect(r >= 4, "terra light: colour \(i) \(r)")
     }
 }

@@ -223,7 +223,8 @@ final class GridView: NSView, NSDraggingSource {
         for v in views where !incoming.contains(v.placement) && v.superview === self {
             switch departure?(v) ?? .moved {
             case .flown: break
-            case .closed: poof(v)
+            case .closed: putAway(v)
+            case .deleted: poof(v)
             case .moved: fadeAway(v)
             }
             v.removeFromSuperview()
@@ -1045,19 +1046,45 @@ final class GridView: NSView, NSDraggingSource {
         Ghost.fadeOut(g, over: Motion.spatial, timing: Motion.disappear, key: "crossFade")
     }
 
-    /// How a tile leaves the grid: closed (gone from the desk), flown
-    /// somewhere by its window's controller (docked, into the shelf or its
-    /// row), or moved (to another space).
-    enum Departure { case closed, flown, moved }
+    /// How a tile leaves the grid: closed (put away: its block kept, or in
+    /// Recently Closed), its block deleted, flown somewhere by its window's
+    /// controller (docked, into the shelf or its row), or moved (to
+    /// another space).
+    enum Departure { case closed, deleted, flown, moved }
     /// Asked of each tile leaving as the grid's shown; moved, unasked.
     var departure: ((PaneContent) -> Departure)?
+    /// Where a closed tile's block is kept in the sidebar (its row, pinned
+    /// in the space or a project), in the grid's terms — if it's in sight.
+    var keptAt: ((PaneContent) -> NSRect?)?
 
-    /// A tile closed: gone in a puff — its picture swelling a little as it
-    /// fades, a small cloud bursting where it was and drifting apart, as
-    /// the Dock's poof. With less motion, only faded.
+    /// A tile closed: put away, not destroyed — shrinking a little as it
+    /// fades, quickly (closing is done often), and drifting a few points
+    /// toward its block's row in the sidebar if it has one in sight, so
+    /// it's seen where it's kept. With less motion, only faded.
+    func putAway(_ v: PaneContent) {
+        guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer, let card = Ghost.union(ghosts.map(\.frame)) else { return fadeAway(v) }
+        ghosts.forEach(host.addSublayer)
+        var drift = CGVector.zero
+        if let row = keptAt?(v) {
+            let dx = row.midX - card.midX, dy = row.midY - card.midY, length = hypot(dx, dy)
+            if length > 1 { let k = min(28, length * 0.1) / length; drift = CGVector(dx: dx * k, dy: dy * k) }
+        }
+        Ghost.burst(ghosts, scale: 0.94, over: Motion.base * 1.25, fading: Motion.disappear, moving: Motion.travel, drift: drift, key: "putAway")
+        Self.departures.putAway += 1
+        Self.departures.drift = drift
+    }
+
+    /// How tiles have gone (debugging).
+    static var departures = (putAway: 0, poof: 0, drift: CGVector.zero)
+
+    /// A tile whose block was deleted: gone in a puff — its picture
+    /// swelling a little as it fades, a small cloud bursting where it was
+    /// and drifting apart, as the Dock's poof (what's taken off it is
+    /// gone). With less motion, only faded.
     func poof(_ v: PaneContent) {
         guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer, let card = Ghost.union(ghosts.map(\.frame)) else { return fadeAway(v) }
         ghosts.forEach(host.addSublayer)
+        Self.departures.poof += 1
         Ghost.burst(ghosts, scale: 1.05, over: Motion.spatial * 0.5, fading: Motion.appear, moving: Motion.appear, key: "poof")
         Self.puff(in: host, over: card, appearance: effectiveAppearance)
     }
@@ -1477,6 +1504,8 @@ final class GridView: NSView, NSDraggingSource {
             let shade = Palette.current.backdrop.tileShadow
             l.shadowColor = shade.color.cgColor
             l.shadowOpacity = dark ? 0 : Float(shade.opacity)
+            // As soft as the theme's light is (Terra's wider, as light on paper).
+            l.shadowRadius = Elevation.tile.radius * Palette.current.backdrop.tileShadowSpread
             // Its edge: stroked on the card's outline, the outer half seen.
             l.strokeColor = edge?.cgColor
             l.lineWidth = edge == nil ? 0 : 1

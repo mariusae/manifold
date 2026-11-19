@@ -690,6 +690,14 @@ enum DebugControl {
         case "tiles":
             // Each tile's view: frame, hidden, its bar's frame.
             return wc?.debugTiles ?? "no window"
+        case "depart":
+            // "depart close|delete <title>": a tile closed or its block
+            // deleted; "depart": how each tile has gone since launch, and
+            // the last put-away's drift toward its row.
+            if arg.isEmpty { return "put away \(GridView.departures.putAway), poof \(GridView.departures.poof), drift \(GridView.departures.drift)" }
+            let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard w.count == 2 else { return "usage: depart close|delete <title>" }
+            return wc?.debugDepart(w[0], w[1]) ?? "no window"
         case "tileheight":
             // "tileheight <points> <title>": a shown tile given that much content.
             let w = arg.split(separator: " ", maxSplits: 1).map(String.init)
@@ -1627,7 +1635,7 @@ enum DebugControl {
             Palette.reapply()
             return "ok: \(Palette.increasedContrast ? "on" : "off")"
         case "colortheme":
-            // "colortheme <id>": the colour theme (merino, classic, graphite, …).
+            // "colortheme <id>": the colour theme (field, folio, terra, spectrum, graphite, signal).
             guard let wc, let p = Palette.all.first(where: { $0.id == arg }) else { return Palette.all.map(\.id).joined(separator: ", ") }
             wc.changeAppearance { $0.colorTheme = p.id }
             return "ok: \(p.title)"

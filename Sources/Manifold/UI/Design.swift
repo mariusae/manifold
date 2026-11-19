@@ -84,7 +84,7 @@ enum Elevation {
 
     /// A floating panel's shadow at full strength (the sidebar fades it).
     static let floatOpacity: CGFloat = 0.16
-    private var radius: CGFloat { switch self { case .resting: 3; case .tile: 10; case .float: 12; case .card: 4 } }
+    var radius: CGFloat { switch self { case .resting: 3; case .tile: 10; case .float: 12; case .card: 4 } }
     /// Light from above: the shadow falls below (negative is down).
     private var offset: CGFloat { switch self { case .resting: -1; case .tile: -4; case .float: -3; case .card: -1 } }
 }

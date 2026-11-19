@@ -376,7 +376,7 @@ final class TintPicker: NSView {
 /// marked) and a terminal's, focused, a test run in its palette — its
 /// name under it, the chosen one ringed.
 final class ColorThemePicker: NSView {
-    var chosen = Palette.merino.id { didSet { if chosen != oldValue { needsDisplay = true } } }
+    var chosen = Palette.field.id { didSet { if chosen != oldValue { needsDisplay = true } } }
     var onPick: ((Palette) -> Void)?
     private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
     private static let card = NSSize(width: 214, height: 136), label: CGFloat = 22, spacing: CGFloat = 14

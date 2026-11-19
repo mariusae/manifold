@@ -78,7 +78,8 @@ enum Ghost {
     /// if shorter), then taken away. `coming`: the same backwards — from
     /// that size, faded in, to as they are (and kept: a view's own layers).
     static func burst(_ parts: [CALayer], scale k: CGFloat, over d: Double, fade: Double? = nil,
-                      fading: CAMediaTimingFunction, moving: CAMediaTimingFunction, coming: Bool = false, key: String) {
+                      fading: CAMediaTimingFunction, moving: CAMediaTimingFunction, coming: Bool = false,
+                      drift: CGVector = .zero, key: String) {
         guard let card = union(parts.map(\.frame)) else { return }
         let c = CGPoint(x: card.midX, y: card.midY)
         CATransaction.begin()
@@ -90,7 +91,8 @@ enum Ghost {
             f.toValue = coming ? 1 : 0
             f.duration = fade ?? d
             f.timingFunction = fading
-            let scaled = scale(k, about: c, at: l.position)
+            // Scaled about the middle of them all, and carried by `drift` as it goes.
+            let scaled = CATransform3DConcat(scale(k, about: c, at: l.position), CATransform3DMakeTranslation(drift.dx, drift.dy, 0))
             let move = CABasicAnimation(keyPath: "transform")
             move.fromValue = coming ? scaled : CATransform3DIdentity
             move.toValue = coming ? CATransform3DIdentity : scaled
