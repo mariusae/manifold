@@ -367,7 +367,7 @@ extension MainWindowController: OrganizationViewDelegate {
     /// Pin, or Unpin (`pinToggle`); with its key (⌃⌘T) where the tile's focused.
     func pinItem(_ block: BlockID, in space: BlockID, key: Bool = false) -> NSMenuItem {
         let t = pinToggle(block, in: space)
-        let item = ClosureMenuItem(t.title, symbol: t.on ? "pin.slash" : "pin", key: key ? "t" : "", t.run)
+        let item = ClosureMenuItem(t.title, symbol: t.on ? "bookmark.slash" : "bookmark", key: key ? "t" : "", t.run)
         if key { item.keyEquivalentModifierMask = [.command, .control] }
         return item
     }

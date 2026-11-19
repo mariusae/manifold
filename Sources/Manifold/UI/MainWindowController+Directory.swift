@@ -231,7 +231,7 @@ extension MainWindowController: DirectoryViewDelegate {
         menu.addItem(ClosureMenuItem("Rename…", symbol: "character.cursor.ibeam") { [weak self] in self?.renameProjectAgent(id) })
         if let item = threadsItem(id) { menu.addItem(item) }
         if let p = project(pinning: id) {
-            menu.addItem(ClosureMenuItem("Unpin from Project “\(p.name)”", symbol: "pin.slash") { [weak self] in self?.setPinned(id, inProject: p, false) })
+            menu.addItem(ClosureMenuItem("Unpin from Project “\(p.name)”", symbol: "bookmark.slash") { [weak self] in self?.setPinned(id, inProject: p, false) })
         } else if let s = selected, isPinned(id, in: s) {
             menu.addItem(pinItem(id, in: s))
         }

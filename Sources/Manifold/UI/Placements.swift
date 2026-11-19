@@ -23,6 +23,9 @@ struct Shown: Equatable {
     /// The project it's in (§2.6), or pinned in: its place said from the
     /// project's name, the name a chip that goes there.
     var project: ShownProject?
+    /// Pinned (§2.6): in its project, if it's in one, else in the space —
+    /// a pin on its bar's icon, saying where.
+    var pinnedIn: String?
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

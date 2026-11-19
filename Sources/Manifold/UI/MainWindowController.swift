@@ -651,6 +651,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 s.project = ShownProject(name: proj.name, root: proj.root, pinned: pinnedIn != nil)
             }
         }
+        if let proj = project(pinning: p.block) { s.pinnedIn = proj.name }
+        else if selected.map({ pins(of: $0).contains { $0.to == p.block } }) == true { s.pinnedIn = "this space" }
         // A space's timeline (§3.12): said so, not the space's name.
         if p.lens == .threads {
             // A block's threads (a project's, an agent's, a file's): said whose.

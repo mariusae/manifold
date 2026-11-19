@@ -110,7 +110,7 @@ extension MainWindowController {
         for b in blocks { if let r = b.statusRecord { states[r.state.rawValue, default: 0] += 1 } }
         if !states.isEmpty { own.append(row(states.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)" }.joined(separator: ", "), "statuses", "circle.dotted")) }
         let pinned = pins(of: id).count
-        if pinned > 0 { layout.append(row("\(pinned)", "pinned", "pin")) }
+        if pinned > 0 { layout.append(row("\(pinned)", "pinned", "bookmark")) }
         return (own, layout)
     }
 
@@ -601,7 +601,7 @@ extension MainWindowController {
                 guard let o = hosts.block(e.to) else { return nil }
                 return node(for: o, id: "insp/pin/\(e.to)", detail: "pinned " + Age.ago(e.at))
             }
-            section("Pinned", "pin", pinned, id: "space-pinned")
+            section("Pinned", "bookmark", pinned, id: "space-pinned")
         }
 
         // Where it is: each space it's placed in, and pinned in.
@@ -619,7 +619,7 @@ extension MainWindowController {
             }
             if isPinned(b.id, in: w) {
                 pinnedIn += 1
-                let n = row(title(of: a), "pinned", "pin")
+                let n = row(title(of: a), "pinned", "bookmark")
                 n.arrangement = w
                 whereRows.append(n)
             }
@@ -722,7 +722,7 @@ extension MainWindowController {
         actions.append(row("Show the Neighborhood Map", "⇧⌥⌘M", "point.3.connected.trianglepath.dotted") { [weak self] in self?.showNeighborhood(around: b.id) })
         if let w = selected, b.kind != .arrangement {
             let t = pinToggle(b.id, in: w)
-            actions.append(row(t.title, "⌃⌘T", t.on ? "pin.slash" : "pin") { t.run() })
+            actions.append(row(t.title, "⌃⌘T", t.on ? "bookmark.slash" : "bookmark") { t.run() })
         }
         section("Actions", "bolt", actions)
         return (sections, Set(sections.map(\.id)))

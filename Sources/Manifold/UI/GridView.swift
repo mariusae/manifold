@@ -2228,6 +2228,40 @@ final class TilePill: NSView, NSTextFieldDelegate {
         v.toolTip = "Editing: closing the editor brings the terminal back"
         return v
     }()
+    /// A ribbon hanging from the bar's top edge over the icon, as a
+    /// bookmark from a book: the tile's block is pinned — in its project
+    /// (the place says which), else the space.
+    private let pinBadge: NSImageView = {
+        let v = NSImageView()
+        v.isHidden = true
+        v.imageScaling = .scaleNone
+        return v
+    }()
+    private var isPinned = false
+    /// The ribbon as last drawn: the icon's shape is cut out of it, the
+    /// icon over it.
+    private var ribbonKey: String?
+    private func drawRibbon() {
+        let r = pinBadge.frame
+        let image = icon.image
+        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)|\(r)|\(icon.frame)|\(image.map { ObjectIdentifier($0).hashValue } ?? 0)"
+        guard key != ribbonKey, r.width > 0 else { return }
+        ribbonKey = key
+        // Where the icon's image is drawn (centred, made smaller to fit), in the ribbon's terms.
+        let cut = image.map { img -> (NSImage, NSRect) in
+            let f = icon.frame
+            let k = min(1, f.width / max(img.size.width, 1), f.height / max(img.size.height, 1))
+            let size = NSSize(width: img.size.width * k, height: img.size.height * k)
+            let at = NSRect(x: f.midX - size.width / 2 - r.minX, y: f.midY - size.height / 2 - r.minY, width: size.width, height: size.height)
+            return (img, at)
+        }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            pinBadge.image = TilePill.ribbon(width: r.width, height: r.height, color: Theme.secondaryText.usingColorSpace(.sRGB) ?? Theme.secondaryText, cut: cut)
+        }
+    }
+    private func updatePinBadge() {
+        pinBadge.isHidden = !isPinned || handle.out
+    }
     private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
@@ -2412,8 +2446,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        handle.onIn = { [weak self] in self?.icon.isHidden = false }
+        handle.onIn = { [weak self] in self?.icon.isHidden = false; self?.updatePinBadge() }
         for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
+        // Behind the icon: the icon over the ribbon it hangs on.
+        addSubview(pinBadge, positioned: .below, relativeTo: icon)
         inkButtons()
         hostPill.isHidden = true
         themed { $0.updateColors() }
@@ -2677,6 +2713,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
         stackBadge.isHidden = shown.stackedOver == nil
+        isPinned = shown.pinnedIn != nil
+        pinBadge.toolTip = shown.pinnedIn.map { "Pinned in \($0)" }
+        updatePinBadge()
         // Shown again as it was — every render, a keystroke's in another
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
@@ -2803,6 +2842,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             self.focused = focused
             updateColors()
             showButtons(animated: true)
+            updatePinBadge()
         }
         needsLayout = true
     }
@@ -2858,6 +2898,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
+        // The bar's height, inside a focused tile's ring, down the icon's
+        // left side: the icon over it, its shape cut out of the ribbon.
+        pinBadge.frame = NSRect(x: icon.frame.minX - 2, y: 1.5, width: 9, height: h - 3)
+        if isPinned { drawRibbon() }
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
@@ -3028,30 +3072,38 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the project's name.
     func isOnProject(_ p: NSPoint) -> Bool { projectRect?.contains(p) ?? false }
 
-    /// A pin, leaning as one stuck in a board does (its head to the right).
-    static func obliquePin(size: CGFloat, color: NSColor) -> NSImage? {
-        guard let pin = Theme.symbol("pin.fill", size: size, weight: .regular, color: color) else { return nil }
-        let s = pin.size
-        let side = ceil(max(s.width, s.height))
-        return NSImage(size: NSSize(width: side, height: side), flipped: false) { r in
-            let t = NSAffineTransform()
-            t.translateX(by: r.midX, yBy: r.midY)
-            t.rotate(byDegrees: -35)
-            t.concat()
-            pin.draw(in: NSRect(x: -s.width / 2, y: -s.height / 2, width: s.width, height: s.height))
+    /// A ribbon, as a bookmark's: square at the top, a notch cut into
+    /// its foot — the mark of what's pinned.
+    /// `cut`: an image (where it's drawn) whose shape, a point wider, is
+    /// cut out of the ribbon — what lies over it.
+    static func ribbon(width: CGFloat, height: CGFloat, color: NSColor, cut: (NSImage, NSRect)? = nil) -> NSImage {
+        NSImage(size: NSSize(width: width, height: height), flipped: false) { r in
+            let p = NSBezierPath()
+            p.move(to: NSPoint(x: r.minX, y: r.maxY))
+            p.line(to: NSPoint(x: r.maxX, y: r.maxY))
+            p.line(to: NSPoint(x: r.maxX, y: r.minY))
+            p.line(to: NSPoint(x: r.midX, y: r.minY + min(height * 0.3, 3.5)))
+            p.line(to: NSPoint(x: r.minX, y: r.minY))
+            p.close()
+            color.setFill()
+            p.fill()
+            if let (image, at) = cut {
+                for dx in [-1.0, 0, 1] { for dy in [-1.0, 0, 1] {
+                    image.draw(in: at.offsetBy(dx: dx, dy: dy), from: .zero, operation: .destinationOut, fraction: 1)
+                } }
+            }
             return true
         }
     }
 
-    /// A place in a project, as a bar says it: the project's box (a pin,
-    /// pinned there) and its name, a shade darker and heavier than a
-    /// folder's, then the path in it in the bar's grey — and the name's
+    /// A place in a project, as a bar says it: the project's box and its
+    /// name, a shade darker and heavier than a folder's, then the path in it in the bar's grey — and the name's
     /// width, where a click goes to the project.
     static func projectPlace(_ p: ShownProject, place: String) -> (text: NSAttributedString, chipWidth: CGFloat) {
         let s = NSMutableAttributedString()
         let ink = Theme.secondaryText
-        // The pin small and slanted, as a pin stuck in, in the bar's quieter ink.
-        let mark = p.pinned ? obliquePin(size: 8.5, color: Theme.barInk) : Theme.symbol(Theme.projectSymbol, size: 9.5, weight: .medium, color: ink)
+        // Pinned or not, its box: the pin is on the bar's icon.
+        let mark = Theme.symbol(Theme.projectSymbol, size: 9.5, weight: .medium, color: ink)
         if let image = mark {
             let a = NSTextAttachment()
             a.image = image
@@ -3133,6 +3185,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         guard handle.out != out else { return }
         handle.set(out: out, image: icon.image, tint: icon.contentTintColor, mark: symbolName)
         if out { icon.isHidden = true }
+        updatePinBadge()
     }
 
     /// Debugging: the icon's handle folded out or in, and how it is.

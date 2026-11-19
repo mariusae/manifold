@@ -468,12 +468,15 @@ takes a fair share of the width from every column in proportion, and
 gives it back in proportion when it goes — the widths as they were, not
 made equal. Every copy of the space works the loans out alike from the
 same events.
-Each tile has a **bar** across its top: the block's symbol and its
+Each tile has a **bar** across its top: the block's symbol — over a ribbon
+the bar's height down its left side, as a bookmark in a book (the
+symbol's shape cut out of the ribbon, so the symbol lies on it), where the
+block is pinned (in its project if it's in one, else in the space; the
+tooltip says which, and the place says what project; the ribbon is
+pinning's mark throughout, its menus' Pin and the drop that pins) — and its
 **title** (a dot after it while edited and unsaved), where it is — in
 a project (§2.6), from the project: its name set apart, a shade darker
-and heavier than a folder's, after its box (a small pin leaning as one
-stuck in, in the bar's quieter grey, where the tile's block is pinned
-in it), on the title's baseline as an agent's name in its pill is, then the path in it, `brick/src/net`; the name
+and heavier than a folder's, after its box, on the title's baseline as an agent's name in its pill is, then the path in it, `brick/src/net`; the name
 clicked, the project's tile (the one here, else one made beside) — its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the

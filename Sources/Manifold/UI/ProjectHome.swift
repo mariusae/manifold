@@ -270,8 +270,9 @@ final class ProjectSidebar: NSView {
             needsLayout = true
         }
     }
-    /// What a drop over it does, while one would: a pin and its words.
-    private let pinNote = DropNote(symbol: "pin.fill")
+    /// What a drop over it does, while one would: the ribbon pinning
+    /// shows, and its words.
+    private let pinNote = DropNote(symbol: "bookmark.fill")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
