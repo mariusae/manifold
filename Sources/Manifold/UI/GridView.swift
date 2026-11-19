@@ -2240,12 +2240,22 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var isPinned = false
     private var highlightKey: String?
     private func drawHighlight() {
-        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)"
-        guard key != highlightKey else { return }
+        let r = pinBadge.frame
+        let image = icon.image
+        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)|\(r)|\(icon.frame)|\(image.map { ObjectIdentifier($0).hashValue } ?? 0)"
+        guard key != highlightKey, r.width > 0 else { return }
         highlightKey = key
+        // The icon's shape, a point wider, cut out of the strokes: the bar
+        // round it whatever its ink (paler, unfocused) and the accent's.
+        let cut = image.map { img -> (NSImage, NSRect) in
+            let f = icon.frame
+            let k = min(1, f.width / max(img.size.width, 1), f.height / max(img.size.height, 1))
+            let size = NSSize(width: img.size.width * k, height: img.size.height * k)
+            return (img, NSRect(x: f.midX - size.width / 2 - r.minX, y: f.midY - size.height / 2 - r.minY, width: size.width, height: size.height))
+        }
         effectiveAppearance.performAsCurrentDrawingAppearance {
             let ink = Theme.accent.usingColorSpace(.sRGB) ?? Theme.accent
-            pinBadge.image = TilePill.highlighted(ink: ink, dark: effectiveAppearance.isDark)
+            pinBadge.image = TilePill.highlighted(ink: ink, dark: effectiveAppearance.isDark, cut: cut)
         }
     }
     private func updatePinBadge() {
@@ -2888,11 +2898,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
-        // Pinned: its strokes drawn, then under the icon, rising to the right.
-        updatePinBadge()
-        let size = pinBadge.image?.size ?? .zero
+        // Pinned: under the icon, rising to the right, its strokes drawn there.
+        let size = Self.highlightSize
         let at = NSPoint(x: icon.frame.midX + 1, y: h / 2)
         pinBadge.frame = NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height)
+        updatePinBadge()
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
@@ -3066,8 +3076,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// A few strokes of a highlighter over the icon: rising to the right,
     /// each a little uneven, its ends cut by the chisel tip, see-through —
     /// darker where they cross, as a marker's are.
-    static func highlighted(ink: NSColor, dark: Bool) -> NSImage {
-        let size = NSSize(width: 28, height: 22)
+    static let highlightSize = NSSize(width: 28, height: 22)
+    /// `cut`: an image (where it's drawn) whose shape, a point wider, is
+    /// cut out of the strokes — the icon over them.
+    static func highlighted(ink: NSColor, dark: Bool, cut: (NSImage, NSRect)? = nil) -> NSImage {
+        let size = highlightSize
         // Each stroke: from, to (its middle line), how thick.
         let strokes: [(NSPoint, NSPoint, CGFloat)] = [
             (NSPoint(x: 3, y: 6), NSPoint(x: 23, y: 11), 6),
@@ -3090,6 +3103,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
                 p.close()
                 ink.withAlphaComponent(alpha).setFill()
                 p.fill()
+            }
+            if let (image, at) = cut {
+                for dx in [-1.0, 0, 1] { for dy in [-1.0, 0, 1] {
+                    image.draw(in: at.offsetBy(dx: dx, dy: dy), from: .zero, operation: .destinationOut, fraction: 1)
+                } }
             }
             return true
         }
