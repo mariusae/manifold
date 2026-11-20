@@ -196,6 +196,24 @@ final class StatusGlyph: NSView {
     private static let ignoresWindowOcclusion = ProcessInfo.processInfo.environment["MANIFOLD_NO_OCCLUSION"] != nil
 
     private func updateTurning() {
+        // At work with no word of how far: rays, their lengths a wave
+        // going round (as Claude's spark works); a host being reached, the
+        // ring turning.
+        let wantsRays = animates && look == .working(progress: nil)
+        if !wantsRays, rays != nil {
+            rays?.removeFromSuperlayer()
+            rays = nil
+            needsDisplay = true
+        }
+        if wantsRays {
+            if spinner != nil {
+                spinner?.removeFromSuperlayer()
+                spinner = nil
+            }
+            if rays == nil { makeRays() }
+            colorSpinner()
+            return
+        }
         guard animates else {
             if spinner != nil {
                 spinner?.removeFromSuperlayer()
@@ -242,6 +260,11 @@ final class StatusGlyph: NSView {
                     let angle = (ring.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double) ?? .nan
                     line += String(format: " %.0f° %@", angle * 180 / .pi, ring.animation(forKey: "turn") == nil ? "still" : "turning")
                 }
+                // The rays: each one's length now, as a share of its full.
+                if let rays = g.rays {
+                    let ends = (rays.sublayers ?? []).map { ($0.presentation() as? CAShapeLayer)?.strokeEnd ?? -1 }
+                    line += " rays " + ends.map { String(format: "%.2f", $0) }.joined(separator: " ")
+                }
                 out.append(line)
             }
             v.subviews.forEach(walk)
@@ -250,7 +273,65 @@ final class StatusGlyph: NSView {
         return out.isEmpty ? "none" : out.joined(separator: "\n")
     }
 
+    /// The rays, while they work: a layer each, its length swelling and
+    /// falling — each a little after the one before it, round the circle,
+    /// so the swell goes round — by the clock, as every glyph's does.
+    private var rays: CALayer?
+    static let rayCount = 10
+    static let rayPeriod: Double = 1.2
+
+    private func makeRays() {
+        wantsLayer = true
+        let holder = CALayer()
+        layer?.addSublayer(holder)
+        rays = holder
+        let now = CACurrentMediaTime(), into = phase.truncatingRemainder(dividingBy: Self.rayPeriod)
+        for i in 0..<Self.rayCount {
+            let ray = CAShapeLayer()
+            ray.fillColor = nil
+            ray.lineWidth = 1.5
+            ray.lineCap = .round
+            holder.addSublayer(ray)
+            // Out from the middle; drawn to its end, or a third of the way.
+            let grow = CABasicAnimation(keyPath: "strokeEnd")
+            grow.fromValue = 0.35
+            grow.toValue = 1
+            grow.duration = Self.rayPeriod / 2
+            grow.autoreverses = true
+            grow.repeatCount = .infinity
+            grow.isRemovedOnCompletion = false
+            grow.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            // Each a little behind the one before (the swell going round
+            // clockwise), already in its swell — none waiting to start.
+            grow.beginTime = now - into - Self.rayPeriod * Double(Self.rayCount - i) / Double(Self.rayCount)
+            ray.add(grow, forKey: "grow")
+        }
+        placeSpinner()
+        needsDisplay = true
+    }
+
+    /// A ray's path in a glyph `s` wide: out from near its middle, clockwise from the top.
+    static func rayPath(_ i: Int, side s: CGFloat) -> CGPath {
+        let c = CGPoint(x: s / 2, y: s / 2), inner = s * 0.14, outer = s / 2 - 0.9
+        let a = Double.pi / 2 - 2 * Double.pi * Double(i) / Double(rayCount)
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: c.x + inner * cos(a), y: c.y + inner * sin(a)))
+        p.addLine(to: CGPoint(x: c.x + outer * cos(a), y: c.y + outer * sin(a)))
+        return p
+    }
+
     private func placeSpinner() {
+        if let holder = rays {
+            let s = Self.size
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            holder.frame = CGRect(x: bounds.midX - s / 2, y: bounds.midY - s / 2, width: s, height: s)
+            for (i, ray) in (holder.sublayers ?? []).enumerated() {
+                ray.frame = holder.bounds
+                (ray as? CAShapeLayer)?.path = Self.rayPath(i, side: s)
+            }
+            CATransaction.commit()
+        }
         guard let ring = spinner else { return }
         let s = Self.size, radius = s / 2 - 1
         CATransaction.begin()
@@ -265,10 +346,16 @@ final class StatusGlyph: NSView {
     }
 
     private func colorSpinner() {
-        guard let ring = spinner else { return }
         let ink = look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.9)
         var color: CGColor?
         effectiveAppearance.performAsCurrentDrawingAppearance { color = ink.cgColor }
+        if let holder = rays {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for ray in holder.sublayers ?? [] { (ray as? CAShapeLayer)?.strokeColor = color }
+            CATransaction.commit()
+        }
+        guard let ring = spinner else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         ring.strokeColor = color
@@ -314,8 +401,8 @@ final class StatusGlyph: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let look else { return }
-        // The ring turning is the spinner's to show.
-        if spinner != nil { return }
+        // The ring turning, the rays working, are their layers' to show.
+        if spinner != nil || rays != nil { return }
         let s = Self.size
         Self.draw(look, in: NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s), phase: phase)
     }
@@ -363,9 +450,32 @@ final class StatusGlyph: NSView {
                 if p > 0 {
                     arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * Double(min(p, 100)) / 100, clockwise: true)
                 }
-            } else {
+            } else if look == .connecting {
                 let start = 45 - (phase * 180).truncatingRemainder(dividingBy: 360)
                 arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 270, clockwise: true)
+            } else {
+                // Working, still (a menu's row, Reduce motion): the rays as
+                // they stand at this moment of their swell.
+                ink.setStroke()
+                for i in 0..<rayCount {
+                    let t = (phase / rayPeriod + Double(rayCount - i) / Double(rayCount)).truncatingRemainder(dividingBy: 1)
+                    let k = 0.35 + 0.65 * (0.5 - 0.5 * cos(2 * Double.pi * (t < 0 ? t + 1 : t)))
+                    let full = rayPath(i, side: rect.width)
+                    var pts: [CGPoint] = []
+                    full.applyWithBlock { e in
+                        let el = e.pointee
+                        if el.type == .moveToPoint || el.type == .addLineToPoint { pts.append(el.points[0]) }
+                    }
+                    guard pts.count == 2 else { continue }
+                    let a = CGPoint(x: rect.minX + pts[0].x, y: rect.minY + pts[0].y), b = CGPoint(x: rect.minX + pts[1].x, y: rect.minY + pts[1].y)
+                    let ray = NSBezierPath()
+                    ray.lineWidth = 1.5
+                    ray.lineCapStyle = .round
+                    ray.move(to: a)
+                    ray.line(to: CGPoint(x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k))
+                    ray.stroke()
+                }
+                return
             }
             ink.setStroke()
             arc.stroke()

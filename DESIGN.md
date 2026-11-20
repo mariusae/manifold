@@ -992,9 +992,15 @@ dismissing for the blocks it leads, on the client's `attend` proposal.
 its sidebar row, a summary card (the Overview's), ⇧⌘A's rows, ⌥⇥'s
 cards, the strip's Needs you — are one **glyph** at the right edge
 (`StatusGlyph`), the same everywhere: **hollow while at work, filled
-when there's something for you, gone once seen**. `working`: an open
-ring turning (filling clockwise as the program says how far — OSC 9;4
-counts; still, with Reduce motion). `blocked`: an amber ring with a dot
+when there's something for you, gone once seen**. `working`: rays, a
+swell of their lengths going round them clockwise, as Claude's spark
+works (`StatusGlyph`'s, a layer each, the render server's to animate;
+still, with Reduce motion); with word of how far (OSC 9;4 counts), a
+ring filling clockwise instead. A row chosen in a list — the sidebar's,
+an outline's — is a pill raised a step off its ground: a shade lighter
+by night, darker by day, a hairline round it, its words as they were
+(`Flat.chosenRow`), the hover the same pill, fainter — not a band of
+the tint, which said "chosen" louder than anything else in the sidebar. `blocked`: an amber ring with a dot
 — not why (permission, a question, a sign-in: the tooltip says; you'll
 go to it anyway). `done` and `error` until attended to: a filled disc
 with a check, red for failed. A thread (§3.12): the ring while an agent
@@ -2150,7 +2156,9 @@ the tile): a strip under the header (`ProjectStrip`: the branch, the
 changes, the index — each a flat button, and each only when there's
 something to say or do: no "Not in a repository", no chip for an index
 there's no indexer for or one that's current (Index Again is in the
-tile's menu); with nothing to say, no strip, its + in the header) and a sidebar at the right
+tile's menu); with nothing to say, no strip, its + in the header —
+clicked, a new agent of Settings' kind; hovered a moment, a menu of the
+kinds its host has, each with its mark, `AgentKindsOnHover`) and a sidebar at the right
 (`ProjectSidebar`: its changes and recent commits, from its scoped git
 block, read on the listing's timer since that block isn't placed), the
 README under the files as ever, as wide as the tile — the sidebar

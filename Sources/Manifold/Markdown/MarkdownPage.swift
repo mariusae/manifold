@@ -213,6 +213,7 @@ enum MarkdownPage {
         // The window scrolled so `line` is at its top: as far down the
         // innermost element it's in, or at the next element after it.
         window.manifoldToLine = function (line) {
+          window.manifoldAnchor = line;
           var L = line + 1, whole = Math.floor(L), els = document.querySelectorAll('[data-sourcepos]');
           var best = null, span = 1e9, next = null, nextStart = 1e9;
           for (var i = 0; i < els.length; i++) {
@@ -263,11 +264,24 @@ enum MarkdownPage {
           if (window.manifoldWatching) return;
           window.manifoldWatching = true;
           function post(m) { try { window.webkit.messageHandlers.manifoldState.postMessage(m); } catch (e) {} }
-          var t1, t2, live = false;
+          var t1, t2, live = false, resizing = false, lastW = window.innerWidth;
+          // Wider or narrower (the tile's sidebar going or coming, the
+          // window resized): the line at its top kept there as the text
+          // rewraps — and a place just gone to, before the width changed,
+          // gone to again at the new one. Not an agent's conversation,
+          // which keeps to its end.
+          window.addEventListener('resize', function () {
+            if (window.innerWidth === lastW) return;
+            lastW = window.innerWidth;
+            if (document.querySelector('.mf-conversation') || window.manifoldAnchor == null) return;
+            resizing = true;
+            manifoldToLine(window.manifoldAnchor);
+            requestAnimationFrame(function () { resizing = false; });
+          });
           window.addEventListener('scroll', function () {
             // Where it is, every frame while it moves — for the scrubber to
             // follow live — and, once it has stopped, for keeping.
-            if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); }); }
+            if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); if (!resizing) window.manifoldAnchor = manifoldTopLine(); }); }
             clearTimeout(t1); t1 = setTimeout(function () { post({ scroll: window.scrollY }); }, 250);
           });
           // The pointer onto a block's link, or off it: one to a block

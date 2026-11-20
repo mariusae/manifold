@@ -402,6 +402,11 @@ final class ThreadChatView: NSView {
         } else {
             contextView.isHidden = true
         }
+        // Scrolled up, reading: what's read kept where it is as the rows are
+        // made again (something new come below, or a status) — they were
+        // laid out a moment narrower first, and the scroll kept as a
+        // number, so the page wiggled under the reader.
+        let anchor = firstShow || scrolledToEnd ? nil : readingAnchor()
         list.arrangedSubviews.forEach { $0.removeFromSuperview() }
         list.lineX = IssueLayout.lineX(inTile: m.inTile)
         list.spacing = m.inTile ? 14 : 10
@@ -439,8 +444,10 @@ final class ThreadChatView: NSView {
         }
         for agent in m.working {
             let name = t?.agents.first { $0.block == agent }?.name ?? "The agent"
-            list.addArrangedSubview(event(name, "is working on it…", symbol: "ellipsis", icon: m.icon(agent)))
+            list.addArrangedSubview(event(name, "is working on it…", symbol: "ellipsis", icon: m.icon(agent), working: true))
         }
+        // Each as wide as the list now, laid out once at its width.
+        list.arrangedSubviews.forEach(pinWidth)
         if t == nil {
             placeholder.stringValue = "Comment…"
         } else {
@@ -471,8 +478,9 @@ final class ThreadChatView: NSView {
         }
         if firstShow || scrolledToEnd || yoursCame {
             scrollToEnd()
-        } else if grew {
-            newBelow.announce("New comments")
+        } else {
+            if let anchor { keep(anchor) }
+            if grew { newBelow.announce("New comments") }
         }
         placeNewBelow()
         refillOutline()
@@ -570,8 +578,8 @@ final class ThreadChatView: NSView {
     private func who(_ e: ThreadEntry) -> String { e.author.shownName }
 
     /// Something that happened, on the conversation's line.
-    private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil) -> NSView {
-        fill(IssueEventView(who: who, words: words, at: at, symbol: symbol, icon: icon, tone: tone, inTile: model.inTile))
+    private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil, working: Bool = false) -> NSView {
+        fill(IssueEventView(who: who, words: words, at: at, symbol: symbol, icon: icon, tone: tone, inTile: model.inTile, working: working))
     }
 
     /// A comment, as an issue's: its author's picture, and a card — who
@@ -623,10 +631,37 @@ final class ThreadChatView: NSView {
     private func fill(_ v: NSView) -> NSView {
         v.translatesAutoresizingMaskIntoConstraints = false
         DispatchQueue.main.async { [weak self, weak v] in
-            guard let self, let v, v.superview === self.list else { return }
-            v.widthAnchor.constraint(equalTo: self.list.widthAnchor).isActive = true
+            guard let self, let v else { return }
+            self.pinWidth(v)
         }
         return v
+    }
+
+    /// A row as wide as the list, once it's in it (once only).
+    private func pinWidth(_ v: NSView) {
+        guard v.superview === list, !v.constraints.contains(where: { $0.identifier == "fill" }),
+              !list.constraints.contains(where: { $0.identifier == "fill" && $0.firstItem === v }) else { return }
+        let c = v.widthAnchor.constraint(equalTo: list.widthAnchor)
+        c.identifier = "fill"
+        c.isActive = true
+    }
+
+    /// The comment at the top of what shows, and how far below the top it
+    /// is: kept there as the rows are made again.
+    private func readingAnchor() -> (entry: String, offset: CGFloat)? {
+        let top = scroll.contentView.bounds.minY
+        guard let v = commentViews.first(where: { $0.frame.maxY > top }) else { return nil }
+        return (v.entryID, v.frame.minY - top)
+    }
+
+    private func keep(_ anchor: (entry: String, offset: CGFloat)) {
+        list.layoutSubtreeIfNeeded()
+        guard let v = commentViews.first(where: { $0.entryID == anchor.entry }), let doc = scroll.documentView else { return }
+        let clip = scroll.contentView
+        let y = max(0, min(v.frame.minY - anchor.offset, doc.frame.height - clip.bounds.height))
+        guard abs(clip.bounds.minY - y) > 0.5 else { return }
+        clip.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(clip)
     }
 
     /// Its rows let go of, to be made again (in new fonts) at the next show.

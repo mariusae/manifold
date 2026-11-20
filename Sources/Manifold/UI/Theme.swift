@@ -607,7 +607,7 @@ final class SelectionRowView: NSTableRowView {
         if let p = panel { drawPanel(p) }
         if hovered, !isSelected, !isGroupRowStyle, !inert, panel?.quiet != true {
             Flat.hovered.setFill()
-            Flat.rowBand(band).fill()
+            Flat.rowPill(band).fill()
         }
         guard marked else { return }
         Flat.mark.setFill()
@@ -616,8 +616,7 @@ final class SelectionRowView: NSTableRowView {
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected else { return }
-        Flat.chosen(emphasized: isEmphasized).setFill()
-        Flat.rowBand(band).fill()
+        Flat.chosenRow(band, emphasized: isEmphasized, dark: effectiveAppearance.isDark)
     }
 
     /// What's in view of it, across: a panel's rows are as wide as that,

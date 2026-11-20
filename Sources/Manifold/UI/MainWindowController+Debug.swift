@@ -39,7 +39,13 @@ extension MainWindowController {
     func inSight(_ block: BlockID) -> Bool {
         guard NSApp.isActive, let window, window.isVisible, !window.isMiniaturized, window.occlusionState.contains(.visible),
               !Self.screenAway(window.screen), stateView == nil, let a = arrangement else { return false }
-        return a.placements(of: block).contains { a.locate($0.id) != nil && (a.full == nil || a.full == $0.id) }
+        if a.placements(of: block).contains(where: { a.locate($0.id) != nil && (a.full == nil || a.full == $0.id) }) { return true }
+        // An agent seen where it answers: a thread it's in, on screen — in
+        // the overlay, or a tile here — its reply watched coming in there.
+        var threads: [BlockID] = []
+        if let o = threadUI.overlay, o.superview != nil, let t = o.chat.threadID { threads.append(t) }
+        threads += a.placements.filter { a.locate($0.id) != nil && (a.full == nil || a.full == $0.id) && $0.lens == .thread }.map(\.block)
+        return threads.contains { t in hosts.block(t)?.thread?.agents.contains { $0.block == block } == true }
     }
 
     /// The screen locked, or the window's display asleep: what's in front

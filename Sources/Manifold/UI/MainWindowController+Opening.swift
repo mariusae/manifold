@@ -476,7 +476,17 @@ extension MainWindowController {
     func openDirectory(_ path: String, from: PlacementID?, as d: Disposition? = nil, context: String? = nil) {
         let on = from.flatMap { shown($0)?.placement.block.host } ?? focusedHost
         let block = hosts.directoryBlock(for: path, on: on)
-        follow(block, lens: .directory, from: from, d ?? Self.disposition ?? .goTo, context: context)
+        followWhenMade(block, lens: .directory, from: from, d ?? Self.disposition ?? .goTo, context: context)
+    }
+
+    /// A block its host may still be making — a folder's, asked of it just
+    /// now (a file's is made here at once) — followed once it's here: the
+    /// first click on a folder said there was no such block, the second
+    /// opened it.
+    func followWhenMade(_ block: BlockID, lens: Lens? = nil, from placement: PlacementID?, _ d: Disposition, context: String? = nil) {
+        whenMade(block, what: "the folder", made: { [weak self] in self?.hosts.block(block) != nil }) { [weak self] in
+            self?.follow(block, lens: lens, from: placement, d, context: context)
+        }
     }
 
     /// Whether a terminal tile is an agent's: its turns are its outline

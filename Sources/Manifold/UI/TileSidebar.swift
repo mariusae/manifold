@@ -260,8 +260,19 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         guard rows.indices.contains(row), table.selectedRowIndexes.count < 2,
               NSApp.currentEvent?.modifierFlags.intersection([.command, .shift]).isEmpty != false else { return }
         let i = rows[row]
-        if onSearchEnd != nil { endSearch() }
+        if onSearchEnd != nil { return goAfterSearch(i) }
         outline.pick(i)
+    }
+
+    /// The search over — the sidebar put away, if it was for this — and
+    /// then gone to, with the tile at its new width: gone to first, the
+    /// place was found at the narrower width, and the text, rewrapped
+    /// wider as the sidebar went, put it elsewhere.
+    private func goAfterSearch(_ i: Int) {
+        let window = self.window
+        endSearch()
+        window?.contentView?.layoutSubtreeIfNeeded()
+        DispatchQueue.main.async { [outline] in outline.pick(i) }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -301,6 +312,17 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
 
     func controlTextDidChange(_ obj: Notification) { refilter() }
 
+    /// The field left some other way (a click in the tile): the search
+    /// over — not ending later, on an ordinary click, putting the sidebar
+    /// away under it.
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard onSearchEnd != nil else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.onSearchEnd != nil, !self.isSearching, self.window?.firstResponder !== self.table else { return }
+            self.endSearch()
+        }
+    }
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:)):
@@ -311,9 +333,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
             guard rows.indices.contains(table.selectedRow) else { return true }
             // The search over first (the sidebar put away, if it was for
             // this), then gone to: going re-renders the tile.
-            let i = rows[table.selectedRow]
-            endSearch()
-            outline.pick(i)
+            goAfterSearch(rows[table.selectedRow])
         case #selector(NSResponder.cancelOperation(_:)):
             // Escape: what's typed cleared, then, again, the field left.
             if filtering { search.stringValue = ""; refilter() } else { endSearch() }

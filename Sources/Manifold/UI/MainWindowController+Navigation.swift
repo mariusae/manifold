@@ -199,6 +199,12 @@ extension MainWindowController {
         }
         Drags.symbol = { [weak self] id in self?.hosts.block(id).map(Theme.symbolName(for:)) }
         AgentLook.block = { [weak self] id in self?.hosts.block(id) }
+        // A project's + hovered: the agents its host has (looked for again, for next time).
+        AgentKindsOnHover.kinds = { [weak self] host in
+            guard let self, let client = self.hosts.client(host ?? self.focusedHost) else { return [] }
+            if client.isConnected { client.propose(.indexAgents) }
+            return AgentCatalog.agents(among: client.desk.agents)
+        }
         AgentLook.spotlight = { [weak self] id in self?.spotlightAgent(id) }
         AgentLook.card = { [weak self] id, rect, window in self?.showAgentCard(id, beside: rect, in: window) }
         AgentLook.hideCard = { HoverCard.shared.hide() }

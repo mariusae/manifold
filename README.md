@@ -1398,8 +1398,9 @@ around it, and comes back with its history.
   row, its card in the Overview — and adds something only when the
   block needs you: one **glyph** at the right, the same everywhere —
   hollow while it's at work, filled when there's something for you,
-  gone once seen. Working, an open ring turning (filling as the program
-  says how far, as OSC 9;4 progress does; still, with Reduce motion);
+  gone once seen. Working, rays whose lengths swell round them as
+  Claude's spark does (still, with Reduce motion), or a ring filling as
+  the program says how far, as OSC 9;4 progress does;
   needing you, an amber ring with a dot (why — a permission, a
   question — in its tooltip); done or failed and not yet seen, a
   filled disc with a check, red if it failed; a thread an agent is at
@@ -1412,7 +1413,8 @@ around it, and comes back with its history.
   sight a moment — or all at once with **Mark All Seen** (⇧⌘J).
   What needs you at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile
-  not showing — the Mac's **notifications** say so: a terminal, agent or
+  not showing, nor a thread the agent is answering in (in its overlay
+  or a tile) — the Mac's **notifications** say so: a terminal, agent or
   notebook that comes to need you, finishes or fails, and a terminal's
   command that ran ten seconds or more ending (how long, and its exit
   status if it failed); clicked, one goes to the block, and the command. The sidebar's

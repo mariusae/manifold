@@ -192,6 +192,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     /// strip has nothing else to say and isn't shown.
     private let newAgent = IconButton("plus", size: 10, tip: "New Agent — pinned in this project, asked in its threads; shown under Pinned")
     @objc private func newAgentClicked() { projectAction(.newAgent) }
+    private lazy var agentKinds = AgentKindsOnHover(newAgent)
     private var homeShown = true
     /// The homepage shows: a project's, and not turned off.
     var home: Bool { homeShown && project != nil }
@@ -253,6 +254,9 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
         addSubview(header)
         strip.isHidden = true
         strip.onAction = { [weak self] a in self?.projectAction(a) }
+        strip.host = block.host
+        agentKinds.host = block.host
+        agentKinds.onPick = { [weak self] command in self?.projectAction(.newAgentOf(command)) }
         sidebar.isHidden = true
         sidebar.onAction = { [weak self] a in self?.projectAction(a) }
         addSubview(strip)

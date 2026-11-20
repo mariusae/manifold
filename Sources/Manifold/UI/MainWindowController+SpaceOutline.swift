@@ -346,7 +346,7 @@ extension MainWindowController {
             return
         }
         if let (block, lens) = pathBlock(path, isDirectory: isDir.boolValue, on: on) {
-            follow(block, lens: lens, from: placement, d, context: target)
+            followWhenMade(block, lens: lens, from: placement, d, context: target)
         } else {
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
@@ -457,7 +457,7 @@ extension MainWindowController {
         path = hosts.expandingTilde(path, on: on)
         if !path.hasPrefix("/") && !path.hasPrefix("~"), let base { path = base.appendingPathComponent(path) }
         if path.hasSuffix("/") {
-            follow(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, from: from, d, context: target)
+            followWhenMade(hosts.directoryBlock(for: String(path.dropLast()), on: on), lens: .directory, from: from, d, context: target)
         } else if let kind = Self.mediaKind(path), let client = hosts.client(on) {
             follow(client.mediaBlock(for: path, kind: kind), lens: kind == .pdf ? .pdf : .image, from: from, d, context: target)
         } else if line == nil, let client = hosts.client(on) {
@@ -466,7 +466,7 @@ extension MainWindowController {
             client.listFolder(path) { [weak self] entries in
                 guard let self else { return }
                 if entries != nil {
-                    self.follow(self.hosts.directoryBlock(for: path, on: on), lens: .directory, from: from, d, context: target)
+                    self.followWhenMade(self.hosts.directoryBlock(for: path, on: on), lens: .directory, from: from, d, context: target)
                 } else {
                     self.follow(self.hosts.textBlock(for: path, on: on), lens: Lens.default(for: .text, path: path), from: from, d, context: target)
                 }

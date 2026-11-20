@@ -411,6 +411,11 @@ final class GridView: NSView, NSDraggingSource {
                 // layout then doesn't make them again), so a tile maximized
                 // from its bar was hidden at the next render — an empty card.
                 setHidden(tile.view, full != id && (pushedOut(id) || collapsed.contains(id) || summarized.contains(id) || behindFull))
+                // Its bar too: hidden with it behind the maximized tile.
+                if behindFull {
+                    pill.isHidden = true
+                    badges[id]?.isHidden = true
+                }
                 // Its summary standing in for it, said afresh with each render.
                 if let card = tileSummaries[id], summarized.contains(id), let s = summaryContent(tile) { card.content = s }
             }
@@ -1458,8 +1463,11 @@ final class GridView: NSView, NSDraggingSource {
         zooming = id
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak self] in
-            guard let self, self.zooming == id else { return }
-            self.zooming = nil
+            guard let self else { return }
+            // Laid out again whatever came since: a render on the way (a
+            // status, a keystroke elsewhere) forgot the zoom, and the rest's
+            // bars, left shown under it on the way, stayed over the tile.
+            if self.zooming == id { self.zooming = nil }
             self.needsLayout = true
         }
         if Motion.reduced {

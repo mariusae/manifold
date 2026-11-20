@@ -13,8 +13,10 @@ enum ProjectAction {
     case settings
     /// A block at work in it (a terminal, an agent, a note), gone to.
     case go(BlockID)
-    /// A new agent (§3.12), pinned in it.
+    /// A new agent (§3.12), pinned in it: the usual kind, or one chosen
+    /// (its command).
     case newAgent
+    case newAgentOf(String)
     /// Its threads (§3.12): all of them, as a list in a tile of its own.
     case threads
     /// Things dropped on its sidebar, by address: pinned in it (§2.6).
@@ -113,6 +115,9 @@ final class ProjectStrip: NSView {
     /// + for a new agent (§3.12), at its right: pinned in the project,
     /// started with nothing showing it — its card under Pinned.
     private let addAgent = IconButton("plus", size: 10, tip: "New Agent — pinned in this project, asked in its threads; shown under Pinned")
+    private lazy var agentKinds = AgentKindsOnHover(addAgent)
+    /// Its project's host: whose agents its + offers.
+    var host: HostID? { didSet { agentKinds.host = host } }
     static let height: CGFloat = 30
 
     override init(frame: NSRect) {
@@ -127,6 +132,7 @@ final class ProjectStrip: NSView {
         addAgent.target = self
         addAgent.action = #selector(newAgent)
         addSubview(addAgent)
+        agentKinds.onPick = { [weak self] command in self?.onAction?(.newAgentOf(command)) }
     }
 
     @objc private func newAgent() { onAction?(.newAgent) }
@@ -767,4 +773,46 @@ private final class LanguageBar: NSView {
     }
 
     var debugState: String { "LANGUAGES " + shares.map { "\($0.name) \(Self.percent($0.share))" }.joined(separator: ", ") }
+}
+
+/// A "new agent" + hovered a moment: the kinds of agent its host has, as a
+/// menu under it, each with its mark — chosen, one of that kind made in the
+/// project (clicked, it's the usual one, Settings' agent).
+final class AgentKindsOnHover {
+    /// The kinds its host has (asked as it opens, from the host's index).
+    static var kinds: ((HostID?) -> [AgentCatalog.Agent])?
+    private weak var button: IconButton?
+    var host: HostID?
+    var onPick: ((String) -> Void)?
+    private var work: DispatchWorkItem?
+
+    init(_ button: IconButton) {
+        self.button = button
+        button.onHover = { [weak self] over in
+            guard let self else { return }
+            self.work?.cancel()
+            guard over else { return }
+            let w = DispatchWorkItem { [weak self] in self?.open() }
+            self.work = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: w)
+        }
+    }
+
+    private func open() {
+        guard let button, button.window != nil, !button.isHiddenOrHasHiddenAncestor else { return }
+        let kinds = Self.kinds?(host) ?? []
+        // One kind: nothing to choose — the click makes it.
+        guard kinds.count > 1 else { return }
+        let menu = NSMenu()
+        let head = NSMenuItem(title: "New Agent in This Project", action: nil, keyEquivalent: "")
+        head.isEnabled = false
+        menu.addItem(head)
+        for k in kinds {
+            let item = ClosureMenuItem(k.name, symbol: "sparkle") { [weak self] in self?.onPick?(k.command) }
+            if let mark = AgentIcons.image(k.command, size: 13) { item.image = mark }
+            menu.addItem(item)
+        }
+        let below = NSPoint(x: 0, y: button.isFlipped ? button.bounds.height + 4 : -4)
+        menu.popUp(positioning: nil, at: below, in: button)
+    }
 }

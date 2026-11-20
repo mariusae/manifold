@@ -204,6 +204,8 @@ extension MainWindowController: DirectoryViewDelegate {
             }
         case .newAgent:
             _ = newProjectAgent(in: project, on: client)
+        case let .newAgentOf(command):
+            _ = client.newProjectAgent(root: project.root, command: command)
         case let .pin(addresses):
             pinDropped(addresses, in: project)
         case .threads:

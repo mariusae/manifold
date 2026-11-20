@@ -269,8 +269,12 @@ final class IssueEventView: NSView, OnTheLine {
     private let badge = Badge()
     private let label: NSTextField
     private let inTile: Bool
+    /// At work (an agent on it, now): the working glyph's rays going round
+    /// on the line, in the halo's place — the conversation's typing
+    /// indicator, as every working thing is said (§3.7).
+    private var spinner: StatusGlyph?
 
-    init(who: String?, words: String, at: Stamp?, symbol: String, icon: NSImage?, tone: NSColor?, inTile: Bool) {
+    init(who: String?, words: String, at: Stamp?, symbol: String, icon: NSImage?, tone: NSColor?, inTile: Bool, working: Bool = false) {
         self.inTile = inTile
         let size: CGFloat = inTile ? 12 : 11.5
         let s = NSMutableAttributedString()
@@ -287,6 +291,13 @@ final class IssueEventView: NSView, OnTheLine {
         badge.icon = icon
         badge.tone = tone
         for v in [badge, label] as [NSView] { addSubview(v) }
+        if working {
+            let g = StatusGlyph()
+            g.look = .working(progress: nil)
+            spinner = g
+            badge.isHidden = true
+            addSubview(g)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -294,13 +305,17 @@ final class IssueEventView: NSView, OnTheLine {
     override var isFlipped: Bool { true }
     override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: inTile ? 22 : 20) }
 
-    var lineGaps: [NSRect] { [badge.frame.insetBy(dx: -IssueLayout.lineClearance, dy: -IssueLayout.lineClearance)] }
+    var lineGaps: [NSRect] { [(spinner?.frame ?? badge.frame).insetBy(dx: -IssueLayout.lineClearance, dy: -IssueLayout.lineClearance)] }
 
     override func layout() {
         super.layout()
         let d: CGFloat = inTile ? 14 : 12
         let x = IssueLayout.lineX(inTile: inTile)
         badge.frame = NSRect(x: x - d / 2, y: ((bounds.height - d) / 2).rounded(), width: d, height: d)
+        if let spinner {
+            let s = StatusGlyph.size
+            spinner.frame = NSRect(x: x - s / 2, y: ((bounds.height - s) / 2).rounded(), width: s, height: s)
+        }
         label.sizeToFit()
         let lx = IssueLayout.cardX(inTile: inTile) + 2
         label.frame = NSRect(x: lx, y: ((bounds.height - label.frame.height) / 2).rounded(), width: max(0, bounds.width - lx), height: label.frame.height)

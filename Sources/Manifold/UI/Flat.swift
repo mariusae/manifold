@@ -94,6 +94,41 @@ enum Flat {
     /// A list row's band — hovered, or chosen — as every list draws it: in
     /// from the row's sides and a hair from its top and bottom, rounded as
     /// a control is.
+    /// A row chosen in a list (the sidebar's, a tree's): raised a step off
+    /// what it's on, a pill — its ground a shade lighter, a hairline round
+    /// it, its words as they were — not a band of the tint, which said
+    /// "chosen" louder than anything else in the sidebar. Fainter in a
+    /// window not in front.
+    static func chosenRow(_ r: NSRect, emphasized: Bool, dark: Bool) {
+        let box = r.insetBy(dx: 6, dy: 1.5)
+        let radius = min(box.height * 0.38, 11)
+        let path = rowPill(r)
+        if dark {
+            Theme.text.withAlphaComponent(emphasized ? 0.13 : 0.08).setFill()
+            path.fill()
+            let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
+            rim.lineWidth = 1
+            Theme.text.withAlphaComponent(emphasized ? 0.15 : 0.08).setStroke()
+            rim.stroke()
+        } else {
+            // On a light ground the same, a step darker: a white pill was
+            // lost on a white list.
+            Theme.text.withAlphaComponent(emphasized ? 0.075 : 0.045).setFill()
+            path.fill()
+            let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
+            rim.lineWidth = 1
+            Theme.text.withAlphaComponent(emphasized ? 0.09 : 0.05).setStroke()
+            rim.stroke()
+        }
+    }
+
+    /// A row's pill: where its selection and its hover go.
+    static func rowPill(_ r: NSRect) -> NSBezierPath {
+        let box = r.insetBy(dx: 6, dy: 1.5)
+        let radius = min(box.height * 0.38, 11)
+        return NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
+    }
+
     static func rowBand(_ r: NSRect) -> NSBezierPath {
         NSBezierPath(roundedRect: r.insetBy(dx: 6, dy: 1), xRadius: Radius.control, yRadius: Radius.control)
     }
