@@ -476,9 +476,12 @@ strokes of a highlighter in the theme's accent, rising to the right,
 see-through and darker where they cross, the symbol over them. The
 bookmark (a ribbon) is pinning's mark elsewhere, its menus' Pin and
 the drop that pins — and its
-**title** (a dot after it while edited and unsaved), where it is — in
+**title** (a dot after it while edited and unsaved; none where it
+would only name its kind — "Terminal", "Shell Notebook", "Processes" —
+which its symbol says, nor an agent's program, which its pill does; a
+note's "Untitled" stays), where it is — in
 a project (§2.6), from the project: its name set apart, a shade darker
-and heavier than a folder's, after its box, on the title's baseline as an agent's name in its pill is, then the path in it, `brick/src/net`; the name
+and heavier than a folder's, after its box (as tall as its letters), on the title's baseline, then the path in it, `brick/src/net`; the name
 clicked, the project's tile (the one here, else one made beside) — its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the
@@ -490,7 +493,14 @@ where it is, its links and its buttons; the others are a quiet name and
 status (a page's address stays, being what's clicked to type another),
 their room kept so nothing moves as they come and go. (Shown on every
 bar, a screen of tiles was a screen of buttons; hidden till hovered,
-they once moved the links' pill — now they don't.) A view's own controls
+they once moved the links' pill — now they don't.) All on a bar is
+centred on one line, its middle: the symbol, an agent's pill (its name
+centred in it, as a shape of its own), the buttons, chips and status,
+and the title's capitals, what follows the title on its baseline;
+and one gap, 8pt, between each and the next, ink to ink. The
+focus ring is outside the tile's edge, so that middle is the same
+focused or not (over the edge, it covered the bar's top and the middle
+moved a point). A view's own controls
 follow the same rule: a folder's Project Home, tree and columns show
 while the pointer's on its tile. The bar is the
 tile's handle to drag, grows the tile a step when clicked (⌥-click
@@ -992,15 +1002,19 @@ dismissing for the blocks it leads, on the client's `attend` proposal.
 its sidebar row, a summary card (the Overview's), ⇧⌘A's rows, ⌥⇥'s
 cards, the strip's Needs you — are one **glyph** at the right edge
 (`StatusGlyph`), the same everywhere: **hollow while at work, filled
-when there's something for you, gone once seen**. `working`: rays, a
-swell of their lengths going round them clockwise, as Claude's spark
-works (`StatusGlyph`'s, a layer each, the render server's to animate;
-still, with Reduce motion); with word of how far (OSC 9;4 counts), a
-ring filling clockwise instead. A row chosen in a list — the sidebar's,
-an outline's — is a pill raised a step off its ground: a shade lighter
-by night, darker by day, a hairline round it, its words as they were
-(`Flat.chosenRow`), the hover the same pill, fainter — not a band of
-the tint, which said "chosen" louder than anything else in the sidebar. `blocked`: an amber ring with a dot
+when there's something for you, gone once seen**. `working`: three
+dots, a light going along them left to right — each lit 0.2s after the
+one before, then a rest, a 1.2s round (`StatusGlyph`'s, a layer each,
+the render server's to animate; still, with Reduce motion), the "typing"
+of a thread's agent at work as of a tile; with word of how far (OSC 9;4
+counts), a ring filling clockwise instead. A row chosen in a list — the
+sidebar's, an outline's — is a pill of glass raised a step off its
+ground: a shade lighter by night, darker by day, a sheen at its top,
+a rim catching the light along its top and bottom and fading round its
+ends, its words as they were (`Flat.chosenRow`); the hover the same
+glass, fainter, fading in as the pointer comes and out as it goes
+(`HoverGlass`) — not a band of the tint, which said "chosen" louder
+than anything else in the sidebar. `blocked`: an amber ring with a dot
 — not why (permission, a question, a sign-in: the tooltip says; you'll
 go to it anyway). `done` and `error` until attended to: a filled disc
 with a check, red for failed. A thread (§3.12): the ring while an agent
@@ -1603,9 +1617,18 @@ blindness, a little lighter on a dark ground (`AgentIdentity`: the
 annotations `agent.name`, `agent.color`). Its title stays what its
 program says it's doing (Claude Code's summary of its task, or of what it
 did). So its tile's bar has its name in a pill of its colour before that
-title — its colour enough to tell it by, no more of it on the bar (the pill double-clicked,
-or Rename in the tile's menu, renames it there, in place: its name, not
-its title; `mani annotate <it> agent.name=…` does too); its face — its initial
+title, in the icon's place — the icon gone: the pill is the bar's
+handle, as the icon is for other tiles (clicked, the tile's menu, Rename
+first; dragged, the agent), and under the pointer it lifts, a short
+shadow under it, and opens at its left to show its maker's mark (Claude's
+spark, Codex's blossom: what made it, said only then, and in its tooltip
+and menu). Pinned, the name is on a highlighter's swipe of its colour
+instead of the pill (the pin's strokes, as they're behind another
+tile's icon). With no room on the bar for more, the pill is its initial
+in a disc, as the sidebar shows it. Its colour is enough to tell it by,
+no more of it on the bar (Rename in the tile's menu renames it there, in
+place: its name, not its title; `mani annotate <it> agent.name=…` does
+too); its face — its initial
 on its colour — is its mark in a thread's comments and events, the
 sidebar's rows, the `@` list and the lead's menu, each with what it is
 and does (its kind, its task, working or waiting on you or idle); the

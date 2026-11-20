@@ -4,9 +4,10 @@ import ManifoldCore
 /// A block's status in one glyph (§3.7), the same wherever it's shown —
 /// bars, sidebar rows and cards (`StatusMark`), a notebook's cells, a
 /// block's pill in a note, a host's row: hollow while at work, filled
-/// when there's something for you. An open ring turning for running
-/// (filling clockwise from the top when the program says how far, as OSC
-/// 9;4 or 7501 progress does; still, with Reduce motion), an amber ring
+/// when there's something for you. Three dots for running, a light
+/// going along them (a ring filling clockwise from the top instead when
+/// the program says how far, as OSC 9;4 or 7501 progress does; still,
+/// with Reduce motion), an amber ring
 /// with a dot for a block that needs you, a filled disc with a check for
 /// done and not yet read (red for failed), a filled dot for a thread with
 /// something new, a plain grey check once read (where it's said at all),
@@ -196,21 +197,20 @@ final class StatusGlyph: NSView {
     private static let ignoresWindowOcclusion = ProcessInfo.processInfo.environment["MANIFOLD_NO_OCCLUSION"] != nil
 
     private func updateTurning() {
-        // At work with no word of how far: rays, their lengths a wave
-        // going round (as Claude's spark works); a host being reached, the
-        // ring turning.
-        let wantsRays = animates && look == .working(progress: nil)
-        if !wantsRays, rays != nil {
-            rays?.removeFromSuperlayer()
-            rays = nil
+        // At work with no word of how far: three dots, a wave of light
+        // going along them; a host being reached, the ring turning.
+        let wantsDots = animates && look == .working(progress: nil)
+        if !wantsDots, dots != nil {
+            dots?.removeFromSuperlayer()
+            dots = nil
             needsDisplay = true
         }
-        if wantsRays {
+        if wantsDots {
             if spinner != nil {
                 spinner?.removeFromSuperlayer()
                 spinner = nil
             }
-            if rays == nil { makeRays() }
+            if dots == nil { makeDots() }
             colorSpinner()
             return
         }
@@ -260,10 +260,10 @@ final class StatusGlyph: NSView {
                     let angle = (ring.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double) ?? .nan
                     line += String(format: " %.0f° %@", angle * 180 / .pi, ring.animation(forKey: "turn") == nil ? "still" : "turning")
                 }
-                // The rays: each one's length now, as a share of its full.
-                if let rays = g.rays {
-                    let ends = (rays.sublayers ?? []).map { ($0.presentation() as? CAShapeLayer)?.strokeEnd ?? -1 }
-                    line += " rays " + ends.map { String(format: "%.2f", $0) }.joined(separator: " ")
+                // The dots: how lit each is now.
+                if let dots = g.dots {
+                    let lit = (dots.sublayers ?? []).map { $0.presentation()?.opacity ?? -1 }
+                    line += " dots " + lit.map { String(format: "%.2f", $0) }.joined(separator: " ")
                 }
                 out.append(line)
             }
@@ -273,62 +273,67 @@ final class StatusGlyph: NSView {
         return out.isEmpty ? "none" : out.joined(separator: "\n")
     }
 
-    /// The rays, while they work: a layer each, its length swelling and
-    /// falling — each a little after the one before it, round the circle,
-    /// so the swell goes round — by the clock, as every glyph's does.
-    private var rays: CALayer?
-    static let rayCount = 10
-    static let rayPeriod: Double = 1.2
+    /// The dots, while it works: a layer each, lit and dimmed in turn —
+    /// each a little after the one before, so the light goes along them,
+    /// then a rest — by the clock, as every glyph's are.
+    private var dots: CALayer?
+    static let dotCount = 3
+    static let dotPeriod: Double = 1.2
+    /// How long after the one before each dot lights.
+    static let dotStep: Double = 0.2
+    static let dotDim: Float = 0.35
 
-    private func makeRays() {
+    private func makeDots() {
         wantsLayer = true
         let holder = CALayer()
         layer?.addSublayer(holder)
-        rays = holder
-        let now = CACurrentMediaTime(), into = phase.truncatingRemainder(dividingBy: Self.rayPeriod)
-        for i in 0..<Self.rayCount {
-            let ray = CAShapeLayer()
-            ray.fillColor = nil
-            ray.lineWidth = 1.5
-            ray.lineCap = .round
-            holder.addSublayer(ray)
-            // Out from the middle; drawn to its end, or a third of the way.
-            let grow = CABasicAnimation(keyPath: "strokeEnd")
-            grow.fromValue = 0.35
-            grow.toValue = 1
-            grow.duration = Self.rayPeriod / 2
-            grow.autoreverses = true
-            grow.repeatCount = .infinity
-            grow.isRemovedOnCompletion = false
-            grow.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            // Each a little behind the one before (the swell going round
-            // clockwise), already in its swell — none waiting to start.
-            grow.beginTime = now - into - Self.rayPeriod * Double(Self.rayCount - i) / Double(Self.rayCount)
-            ray.add(grow, forKey: "grow")
+        dots = holder
+        let now = CACurrentMediaTime(), into = phase.truncatingRemainder(dividingBy: Self.dotPeriod)
+        for i in 0..<Self.dotCount {
+            let dot = CALayer()
+            dot.opacity = Self.dotDim
+            holder.addSublayer(dot)
+            // Up quickly, down more slowly, then dim till its turn comes again.
+            let lit = CAKeyframeAnimation(keyPath: "opacity")
+            lit.values = [Self.dotDim, 1, Self.dotDim, Self.dotDim]
+            lit.keyTimes = [0, 0.17, 0.45, 1]
+            lit.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeInEaseOut), CAMediaTimingFunction(name: .linear)]
+            lit.duration = Self.dotPeriod
+            lit.repeatCount = .infinity
+            lit.isRemovedOnCompletion = false
+            lit.beginTime = now - into + Self.dotStep * Double(i)
+            dot.add(lit, forKey: "lit")
         }
         placeSpinner()
         needsDisplay = true
     }
 
-    /// A ray's path in a glyph `s` wide: out from near its middle, clockwise from the top.
-    static func rayPath(_ i: Int, side s: CGFloat) -> CGPath {
-        let c = CGPoint(x: s / 2, y: s / 2), inner = s * 0.14, outer = s / 2 - 0.9
-        let a = Double.pi / 2 - 2 * Double.pi * Double(i) / Double(rayCount)
-        let p = CGMutablePath()
-        p.move(to: CGPoint(x: c.x + inner * cos(a), y: c.y + inner * sin(a)))
-        p.addLine(to: CGPoint(x: c.x + outer * cos(a), y: c.y + outer * sin(a)))
-        return p
+    /// The dots in a glyph `s` wide: centred, across.
+    static func dotRects(side s: CGFloat) -> [CGRect] {
+        let d = (s * 0.215 * 2).rounded() / 2, gap = (s * 0.34 * 2).rounded() / 2
+        let x0 = s / 2 - gap
+        return (0..<dotCount).map { i in CGRect(x: x0 + gap * CGFloat(i) - d / 2, y: s / 2 - d / 2, width: d, height: d) }
+    }
+
+    /// How lit dot `i` is at `phase` (seconds, by the clock), as its layer would be.
+    static func dotLight(_ i: Int, phase: Double) -> CGFloat {
+        var t = (phase - dotStep * Double(i)).truncatingRemainder(dividingBy: dotPeriod) / dotPeriod
+        if t < 0 { t += 1 }
+        let dim = CGFloat(dotDim)
+        if t < 0.17 { return dim + (1 - dim) * CGFloat(t / 0.17) }
+        if t < 0.45 { return 1 - (1 - dim) * CGFloat((t - 0.17) / 0.28) }
+        return dim
     }
 
     private func placeSpinner() {
-        if let holder = rays {
+        if let holder = dots {
             let s = Self.size
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             holder.frame = CGRect(x: bounds.midX - s / 2, y: bounds.midY - s / 2, width: s, height: s)
-            for (i, ray) in (holder.sublayers ?? []).enumerated() {
-                ray.frame = holder.bounds
-                (ray as? CAShapeLayer)?.path = Self.rayPath(i, side: s)
+            for (dot, r) in zip(holder.sublayers ?? [], Self.dotRects(side: s)) {
+                dot.frame = r
+                dot.cornerRadius = r.width / 2
             }
             CATransaction.commit()
         }
@@ -349,10 +354,10 @@ final class StatusGlyph: NSView {
         let ink = look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.9)
         var color: CGColor?
         effectiveAppearance.performAsCurrentDrawingAppearance { color = ink.cgColor }
-        if let holder = rays {
+        if let holder = dots {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            for ray in holder.sublayers ?? [] { (ray as? CAShapeLayer)?.strokeColor = color }
+            for dot in holder.sublayers ?? [] { dot.backgroundColor = color }
             CATransaction.commit()
         }
         guard let ring = spinner else { return }
@@ -401,8 +406,8 @@ final class StatusGlyph: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let look else { return }
-        // The ring turning, the rays working, are their layers' to show.
-        if spinner != nil || rays != nil { return }
+        // The ring turning, the dots working, are their layers' to show.
+        if spinner != nil || dots != nil { return }
         let s = Self.size
         Self.draw(look, in: NSRect(x: (bounds.width - s) / 2, y: (bounds.height - s) / 2, width: s, height: s), phase: phase)
     }
@@ -454,26 +459,11 @@ final class StatusGlyph: NSView {
                 let start = 45 - (phase * 180).truncatingRemainder(dividingBy: 360)
                 arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 270, clockwise: true)
             } else {
-                // Working, still (a menu's row, Reduce motion): the rays as
-                // they stand at this moment of their swell.
-                ink.setStroke()
-                for i in 0..<rayCount {
-                    let t = (phase / rayPeriod + Double(rayCount - i) / Double(rayCount)).truncatingRemainder(dividingBy: 1)
-                    let k = 0.35 + 0.65 * (0.5 - 0.5 * cos(2 * Double.pi * (t < 0 ? t + 1 : t)))
-                    let full = rayPath(i, side: rect.width)
-                    var pts: [CGPoint] = []
-                    full.applyWithBlock { e in
-                        let el = e.pointee
-                        if el.type == .moveToPoint || el.type == .addLineToPoint { pts.append(el.points[0]) }
-                    }
-                    guard pts.count == 2 else { continue }
-                    let a = CGPoint(x: rect.minX + pts[0].x, y: rect.minY + pts[0].y), b = CGPoint(x: rect.minX + pts[1].x, y: rect.minY + pts[1].y)
-                    let ray = NSBezierPath()
-                    ray.lineWidth = 1.5
-                    ray.lineCapStyle = .round
-                    ray.move(to: a)
-                    ray.line(to: CGPoint(x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k))
-                    ray.stroke()
+                // Working, still (a menu's row, Reduce motion): the dots
+                // as they stand at this moment of their wave.
+                for (i, d) in dotRects(side: rect.width).enumerated() {
+                    Theme.text.withAlphaComponent(0.9 * dotLight(i, phase: phase)).setFill()
+                    NSBezierPath(ovalIn: d.offsetBy(dx: rect.minX, dy: rect.minY)).fill()
                 }
                 return
             }

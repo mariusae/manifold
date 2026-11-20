@@ -207,7 +207,7 @@ parts from the Mac's conventions on purpose.
   reload from the server, the cache passed over). The bar's menu (its icon) carries
   the view's own verbs first: a page's Back, Forward, Reload and Copy
   Address; the process list's Refresh Now and Filter.
-  The focused tile has a ring around it. **⌘Z undoes** the space's
+  The focused tile has a ring around it, outside its edge. **⌘Z undoes** the space's
   last change at your hand (a tile placed, taken off, moved, docked,
   resized, maximized), ⇧⌘Z redoes, a hundred deep per space, when
   nothing else takes the key (an editor undoes its own text). Undo
@@ -1398,8 +1398,8 @@ around it, and comes back with its history.
   row, its card in the Overview — and adds something only when the
   block needs you: one **glyph** at the right, the same everywhere —
   hollow while it's at work, filled when there's something for you,
-  gone once seen. Working, rays whose lengths swell round them as
-  Claude's spark does (still, with Reduce motion), or a ring filling as
+  gone once seen. Working, three dots with a light going along them
+  (still, with Reduce motion), or a ring filling as
   the program says how far, as OSC 9;4 progress does;
   needing you, an amber ring with a dot (why — a permission, a
   question — in its tooltip); done or failed and not yet seen, a

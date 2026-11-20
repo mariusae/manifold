@@ -285,12 +285,6 @@ final class GridView: NSView, NSDraggingSource {
                     pill?.sidebar = view.sidebarShown
                 }
                 pill.onClose = { [weak self] in self?.delegate?.gridCloseClicked(id) }
-                // An agent's name pill: clicked, the tile focused (not grown —
-                // a double-click's first click would grow it); twice, renamed.
-                pill.onAgentClick = { [weak self] clicks in
-                    self?.delegate?.gridFocus(id)
-                    if clicks >= 2 { self?.delegate?.gridRenameAgent(id) }
-                }
                 // The bar clicked grows the tile, ⌥-clicked fills its column;
                 // ⌃-clicked (or its symbol clicked) it's the tile's menu.
                 pill.onClick = { [weak self, weak pill] at, mods in
@@ -849,7 +843,7 @@ final class GridView: NSView, NSDraggingSource {
             focusRing.isHidden = false
             let body = frameNow[focused] ?? t.view.frame
             let card = Self.card(of: body)
-            if focusRing.frame != card {
+            if focusRing.card != card {
                 // With its tile as it glides; to another (the one left
                 // focused by a tile closed), from where that one was.
                 if gliding, ringFor == focused, focusRing.frame != .zero {
@@ -857,7 +851,7 @@ final class GridView: NSView, NSDraggingSource {
                 } else if gliding, ringFor != nil, let was = wasFrames[focused], was.height > 0 {
                     focusRing.glide(to: card, from: Self.card(of: was))
                 } else {
-                    focusRing.frame = card
+                    focusRing.card = card
                 }
                 focusRing.needsDisplay = true
             }
@@ -2237,9 +2231,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onPathClick: (() -> Void)?
     /// Dragged: the tile, or (from the icon) the thing it stands for.
     var onDragStart: ((NSEvent, _ thing: Bool) -> Void)?
-    /// An agent's name pill clicked, with how many clicks in a row.
-    var onAgentClick: ((Int) -> Void)?
-    private var lastAgentClick: TimeInterval = 0
     private let glass = NSView()
     private let icon = NSImageView()
     /// The icon's handle, folded out under the pointer (`IconHandle`).
@@ -2294,8 +2285,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
     }
     private func updatePinBadge() {
-        pinBadge.isHidden = !isPinned
-        if isPinned { drawHighlight() }
+        // An agent's pill shows its pin itself: its name on the strokes.
+        agentPill.pinned = isPinned
+        pinBadge.isHidden = !isPinned || pillHandles
+        if isPinned, !pillHandles { drawHighlight() }
     }
     private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
     /// A field over the place while the pill edits it (a page's
@@ -2456,10 +2449,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         addSubview(glass)
         // An agent's: its name in a pill of its colour before its title (what
         // its program says it's doing) — its colour enough to tell it by.
-        agentPill.wantsLayer = true
         agentPill.isHidden = true
         agentPill.themed { [weak self] _ in self?.paintAgent() }
-        agentPill.layer?.cornerRadius = 8
         addSubview(agentPill)
         icon.contentTintColor = Theme.secondaryText
         name.font = UIType.title
@@ -2481,8 +2472,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         editor.cell?.lineBreakMode = .byTruncatingTail
         editor.delegate = self
         editor.isHidden = true
-        handle.onIn = { [weak self] in self?.icon.isHidden = false; self?.updatePinBadge() }
+        handle.onIn = { [weak self] in
+            guard let self else { return }
+            self.icon.isHidden = self.pillHandles
+            self.updatePinBadge()
+        }
         for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
+        // An agent's pill over the title and its place: opened, it lifts over them.
+        addSubview(agentPill, positioned: .below, relativeTo: editor)
         // The highlight behind the icon: the icon over it.
         addSubview(pinBadge, positioned: .below, relativeTo: icon)
         inkButtons()
@@ -2728,18 +2725,21 @@ final class TilePill: NSView, NSTextFieldDelegate {
         didSet {
             guard agentColor != oldValue else { return }
             agentPill.isHidden = agentColor == nil
+            icon.isHidden = pillHandles || handle.out
             paintAgent()
+            updatePinBadge()
             needsLayout = true
         }
     }
+    /// An agent with a name pill: the pill is its handle, in the icon's
+    /// place, the icon gone (its maker's mark shown as the pill opens).
+    private var pillHandles: Bool { agentColor != nil }
     /// Its ink on the pill: white, dark on the light colours.
     private var agentInk: NSColor = .white
+    private var markKey = ""
 
     private func paintAgent() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let c = agentColor?.cgColor
-            agentPill.layer?.backgroundColor = c
-        }
+        agentPill.color = agentColor
         agentPill.ink = agentInk
     }
 
@@ -2776,7 +2776,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let name = AgentLook.name(of: b)
             if agentPill.name != name { agentPill.name = name; needsLayout = true }
             agentInk = AgentLook.ink(on: b)
-            agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent — double-click to rename" }
+            // Its maker's mark, for the pill to show as it opens: only a
+            // maker's own (Claude's, Codex's…), not our generic sparkle.
+            let markKey = shown.symbol.hasPrefix(AgentIcons.prefix) ? "\(shown.symbol)|\(agentInk)" : ""
+            if markKey != self.markKey {
+                self.markKey = markKey
+                agentPill.mark = markKey.isEmpty ? nil : Theme.symbol(shown.symbol, size: 9, weight: .semibold, color: agentInk)
+            }
+            agentPill.toolTip = AgentIdentity.color(of: b).map { "\(name), the \(AgentLook.colorNames[$0]) agent" + (b.agent.map { " · \($0.name)" } ?? "") }
         }
         agentColor = AgentLook.color(of: shown.block)
         paintAgent()
@@ -2788,6 +2795,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let said = base.trimmingCharacters(in: .whitespaces)
             if [a.name, a.command, AgentLook.name(of: b), b.kind.defaultTitle, "Agent"].contains(where: { $0.caseInsensitiveCompare(said) == .orderedSame }) { base = "" }
         }
+        // Named only by its kind ("Terminal", "Shell Notebook",
+        // "Processes"): its symbol says that, and where it is follows it.
+        // A note's "Untitled" stays (it says it has no name yet, and is
+        // where you give it one), as a space's does.
+        if agentColor == nil, let b = shown.block, Self.kindSaysIt.contains(b.kind),
+           base.trimmingCharacters(in: .whitespaces) == b.kind.defaultTitle { base = "" }
         let after = base.isEmpty && shown.isDormant ? nil : shown.isDormant ? "(dormant)" : shown.exitedWords.map { "(\($0))" }
         let title = [base, after].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
         // Edited and unsaved: a dot after the name, amber when the file
@@ -2922,6 +2935,17 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
     }
 
+    /// Between what's on a bar, one to the next: the icon's ink and the
+    /// title's words, the pill and the words after it, the title and its
+    /// place.
+    static let gap: CGFloat = 8
+    /// A label's words begin this far into it: taken from a gap that
+    /// ends at words.
+    static let wordsInset: CGFloat = 1.5
+
+    /// Kinds whose default title only says what their symbol does.
+    static let kindSaysIt: Set<BlockKind> = [.terminal, .notebook, .process, .git, .smartlog, .search, .diff, .web, .output, .ui, .thread]
+
     /// Kept for the grid's asking: the bar is above the content, never
     /// over the text cursor, so it never gets out of the way.
     var dodging = false
@@ -2946,18 +2970,24 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let at = NSPoint(x: icon.frame.midX + 1, y: h / 2)
         pinBadge.frame = NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height)
         updatePinBadge()
-        if iconSpot != trackedSpot { updateTrackingAreas() }
-        x += 22
-        if agentColor != nil {
+        agentPill.compact = false
+        var pillFull: CGFloat = 0
+        if pillHandles {
+            // An agent's pill in the icon's place, its handle; on the bar's
+            // middle as all else is, its name centred in it: a shape of its
+            // own, not the title's words. What follows after the bar's one
+            // gap; on its stack, the badge at its corner.
+            pillFull = agentPill.wantedWidth
+            agentPill.frame = NSRect(x: x, y: ((h - AgentNamePill.height) / 2).rounded(), width: agentPill.frameWidth, height: AgentNamePill.height)
+            stackBadge.frame = NSRect(x: x + pillFull - 6, y: agentPill.frame.minY - 4, width: 11, height: 11)
+            x += pillFull + Self.gap - Self.wordsInset
+        } else {
+            x += 22
             // Pinned, past the highlighter's strokes (they rise to the
-            // icon's right), not on them.
-            if isPinned { x = max(x, (pinBadge.frame.maxX + 2).rounded()) }
-            let pw = agentPill.wantedWidth
-            // A point under the bar's middle: its name's baseline the
-            // title's (centred, its smaller capitals sat a point above them).
-            agentPill.frame = NSRect(x: x - 2, y: ((h - 16) / 2).rounded() - 1, width: pw, height: 16)
-            x += pw + 6
+            // icon's right), not on them nor hard against them.
+            if isPinned { x = max(x, (pinBadge.frame.maxX + 4).rounded()) }
         }
+        if iconSpot != trackedSpot { updateTrackingAreas() }
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
         // order, so the name keeps at least a little room — the place
         // goes first (below), then the links' pill shrinks to its arrow
@@ -3002,6 +3032,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // Last of all, the host's pill: what's on another host says so
         // while there's any room to.
         if spare() < nameNeed, showHost { showHost = false }
+        // Narrower still, an agent's pill to its initial in a disc, as the
+        // sidebar has it: still its handle, still its colour.
+        if pillHandles, spare() < nameNeed {
+            agentPill.compact = true
+            x -= pillFull - agentPill.wantedWidth
+            agentPill.frame.size.width = agentPill.frameWidth
+            stackBadge.frame.origin.x = agentPill.frame.minX + agentPill.wantedWidth - 6
+        }
         linkGiven = linkRoom > 0 ? linkRoom - 14 : 0
         var right = bounds.width - 10
         close.isHidden = !showClose
@@ -3048,8 +3086,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let wanted = nameWanted
         let hostRoom = showHost ? hostWidth + 8 : 0
         let nw = min(wanted, max(0, right - x - hostRoom))
-        name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-        var sx = nw > 0 ? x - 2 + nw + 8 : x + 2
+        name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded(), width: nw, height: th)
+        // Its capitals' middle on the bar's, where its icon and pills are.
+        if let font = name.font {
+            let baseline = h / 2 - font.capHeight / 2
+            name.frame.origin.y = ((baseline - name.lastBaselineOffsetFromBottom) * 2).rounded() / 2
+        }
+        // The place after the title by the bar's one gap — words to words,
+        // as from the icon to the title and from the pill to what follows;
+        // with no title, where the title would have begun.
+        var sx = nw > 0 ? x - 2 + nw - 4 + Self.gap - Self.wordsInset : x - 2
         hostPill.isHidden = !showHost
         if showHost {
             hostPill.frame = NSRect(x: sx - 2, y: ((h - HostPill.height) / 2).rounded(), width: hostWidth, height: HostPill.height)
@@ -3166,13 +3212,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let s = NSMutableAttributedString()
         let ink = Theme.secondaryText
         // Pinned or not, its box: the pin is on the bar's icon.
-        let mark = Theme.symbol(Theme.projectSymbol, size: 9.5, weight: .medium, color: ink)
+        // As tall as the name's letters (a size larger, it hung below
+        // their baseline and over their tops), its middle on their capitals'.
+        let mark = Theme.symbol(Theme.projectSymbol, size: 7.75, weight: .medium, color: ink)
         if let image = mark {
             let a = NSTextAttachment()
             a.image = image
-            // Its middle on the capitals' middle.
             let font = UIType.detail
-            a.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height) / 2).rounded(), width: image.size.width, height: image.size.height)
+            a.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height)).rounded() / 2, width: image.size.width, height: image.size.height)
             s.append(NSAttributedString(attachment: a))
             s.append(NSAttributedString(string: "\u{200A}", attributes: [.font: UIType.detail]))
         }
@@ -3191,7 +3238,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// Where the icon takes the pointer: clicked, its menu; dragged, the
     /// thing the tile stands for.
-    private var iconSpot: NSRect { icon.frame.insetBy(dx: -8, dy: -6) }
+    private var iconSpot: NSRect {
+        guard pillHandles else { return icon.frame.insetBy(dx: -8, dy: -6) }
+        // An agent's pill, as far as it shows (opened, past its frame).
+        var r = agentPill.frame
+        r.size.width = agentPill.shownWidth
+        return r.insetBy(dx: -3, dy: -5)
+    }
     private var trackedSpot: NSRect?
 
     // The pointer on the icon: its handle folds out, to be taken. On the
@@ -3245,6 +3298,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     private func setHandle(_ out: Bool) {
+        if pillHandles {
+            // The pill lifts and opens (its mark), and takes the pointer as far as it shows.
+            guard agentPill.out != out else { return }
+            agentPill.set(out: out)
+            updateTrackingAreas()
+            return
+        }
         guard handle.out != out else { return }
         handle.set(out: out, image: icon.image, tint: icon.contentTintColor, mark: symbolName)
         if out { icon.isHidden = true }
@@ -3317,14 +3377,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
             let p = convert(event.locationInWindow, from: nil)
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
+            // An agent's pill is its icon: clicked, the menu (Rename first).
             if iconSpot.contains(p) {
                 onIconClick?(event.modifierFlags)
-            } else if !agentPill.isHidden, agentPill.frame.contains(p), event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty, let onAgentClick {
-                // Counted here: the window hands a bar every click as a first
-                // (`MainWindow.sendEvent`), lest the title bar take a second.
-                let twice = event.timestamp - lastAgentClick < NSEvent.doubleClickInterval
-                lastAgentClick = twice ? 0 : event.timestamp
-                onAgentClick(twice ? 2 : 1)
             } else {
                 onClick?(p, event.modifierFlags)
             }
@@ -3655,14 +3710,30 @@ final class FocusRingView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         ring.frame = bounds
-        ring.path = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
+        ring.path = Self.path(bounds)
         CATransaction.commit()
+    }
+
+    /// Outside the tile's edge — its own frame the tile's grown by its
+    /// width, its corners the tile's grown as much: drawn over the tile's
+    /// edge it covered the bar's top, and the bar's middle, where all on
+    /// it is centred, was a point off its own.
+    static let width: CGFloat = 2
+    private static func path(_ r: CGRect) -> CGPath {
+        CGPath(roundedRect: r.insetBy(dx: width / 2, dy: width / 2), cornerWidth: Radius.surface + width / 2, cornerHeight: Radius.surface + width / 2, transform: nil)
+    }
+    /// The tile it's round.
+    var card: NSRect {
+        get { frame.insetBy(dx: Self.width, dy: Self.width) }
+        set { frame = newValue.insetBy(dx: -Self.width, dy: -Self.width) }
     }
 
     /// Moved with its tile as the tile glides there (`GridView.glide`):
     /// placed at once, its ring carried from where it shows now.
     /// `from`: where to carry it from instead, in its superview's terms.
-    func glide(to frame: NSRect, from start: NSRect? = nil) {
+    func glide(to card: NSRect, from startCard: NSRect? = nil) {
+        let frame = card.insetBy(dx: -Self.width, dy: -Self.width)
+        let start = startCard?.insetBy(dx: -Self.width, dy: -Self.width)
         let was = self.frame
         let now = start.map { $0.offsetBy(dx: -frame.minX, dy: -frame.minY) }
             ?? (ring.presentation() ?? ring).frame.offsetBy(dx: was.minX - frame.minX, dy: was.minY - frame.minY)
@@ -3673,7 +3744,7 @@ final class FocusRingView: NSView {
         let position = CABasicAnimation(keyPath: "position")
         position.fromValue = NSValue(point: CGPoint(x: now.midX, y: now.midY))
         let path = CABasicAnimation(keyPath: "path")
-        path.fromValue = CGPath(roundedRect: from.insetBy(dx: 1, dy: 1), cornerWidth: Radius.surface, cornerHeight: Radius.surface, transform: nil)
+        path.fromValue = Self.path(from)
         let g = CAAnimationGroup()
         g.animations = [bounds, position, path]
         g.duration = GridView.glide
@@ -3811,37 +3882,169 @@ extension GridView: DropTaking {
 }
 
 
-/// An agent's name in a pill of its colour, on its tile's bar: the name
-/// drawn, centred, the same room either side of it (a label's own inset
-/// had it off centre).
+/// An agent's name in a pill of its colour, on its tile's bar — in the
+/// icon's place, and its handle as the icon is for other tiles: clicked,
+/// the tile's menu; dragged, the agent; under the pointer it lifts and
+/// opens at its left to show its maker's mark (Claude's spark, Codex's
+/// blossom). Pinned, the name on a highlighter's swipe of its colour
+/// instead of the pill. Its parts are layers, so the opening is smooth:
+/// the name drawn the same room either side of it at rest (a label's own
+/// inset had it off centre).
 final class AgentNamePill: NSControl {
-    var name = "" { didSet { if name != oldValue { needsDisplay = true } } }
-    var ink: NSColor = .white { didSet { needsDisplay = true } }
+    var name = "" { didSet { if name != oldValue { refresh() } } }
+    var ink: NSColor = .white { didSet { if ink != oldValue { refresh() } } }
+    var color: NSColor? { didSet { if color != oldValue { refresh() } } }
+    var pinned = false { didSet { if pinned != oldValue { refresh() } } }
+    /// Its maker's mark, shown as it opens.
+    var mark: NSImage? { didSet { if mark !== oldValue { refresh() } } }
+    /// Only its initial, in a disc: on a bar with no room for more.
+    var compact = false { didSet { if compact != oldValue { refresh() } } }
+    private(set) var out = false
     static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    static let height: CGFloat = 16
     private static let pad: CGFloat = 7
+    private static let markSide: CGFloat = 10
 
+    private let capsule = CALayer()
+    private let swipe = CAShapeLayer()
+    /// A second, fainter pass of the highlighter over the first's top.
+    private let pass = CAShapeLayer()
+    private let words = CATextLayer()
+    private let markLayer = CALayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = false
+        capsule.cornerRadius = Self.height / 2
+        capsule.shadowColor = NSColor.black.cgColor
+        capsule.shadowOffset = CGSize(width: 0, height: -1)
+        capsule.shadowRadius = 2.5
+        swipe.shadowColor = NSColor.black.cgColor
+        swipe.shadowOffset = CGSize(width: 0, height: -1)
+        swipe.shadowRadius = 2.5
+        markLayer.contentsGravity = .resizeAspect
+        markLayer.opacity = 0
+        for l in [swipe, pass, capsule, markLayer, words] as [CALayer] { layer?.addSublayer(l) }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var shownName: String { compact ? String(name.prefix(1)) : name }
     private var attributes: [NSAttributedString.Key: Any] { [.font: Self.font, .foregroundColor: ink] }
-    var wantedWidth: CGFloat { ceil((name as NSString).size(withAttributes: attributes).width) + Self.pad * 2 }
-    // Clicked (twice: renamed) and dragged, the bar's to take. A control,
-    // as the bar's title is: at the window's top, under its title bar, a
-    // plain view's click moved the window instead.
+    private var nameSize: NSSize { (shownName as NSString).size(withAttributes: attributes) }
+    /// At rest: its name and the room either side; compact, a disc.
+    var wantedWidth: CGFloat { compact ? Self.height : ceil(nameSize.width) + Self.pad * 2 }
+    /// Opened: the mark's room too.
+    private var openWidth: CGFloat { wantedWidth + (mark != nil && !compact ? Self.markSide + 4 : 0) }
+    /// How wide it shows now.
+    var shownWidth: CGFloat { out ? openWidth : wantedWidth }
+    /// Its frame: as wide as it opens, so it's drawn whole as it does
+    /// (what's past it, transparent, the bar's anyway).
+    var frameWidth: CGFloat { max(wantedWidth, openWidth) }
+
+    /// Under the pointer (or not): lifted, opened to show its mark.
+    func set(out: Bool) {
+        guard out != self.out else { return }
+        self.out = out
+        place(animated: true)
+    }
+
+    private func refresh() {
+        let scale = window?.backingScaleFactor ?? 2
+        words.contentsScale = scale
+        markLayer.contentsScale = scale
+        words.string = NSAttributedString(string: shownName, attributes: attributes)
+        markLayer.contents = mark
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let c = color?.cgColor
+            capsule.backgroundColor = c
+            swipe.fillColor = color?.withAlphaComponent(0.88).cgColor
+            pass.fillColor = color?.withAlphaComponent(0.45).cgColor
+        }
+        capsule.isHidden = pinned
+        swipe.isHidden = !pinned
+        pass.isHidden = !pinned
+        place(animated: false)
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        refresh()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refresh()
+    }
+
+    // Placed afresh only when its height changes: its width changing is
+    // its opening, already under way.
+    override func setFrameSize(_ newSize: NSSize) {
+        let was = frame.size.height
+        super.setFrameSize(newSize)
+        if newSize.height != was { place(animated: false) }
+    }
+
+    private func place(animated: Bool) {
+        CATransaction.begin()
+        if animated && !Motion.reduced {
+            CATransaction.setAnimationDuration(out ? 0.16 : 0.22)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: out ? .easeOut : .easeInEaseOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        let w = shownWidth, h = Self.height
+        let y = ((bounds.height - h) / 2).rounded()
+        capsule.frame = CGRect(x: 0, y: y, width: w, height: h)
+        swipe.frame = capsule.frame
+        pass.frame = capsule.frame
+        swipe.path = Self.swipePath(width: w, height: h)
+        pass.path = Self.passPath(width: w, height: h)
+        // Its name's capitals' middle on the pill's; at its right end's
+        // room from it, so it moves over as the mark comes in at the left.
+        let size = nameSize, font = Self.font
+        let baseline = y + h / 2 - font.capHeight / 2
+        let nx = compact ? ((w - size.width) / 2).rounded() : w - Self.pad - ceil(size.width)
+        words.frame = CGRect(x: nx, y: baseline + font.ascender - size.height, width: ceil(size.width) + 1, height: ceil(size.height))
+        let ms = Self.markSide
+        markLayer.frame = CGRect(x: Self.pad - 1, y: y + (h - ms) / 2, width: ms, height: ms)
+        markLayer.opacity = out && !compact ? 1 : 0
+        // Lifted: a short shadow under it.
+        capsule.shadowOpacity = out ? 0.3 : 0
+        swipe.shadowOpacity = out ? 0.25 : 0
+        pass.opacity = 1
+        CATransaction.commit()
+    }
+
+    /// A highlighter's swipe `width` long: a chisel's broad stroke rising
+    /// a little to the right, its ends slanted as a chisel's are, its
+    /// edges not quite straight — the pin's strokes, behind the name.
+    static func swipePath(width w: CGFloat, height h: CGFloat) -> CGPath {
+        stroke(from: CGPoint(x: -1, y: h / 2 - 1.2), to: CGPoint(x: w + 1, y: h / 2 + 1.2), thick: h - 1, slant: 3, bow: 0.7)
+    }
+
+    /// The second pass: shorter, thinner, along the first's top.
+    static func passPath(width w: CGFloat, height h: CGFloat) -> CGPath {
+        stroke(from: CGPoint(x: 2.5, y: h / 2 + 2.6), to: CGPoint(x: w - 1.5, y: h / 2 + 4.4), thick: h * 0.42, slant: 2.4, bow: -0.5)
+    }
+
+    private static func stroke(from a: CGPoint, to b: CGPoint, thick t: CGFloat, slant: CGFloat, bow: CGFloat) -> CGPath {
+        let p = CGMutablePath()
+        let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        p.move(to: CGPoint(x: a.x - slant, y: a.y + t / 2))
+        p.addQuadCurve(to: CGPoint(x: b.x - slant, y: b.y + t / 2), control: CGPoint(x: mid.x - slant, y: mid.y + t / 2 + bow))
+        p.addLine(to: CGPoint(x: b.x + slant, y: b.y - t / 2))
+        p.addQuadCurve(to: CGPoint(x: a.x + slant, y: a.y - t / 2), control: CGPoint(x: mid.x + slant, y: mid.y - t / 2 + bow * 0.6))
+        p.closeSubpath()
+        return p
+    }
+
+    // Clicked and dragged, the bar's to take. A control, as the bar's
+    // title is: at the window's top, under its title bar, a plain view's
+    // click moved the window instead.
     override func mouseDown(with event: NSEvent) { superview?.mouseDown(with: event) }
     override func mouseDragged(with event: NSEvent) { superview?.mouseDragged(with: event) }
     override func mouseUp(with event: NSEvent) { superview?.mouseUp(with: event) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    /// Drawn bottom up, as a plain view is.
-    override var isFlipped: Bool { false }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let s = name as NSString
-        let size = s.size(withAttributes: attributes)
-        // The baseline under the capitals' middle at the pill's. The line
-        // is drawn from its bottom, and it's taller than the font's ascent
-        // and descent: set from its top, where the ascent begins.
-        let font = Self.font
-        let baseline = bounds.midY - font.capHeight / 2
-        s.draw(at: NSPoint(x: ((bounds.width - size.width) / 2).rounded(), y: baseline + font.ascender - size.height),
-               withAttributes: attributes)
-    }
 }

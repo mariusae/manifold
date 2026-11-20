@@ -533,6 +533,13 @@ extension MainWindowController: GridDelegate {
         guard let a = arrangement, let p = a.placement(placement), let id = selected else { return nil }
         let block = p.block
         let menu = NSMenu()
+        // An agent's: its pill is its handle, and this its menu — renaming
+        // it first (a double-click on the pill did, when a click didn't
+        // open this).
+        if let b = hosts.block(block), AgentLook.color(of: b) != nil {
+            menu.addItem(ClosureMenuItem("Rename \(AgentLook.name(of: b))…", symbol: "character.cursor.ibeam") { [weak self] in self?.gridRenameAgent(placement) })
+            menu.addItem(.separator())
+        }
         let maximized = a.full == placement
         menu.addItem(ClosureMenuItem(maximized ? "Restore" : "Maximize", symbol: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") { [weak self] in self?.gridToggleFull(placement) })
         // As the pill's clicks are (a column just filled, put back first).
@@ -584,9 +591,6 @@ extension MainWindowController: GridDelegate {
             menu.addItem(.separator())
         }
         if let clear = clearStatusItem(block) { menu.addItem(clear) }
-        if let b = hosts.block(block), AgentLook.color(of: b) != nil {
-            menu.addItem(ClosureMenuItem("Rename \(AgentLook.name(of: b))…", symbol: "character.cursor.ibeam") { [weak self] in self?.gridRenameAgent(placement) })
-        }
         if let last = hosts.block(block)?.terminal?.turns?.last {
             let sub = NSMenu()
             for item in turnItems(last, of: block, beside: placement) { sub.addItem(item) }
