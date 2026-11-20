@@ -59,7 +59,7 @@ final class GhosttyRuntime {
         // the theme's own accent, the palette's own.
         let tint = appearance.tint == .theme ? ""
             : "cursor-color = \(Tints.hex(appearance.tint.caret, dark: dark))\nselection-background = \(Tints.hex(appearance.tint.textSelection, dark: dark))\n"
-        return baseConfig + "\n" + TerminalPalette.current(dark: dark).config + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\n"
+        return baseConfig + "\n" + TerminalPalette.current(dark: dark).config + "\n" + tint + (appearance.theme == .custom ? appearance.typography.monospaced.terminalConfig : appearance.theme.terminalConfig) + "\ncontrast-correction = \(mode)\ncursor-style-locked = \(appearance.terminalCursorLocked)\n"
     }
 
     private static func makeConfig(_ appearance: Appearance, dark: Bool) -> ghostty_config_t? {

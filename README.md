@@ -1658,7 +1658,7 @@ Appearance ▸ Contrast). (How: DESIGN.md §11.)
 
 **Settings** (⌘,) holds every setting, a pane each: Appearance (light or
 dark, the theme, the accent color, the fonts, the editor's text, contrast), Terminals (copy
-on select, ending idle shells), History, Remoting and Language Servers.
+on select, ending idle shells, the cursor), History, Remoting and Language Servers.
 The **accent color** — Theme (the theme's own), System (the macOS one),
 Blue, Orange (Overcast's), Purple, Pink, Green or Graphite — colors the app's own marks: the focus
 ring, what's chosen or toggled, the selection bands, progress, the caret
@@ -2137,8 +2137,9 @@ shaders compile at runtime (no Metal toolchain needed), archives are merged in
 a way Apple's current `libtool` accepts, a surface can run a command
 directly (without `login(1)`), a surface can have its bytes carried by the
 app (a "manual" I/O backend: no pty, no process — output fed in, typing and
-sizes handed out), which is how terminals reach their hosts, and the
-contrast correction above. Zig 0.15 can't read the stubs of the newest
+sizes handed out), which is how terminals reach their hosts, the
+contrast correction above, and a cursor kept as it's set, whatever programs
+ask (`cursor-style-locked`). Zig 0.15 can't read the stubs of the newest
 macOS SDKs, so the build uses a cloned copy of the SDK whose stubs also
 name arm64.
 

@@ -74,6 +74,10 @@ public struct Appearance: Codable, Equatable, Sendable {
     public var advancedTypography = false
     /// Which icons the app's own are: Pierre's, or the system's.
     public var icons: IconSet = .pierre
+    /// A terminal's cursor always the bar, whatever programs ask for
+    /// (`DECSCUSR`): a block left by a shell's vi mode, or vim, or one an
+    /// agent asks for, is the bar still.
+    public var terminalCursorLocked = true
 
     public init(theme: FontTheme = .apple, colorScheme: ColorScheme = .system,
                 contrastCorrection: ContrastCorrection = .deuteranopia,
@@ -101,6 +105,7 @@ public struct Appearance: Codable, Equatable, Sendable {
         advancedTypography = theme == .custom
         c.opt(&advancedTypography, .advancedTypography)
         c.opt(&icons, .icons)
+        c.opt(&terminalCursorLocked, .terminalCursorLocked)
     }
 }
 

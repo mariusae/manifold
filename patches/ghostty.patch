@@ -591,7 +591,7 @@ index 9276c99..1e65199 100644
      }
  
 diff --git a/src/config/Config.zig b/src/config/Config.zig
-index 278ffd7..a60fb3c 100644
+index 278ffd7..1a544be 100644
 --- a/src/config/Config.zig
 +++ b/src/config/Config.zig
 @@ -772,6 +772,12 @@ foreground: Color = .{ .r = 0xFF, .g = 0xFF, .b = 0xFF },
@@ -607,6 +607,18 @@ index 278ffd7..a60fb3c 100644
  /// Color palette for the 256 color form that many terminal applications use.
  /// The syntax of this configuration is `N=COLOR` where `N` is 0 to 255 (for
  /// the 256 colors in the terminal color table) and `COLOR` is a typical RGB
+@@ -890,6 +896,11 @@ palette: Palette = .{},
+ ///   * `false`
+ @"cursor-style-blink": ?bool = null,
+ 
++/// Keep the cursor as `cursor-style` and `cursor-style-blink` set it,
++/// whatever running programs ask with `DECSCUSR` (`CSI q`): a request is
++/// taken as one for the default. (Manifold.)
++@"cursor-style-locked": bool = false,
++
+ /// The color of the text under the cursor. If this is not set, a default will
+ /// be chosen.
+ /// Specified as either hex (`#RRGGBB` or `RRGGBB`) or a named X11 color.
 diff --git a/src/config/url.zig b/src/config/url.zig
 index e7cf860..5ee7919 100644
 --- a/src/config/url.zig
@@ -2057,6 +2069,34 @@ index 0000000..27637c9
 +        _ = alloc;
 +    }
 +};
+diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
+index dcd0d8c..222c897 100644
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -159,6 +159,7 @@ pub const DerivedConfig = struct {
+     image_storage_limit: usize,
+     cursor_style: terminalpkg.CursorStyle,
+     cursor_blink: ?bool,
++    cursor_style_locked: bool,
+     cursor_color: ?configpkg.Config.TerminalColor,
+     foreground: configpkg.Config.Color,
+     background: configpkg.Config.Color,
+@@ -195,6 +196,7 @@ pub const DerivedConfig = struct {
+             .image_storage_limit = config.@"image-storage-limit",
+             .cursor_style = config.@"cursor-style",
+             .cursor_blink = config.@"cursor-style-blink",
++            .cursor_style_locked = config.@"cursor-style-locked",
+             .cursor_color = config.@"cursor-color",
+             .foreground = config.foreground,
+             .background = config.background,
+@@ -296,6 +298,7 @@ pub fn init(self: *Termio, alloc: Allocator, opts: termio.Options) !void {
+         .enquiry_response = opts.config.enquiry_response,
+         .default_cursor_style = opts.config.cursor_style,
+         .default_cursor_blink = opts.config.cursor_blink,
++        .cursor_style_locked = opts.config.cursor_style_locked,
+     };
+ 
+     const thread_enter_state = try ThreadEnterState.create(
 diff --git a/src/termio/backend.zig b/src/termio/backend.zig
 index ae0e200..cd4c1ed 100644
 --- a/src/termio/backend.zig
@@ -2163,10 +2203,45 @@ index ae0e200..cd4c1ed 100644
      }
  
 diff --git a/src/termio/stream_handler.zig b/src/termio/stream_handler.zig
-index 8c1b5b8..ffa887b 100644
+index 8c1b5b8..a1a9f4a 100644
 --- a/src/termio/stream_handler.zig
 +++ b/src/termio/stream_handler.zig
-@@ -951,6 +951,10 @@ pub const StreamHandler = struct {
+@@ -46,6 +46,9 @@ pub const StreamHandler = struct {
+     default_cursor_style: terminal.CursorStyle,
+     default_cursor_blink: ?bool,
+ 
++    /// Programs' cursor style requests (DECSCUSR) taken as the default's.
++    cursor_style_locked: bool = false,
++
+     /// The response to use for ENQ requests. The memory is owned by
+     /// whoever owns StreamHandler.
+     enquiry_response: []const u8,
+@@ -112,9 +115,10 @@ pub const StreamHandler = struct {
+         self.enquiry_response = config.enquiry_response;
+         self.default_cursor_style = config.cursor_style;
+         self.default_cursor_blink = config.cursor_blink;
++        self.cursor_style_locked = config.cursor_style_locked;
+ 
+-        // If our cursor is the default, then we update it immediately.
+-        if (self.default_cursor) self.setCursorStyle(.default) catch |err| {
++        // If our cursor is the default (or must be), then we update it immediately.
++        if (self.default_cursor or self.cursor_style_locked) self.setCursorStyle(.default) catch |err| {
+             log.warn("failed to set default cursor style: {}", .{err});
+         };
+ 
+@@ -873,8 +877,10 @@ pub const StreamHandler = struct {
+ 
+     pub fn setCursorStyle(
+         self: *StreamHandler,
+-        style: terminal.CursorStyleReq,
++        requested: terminal.CursorStyleReq,
+     ) !void {
++        const style: terminal.CursorStyleReq = if (self.cursor_style_locked) .default else requested;
++
+         // Assume we're setting to a non-default.
+         self.default_cursor = false;
+ 
+@@ -951,6 +957,10 @@ pub const StreamHandler = struct {
          self.terminal.fullReset();
          try self.setMouseShape(.text);
  

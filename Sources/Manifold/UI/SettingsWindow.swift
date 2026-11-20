@@ -665,6 +665,7 @@ final class FontThemeList: NSView {
 final class TerminalsPane: SettingsPane {
     private let copyOnSelect = Flat.checkbox("")
     private var showDormancy: ((Int) -> Void)?
+    private var showCursor: ((Bool) -> Void)?
 
     init(_ source: SettingsSource) { super.init(source, title: "Terminals") }
     required init?(coder: NSCoder) { fatalError() }
@@ -674,6 +675,11 @@ final class TerminalsPane: SettingsPane {
         copyOnSelect.target = self
         copyOnSelect.action = #selector(copyOnSelectClicked)
         row("Selection", copyOnSelect, note: "A terminal's selection on the clipboard as it's made — except in full screen.")
+        let (cursor, c) = segments(["Always a Bar", "As Programs Ask"], [true, false]) { [weak self] v in
+            self?.source.change { (a: inout Appearance) in a.terminalCursorLocked = v }
+        }
+        showCursor = c
+        row("Cursor", cursor, note: "Programs can ask for a block or an underline — vim's normal mode, a shell's vi mode.")
         let (dormancy, d) = segments(["2 Hours", "8 Hours", "A Day", "A Week", "Never"], [2, 8, 24, 168, 0]) { [weak self] v in
             self?.source.change { (s: inout Settings) in s.terminalDormantAfterHours = v }
         }
@@ -690,6 +696,7 @@ final class TerminalsPane: SettingsPane {
         let s = source.settings()
         copyOnSelect.state = s.copyOnSelect ? .on : .off
         showDormancy?(s.terminalDormantAfterHours)
+        showCursor?(source.appearance().terminalCursorLocked)
     }
 }
 

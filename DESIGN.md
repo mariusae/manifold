@@ -3039,6 +3039,14 @@ and off. This is a port of apex's `contrast.rs`, in [the Ghostty
 patch](patches/ghostty.patch). Its Appearance follows the system, or
 keeps to light or dark.
 
+A terminal's cursor is a blinking bar, and stays one: what a program
+asks for (`DECSCUSR` — vim's block in normal mode, a shell's vi mode,
+an agent) is taken as asking for the default (`cursor-style-locked`,
+in the patch), so a block one left behind doesn't outlive it.
+**Settings ▸ Terminals ▸ Cursor** gives programs their say again. An
+agent that draws its own caret, a character in reverse, still shows
+it; that isn't the cursor.
+
 ### The memory watchdog
 
 - **A memory watchdog** keeps an eye on the app's own footprint from a

@@ -255,6 +255,10 @@ enum DebugControl {
             guard let wc, let mode = ContrastCorrection(rawValue: arg) else { return "off, typical or deuteranopia" }
             wc.changeAppearance { $0.contrastCorrection = mode }
             return "ok"
+        case "cursorlock":
+            guard let wc, ["on", "off"].contains(arg) else { return "on or off" }
+            wc.changeAppearance { $0.terminalCursorLocked = arg == "on" }
+            return "ok"
         case "focus":
             // Tells ghostty the app and terminal have focus, without
             // activating the app, so focused rendering can be checked.
