@@ -1622,9 +1622,9 @@ handle, as the icon is for other tiles (clicked, the tile's menu, Rename
 first; dragged, the agent), and under the pointer it lifts, a short
 shadow under it, and opens at its left to show its maker's mark (Claude's
 spark, Codex's blossom: what made it, said only then, and in its tooltip
-and menu). Pinned, the name is on a highlighter's swipe of its colour
-instead of the pill (the pin's strokes, as they're behind another
-tile's icon). With no room on the bar for more, the pill is its initial
+and menu). Pinned or not, it's the same pill: an agent's colour and shape are
+who it is, not what's become of it (a highlighter's swipe for its pin
+read as more to see, not as kept), and the sidebar's Pinned says it. With no room on the bar for more, the pill is its initial
 in a disc, as the sidebar shows it. Its colour is enough to tell it by,
 no more of it on the bar (Rename in the tile's menu renames it there, in
 place: its name, not its title; `mani annotate <it> agent.name=…` does

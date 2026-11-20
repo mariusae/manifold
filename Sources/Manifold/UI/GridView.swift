@@ -2285,8 +2285,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
     }
     private func updatePinBadge() {
-        // An agent's pill shows its pin itself: its name on the strokes.
-        agentPill.pinned = isPinned
+        // An agent's pill doesn't say it's pinned: the sidebar does.
         pinBadge.isHidden = !isPinned || pillHandles
         if isPinned, !pillHandles { drawHighlight() }
     }
@@ -3886,15 +3885,15 @@ extension GridView: DropTaking {
 /// icon's place, and its handle as the icon is for other tiles: clicked,
 /// the tile's menu; dragged, the agent; under the pointer it lifts and
 /// opens at its left to show its maker's mark (Claude's spark, Codex's
-/// blossom). Pinned, the name on a highlighter's swipe of its colour
-/// instead of the pill. Its parts are layers, so the opening is smooth:
+/// blossom). Pinned or not, the same pill: what's pinned the sidebar
+/// says (a pinned tile's strokes are behind its icon, and this has
+/// none). Its parts are layers, so the opening is smooth:
 /// the name drawn the same room either side of it at rest (a label's own
 /// inset had it off centre).
 final class AgentNamePill: NSControl {
     var name = "" { didSet { if name != oldValue { refresh() } } }
     var ink: NSColor = .white { didSet { if ink != oldValue { refresh() } } }
     var color: NSColor? { didSet { if color != oldValue { refresh() } } }
-    var pinned = false { didSet { if pinned != oldValue { refresh() } } }
     /// Its maker's mark, shown as it opens.
     var mark: NSImage? { didSet { if mark !== oldValue { refresh() } } }
     /// Only its initial, in a disc: on a bar with no room for more.
@@ -3906,9 +3905,6 @@ final class AgentNamePill: NSControl {
     private static let markSide: CGFloat = 10
 
     private let capsule = CALayer()
-    private let swipe = CAShapeLayer()
-    /// A second, fainter pass of the highlighter over the first's top.
-    private let pass = CAShapeLayer()
     private let words = CATextLayer()
     private let markLayer = CALayer()
 
@@ -3920,12 +3916,9 @@ final class AgentNamePill: NSControl {
         capsule.shadowColor = NSColor.black.cgColor
         capsule.shadowOffset = CGSize(width: 0, height: -1)
         capsule.shadowRadius = 2.5
-        swipe.shadowColor = NSColor.black.cgColor
-        swipe.shadowOffset = CGSize(width: 0, height: -1)
-        swipe.shadowRadius = 2.5
         markLayer.contentsGravity = .resizeAspect
         markLayer.opacity = 0
-        for l in [swipe, pass, capsule, markLayer, words] as [CALayer] { layer?.addSublayer(l) }
+        for l in [capsule, markLayer, words] as [CALayer] { layer?.addSublayer(l) }
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -3956,14 +3949,8 @@ final class AgentNamePill: NSControl {
         words.string = NSAttributedString(string: shownName, attributes: attributes)
         markLayer.contents = mark
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let c = color?.cgColor
-            capsule.backgroundColor = c
-            swipe.fillColor = color?.withAlphaComponent(0.88).cgColor
-            pass.fillColor = color?.withAlphaComponent(0.45).cgColor
+            capsule.backgroundColor = color?.cgColor
         }
-        capsule.isHidden = pinned
-        swipe.isHidden = !pinned
-        pass.isHidden = !pinned
         place(animated: false)
     }
 
@@ -3996,10 +3983,6 @@ final class AgentNamePill: NSControl {
         let w = shownWidth, h = Self.height
         let y = ((bounds.height - h) / 2).rounded()
         capsule.frame = CGRect(x: 0, y: y, width: w, height: h)
-        swipe.frame = capsule.frame
-        pass.frame = capsule.frame
-        swipe.path = Self.swipePath(width: w, height: h)
-        pass.path = Self.passPath(width: w, height: h)
         // Its name's capitals' middle on the pill's; at its right end's
         // room from it, so it moves over as the mark comes in at the left.
         let size = nameSize, font = Self.font
@@ -4011,32 +3994,7 @@ final class AgentNamePill: NSControl {
         markLayer.opacity = out && !compact ? 1 : 0
         // Lifted: a short shadow under it.
         capsule.shadowOpacity = out ? 0.3 : 0
-        swipe.shadowOpacity = out ? 0.25 : 0
-        pass.opacity = 1
         CATransaction.commit()
-    }
-
-    /// A highlighter's swipe `width` long: a chisel's broad stroke rising
-    /// a little to the right, its ends slanted as a chisel's are, its
-    /// edges not quite straight — the pin's strokes, behind the name.
-    static func swipePath(width w: CGFloat, height h: CGFloat) -> CGPath {
-        stroke(from: CGPoint(x: -1, y: h / 2 - 1.2), to: CGPoint(x: w + 1, y: h / 2 + 1.2), thick: h - 1, slant: 3, bow: 0.7)
-    }
-
-    /// The second pass: shorter, thinner, along the first's top.
-    static func passPath(width w: CGFloat, height h: CGFloat) -> CGPath {
-        stroke(from: CGPoint(x: 2.5, y: h / 2 + 2.6), to: CGPoint(x: w - 1.5, y: h / 2 + 4.4), thick: h * 0.42, slant: 2.4, bow: -0.5)
-    }
-
-    private static func stroke(from a: CGPoint, to b: CGPoint, thick t: CGFloat, slant: CGFloat, bow: CGFloat) -> CGPath {
-        let p = CGMutablePath()
-        let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-        p.move(to: CGPoint(x: a.x - slant, y: a.y + t / 2))
-        p.addQuadCurve(to: CGPoint(x: b.x - slant, y: b.y + t / 2), control: CGPoint(x: mid.x - slant, y: mid.y + t / 2 + bow))
-        p.addLine(to: CGPoint(x: b.x + slant, y: b.y - t / 2))
-        p.addQuadCurve(to: CGPoint(x: a.x + slant, y: a.y - t / 2), control: CGPoint(x: mid.x + slant, y: mid.y - t / 2 + bow * 0.6))
-        p.closeSubpath()
-        return p
     }
 
     // Clicked and dragged, the bar's to take. A control, as the bar's
