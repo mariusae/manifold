@@ -997,7 +997,13 @@ extension MainWindowController {
             let n = node(for: b, id: "\(nid)/pin/\(b.id)")
             if b.agent != nil {
                 n.title = AgentLook.name(of: b)
-                n.detail = StatusGlyph.remark(b) ?? (Self.agentRuns(b) ? "" : "Asleep")
+                n.detail = StatusGlyph.remark(b) ?? ""
+                // Not running: asleep — a moon, its name dim (asked, or
+                // shown, it starts again where it left off).
+                if n.look == nil, !Self.agentRuns(b) {
+                    n.look = .inactive
+                    n.tooltip = "Asleep — asked, or shown, it starts again where it left off"
+                }
             }
             n.age = nil
             let id = b.id
@@ -1009,8 +1015,6 @@ extension MainWindowController {
         for t in open.prefix(5) {
             let n = node(for: t, id: "\(nid)/thread/\(t.id)")
             n.age = nil
-            let unseen = hosts.unseen(t).count
-            if unseen > 0 { n.detail = "\(unseen) new" }
             let id = t.id
             n.action = { [weak self] in self?.arrive(id, from: nil) }
             children.append(n)
@@ -1028,7 +1032,24 @@ extension MainWindowController {
         n.foldable = true
         n.foldedFaces = agents.compactMap { AgentLook.face(of: $0, size: 13) }
         n.foldedCount = open.isEmpty ? nil : open.count
+        // Folded, what's most pressing in it: its glyph (not a moon: its
+        // agents asleep is nothing to tell).
+        n.look = children.compactMap(\.look).filter { Self.urgency($0) <= 3 }.min { Self.urgency($0) < Self.urgency($1) }
         return n
+    }
+
+    /// How pressing a status is, the most first: what needs you, what
+    /// failed, what's done or new, what's at work, what sleeps.
+    static func urgency(_ look: StatusGlyph.Look) -> Int {
+        switch look {
+        case .needsYou: 0
+        case .failed(read: false): 1
+        case .done(read: false), .unseen: 2
+        case .working: 3
+        case .offline, .quiet, .connecting, .watching: 4
+        case .inactive: 6
+        case .done, .failed: 7
+        }
     }
 
     /// Files: each host's sparse tree, roots open.

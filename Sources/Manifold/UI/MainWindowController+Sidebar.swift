@@ -248,6 +248,14 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
+        let menu = organizationRowMenu(for: node) ?? NSMenu()
+        // Whatever the row: everything done or new seen at once.
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        menu.addItem(ClosureMenuItem("Mark All Seen", symbol: "checkmark.circle") { [weak self] in self?.markAllSeen(nil) })
+        return menu
+    }
+
+    private func organizationRowMenu(for node: OrgNode) -> NSMenu? {
         let menu = NSMenu()
         if let c = hostClient(of: node) {
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.host(c.host.raw), open: true) })

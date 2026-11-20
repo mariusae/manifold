@@ -132,11 +132,12 @@ public enum Mani {
                  shown space, with Manifold brought forward (and started if
                  need be). With no paths, brings Manifold forward.
                  """, answeredBy: .app),
-        Verb(words: ["new"], args: "<kind> [what]", minArgs: 1, maxArgs: 2,
+        Verb(words: ["new"], args: "[kind] [what]", minArgs: 0, maxArgs: 2,
              flags: [Flag(name: "title", short: "t", value: "title", help: "its title"),
                      Flag(name: "text", value: "text", help: "a note's text (else its input, if piped)"),
                      Flag(name: "preview", help: "a note shown rendered, as Markdown (an agent's always is)"),
                      Flag(name: "edit", help: "a note shown in an editor, to type into (an agent's too)"),
+                     Flag(name: "mono", help: "a note in the monospaced face (`mani new` alone's is)"),
                      Flag(name: "cwd", value: "dir", help: "a terminal's, agent's or repository's directory (else this one)"),
                      Flag(name: "run", value: "command", help: "a terminal's command, typed in once it starts; an agent's first prompt"),
                      space] + placing,
@@ -144,7 +145,9 @@ public enum Mani {
              details: """
                  Makes a block and shows it, printing its id (and it's @last) —
                  the kinds File ▸ New lists, and the New Block picker (⌘N) reads
-                 as typed, the same way:
+                 as typed, the same way. With no kind, a note to type into, in
+                 the monospaced face, holding --text or the input (as apex's
+                 New does: `ls | mani new`):
                  \(BlockKinds.help)
                    space [--title name]  a space with a terminal in --cwd; it prints
                                          the space's id, @last is the terminal

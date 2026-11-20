@@ -14,7 +14,11 @@ extension MainWindowController {
     /// picker and `mani new`), with what it takes if given, on a host,
     /// from a folder — not yet placed. The lens it shows in, and whether
     /// the host makes it later (a notebook: shown once it has).
-    func makeBlock(_ kind: BlockKinds.Kind, what: String?, cwd: String?, on h: HostID) throws -> (block: BlockID, lens: Lens, later: Bool) {
+    /// `title`, `views`: a note's name and view state (its face) from the
+    /// start — given after, they met the title its host gives it from its
+    /// first line, and were refused.
+    func makeBlock(_ kind: BlockKinds.Kind, what: String?, cwd: String?, on h: HostID, title: String? = nil,
+                   views: [PlacementID: [String: String]] = [:]) throws -> (block: BlockID, lens: Lens, later: Bool) {
         guard let client = hosts.client(h) else { throw MakeFailure(message: "that host isn't attached") }
         let here = cwd ?? NSHomeDirectory()
         switch kind.name {
@@ -26,7 +30,7 @@ extension MainWindowController {
         case "agent":
             return (client.newAgent(cwd: cwd, command: what ?? desk.settings.agentCommand), .agent, false)
         case "note":
-            return (client.newNote(home: cwd, text: what ?? ""), .editor, false)
+            return (client.newNote(home: cwd, text: what ?? "", title: title, views: views), .editor, false)
         case "web":
             let address = what.map { if case let .page(u) = WebAddress.parse($0) { return u } else { return $0 } } ?? "https://duckduckgo.com"
             // Where the focused block is: another host's, loaded through it (§7.6).
@@ -549,6 +553,12 @@ extension MainWindowController {
             if primary, let f = focusedShown, views[f.id] is NotebookView { item.title = "Run Cell"; return true }
             if primary, let f = focusedShown, views[f.id] is OutlineNoteView { item.title = "Toggle Checkbox"; return true }
             item.title = primary ? "Edit or View" : "Edit or View Beside"
+            // An agent: its conversation, or its terminal (§3.8).
+            if let f = focusedShown, f.block?.agent != nil {
+                let talking = f.lens == .thread
+                item.title = (talking ? "Terminal" : "Conversation") + (primary ? "" : " Beside")
+                return true
+            }
             guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return false }
             let viewing = f.lens == .preview
             item.title = item.action == #selector(toggleEditPreview(_:)) ? (viewing ? "Edit" : "View") : (viewing ? "Edit Beside" : "View Beside")
@@ -586,7 +596,25 @@ extension MainWindowController {
         case #selector(navigateForward(_:)):
             return navCursor < navStack.count - 1
         case #selector(selectTabByNumber(_:)):
-            return item.tag == 9 ? !allWorkspaces.isEmpty : item.tag <= allWorkspaces.count
+            // Each by its name and square, as the strip has it (⌘9 the last, as
+            // a browser's is, whatever its number).
+            let i = item.tag == 9 ? allWorkspaces.count - 1 : item.tag - 1
+            guard allWorkspaces.indices.contains(i) else {
+                item.title = item.tag == 9 ? "Select Last Space" : "Select Space \(item.tag)"
+                item.image = nil
+                return false
+            }
+            if let c = spaceChips().chips.first(where: { $0.id == allWorkspaces[i] }) {
+                item.title = c.title
+                item.image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
+                    let box = r.insetBy(dx: 0.5, dy: 0.5)
+                    SpaceSquare.fill(box, color: c.color, alpha: c.current ? 0.32 : 0.22)
+                    SpaceSquare.drawGlyph(in: box, color: c.color, mark: c.mark, badge: nil)
+                    return true
+                }
+                item.state = c.current ? .on : .off
+            }
+            return true
         case #selector(compareWithHead(_:)):
             guard let f = focusedShown else { return false }
             return f.path != nil && (f.lens == .editor || f.lens == .preview)

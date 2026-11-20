@@ -1,21 +1,24 @@
 import AppKit
 import ManifoldCore
 
-/// A block's status in one glyph (§3.7) — where a name doesn't say it
-/// (`StatusMark` does, in bars, sidebar rows and cards): a notebook's
-/// cells, a block's pill in a note, a host's row. An
-/// open ring turning for running (filling clockwise from the top when the
-/// program says how far, as OSC 9;4 or 7501 progress does), an amber ring
+/// A block's status in one glyph (§3.7), the same wherever it's shown —
+/// bars, sidebar rows and cards (`StatusMark`), a notebook's cells, a
+/// block's pill in a note, a host's row: hollow while at work, filled
+/// when there's something for you. An open ring turning for running
+/// (filling clockwise from the top when the program says how far, as OSC
+/// 9;4 or 7501 progress does; still, with Reduce motion), an amber ring
 /// with a dot for a block that needs you, a filled disc with a check for
-/// done and not yet read (red for failed), a plain grey check once read,
-/// and a moon for a terminal gone inactive. A host's: being reached,
-/// offline, quiet, or watched — an eye: another Manifold took it over.
+/// done and not yet read (red for failed), a filled dot for a thread with
+/// something new, a plain grey check once read (where it's said at all),
+/// and a moon for what's asleep — an agent not running, a terminal gone
+/// inactive. A host's: being reached, offline, quiet, or watched — an
+/// eye: another Manifold took it over.
 final class StatusGlyph: NSView {
     enum Look: Equatable {
         case working(progress: Int?)
-        /// Working, with Reduce motion: a still dot by a name that doesn't
-        /// shimmer (`StatusMark`).
-        case busy
+        /// Something new to read (a thread's comments not seen): a filled
+        /// dot — filled, as done and not seen is.
+        case unseen
         case needsYou
         case done(read: Bool)
         case failed(read: Bool)
@@ -135,7 +138,7 @@ final class StatusGlyph: NSView {
         var words: [String]
         switch look {
         case .working(let p): words = [p.map { "Working, \($0)%" } ?? "Working"]
-        case .busy: words = ["Working"]
+        case .unseen: words = ["Something new"]
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
         case .inactive: words = ["Inactive: the shell ended while idle"]
@@ -182,6 +185,8 @@ final class StatusGlyph: NSView {
     /// that's on screen.
     private var animates: Bool {
         guard !isHiddenOrHasHiddenAncestor, let window, window.occlusionState.contains(.visible) || Self.ignoresWindowOcclusion, let look else { return false }
+        // Reduce motion: still, three quarters of a ring.
+        if Motion.reduced { return false }
         if case .working(nil) = look { return true }
         if case .connecting = look { return true }
         return false
@@ -317,14 +322,29 @@ final class StatusGlyph: NSView {
 
     /// The glyph drawn anywhere (a pill in a note): in a square, at a
     /// phase of its turning.
+    /// Drawn into a view of its own (a menu's row, flipped or not), as it
+    /// stands — still, where a glyph view's ring would turn.
+    static func drawUpright(_ look: Look, in rect: NSRect) {
+        guard let ctx = NSGraphicsContext.current, ctx.isFlipped else {
+            return draw(look, in: rect, phase: Date.timeIntervalSinceReferenceDate)
+        }
+        ctx.saveGraphicsState()
+        let t = NSAffineTransform()
+        t.translateX(by: 0, yBy: rect.midY * 2)
+        t.scaleX(by: 1, yBy: -1)
+        t.concat()
+        draw(look, in: rect, phase: Date.timeIntervalSinceReferenceDate)
+        ctx.restoreGraphicsState()
+    }
+
     static func draw(_ look: Look, in rect: NSRect, phase: Double) {
         let s = rect.width
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
-        case .busy:
-            let r = radius * 0.4
-            Theme.text.withAlphaComponent(0.7).setFill()
+        case .unseen:
+            let r = radius * 0.62
+            Theme.text.withAlphaComponent(0.88).setFill()
             NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
         case .working, .connecting:
             // Running: an open ring. With no word of how far, three

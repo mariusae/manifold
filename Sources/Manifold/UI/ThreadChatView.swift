@@ -1960,16 +1960,38 @@ final class CodeGroundLayoutManager: NSLayoutManager {
               let font = storage.attribute(.font, at: charRange.location, effectiveRange: nil) as? NSFont else {
             return super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
         }
-        // Its baseline, from its line's top: where the letters sit in each line.
-        let g = glyphIndexForCharacter(at: charRange.location)
-        let baseline = location(forGlyphAt: g).y
-        var boxes: [NSRect] = []
-        for i in 0..<rectCount {
-            let r = rectArray[i]
-            boxes.append(NSRect(x: r.minX - 1, y: r.minY + baseline - font.ascender - 1.5, width: r.width + 2, height: font.ascender - font.descender + 3))
-        }
-        boxes.withUnsafeBufferPointer { b in
-            super.fillBackgroundRectArray(b.baseAddress!, count: b.count, forCharacterRange: charRange, color: color)
+        // Round its letters on each line it's on — boxed by that line's
+        // baseline (a span wrapped: the first line's, on the next, sat it
+        // off its letters), to its last letter there (the line's rect ran
+        // on to the margin, past a wrapped span's end), and inside the
+        // line (a point and a half past its letters, it ran into the
+        // lines above and below).
+        let glyphs = glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
+        guard let container = textContainers.first else { return }
+        let chars = storage.string as NSString
+        var g = glyphs.location
+        color.setFill()
+        while g < NSMaxRange(glyphs) {
+            var line = NSRange()
+            let frag = lineFragmentRect(forGlyphAt: g, effectiveRange: &line)
+            let used = lineFragmentUsedRect(forGlyphAt: g, effectiveRange: nil)
+            var part = NSIntersectionRange(line, glyphs)
+            g = NSMaxRange(line)
+            // Its spaces at the line's end (where it wrapped) not boxed.
+            while part.length > 0 {
+                let c = characterIndexForGlyph(at: NSMaxRange(part) - 1)
+                guard c < chars.length, let u = UnicodeScalar(chars.character(at: c)), CharacterSet.whitespacesAndNewlines.contains(u) else { break }
+                part.length -= 1
+            }
+            guard part.length > 0 else { continue }
+            let letters = boundingRect(forGlyphRange: part, in: container)
+            let baseline = frag.minY + location(forGlyphAt: part.location).y
+            let top = max(baseline - font.ascender - 0.5, used.minY + 1)
+            let bottom = min(baseline - font.descender + 0.5, used.maxY - 1)
+            // At the line's start, from the margin, not cut off by it.
+            let left = max(frag.minX, letters.minX - 1.5)
+            let box = NSRect(x: left, y: top, width: letters.maxX + 1.5 - left, height: max(0, bottom - top))
+            NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3).fill()
         }
     }
 }

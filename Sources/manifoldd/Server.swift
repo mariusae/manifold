@@ -1184,6 +1184,18 @@ final class Server {
             }
         case let .fileHistory(request):
             fileHistory(request) { [weak self] result in self?.answer(id, .fileHistory(result), to: conn) }
+        case let .turnContent(agent, ids):
+            // Read off the queue: a long transcript, read again as it grows.
+            let turns = (node.block(agent)?.terminal?.turns ?? []).filter { ids.contains($0.id) }
+            offQueue({ () -> [TurnContent] in
+                turns.compactMap { t in
+                    guard let path = t.transcript, let entries = TurnTranscript.entries(path: path),
+                          let parts = TurnTranscript.parts(entries, prompt: t.prompt) else { return nil }
+                    return TurnContent(turn: t.id, parts: parts)
+                }
+            }) { contents in
+                self.answer(id, .turnContent(contents), to: conn)
+            }
         case let .captureTurn(block, agent, turn):
             writeTurn(block, agent: agent, turn: turn)
             done(node.block(block) == nil ? "no such turn" : nil)

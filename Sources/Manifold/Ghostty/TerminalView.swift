@@ -2117,8 +2117,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         // control-minus (with shift or not), undo to readline, zsh and
         // Emacs, before the menu's Navigate Back takes it.
         let flags = event.keyMods
-        // Command-return is Edit or View for a text; here it's the terminal's, as it was.
-        if flags == [.command], event.charactersIgnoringModifiers == "\r" {
+        // Command-return is Edit or View for a text; here it's the terminal's,
+        // as it was — an agent's, its conversation's (§3.8), the menu's.
+        if flags == [.command], event.charactersIgnoringModifiers == "\r", !isAgent {
             keyDown(with: event)
             return true
         }

@@ -201,9 +201,13 @@ enum Theme {
     /// A symbol drawn in a colour, at a size and weight — the system's, one
     /// of our own (`Marks`), Pierre's (unless `pierre` is false: a symbol
     /// chosen from the system's, a space's, is the system's), or an
-    /// agent's mark (in its own colours).
+    /// agent's mark (in the colour too, as one in one colour is, a
+    /// template — drawn as it is, it would be black — else in its own).
     static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, pierre: Bool = true) -> NSImage? {
-        if name.hasPrefix(AgentIcons.prefix) { return symbol(name, size: size, weight: weight) }
+        if name.hasPrefix(AgentIcons.prefix) {
+            let mark = symbol(name, size: size, weight: weight)
+            return mark?.isTemplate == true ? mark?.tinted(color) : mark
+        }
         if name.hasPrefix(ProgramIcons.prefix) { return symbol(name, size: size, weight: weight)?.tinted(color) }
         if pierre, let icon = PierreIcons.image(name, size: size) { return icon.tinted(color) }
         if let mark = Marks.image(name, size: size, weight: weight) { return mark.tinted(color) }

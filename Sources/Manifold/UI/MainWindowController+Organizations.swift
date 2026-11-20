@@ -73,7 +73,7 @@ extension MainWindowController {
             // a tree with chevrons where the nesting is the point (folders, links).
             self.sidebar.organizationView.flat = org != .files
             self.sidebar.organizationView.show(nodes, openByDefault: open, selected: selected)
-            if org == .desk { self.showSpaceHeading() }
+            if org == .desk { self.showSpaceHeading(); self.seeSidebarRows() }
             self.refreshSpaceStrip()
             self.organizationShownFor = selected
         }
@@ -126,6 +126,21 @@ extension MainWindowController {
         return min(1, max(0, (hours - 1) / 167))
     }
 
+    /// What's pinned in a project and done (or failed) — no tile to focus,
+    /// to read it by — read once its row has been in sight a moment, the
+    /// window in front: seen there, as a tile is focused (§3.7).
+    func seeSidebarRows() {
+        sidebarSeeing?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.window?.isKeyWindow == true, NSApp.isActive, self.sidebarShown || self.pinned,
+                  self.organization == .desk else { return }
+            let rows = self.sidebar.organizationView.visibleNodes.filter { $0.id.contains("/pin/") }
+            self.hosts.attend(rows.compactMap(\.block))
+        }
+        sidebarSeeing = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
     func node(for block: Block, id: String? = nil, detail: String? = nil) -> OrgNode {
         let seen = hosts.client(of: block.id)?.node.graph.seen(block.id)
         let n = OrgNode(id: id ?? block.id.description, block: block.id, title: Self.linkTitle(block),
@@ -133,7 +148,8 @@ extension MainWindowController {
         n.dirty = block.text?.isDirty == true
         n.stale = block.text?.stale == true
         n.image = block.web.flatMap { Favicons.image(forPage: $0.url) } ?? AgentLook.face(of: block, size: 13)
-        n.look = StatusGlyph.look(of: block)
+        // A thread's: worked on, or something in it not seen.
+        n.look = block.kind == .thread ? hosts.look(ofThread: block) : StatusGlyph.look(of: block)
         n.blocked = block.statusRecord?.kind
         n.tooltip = StatusGlyph.tooltip(block)
         n.trailing = StatusGlyph.at(of: block).map(Age.short)

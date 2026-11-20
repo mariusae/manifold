@@ -10,8 +10,7 @@ struct SummaryCardContent {
     var thumbnail: NSImage?
     /// How long since it was seen, in a pill at the far right (⌘O's).
     var age: String? = nil
-    /// Its status by its title (`StatusMark`): the title shimmering while
-    /// it works, a pill when it needs you.
+    /// Its status (`StatusMark`): a glyph at the title's right.
     var mark: StatusMark? = nil
     /// An agent's name, in a pill of its colour before its title (§3.12),
     /// as its tile's bar has it.
@@ -71,8 +70,8 @@ final class AgePill: NSView {
 /// the accent.
 final class SummaryCard: NSView {
     var content: SummaryCardContent { didSet { needsDisplay = true; needsLayout = true } }
-    private let shimmering = CardTitle()
-    private lazy var shimmer = Shimmer(shimmering)
+    /// Its status's glyph (a view: the ring turns).
+    private let glyph = StatusGlyph()
     var chosen = false { didSet { if chosen != oldValue { needsDisplay = true } } }
     /// Set in something that's a card already (a hover card): no card of
     /// its own drawn, only what it says.
@@ -115,10 +114,8 @@ final class SummaryCard: NSView {
         self.content = content
         super.init(frame: .zero)
         wantsLayer = true
-        // The title, while it shimmers, is drawn by a view of its own (a
-        // mask is a layer's): over where the card would draw it.
-        shimmering.isHidden = true
-        addSubview(shimmering)
+        glyph.isHidden = true
+        addSubview(glyph)
         // In a tile, on the body's ground, light or dark.
         themed { $0.layer?.backgroundColor = $0.inTile ? Theme.windowBackground.cgColor : nil }
     }
@@ -196,15 +193,13 @@ final class SummaryCard: NSView {
             image.draw(in: NSRect(x: card.minX + pad, y: top + 9 - size.height / 2, width: size.width, height: size.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
         if let age = content.age, let r = head.age { AgeBadge.draw(age, in: r) }
-        if let kind = content.mark?.pill, let r = head.pill { StatusPill.draw(kind, in: r) }
         if let note = head.noteText, let at = head.note {
-            // The status shown by the pill or the shimmer, the note is only
-            // when, in grey.
-            let ink = content.mark.map { $0.pill != nil || $0.shimmer } == true ? Theme.secondaryText : toneColor(s.tone)
+            // The status shown by its glyph, the note is only when, in grey.
+            let ink = content.mark?.glyph != nil ? Theme.secondaryText : toneColor(s.tone)
             NSAttributedString(string: note, attributes: [.font: UIType.detail, .foregroundColor: ink]).draw(at: at)
         }
         if let tag = content.agent, let r = head.agent { tag.draw(in: r) }
-        if !head.shimmers { head.title.draw(with: head.titleRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin]) }
+        head.title.draw(with: head.titleRect, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin])
         // Its lines, under the title, set in from the symbol — from the
         // agent's pill where it has one: the pill is the title's, not a
         // column the lines keep clear of.
@@ -214,10 +209,9 @@ final class SummaryCard: NSView {
     }
 
     /// Where the title goes, and what's at its right: the age's pill, the
-    /// status's, the note — for drawing, and for the title's own view
-    /// while it shimmers.
+    /// status's glyph, the note — for drawing, and for the glyph's view.
     private func headline(card: NSRect, right: CGFloat)
-        -> (title: NSAttributedString, titleRect: NSRect, age: NSRect?, pill: NSRect?, note: NSPoint?, noteText: String?, shimmers: Bool, agent: NSRect?) {
+        -> (title: NSAttributedString, titleRect: NSRect, age: NSRect?, glyph: NSRect?, note: NSPoint?, noteText: String?, agent: NSRect?) {
         let s = content.summary
         let pad: CGFloat = 12, top = card.minY + 10
         var x = card.minX + pad + (Theme.symbol(content.symbol, size: UIType.symbolSize, weight: .medium) == nil ? 0 : 22)
@@ -228,19 +222,19 @@ final class SummaryCard: NSView {
             x = agent!.maxX + 6
         }
         var titleRight = right
-        var age: NSRect?, pill: NSRect?, note: NSPoint?
+        var age: NSRect?, glyph: NSRect?, note: NSPoint?
         if let a = content.age {
             let size = AgeBadge.size(a)
             age = NSRect(x: titleRight - size.width, y: top, width: size.width, height: size.height)
             titleRight = age!.minX - 8
         }
-        if let kind = content.mark?.pill {
-            let size = StatusPill.size(kind)
-            pill = NSRect(x: titleRight - size.width, y: top + 1, width: size.width, height: size.height)
-            titleRight = pill!.minX - 8
+        if content.mark?.glyph != nil {
+            let side = StatusGlyph.size
+            glyph = NSRect(x: titleRight - side, y: top + (18 - side) / 2, width: side, height: side)
+            titleRight = glyph!.minX - 8
         }
-        // "running", "working": the shimmer or the pill says so.
-        let shows = content.mark.map { $0.pill != nil || $0.shimmer } == true
+        // "running", "working": the glyph says so.
+        let shows = content.mark?.glyph != nil
         let noteText = shows && ["running", "working", "searching"].contains(s.note ?? "") ? nil : s.note
         if let n = noteText {
             let w = NSAttributedString(string: n, attributes: [.font: UIType.detail]).size().width
@@ -254,7 +248,7 @@ final class SummaryCard: NSView {
         let rect = NSRect(x: x, y: top, width: max(0, titleRight - x), height: 18)
         // Shimmering only on screen: a card painted into a picture (a
         // pill's, a link's) draws its title as ever.
-        return (title, rect, age, pill, note, noteText, content.mark?.shimmer == true && !inTile && window != nil, agent)
+        return (title, rect, age, glyph, note, noteText, agent)
     }
 
     /// The picture's room at the right, as `draw` leaves it.
@@ -278,11 +272,9 @@ final class SummaryCard: NSView {
         super.layout()
         let card = inTile ? bounds : bounds.insetBy(dx: 1, dy: 1)
         let head = headline(card: card, right: titleRoomRight)
-        shimmering.isHidden = !head.shimmers
-        shimmering.text = head.title
-        shimmering.frame = head.titleRect
-        shimmer.on = head.shimmers
-        shimmer.layout()
+        glyph.look = content.mark?.glyph
+        glyph.isHidden = head.glyph == nil
+        glyph.frame = head.glyph ?? .zero
     }
 
     /// Its lines, `room` of them at most, from `top` — in a tile, the
@@ -312,13 +304,4 @@ final class SummaryCard: NSView {
             Flat.progress(in: NSRect(x: card.minX + pad, y: card.maxY - 5, width: card.width - 2 * pad, height: 2), fraction: p)
         }
     }
-}
-
-/// A card's title while it shimmers: drawn as the card draws it, in a
-/// view of its own for the mask.
-final class CardTitle: NSView {
-    var text = NSAttributedString() { didSet { if text != oldValue { needsDisplay = true } } }
-    override var isFlipped: Bool { true }
-    override func draw(_ dirtyRect: NSRect) { text.draw(with: bounds, options: [.truncatesLastVisibleLine, .usesLineFragmentOrigin]) }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

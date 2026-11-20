@@ -1395,6 +1395,10 @@ final class ManiDesk {
     private func make(_ r: ManiRequest, _ scope: Scope) throws -> String {
         let on = scope.host
         let cwd = r.flags["cwd"].map { $0.hasPrefix("/") ? $0 : r.cwd.appendingPathComponent($0) } ?? r.cwd
+        // No kind: a scratch note, in the monospaced face, to type into.
+        var r = r
+        let bare = r.args.isEmpty
+        if bare { r.args = ["note"] }
         if r.args[0] == "space" { return try makeSpace(r, on: on, cwd: cwd, scope: scope) }
         guard let kind = BlockKinds.named(r.args[0]) else {
             let names = BlockKinds.all.map(\.name) + ["space"]
@@ -1415,13 +1419,18 @@ final class ManiDesk {
         default: break
         }
         let made: (block: BlockID, lens: Lens, later: Bool)
-        do { made = try wc.makeBlock(kind, what: what, cwd: cwd, on: on) } catch let f as MainWindowController.MakeFailure { throw Failure(message: f.message) }
+        // No kind (or --mono): in the monospaced face, as a tile's chosen is
+        // kept — the block's last through its editor — from the start.
+        let mono = kind.name == "note" && (bare || r.flags["mono"] != nil)
+        let views = mono ? [MainWindowController.lastViewKey(.editor): ["font": EditorFont.monospaced.rawValue]] : [:]
+        do { made = try wc.makeBlock(kind, what: what, cwd: cwd, on: on, title: kind.name == "note" ? r.flags["title"] : nil, views: views) } catch let f as MainWindowController.MakeFailure { throw Failure(message: f.message) }
         let block = made.block
         // A note an agent makes is to be read: rendered, unless it's to be
         // typed into (--edit); anyone else's, as asked.
         let byAgent = scope.here.flatMap { hosts.block($0)?.agent } != nil
-        let lens = kind.name == "note" && r.flags["edit"] == nil && (r.flags["preview"] != nil || byAgent) ? .preview : made.lens
-        if let title = r.flags["title"] { hosts.append(.title(title), to: .block(block)) }
+        let lens = kind.name == "note" && !bare && r.flags["edit"] == nil && (r.flags["preview"] != nil || byAgent) ? .preview : made.lens
+        // A note's given as it's made (`makeBlock`).
+        if let title = r.flags["title"], kind.name != "note" { hosts.append(.title(title), to: .block(block)) }
         if made.later {
             // Placed once the host has made it (a notebook), as the menu's is.
             wc.whenMade(block, what: "the " + kind.title.lowercased(), made: { [weak self] in self?.hosts.block(block) != nil }) { [weak self] in

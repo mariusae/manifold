@@ -23,7 +23,17 @@ enum MarkdownPage {
           document.querySelector('base').href = base;
           var y = window.scrollY;
           var main = document.getElementById('content');
+          // An agent's conversation: what was unfolded kept so, and, at its
+          // end (or shown for the first time), kept at its end as it grows.
+          var talk = main.querySelector('.mf-conversation');
+          var atEnd = !talk || window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 24;
+          var open = {};
+          main.querySelectorAll('details[id][open]').forEach(function (d) { open[d.id] = true; });
           main.innerHTML = html;
+          main.querySelectorAll('details[id]').forEach(function (d) { if (open[d.id]) d.open = true; });
+          if (main.querySelector('.mf-conversation') && atEnd) {
+            requestAnimationFrame(function () { window.scrollTo(0, document.documentElement.scrollHeight); });
+          }
           // GitHub's ids for headings, so links to them work.
           var seen = {};
           main.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function (h) {
@@ -393,6 +403,28 @@ enum MarkdownPage {
         .copy:hover { color: var(--page-copy-hover-text); border-color: var(--page-copy-hover-edge); }
         .copy.done { color: var(--page-copy-done); }
         blockquote { margin-left: 0; padding: 0 1em; color: var(--page-quote); border-left: 3px solid var(--page-quote-rule); }
+        /* An agent's conversation (§3.8): what you asked in the technical
+           face, as typed; what it did on the way folded to a line; what it
+           said as the page is, in the reading face. */
+        .mf-turn { margin: 0 0 2.4em; }
+        .mf-turn + .mf-turn { border-top: 1px solid var(--page-rule); padding-top: 1.6em; }
+        pre.mf-prompt { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400);
+          font-size: calc(0.86rem * var(--tech-scale, 1)); line-height: 1.45; white-space: pre-wrap; word-wrap: break-word;
+          background: none; border: none; border-left: 3px solid var(--page-quote-rule); border-radius: 0;
+          padding: 0.1em 0 0.1em 0.9em; margin: 0 0 1.1em; color: var(--page-strong); }
+        pre.mf-prompt.mf-queued { color: var(--page-quote); border-left-style: dashed; }
+        details.mf-steps { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.8rem * var(--tech-scale, 1));
+          color: var(--page-quote); margin: 0 0 1em; }
+        details.mf-steps summary { cursor: default; list-style: none; }
+        details.mf-steps summary::-webkit-details-marker { display: none; }
+        details.mf-steps summary::before { content: "›"; display: inline-block; width: 1em; transition: transform 0.12s; }
+        details.mf-steps[open] summary::before { transform: rotate(90deg); }
+        details.mf-steps[open] { padding-bottom: 0.4em; border-bottom: 1px solid var(--page-rule); }
+        details.mf-steps p, details.mf-steps ul { margin: 0.5em 0 0.5em 1em; }
+        p.mf-asked { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.86rem * var(--tech-scale, 1));
+          color: var(--page-strong); border-left: 3px solid var(--page-quote-rule); padding-left: 0.9em; margin: 0 0 1.1em; }
+        .mf-standing, .mf-earlier { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.8rem * var(--tech-scale, 1));
+          color: var(--page-quote); }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
         th, td { border: 1px solid var(--page-rule); padding: 6px 12px; } th { font-weight: 600; background: var(--page-table-head); }
         tr:nth-child(2n) td { background: var(--page-table-stripe); }

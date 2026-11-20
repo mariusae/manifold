@@ -80,17 +80,51 @@ extension Hosts {
         thread.thread?.unseen(after: seenMark(thread.id)) ?? []
     }
 
+    /// A thread's status (§3.7), as a block's is: worked on — an agent in
+    /// it at work on what it was last asked — a ring; something in it not
+    /// seen, a filled dot (not how many: that it wants you is enough).
+    func look(ofThread t: Block) -> StatusGlyph.Look? {
+        guard let th = t.thread else { return nil }
+        if case .asked? = th.entries.last?.kind, th.agents.contains(where: { block($0.block)?.statusState == .working }) {
+            return .working(progress: nil)
+        }
+        return unseen(t).isEmpty ? nil : .unseen
+    }
+
     /// The threads with something not seen: what the inbox holds of them.
     var unseenThreads: [Block] { threads.filter { !unseen($0).isEmpty } }
 
     /// Seen, up to an entry (the latest, if not said).
     func markSeen(_ thread: Block, upTo: Stamp? = nil) {
         guard let last = upTo ?? thread.thread?.lastActivity else { return }
+        attendAgents(of: [thread])
         if let mark = seenMark(thread.id), mark >= last { return }
         propose(.threadSeen([thread.id: last]))
     }
 
+    /// A thread read: its agents' turns done (or failed) are read with
+    /// it — what they did is what it says (§3.7).
+    func attendAgents(of threads: [Block]) {
+        attend(threads.flatMap { $0.thread?.agents.map(\.block) ?? [] })
+    }
+
+    /// What was done or failed, read (§3.7): each that hasn't been.
+    func attend(_ blocks: [BlockID]) {
+        for b in Set(blocks) {
+            guard let r = block(b)?.statusRecord, r.state == .done || r.state == .error, r.read != true else { continue }
+            propose(.attend(b))
+        }
+    }
+
+    /// Everything done, failed or new, seen: what's done or failed read,
+    /// every thread's news seen — what needs you stays.
+    func markAllSeen() {
+        attend(blocks.filter { $0.statusRecord?.read != true }.map(\.id))
+        markSeen(unseenThreads)
+    }
+
     func markSeen(_ threads: [Block]) {
+        attendAgents(of: threads)
         var marks: [BlockID: Stamp] = [:]
         for t in threads {
             guard let last = t.thread?.lastActivity, seenMark(t.id).map({ last > $0 }) ?? true else { continue }

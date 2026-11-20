@@ -402,7 +402,8 @@ closed, the agent stays; unpinned with no tile, it goes as a closed tile
 does (Recently Closed has it a while). A project's agents are under it
 in the sidebar, wherever a space refers to it (§3.6): each its name and
 its face as an agent has it everywhere — its initial on a disc of its
-colour, paler while it's asleep — saying what it's at; clicked, shown.
+colour — saying what it's at, its glyph at the right (§3.7: a moon,
+its name dim, while it's asleep); clicked, shown.
 (They were once a row of faces at the sidebar's foot, the space's
 agents apart from their projects.)
 Pointed at — a pill, a card, a row, a reference, a face — an agent shows
@@ -919,9 +920,12 @@ space's threads by when they were last written in, under day headers
 (Today, Yesterday, the week, then months), searched, and filtered by
 chips under a filter button (Open, Unread, Resolved, Every Space); a
 row read in the overlay. At its right a chevron (⇧⌘A from anywhere):
-the space's tiles, the last seen first (eight, then Show All), what was
-recently closed, then All Recently Closed and Files — searched, a
-header over each part, ↑↓ ↩ ⎋.
+the space's tiles, the last seen first (eight, then Show All), each
+with its glyph (§3.7); the **spaces**, as the strip has them — square,
+name, ⌘ number (Here, for this one), what's most pressing there — so a
+space is gone to from a list, by name; what was recently closed, then
+All Recently Closed and Files — searched, a header over each part,
+↑↓ ↩ ⎋. Go ▸ Select Space 1–9 name each space, with its square.
 Recently Closed (§4), a row at the foot, pushes its list over the tree,
 with a back button and the list's name in the header. The space stays
 the working surface; organizations are how you reach blocks, never
@@ -985,35 +989,50 @@ becomes the focused tile while the window is key. The host does the
 dismissing for the blocks it leads, on the client's `attend` proposal.
 
 **Indicators** (`StatusMark`), wherever a block's title is — its bar,
-its sidebar row, a summary card (the Overview's) — add ink only when
-the block needs you, and say a thing once in a view: a tile on screen
-has its Done, Failed and when on its bar, not again on its sidebar row.
-A terminal's title loses the mark its program puts before it to say
-how it stands (Claude Code's ✳, a spinner): the indicators say that. `working`: the title **shimmers** (`Shimmer`: its
-layer masked so a wide band — about 40% of the title, 60 to 160
-points — faded to 30% sweeps across it in 2 s every 3 s, the title at
-full strength between, by the clock, so every working title moves in
-step and many read as one rhythm; a narrow bright band on a dimmed
-title was too subtle), the percent beside it in grey when the program says
-how far (OSC 9;4 counts); with Reduce motion the title holds at 75%
-and a still dot sits beside it. `blocked`, and `done` and `error` until
-attended to, are a word in a **pill** at the right edge (`StatusPill`):
-the kind — Permission, Question, Sign in, else Needs you — in amber,
-Done in grey, Failed in red; a pill shows exactly while the block is
-in the inbox (⌘J), and once attended to there's nothing. Short of
-room, a bar's pill is a dot in its color before the title is cut. In
-a bar it's left of everything else at the right — the links' pill, the
-buttons — just after the title, so a status coming or going moves
-nothing else; the grid places the links' pill again whenever the bar's
-buttons or the links' room change, not only when it lays out. An
-inactive terminal's title is dimmed; `idle` nothing. A host's states
-(connecting, offline, quiet, watching) keep their glyphs, and a
-notebook's cells their own, beside their run's time and exit status.
-In the sidebar the pill comes after how long ago the status was
-reported, and what it said (its title, its message) is on the line
-beneath the name. The Dock badge counts the blocks blocked and done.
+its sidebar row, a summary card (the Overview's), ⇧⌘A's rows, ⌥⇥'s
+cards, the strip's Needs you — are one **glyph** at the right edge
+(`StatusGlyph`), the same everywhere: **hollow while at work, filled
+when there's something for you, gone once seen**. `working`: an open
+ring turning (filling clockwise as the program says how far — OSC 9;4
+counts; still, with Reduce motion). `blocked`: an amber ring with a dot
+— not why (permission, a question, a sign-in: the tooltip says; you'll
+go to it anyway). `done` and `error` until attended to: a filled disc
+with a check, red for failed. A thread (§3.12): the ring while an agent
+in it is at work on what it was last asked, a filled dot while
+something in it hasn't been seen — not how many. An agent asleep (not
+running) and an inactive terminal: a moon, the title dimmed. `idle`,
+and anything seen: nothing. A host's states (connecting, offline,
+quiet, watching) are glyphs as well, and a notebook's cells their own,
+beside their run's time and exit status. A glyph shows exactly while
+the block is in the inbox (⌘J) or at work; say a thing once in a view:
+a tile on screen has its glyph on its bar, not again on its sidebar
+row. A folded project's row shows the most pressing of its rows' (what
+needs you, then what failed, what's done or new, what's at work — not
+a moon). A terminal's title loses the mark its program puts before it
+to say how it stands (Claude Code's ✳, a spinner): the glyph says that.
+In a bar the glyph is left of everything else at the right — the
+links' pill, the buttons — just after the title, so a status coming or
+going moves nothing else. In the sidebar it comes after how long ago
+the status was reported, and what it said (its title, its message) is
+on the line beneath the name. The Dock badge counts the blocks blocked
+and done.
+
+Read, as **attended to**: a tile focused while the window is key; a
+thread read reads its agents' turns with it; an agent pinned in a
+project, with no tile to focus, once its row has been in sight in the
+sidebar a moment, the window in front; and everything at once with
+**Mark All Seen** (⇧⌘J, and at the foot of the sidebar's context
+menu) — what needs you stays.
+
 (It was one glyph — a turning ring, an amber ring, a filled check —
-until October 2026: every row wore one, and a code had to be learned.)
+until October 2026, every row wearing one, read as a code to learn; then
+the title shimmering while at work and a word in a pill — Permission,
+Question, Done — while it wanted you. The words said what didn't
+matter (why it needs you: you go to it all the same), the shimmer was
+the busiest thing on a screen of agents at work, and a thread or a
+sleeping agent said itself in words of its own ("1 new", "Asleep"). So
+the glyphs again, but only while something's to be told: seen is
+nothing.)
 
 **One rule for the modifiers**, wherever a click opens a block — a
 sidebar row, a link or a block's link in a note, a tile's links, a
@@ -1034,6 +1053,29 @@ carries each, read off the click (or ⏎) wherever a view opens, and
 there ⌘⌥ is over and ⌘ alone beside).
 
 ### 3.8 A terminal's outline
+
+**An agent's conversation** — its "default thread": ⌘↩ turns an agent's
+tile from its terminal to its conversation and back, in place, as a
+text goes from editing to viewing (⌃⌘↩, the other beside). Every turn:
+what you asked, in the **technical** face, as typed (one asked from a
+thread, the thread and what was said there, not the instructions round
+it); what it did on the way folded to a line in the same face ("Read 6
+files · ran 3 commands · made 2 edits", unfolded as a list, kept
+unfolded as it grows); what it said after its last tool — its answer —
+rendered as a preview renders Markdown, in the **reading** face. The
+faces tell it from a thread, whose comments are cards in the editing
+face: this is a page to read, your words its headings. Its host reads
+the turns from the agent's transcript when asked (`turnContent`, not
+kept — a transcript is read again only for what it gained), the
+conversation asking each second while a turn runs and it's in sight;
+the page kept at its end as it grows, unless scrolled up. Under it a
+**composer** in the technical face: ↩ asks the agent, as a thread's ask
+does — now if it's free, else once its turn ends (shown at the end,
+dashed, meanwhile); asleep, it's woken; Stop (while it works) is Esc.
+Needing you, the conversation says so, its terminal a ⌘↩ away. A turn
+clicked in its terminal's outline is shown in the conversation (this
+space's, else one made beside); Turn as a Tile, from its menu, is the
+block of its own it was before.
 
 (Insert Path, ⌃⌘I, is a terminal's too: a menu over its cursor of the
 paths under where its shell is — listed on its host, a folder at a
@@ -3206,8 +3248,8 @@ the default, or the system's SF Symbols. Pierre's (@pierre/icons, the
 Pierre Computer Company's, Apache-2.0) were drawn for a file tree, a diff
 and a review's comments — what Manifold shows most — as one family: a
 file a page with a badge for its kind (code, an image, a zip, a lock, a
-spreadsheet, a gear for configuration), a project's folder one with code
-in it, a git change a squircle with its letter, work's states circles,
+spreadsheet, a gear for configuration), a project a box (as the system's
+shippingbox is: in a path, told at a glance from a folder), a git change a squircle with its letter, work's states circles,
 a thread a comment; a terminal a squircle with its prompt, a note one
 with a pencil and an agent one with a sparkle — what's run, what's
 written and what thinks — and a diff one with its ±, as git's changes

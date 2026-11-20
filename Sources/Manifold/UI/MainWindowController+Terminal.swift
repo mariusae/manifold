@@ -37,9 +37,9 @@ extension MainWindowController: TerminalViewDelegate {
     /// and the way back. One per command: asked again, the one there is.
     func terminal(_ view: TerminalView, show command: ShellCommand, output: String, beside: PlacementID?) {
         let place: Where = beside != nil ? .here : opener(view.placement)
-        // An agent's turn: the turn, as a block of its own, not the TUI's bytes.
+        // An agent's turn: in its conversation (§3.8), not the TUI's bytes.
         if hosts.block(view.block)?.terminal?.turns?.contains(where: { $0.id == command.id }) == true {
-            return showTurn(command.id, of: view.block, place: place)
+            return showInConversation(command.id, of: view.block, from: view.placement)
         }
         let (id, made) = outputBlock(of: command, in: view.block, output: output)
         let context = "command \(command.id)"
@@ -111,9 +111,26 @@ extension MainWindowController: TerminalViewDelegate {
         }
     }
 
+    /// An agent's turn, in its conversation (§3.8): the conversation
+    /// shown in this space, else one made beside `from` — scrolled to it.
+    func showInConversation(_ turn: Int, of agent: BlockID, from: PlacementID?) {
+        if let a = arrangement, let space = selected, let p = a.placements(of: agent).first(where: { $0.lens == .thread }) {
+            land(on: p.id, in: space, a)
+            (views[p.id] as? AgentConversationView)?.reveal(turn: turn)
+            return
+        }
+        show(agent, lens: .thread, from.map { .besideOpener($0) } ?? .beside, kind: .opened, context: "conversation", exact: true)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let p = self.arrangement?.placements(of: agent).first(where: { $0.lens == .thread }) else { return }
+            (self.views[p.id] as? AgentConversationView)?.reveal(turn: turn)
+        }
+    }
+
     /// The menu of an agent's turn: shown, its changes, undone.
     func turnItems(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) -> [NSMenuItem] {
-        var items: [NSMenuItem] = [ClosureMenuItem("Show Turn", symbol: "text.bubble") { [weak self] in
+        var items: [NSMenuItem] = [ClosureMenuItem("Show in Conversation", symbol: "text.bubble") { [weak self] in
+            self?.showInConversation(turn.id, of: agent, from: placement)
+        }, ClosureMenuItem("Turn as a Tile", symbol: "doc.richtext") { [weak self] in
             self?.showTurn(turn.id, of: agent, place: .besideOrHere(placement))
         }]
         if turn.before != nil {

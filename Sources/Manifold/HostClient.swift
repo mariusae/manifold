@@ -661,6 +661,13 @@ final class HostClient {
         list(.listTree(path: path, limit: limit), done: done)
     }
 
+    /// What an agent's turns did, read from its transcript by its host
+    /// (§3.8); nil from a host too old to say, or not answering.
+    func turnContent(_ agent: BlockID, turns: [Int], done: @escaping ([TurnContent]?) -> Void) {
+        guard features.contains("turnContent") else { return done(nil) }
+        ask(.turnContent(agent: agent, turns: turns), offline: nil, { r -> [TurnContent]?? in if case let .turnContent(c) = r { .some(c) } else { nil } }, done)
+    }
+
     /// A project's languages as GitHub counts them (§2.6), from its host.
     func languages(_ path: String, done: @escaping ([Linguist.Count]?) -> Void) {
         ask(.languages(path: path), offline: nil, { r -> [Linguist.Count]?? in if case let .languages(c) = r { .some(c) } else { nil } }, done)
@@ -938,10 +945,14 @@ final class HostClient {
         return id
     }
 
-    func newNote(home: String? = nil, text: String = "") -> BlockID {
+    /// `title`, `views`: its name and view state, given with it — appended
+    /// after its text, they met the title the host gives it from its first
+    /// line, and were refused.
+    func newNote(home: String? = nil, text: String = "", title: String? = nil, views: [PlacementID: [String: String]] = [:]) -> BlockID {
         let id = BlockID(host: host)
-        append(.create(kind: .text, title: nil, path: nil), to: .block(id))
+        append(.create(kind: .text, title: title, path: nil), to: .block(id))
         if let home { append(.cwd(home), to: .block(id)) }
+        for (p, v) in views { append(.view(placement: p, v), to: .block(id)) }
         append(.content(text, encoding: "utf-8", lineEnding: "\n", fingerprint: ""), to: .block(id))
         return id
     }

@@ -67,7 +67,7 @@ extension MainWindowController: GridDelegate {
         if let t = stackedTerminal(id) {
             c.symbol = Theme.symbolName(for: t)
             c.summary.title = t.displayTitle
-            c.mark?.pill = .note("Editing")
+            c.summary.note = "Editing"
             c.agent = .init(t)
         }
         return c

@@ -2240,8 +2240,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private let glyph = StatusGlyph()
     /// The status in a word, when it needs you (`StatusMark`).
     private let statusPill = StatusPillView()
-    /// The name shimmering while the block works.
-    private lazy var shimmer = Shimmer(name)
     /// The block's host, when it isn't the workspace's (§8).
     private let hostPill = HostPill()
     /// On the icon, when it's over another in a pure stack ($EDITOR's):
@@ -2742,7 +2740,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
         stackBadge.isHidden = shown.stackedOver == nil
-        isPinned = shown.pinnedIn != nil
+        if (shown.pinnedIn != nil) != isPinned { isPinned = shown.pinnedIn != nil; needsLayout = true }
         pinBadge.toolTip = shown.pinnedIn.map { "Pinned in \($0)" }
         updatePinBadge()
         // Shown again as it was — every render, a keystroke's in another
@@ -2853,15 +2851,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     private func showRest(_ shown: Shown, focused: Bool) {
-        // The status by the name (`StatusMark`): a pill only when it needs
-        // you, the name shimmering while it works, dim when inactive.
+        // The status at the bar's edge (`StatusMark`): its glyph, the name
+        // dim when asleep or inactive; an $EDITOR's, Editing.
         let mark = shown.offline ? StatusMark(.offline) : StatusMark(of: shown.block)
         if glyph.block != shown.block?.id { glyph.block = shown.block?.id }
         if glyph.look != mark.glyph { glyph.look = mark.glyph }
         if glyph.isHidden != (mark.glyph == nil) { glyph.isHidden = mark.glyph == nil }
-        let pill: StatusPill.Kind? = shown.stackedOver != nil ? .note("Editing") : mark.pill
+        let pill: StatusPill.Kind? = shown.stackedOver != nil ? .note("Editing") : nil
         if statusPill.kind != pill { statusPill.kind = pill }
-        shimmer.on = mark.shimmer
         let fade: CGFloat = mark.dim ? 0.6 : 1
         if name.alphaValue != fade { name.alphaValue = fade }
         let tip = shown.offline ? "Its host can't be reached: as last seen" : StatusGlyph.tooltip(shown.block)
@@ -2935,6 +2932,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if iconSpot != trackedSpot { updateTrackingAreas() }
         x += 22
         if agentColor != nil {
+            // Pinned, past the highlighter's strokes (they rise to the
+            // icon's right), not on them.
+            if isPinned { x = max(x, (pinBadge.frame.maxX + 2).rounded()) }
             let pw = agentPill.wantedWidth
             // A point under the bar's middle: its name's baseline the
             // title's (centred, its smaller capitals sat a point above them).
@@ -3031,7 +3031,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let hostRoom = showHost ? hostWidth + 8 : 0
         let nw = min(wanted, max(0, right - x - hostRoom))
         name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-        shimmer.layout()
         var sx = x - 2 + nw + 8
         hostPill.isHidden = !showHost
         if showHost {

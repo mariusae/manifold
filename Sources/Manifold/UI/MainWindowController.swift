@@ -286,8 +286,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             // Terminals that couldn't be made while it slept, tried again now.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.deadRetries = [:]; self?.render() }
         }
-        // Reduce motion turned on or off: working's names shimmer, or hold
-        // still with a dot (`StatusMark`), everywhere at once. Increase
+        // Reduce motion turned on or off: working's rings turn, or hold
+        // still (`StatusGlyph`), everywhere at once. Increase
         // contrast: the theme made firmer, or as it's defined.
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
@@ -756,6 +756,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 m.theme = hosts.state.appearance.theme
                 m.show(block: p.block, path: shown.path ?? "")
             }
+            if let c = v as? AgentConversationView {
+                c.page.theme = hosts.state.appearance.theme
+                c.refresh()
+            }
             if let e = v as? EditorView { configure(e, for: shown) }
             if let d = v as? DiffView {
                 d.theme = hosts.state.appearance.theme
@@ -865,6 +869,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             watch(t.timeline)
             v = t
+        case .thread where hosts.block(p.block)?.agent != nil:
+            v = agentConversation(p)
         case .thread:
             let t = ThreadTileView(placement: p.id, block: p.block)
             t.chat.threadID = p.block
@@ -1007,6 +1013,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// A rendered page of Markdown (a note's preview, an agent's turn): its
     /// pictures and block cards from here.
+    /// An agent's conversation (§3.8): its turns, read from its host, and
+    /// a composer whose prompt asks it — now, or once it's free.
+    private func agentConversation(_ p: Placement) -> AgentConversationView {
+        let agent = p.block
+        let c = AgentConversationView(placement: p.id, block: agent, page: markdownView(p, path: ""))
+        c.source = { [weak self] in self?.hosts.block(agent) }
+        c.runs = { Self.agentRuns($0) }
+        c.fetch = { [weak self] turns, done in
+            guard let client = self?.hosts.client(of: agent) else { return done(nil) }
+            client.turnContent(agent, turns: turns, done: done)
+        }
+        c.queued = { [weak self] in self?.threadUI.asks.filter { $0.agent == agent && $0.threads.isEmpty }.map(\.prompt) ?? [] }
+        c.onSend = { [weak self] text in
+            guard let self, let b = self.hosts.block(agent) else { return }
+            guard self.askable(b) else {
+                return self.toast.show("\(AgentLook.name(of: b)) isn't running — start it in its terminal", action: "Terminal", for: 6) { [weak self] in
+                    self?.toggleConversation(p.id)
+                }
+            }
+            self.ask(agent, threads: [], prompt: text)
+        }
+        // Esc, as its terminal takes it: an agent at work stops.
+        c.onStop = { [weak self] in self?.hosts.propose(.input(block: agent, text: "\u{1b}")) }
+        c.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
+        return c
+    }
+
     private func markdownView(_ p: Placement, path: String) -> MarkdownView {
         let m = MarkdownView(placement: p.id, block: p.block, path: path, theme: hosts.state.appearance.theme)
         m.delegate = self
@@ -1542,6 +1575,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         hosts.propose(.attend(next))
     }
 
+    /// ⇧⌘J: the Inbox emptied of all but what needs you — what's done or
+    /// failed read, every thread's news seen (§3.7).
+    @objc func markAllSeen(_ sender: Any?) {
+        hosts.markAllSeen()
+        inboxWalk = []
+    }
+
     // MARK: Seen, and collection
 
     /// Every file placed in an arrangement on the desk is open with its
@@ -1990,6 +2030,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     // MARK: Kept for Organizations (§3.6) — its code in MainWindowController+Organizations.swift
 
     var organizationWork: DispatchWorkItem?
+    /// The sidebar's pinned rows, to be read once in sight a moment (`seeSidebarRows`).
+    var sidebarSeeing: DispatchWorkItem?
     /// The row the sidebar's tree was last made with chosen.
     var organizationShownFor: String?
 

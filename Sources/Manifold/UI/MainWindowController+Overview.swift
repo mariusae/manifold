@@ -323,7 +323,8 @@ enum StatusGroup: Int, CaseIterable {
         case .needsYou: self = .needsYou
         case .done: self = .done
         case .failed: self = .failed
-        case .working, .busy: self = .working
+        case .working: self = .working
+        case .unseen: self = .done
         case .inactive, .connecting, .offline, .quiet, .watching: self = .inactive
         }
     }

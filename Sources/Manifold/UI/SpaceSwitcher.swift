@@ -28,8 +28,8 @@ final class SpaceSwitcherView: PopoverView {
         var docked: Int
         /// What wants you there, under its grid: each tile that needs you,
         /// failed or is done (not yet seen) — its symbol, its name, its
-        /// pill, how long since.
-        struct Want { var symbol: String; var title: String; var pill: StatusPill.Kind; var age: String? }
+        /// glyph, how long since.
+        struct Want { var symbol: String; var title: String; var look: StatusGlyph.Look; var age: String? }
         var wants: [Want] = []
     }
 
@@ -113,15 +113,15 @@ final class SpaceSwitcherView: PopoverView {
     }
 
     /// What wants you there: a row each — the tile's symbol and name, how
-    /// long since, and its pill (Done, Needs you, Failed), as the sidebar has them.
+    /// long since, and its glyph (needs you, failed, done), as the sidebar has them.
     private func drawWants(_ wants: [Card.Want], from top: CGFloat, in r: NSRect) {
         var y = top
         for w in wants.prefix(Self.mostWants) {
             let row = NSRect(x: r.minX + 10, y: y, width: r.width - 20, height: Self.wantRow)
-            let size = StatusPill.size(w.pill)
-            let pill = NSRect(x: row.maxX - size.width, y: row.midY - size.height / 2, width: size.width, height: size.height)
-            StatusPill.draw(w.pill, in: pill)
-            var right = pill.minX - 6
+            let side = StatusGlyph.size
+            let glyph = NSRect(x: row.maxX - side, y: row.midY - side / 2, width: side, height: side)
+            StatusGlyph.drawUpright(w.look, in: glyph)
+            var right = glyph.minX - 6
             if let age = w.age {
                 let a = NSAttributedString(string: age, attributes: [.font: UIType.footnote, .foregroundColor: Theme.tertiaryText])
                 let z = a.size()
@@ -246,14 +246,15 @@ extension MainWindowController {
         var seen = Set<BlockID>()
         for p in a.placements + a.docked.map(\.placement) {
             guard seen.insert(p.block).inserted, let tb = hosts.block(p.block) else { continue }
-            let pill: StatusPill.Kind, rank: Int
-            switch StatusGlyph.look(of: tb) {
-            case .needsYou?: (pill, rank) = (.needs(StatusPill.words(tb.statusRecord?.kind)), 0)
-            case .failed(read: false)?: (pill, rank) = (.failed, 1)
-            case .done(read: false)?: (pill, rank) = (.done, 2)
+            guard let look = StatusGlyph.look(of: tb) else { continue }
+            let rank: Int
+            switch look {
+            case .needsYou: rank = 0
+            case .failed(read: false): rank = 1
+            case .done(read: false): rank = 2
             default: continue
             }
-            wants.append((rank, .init(symbol: Theme.symbolName(for: tb), title: Self.linkTitle(tb), pill: pill, age: StatusGlyph.at(of: tb).map(Age.short))))
+            wants.append((rank, .init(symbol: Theme.symbolName(for: tb), title: Self.linkTitle(tb), look: look, age: StatusGlyph.at(of: tb).map(Age.short))))
         }
         return .init(id: id, name: name, host: hosts.ordered.count > 1 ? hosts.label(of: id.host) : nil,
                      mark: spaceMarks()[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b), color: SpaceLook.color(of: b),

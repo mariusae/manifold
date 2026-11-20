@@ -14,6 +14,9 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         var subtitle: String = ""
         /// At its right: a count, a word.
         var trailing: String = ""
+        /// At its right edge: its status's glyph (§3.7), as its row in the
+        /// sidebar has it.
+        var status: StatusGlyph.Look? = nil
         /// A row that leads somewhere else (Show All, Recently Closed): a › at its right.
         var chevron = false
         var dimmed = false
@@ -396,6 +399,11 @@ final class PopMenuList: NSView {
                     c.draw(in: NSRect(x: right - z.width, y: r.minY + (Self.row - z.height) / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                     right -= z.width + 8
+                }
+                if let look = item.status {
+                    let side = StatusGlyph.size
+                    StatusGlyph.drawUpright(look, in: NSRect(x: right - side, y: r.minY + (Self.row - side) / 2, width: side, height: side))
+                    right -= side + 8
                 }
                 if !item.trailing.isEmpty {
                     let t = NSAttributedString(string: item.trailing, attributes: [.font: UIType.detail, .foregroundColor: lit ? Flat.onBand(dim: true) : Theme.tertiaryText])

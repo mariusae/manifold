@@ -146,7 +146,15 @@ extension MainWindowController {
         guard let f = focusedShown else { return }
         if let n = views[f.id] as? NotebookView { return n.runFocused() }
         if let o = views[f.id] as? OutlineNoteView { return o.cycleChecklist() }
+        if f.block?.agent != nil { return toggleConversation(f.id) }
         toggleMode(f.id)
+    }
+
+    /// An agent's tile from its terminal to its conversation (§3.8), or
+    /// back, in place (⌘↩, as a text goes from editing to viewing).
+    func toggleConversation(_ id: PlacementID) {
+        guard let p = arrangement?.placement(id), let b = hosts.block(p.block), b.agent != nil else { return NSSound.beep() }
+        replace(id, with: p.block, lens: p.lens == .thread ? b.defaultLens : .thread, as: ULID.make())
     }
 
     /// Tile ▸ Interrupt (⌘.): a notebook's running cell stopped.
@@ -216,6 +224,11 @@ extension MainWindowController {
 
     /// ⌃⌘↩: the other mode beside this one, both in view.
     @objc func editPreviewBeside(_ sender: Any?) {
+        // An agent: its conversation beside its terminal, or its terminal beside.
+        if let f = focusedShown, let b = f.block, b.agent != nil {
+            let other: Lens = f.lens == .thread ? b.defaultLens : .thread
+            return show(b.id, lens: other, .besideOpener(f.id), kind: .opened, context: other == .thread ? "conversation beside" : "terminal beside", exact: true)
+        }
         guard let f = focusedShown, f.lens.isText, f.block?.kind == .text else { return }
         let other: Lens = f.lens == .preview ? .editor : .preview
         show(f.placement.block, lens: other, .besideOpener(f.id), kind: .opened, context: other == .editor ? "edited beside" : "viewed beside", exact: true)

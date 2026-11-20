@@ -511,7 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The focused block's properties, in the sidebar (Star's SHOW PROPERTIES).
         item(view, "Inspector", #selector(MainWindowController.toggleInspector(_:)), "i", [.command, .option])
         // The space's tiles, the last seen first, and what was closed (Dia's ⇧⌘A).
-        item(view, "Tiles and Recently Closed…", #selector(MainWindowController.showTilesMenu(_:)), "a", [.command, .shift])
+        item(view, "Tiles, Spaces and Recently Closed…", #selector(MainWindowController.showTilesMenu(_:)), "a", [.command, .shift])
         view.addItem(.separator())
         item(view, "Bigger", #selector(TerminalView.increaseFontSize(_:)), "+")
         // ⌘= too, the key + is on, unshifted.
@@ -552,6 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item(go, "Back", #selector(MainWindowController.navigateBack(_:)), "-", [.control])
         item(go, "Forward", #selector(MainWindowController.navigateForward(_:)), "-", [.control, .shift])
         item(go, "Next in Inbox", #selector(MainWindowController.nextInInbox(_:)), "j")
+        item(go, "Mark All Seen", #selector(MainWindowController.markAllSeen(_:)), "j", [.command, .shift])
         go.addItem(.separator())
         // ⌘`, as macOS goes round an app's windows: here, its spaces, in
         // the strip's order (and, with one, the windows).

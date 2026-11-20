@@ -631,7 +631,27 @@ extension MainWindowController {
         for arr in order where arr != selected {
             if let a = hosts.arrangement(arr), let t = a.placements(of: id).first { return land(on: t.id, in: arr, a) }
         }
+        // No tile of it anywhere (an agent pinned in a project, listed
+        // under it): to the space that keeps it — pins it, or shows its
+        // project — and shown there, not brought here.
+        if let home = space(keeping: id, order: order), home != selected { hosts.select(home) }
         show(id, lens: block.defaultLens, .here)
+    }
+
+    /// The space a block with no tile belongs in: here, if here keeps it;
+    /// else the one that pins it, else one showing the project it's
+    /// pinned in or is in — the latest seen first.
+    func space(keeping id: BlockID, order: [BlockID]) -> BlockID? {
+        let spaces = (selected.map { [$0] } ?? []) + order.filter { $0 != selected }
+        if let s = spaces.first(where: { isPinned(id, in: $0) }) { return s }
+        guard let root = (project(pinning: id) ?? project(of: id))?.root else { return nil }
+        return spaces.first { s in
+            hosts.arrangement(s).map { a in
+                (a.placements + a.docked.map(\.placement)).contains { p in
+                    (project(pinning: p.block) ?? project(of: p.block))?.root == root
+                }
+            } ?? false
+        }
     }
 
     /// Of a block's tiles, the one nearest `near`: in its column, then the

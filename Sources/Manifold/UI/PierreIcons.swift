@@ -87,7 +87,7 @@ enum PierreIcons {
         // What a tile or a row is: its kind.
         "folder": Use("Folder"),
         "folder.fill": Use("Folder", fill: true),
-        "shippingbox": Use("FolderCode"),
+        "shippingbox": Use("Box"),
         "folder.badge.plus": Use("FolderBadgePlus"),
         "doc": Use("File"),
         "doc.fill": Use("File", fill: true),

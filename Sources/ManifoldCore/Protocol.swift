@@ -8,7 +8,7 @@ public let protocolVersion = 72
 
 /// What this build's server can do beyond its protocol (`welcome`'s
 /// `features`).
-public let serverFeatures = ["zstd", "machine", "environment", "folderWatch"]
+public let serverFeatures = ["zstd", "machine", "environment", "folderWatch", "turnContent"]
 
 /// The app (the command, agents' hooks) talks to the server over its Unix
 /// socket, in frames: a 4-byte big-endian payload length, a kind byte, then
@@ -288,6 +288,9 @@ public enum Proposal: Codable, Sendable {
     /// An agent's turn as a block of its own (§3.8), linked from the agent
     /// and to what the turn changed; made if new, refreshed if not.
     case captureTurn(block: BlockID, agent: BlockID, turn: Int)
+    /// What an agent's turns did, read from its transcript (§3.8), for its
+    /// conversation: answered with `turnContent`, not kept.
+    case turnContent(agent: BlockID, turns: [Int])
     /// An agent's turn undone: its changes to the working tree applied in
     /// reverse (failing, and saying so, where later work is in the way).
     case undoTurn(agent: BlockID, turn: Int)
@@ -349,7 +352,7 @@ public extension Proposal {
              let .git(block, _), let .projectGit(block, _), let .refreshGit(block), let .gitSync(block, _), let .smartlog(block, _), let .diff(block, _), let .reloadDiff(block),
              let .captureOutput(block, _, _, _), let .newAgent(block, _, _), let .newProjectAgent(block, _, _), let .processes(block),
              let .newNotebook(block, _), let .editNotebook(block, _), let .runCells(block, _), let .interruptNotebook(block),
-             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _),
+             let .restartNotebook(block), let .startNotebook(block), let .captureTurn(_, block, _), let .undoTurn(block, _), let .turnContent(block, _),
              let .newThread(block, _, _, _, _), let .threadEntry(block, _), let .editThreadEntry(block, _, _, _), let .threadSpace(block, _), let .threadShelf(block, _, _),
              let .attend(block), let .clearStatus(block), let .pin(block, _), let .discard(block), let .input(block, _), let .runPanel(block, _, _):
             return block
@@ -812,6 +815,8 @@ public extension ServerMessage {
         case machine(MachineSample?)
         case lsp(LSPResult)
         case scip(SCIPResult)
+        /// What `turnContent` asked: the turns whose transcript could be read.
+        case turnContent([TurnContent])
     }
 }
 

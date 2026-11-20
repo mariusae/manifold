@@ -146,6 +146,9 @@ extension FontTheme {
         var out = "--read-size: \(r.size)px; --read-weight: \(r.weight); --read-leading: \(r.lineHeight); --read-tracking: \(r.tracking / 1000)em;"
         out += " --read-gap: \(r.paragraphSpacing)em; --mono-weight: \(m.weight); --mono-tracking: \(m.tracking / 1000)em;"
         out += " --mono-scale: \(m.size / 13);"
+        // The technical face (an agent's conversation's prompts, §3.8).
+        let t = styles.technical
+        out += " --tech: \(t.cssFamily(.technical)); --tech-weight: \(t.weight); --tech-scale: \(t.size / 13);"
         // Bold as the editor takes it: a face heavier by a step, not CSS's
         // "bolder" (from Light, only Regular).
         out += " --read-bold: \(min(900, r.weight + FontFace.boldStep)); --read-heading: \(r.headingFaceWeight);"

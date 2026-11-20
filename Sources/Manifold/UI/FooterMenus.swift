@@ -14,7 +14,7 @@ final class SidebarFooter: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         threads.toolTip = "The Space's Threads (⌃⌘M)"
-        tiles.toolTip = "Tiles and Recently Closed (⇧⌘A)"
+        tiles.toolTip = "Tiles, Spaces and Recently Closed (⇧⌘A)"
         addSubview(threads)
         addSubview(tiles)
     }
@@ -181,11 +181,10 @@ extension MainWindowController {
             var sub: [String] = []
             if let when { sub.append(BlockSummary.since(when, now: Date())) }
             sub.append(place(t))
-            let unseen = hosts.unseen(t).count
             return PopMenu.Item(symbol: th?.resolved == true ? "checkmark.bubble" : "text.bubble",
                                 image: about?.web.flatMap { Favicons.image(forPage: $0.url) },
                                 title: th?.title ?? "Thread", subtitle: sub.filter { !$0.isEmpty }.joined(separator: " · "),
-                                trailing: unseen > 0 ? "\(unseen) new" : "", dimmed: th?.resolved == true,
+                                status: hosts.look(ofThread: t), dimmed: th?.resolved == true,
                                 run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) },
                                 // ↖↘ on its row (⌥↩): a tile of its own, not the overlay.
                                 accessory: PopMenu.Accessory(symbol: "arrow.up.left.and.arrow.down.right", tip: "Open as a Tile") { [weak self] in
@@ -260,6 +259,7 @@ extension MainWindowController {
             }
             return PopMenu.Item(symbol: b.map { Theme.symbolName(for: $0) } ?? "square.dashed", image: b?.web.flatMap { Favicons.image(forPage: $0.url) },
                                 title: b.map(Self.linkTitle) ?? "Untitled", trailing: a.isDocked(p.id) ? "Docked" : "",
+                                status: StatusMark(of: b).glyph,
                                 run: { [weak self] in self?.arrive(atTile: p.id) })
         }
         let most = 8
@@ -282,8 +282,10 @@ extension MainWindowController {
             PopMenu.Item(symbol: Theme.symbolName(for: b), image: b.web.flatMap { Favicons.image(forPage: $0.url) }, title: Self.linkTitle(b),
                          run: { [weak self] in self?.follow(b.id, from: self?.arrangement?.focused, .goTo, context: "recently closed") })
         }
-        var sections = [PopMenu.Section(title: q.isEmpty ? "Tiles" : "Search Results", items: tiles),
-                        PopMenu.Section(title: "Recently Closed", items: Array(closedItems))]
+        var sections = [PopMenu.Section(title: q.isEmpty ? "Tiles" : "Search Results", items: tiles)]
+        let spaces = spacesItems(q)
+        if !spaces.isEmpty { sections.append(PopMenu.Section(title: "Spaces", items: spaces)) }
+        sections.append(PopMenu.Section(title: "Recently Closed", items: Array(closedItems)))
         if q.isEmpty {
             sections.append(PopMenu.Section(title: nil, items: [
                 PopMenu.Item(symbol: "clock.arrow.circlepath", title: "All Recently Closed", trailing: closed.count > 0 ? "\(closed.count)" : "", chevron: true,
@@ -292,6 +294,28 @@ extension MainWindowController {
             ], divided: true))
         }
         return sections
+    }
+
+    /// The spaces, after the space's tiles (⇧⌘A): each as the strip has
+    /// it — its square, its name, what's most pressing there — with its
+    /// ⌘ number; chosen, gone to. Those whose names match what's typed.
+    func spacesItems(_ q: String) -> [PopMenu.Item] {
+        let order = allWorkspaces
+        return spaceChips().chips.compactMap { c -> PopMenu.Item? in
+            guard q.isEmpty || q.split(separator: " ").allSatisfy({ c.title.lowercased().contains($0) }) else { return nil }
+            let square = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
+                let box = r.insetBy(dx: 0.5, dy: 0.5)
+                SpaceSquare.fill(box, color: c.color, alpha: c.current ? 0.32 : 0.22)
+                SpaceSquare.drawGlyph(in: box, color: c.color, mark: c.mark, badge: nil)
+                return true
+            }
+            let i = order.firstIndex(of: c.id)
+            let key = i.map { $0 == order.count - 1 && $0 >= 8 ? "⌘9" : $0 < 8 ? "⌘\($0 + 1)" : "" } ?? ""
+            let id = c.id
+            return PopMenu.Item(symbol: Theme.spaceSymbol, image: square, title: c.title, trailing: c.current ? "Here" : key,
+                                status: c.status,
+                                run: { [weak self] in self?.hosts.select(id) })
+        }
     }
 
     /// Debugging: "footer threads|tiles [type <q>|chip <id>|close]" and what it shows.

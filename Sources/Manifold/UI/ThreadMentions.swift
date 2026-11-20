@@ -148,7 +148,8 @@ private final class MentionList: PopoverView {
             if lit { Flat.menuBand(r) }
             let iconRect = NSRect(x: r.minX + 7, y: r.midY - 7, width: 14, height: 14)
             if let icon = c.icon {
-                icon.draw(in: iconRect)
+                // An agent's mark in one colour is a template: in the row's ink, not black.
+                (icon.isTemplate ? icon.tinted(lit ? Flat.onBand() : Theme.secondaryText) : icon).draw(in: iconRect)
             } else if let image = Theme.symbol(c.symbol, size: 11, weight: .medium, color: lit ? Flat.onBand() : Theme.secondaryText) {
                 image.draw(centeredAt: NSPoint(x: iconRect.midX, y: iconRect.midY))
             }

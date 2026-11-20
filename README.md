@@ -1165,10 +1165,16 @@ around it, and comes back with its history.
   Block**, or drag the dot itself: the command, as its row in the
   outline drags (its line typed again in a terminal, a link to it in a
   note, its output given an agent).
+- **An agent's conversation** (⌘↩ in its tile, ⌃⌘↩ beside): its turns
+  as a page — what you asked in the technical face, what it did folded
+  to a line, what it said rendered in the reading face — the latest last,
+  live as it works; a composer under it asks it next (once it's free, or
+  waking it), Stop while it works.
 - **A tile's own sidebar**: the same outline — a terminal's commands (an
   agent's turns), each with how it ended, how long it took (a second
   or more: "2.4 s", "2m 13s") and when, clicked, the terminal
-  goes there (its ⋯ shows the command's output, or the turn, as a block);
+  goes there (its ⋯ shows the command's output, or the turn, in the
+  agent's conversation);
   a Markdown text's, a source file's, a PDF's, a diff's or a web page's — as a
   list at the tile's left —
   the sidebar button in the tile's bar, or View ▸ Show Outline (⌘/) —
@@ -1390,18 +1396,20 @@ around it, and comes back with its history.
   Searches, git and diff blocks report as the host works for them. A
   block's name says it wherever it's shown — its tile's bar, its sidebar
   row, its card in the Overview — and adds something only when the
-  block needs you: while it works, the name **shimmers**, a wide faded band
-  sweeping across it every three seconds, every working name in
-  step (with the program's percent beside it in grey, when it says how
-  far, as OSC 9;4 progress does; with Reduce motion, the name holds
-  still, a little dim, a dot beside it); what needs you, done or
-  failed and not yet seen, has a word in a **pill** at the right —
-  Permission, Question, Sign in or Needs you in amber, Done in grey,
-  Failed in red — exactly while it's in the inbox (⌘J), after how long
-  ago in the sidebar; once seen, nothing. In a bar short of room the
-  word gives way to a dot in its color before the name gives way; in a
-  bar it's left of the links and the buttons, by the name. An
-  inactive terminal's name is dim. A host's states keep their glyphs.
+  block needs you: one **glyph** at the right, the same everywhere —
+  hollow while it's at work, filled when there's something for you,
+  gone once seen. Working, an open ring turning (filling as the program
+  says how far, as OSC 9;4 progress does; still, with Reduce motion);
+  needing you, an amber ring with a dot (why — a permission, a
+  question — in its tooltip); done or failed and not yet seen, a
+  filled disc with a check, red if it failed; a thread an agent is at
+  work on, the ring, and one with something you haven't read, a filled
+  dot; an agent asleep, or an inactive terminal, a moon, its name dim.
+  In the sidebar it comes after how long ago; in a bar it's left of the
+  links and the buttons, by the name; a folded project shows the most
+  pressing of what's in it. Read as you'd expect — focusing its tile,
+  reading the thread its agent answered in, a pinned agent's row in
+  sight a moment — or all at once with **Mark All Seen** (⇧⌘J).
   What needs you at the sidebar's foot, and the Open Quickly, are as quiet; the Dock badge counts the blocks that need you or are
   done and unread. Out of sight — Manifold not in front, or the tile
   not showing — the Mac's **notifications** say so: a terminal, agent or
@@ -1927,7 +1935,9 @@ is migrated into logs on first run.
   - **Doing.** `mani open` (files, folders, addresses), `mani new note |
     terminal | agent | web | search | git | smartlog` (a note's text from
     its input: `… | mani new note --preview` renders it, as an agent's
-    note always is unless `--edit`; `--run` a
+    note always is unless `--edit`; `mani new` alone, as apex's New, a
+    note to type into in the monospaced face, holding what's piped to it —
+    `ls | mani new` — as `--mono` sets any note; `--run` a
     terminal's command, typed in once it starts, or an agent's first
     prompt), `mani show`, `mani close`, `mani write` (a note's or file's
     text; `--append`, `--save`), `mani rename`, `mani pin`/`unpin`, `mani

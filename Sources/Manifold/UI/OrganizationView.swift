@@ -440,6 +440,12 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         return "\(stickyHost.debugState) at y \(Int(stickyHost.frame.minY)) of \(Int(bounds.height)) (scrolled to \(Int(scroll.contentView.bounds.minY)))"
     }
 
+    /// The rows on screen now, scrolled into view.
+    var visibleNodes: [OrgNode] {
+        let rows = outline.rows(in: scroll.contentView.documentVisibleRect)
+        return (rows.location..<NSMaxRange(rows)).compactMap { outline.item(atRow: $0) as? OrgNode }
+    }
+
     /// Shows a tree; rows open as they were, or as `openByDefault` says
     /// the first time; the row `selected` is highlighted.
     func show(_ nodes: [OrgNode], openByDefault: Set<String> = [], selected: String? = nil) {
@@ -605,8 +611,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         }
         for (o, n) in zip(current, new) where o !== n {
             if !o.looksLike(n) { changed.append(o) }
+            let had = o.hasChildren
             o.take(n)
             merge(n.givenChildren, into: o, changed: &changed, inserted: &inserted)
+            // Its first rows come (a project made empty, then an agent
+            // pinned in it): opened as it would have been made with them —
+            // empty, there was nothing to open.
+            if !had, o.hasChildren { inserted.append(o) }
         }
     }
 
@@ -900,6 +911,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.insert(n.id)
+            if n.foldable { DispatchQueue.main.async { [weak self] in self?.outline.reloadItem(n, reloadChildren: false) } }
             var kept = collapsedByHand.remove(n.id) != nil
             if !expandedByDefault.contains(n.id), openedByHand.insert(n.id).inserted { kept = true }
             if kept { keepFolds() }
@@ -910,6 +922,7 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         DispatchQueue.main.async { [weak self] in self?.updateStickyHost() }
         if let n = notification.userInfo?["NSObject"] as? OrgNode {
             expanded.remove(n.id)
+            if n.foldable { DispatchQueue.main.async { [weak self] in self?.outline.reloadItem(n, reloadChildren: false) } }
             openedByHand.remove(n.id)
             if expandedByDefault.contains(n.id) { collapsedByHand.insert(n.id) }
             keepFolds()
@@ -1412,7 +1425,6 @@ final class OrgRowView: NSTableCellView {
     private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
     private let pill = StatusPillView()
-    private lazy var shimmer = Shimmer(name)
     private let trailing = NSTextField(labelWithString: "")
     private let sparkline = Sparkline()
     /// The hairline a divider row is.
@@ -1484,8 +1496,8 @@ final class OrgRowView: NSTableCellView {
         for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule, badge, columnMap] { addSubview(v) }
         rule.isHidden = true
         columnMap.isHidden = true
-        // Its parts drawn into its own layer, not one layer each (those that
-        // move, the status glyph and a shimmering name, keep theirs): ten
+        // Its parts drawn into its own layer, not one layer each (what
+        // moves, the status glyph, keeps its own): ten
         // views a row, made and put in place as rows scroll into view, and
         // the window's layer tree built again for each.
         wantsLayer = true
@@ -1559,7 +1571,6 @@ final class OrgRowView: NSTableCellView {
         } : []
         for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline] as [NSView] where divider { v.isHidden = true }
         if divider {
-            shimmer.on = false
             toolTip = node.columnMap == nil ? nil : node.tooltip
             needsLayout = true
             return
@@ -1573,18 +1584,18 @@ final class OrgRowView: NSTableCellView {
             addSubview(b)
             return b
         }
-        // The status by the name (`StatusMark`): a pill only when it needs
-        // you, the name shimmering while it works.
-        let mark = StatusMark(node.look, kind: node.blocked)
+        // The status at the edge (`StatusMark`): its glyph — a section's
+        // none (a space's sum is its strip's), a project's only folded (its
+        // rows', the most pressing, then: opened, they say it).
+        let mark = node.style == .section || (node.foldable && !folded) ? StatusMark(nil) : StatusMark(node.look)
         glyph.block = node.block
         glyph.look = mark.glyph
         glyph.isHidden = mark.glyph == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
-        pill.kind = node.style == .section ? nil : node.pill ?? mark.pill
+        pill.kind = node.style == .section ? nil : node.pill
         badge.image = node.badge.flatMap { Theme.symbol($0, size: 6.5, weight: .bold, color: Theme.secondaryText) }
         badge.isHidden = node.badge == nil
         pill.toolTip = node.liveTooltip == nil ? node.tooltip : nil
-        shimmer.on = mark.shimmer && node.style != .section
         sparkline.pings = node.pings
         sparkline.isHidden = node.pings == nil
         trailing.stringValue = node.trailing ?? ""
@@ -1653,8 +1664,6 @@ final class OrgRowView: NSTableCellView {
 
     override func layout() {
         super.layout()
-        // The shimmer fitted to the name, wherever it was put.
-        defer { shimmer.layout() }
         let h = bounds.height
         if let node, node.style == .divider {
             rule.frame = NSRect(x: 22, y: (h / 2).rounded(), width: max(0, bounds.width - 26), height: 1)

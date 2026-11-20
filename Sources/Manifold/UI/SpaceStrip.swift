@@ -1391,10 +1391,10 @@ final class NeedsYouView: NSView {
                 image.draw(in: NSRect(x: sq.maxX + 8, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
-            let pill = StatusPill.Kind.needs(item.need)
-            let ps = StatusPill.size(pill)
-            let pr = NSRect(x: r.maxX - 6 - ps.width, y: (r.midY - ps.height / 2).rounded(), width: ps.width, height: ps.height)
-            StatusPill.draw(pill, in: pr)
+            // Its glyph, as its row anywhere has it (why it needs you, its tooltip's).
+            let side = StatusGlyph.size
+            let pr = NSRect(x: r.maxX - 8 - side, y: (r.midY - side / 2).rounded(), width: side, height: side)
+            StatusGlyph.drawUpright(.needsYou, in: pr)
             let x = sq.maxX + 28
             NSAttributedString(string: item.title, attributes: [.font: UIType.row, .foregroundColor: Theme.text])
                 .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, pr.minX - 8 - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
