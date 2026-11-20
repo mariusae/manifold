@@ -400,7 +400,10 @@ extension MainWindowController {
             // Its name, as the threads call it: with other agents in them, which one it is.
             let named = hosts.block(agent).flatMap(AgentIdentity.name(of:))
             let name = named ?? hosts.block(agent)?.agent?.name ?? "The agent"
-            let who = named.map { "(You are \($0) in these threads.) " } ?? ""
+            // Asked from threads: which of their agents it is. From its own
+            // conversation (no thread), nothing to say.
+            let fromThreads = asks.contains { !$0.threads.isEmpty }
+            let who = fromThreads ? named.map { "(You are \($0) in these threads.) " } ?? "" : ""
             let waking = hosts.block(agent).map(Self.agentRuns) == false
             say(who + text, to: agent, threads: Array(Set(asks.flatMap(\.threads))), waking: waking)
             for id in Set(asks.flatMap(\.threads)) { hosts.addToThread(id, .asked(agent: agent, name: name), author: .manifold) }

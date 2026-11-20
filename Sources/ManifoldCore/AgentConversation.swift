@@ -31,11 +31,8 @@ public enum AgentConversation {
             out += "<section class=\"mf-turn\" id=\"turn-\(t.id)\">\n\n"
             // Asked from a thread: the thread and what was said there, not
             // the instructions Manifold wrote round it.
-            if let asked = ThreadText.askShown(t.prompt) {
-                out += "<p class=\"mf-asked\">\(escape(asked))</p>\n\n"
-            } else {
-                out += prompt(t.prompt)
-            }
+            let (asked, words) = promptShown(t.prompt)
+            out += asked ? "<p class=\"mf-asked\">\(escape(words))</p>\n\n" : prompt(words)
             let (steps, said) = split(contents[t.id])
             if !steps.isEmpty {
                 out += "<details class=\"mf-steps\" id=\"steps-\(t.id)\"><summary>\(escape(summary(steps, files: t.files)))</summary>\n\n"
@@ -62,6 +59,26 @@ public enum AgentConversation {
             out += "<p class=\"mf-standing\">Asleep: sending wakes it.</p>\n\n"
         }
         return out
+    }
+
+    /// What was asked, as it's shown: from a thread, the thread and what
+    /// was said there (`asked`); else as typed — less the name it was told
+    /// it goes by in threads, which a prompt typed here once carried.
+    public static func promptShown(_ prompt: String) -> (asked: Bool, words: String) {
+        if let a = ThreadText.askShown(prompt) { return (true, a) }
+        var p = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if p.hasPrefix("(You are "), let end = p.range(of: " in these threads.) ") { p = String(p[end.upperBound...]) }
+        return (false, p)
+    }
+
+    /// What was asked, in a line for an outline: from a thread, only what
+    /// was said there (every entry began "In the thread on…").
+    public static func promptTitle(_ prompt: String) -> String {
+        let (asked, words) = promptShown(prompt)
+        if asked, let open = words.firstIndex(of: "“"), let close = words.lastIndex(of: "”"), open < close {
+            return String(words[words.index(after: open)..<close])
+        }
+        return words.split(whereSeparator: \.isNewline).first.map(String.init) ?? words
     }
 
     /// What you asked, as typed.

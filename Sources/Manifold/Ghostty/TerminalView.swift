@@ -584,7 +584,8 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     private func fillOutline() {
         let commands = outlined
         commandsOutline.set(commands.map { c in
-            Outline.Item(title: c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.isRunning && c.id == commands.last?.id, code: !isAgent)
+            // An agent's turn as its conversation's outline says it (asked from a thread: what was said there).
+            Outline.Item(title: isAgent ? AgentConversation.promptTitle(c.text) : c.text, detail: detail(of: c, last: commands.last?.id), failed: (c.status ?? 0) != 0, running: c.isRunning && c.id == commands.last?.id, code: !isAgent)
         })
         fillStrip()
         markCurrentCommand()

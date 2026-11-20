@@ -2772,7 +2772,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         agentColor = AgentLook.color(of: shown.block)
         paintAgent()
-        let title = shown.title + (shown.isDormant ? "  (dormant)" : shown.exitedWords.map { "  (\($0))" } ?? "")
+        // An agent's pill names it: its program's own name for its window
+        // ("Claude Code", "Codex") isn't said again beside it — what it's
+        // at, its task, is — nor that it sleeps (its moon says so).
+        var base = shown.title
+        if agentColor != nil, let b = shown.block, let a = b.agent {
+            let said = base.trimmingCharacters(in: .whitespaces)
+            if [a.name, a.command, AgentLook.name(of: b), b.kind.defaultTitle, "Agent"].contains(where: { $0.caseInsensitiveCompare(said) == .orderedSame }) { base = "" }
+        }
+        let after = base.isEmpty && shown.isDormant ? nil : shown.isDormant ? "(dormant)" : shown.exitedWords.map { "(\($0))" }
+        let title = [base, after].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
         // Edited and unsaved: a dot after the name, amber when the file
         // changed on disk under the edits (the menu says what to do).
         let stale = shown.block?.text?.stale == true
@@ -2953,7 +2962,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var showOwn = showCorner && !viewButtons.isEmpty
         let ownWidth = CGFloat(viewButtons.count) * 22 + 4
         var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
-        let nameWanted = ceil(name.intrinsicContentSize.width) + 4
+        // No name (an agent's pill says it): no room for one.
+        let nameWanted = name.stringValue.isEmpty ? 0 : ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
         var showHost = hostPill.host != nil
         let hostWidth = hostPill.wantedWidth
@@ -3031,7 +3041,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let hostRoom = showHost ? hostWidth + 8 : 0
         let nw = min(wanted, max(0, right - x - hostRoom))
         name.frame = NSRect(x: x - 2, y: ((h - th) / 2).rounded() - 0.5, width: nw, height: th)
-        var sx = x - 2 + nw + 8
+        var sx = nw > 0 ? x - 2 + nw + 8 : x + 2
         hostPill.isHidden = !showHost
         if showHost {
             hostPill.frame = NSRect(x: sx - 2, y: ((h - HostPill.height) / 2).rounded(), width: hostWidth, height: HostPill.height)

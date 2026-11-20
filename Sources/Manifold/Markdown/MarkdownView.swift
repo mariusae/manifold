@@ -130,6 +130,14 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
         // The note's outline (its headings and top-level items, as its
         // editor and outline have it): an entry gone to by its line.
         headingsOutline.onPick = { [weak self] i in
+            // An entry of its own: its element, by id, at the top.
+            if let self, self.itemAnchors.indices.contains(i) {
+                NavJumps.willJump?(self)
+                let id = self.itemAnchors[i].replacingOccurrences(of: "'", with: "")
+                self.web.evaluateJavaScript("(function(){var e=document.getElementById('\(id)');if(e){e.scrollIntoView({block:'start'});window.scrollBy(0,-12);}})()")
+                self.headingsOutline.current = i
+                return
+            }
             guard let self, self.itemLines.indices.contains(i) else { return }
             NavJumps.willJump?(self)
             self.scroll(toTopLine: Double(self.itemLines[i]))
@@ -193,7 +201,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     /// words under each.
     private lazy var scrubber: OutlineStripView = {
         let s = OutlineStripView(outline: headingsOutline, policy: .document)
-        s.preview = { [weak self] i in self?.sectionLines(i) ?? [] }
+        s.preview = { [weak self] i in self?.ownPreview?(i) ?? self?.sectionLines(i) ?? [] }
         return s
     }()
 
@@ -228,6 +236,14 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
 
     /// The outline's entries' lines in the text, from 0.
     private var itemLines: [Int] = []
+
+    /// Entries of its own, in place of the text's headings — an agent's
+    /// conversation's turns (§3.8) — each found on the page by its
+    /// element's id; and what an entry's card on the strip says under it.
+    var ownOutline: (() -> [(item: Outline.Item, anchor: String)])?
+    var ownPreview: ((Int) -> [String])?
+    /// The ids of its own entries' elements, as last read.
+    private var itemAnchors: [String] = []
     /// The entries as last read, and the version of the text they're of.
     private var outlineItems: (version: Int, items: [NoteOutlineItem])?
 
@@ -236,6 +252,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
     /// `data-sourcepos`), and where the page is.
     private func readOutline() {
         guard loaded else { return }
+        if let own = ownOutline?() { return readOwnOutline(own) }
         // The entries are the text's, read once a version: this comes after
         // every layout and scroll.
         let items: [NoteOutlineItem]
@@ -259,6 +276,26 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             // Each entry its section: from its top to the next's at its
             // level or above (the last, to the page's end).
             self.scrubber.set(StripLayout.sections(tops: tops, levels: items.map(\.level), total: h))
+            self.scrubber.update(total: h, offset: y, shown: v)
+            self.markCurrentHeading(at: y)
+        }
+    }
+
+    /// Its own entries placed on the page by their elements, and where
+    /// the page is.
+    private func readOwnOutline(_ own: [(item: Outline.Item, anchor: String)]) {
+        let ids = own.map { $0.anchor.replacingOccurrences(of: "'", with: "") }
+        let list = "[" + ids.map { "'\($0)'" }.joined(separator: ",") + "]"
+        let js = "(function(L){var t=[];for(var j=0;j<L.length;j++){var e=document.getElementById(L[j]);t.push(e?e.getBoundingClientRect().top+window.scrollY:-1);}return {h:document.documentElement.scrollHeight,y:window.scrollY,v:window.innerHeight,t:t};})(\(list))"
+        web.evaluateJavaScript(js) { [weak self] r, _ in
+            guard let self, let d = r as? [String: Any], let h = d["h"] as? Double, let y = d["y"] as? Double, let v = d["v"] as? Double else { return }
+            var tops: [Double] = []
+            for t in (d["t"] as? [Double]) ?? [] { tops.append(t >= 0 ? t : (tops.last ?? 0)) }
+            self.itemLines = []
+            self.itemAnchors = ids
+            self.lastOutline = (tops, h, v)
+            self.headingsOutline.set(own.map(\.item))
+            self.scrubber.set(StripLayout.sections(tops: tops, levels: own.map { _ in 1 }, total: h))
             self.scrubber.update(total: h, offset: y, shown: v)
             self.markCurrentHeading(at: y)
         }

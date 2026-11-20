@@ -8,7 +8,7 @@ import ManifoldCore
 /// view as it grows — and under it a composer, in the technical face too,
 /// whose ↩ types what's written into the agent as its next prompt (when
 /// it's free: waiting meanwhile, said at the end of the conversation).
-final class AgentConversationView: NSView, PaneContent {
+final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     let placement: PlacementID
     let block: BlockID
     /// The conversation, rendered (a preview's page).
@@ -48,6 +48,10 @@ final class AgentConversationView: NSView, PaneContent {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         page.source = { [weak self] in self.map { ($0.document, $0.version) } }
+        // Its outline a turn each, as its terminal's: what was asked, how
+        // long it took and when; the strip's card, what it said.
+        page.ownOutline = { [weak self] in self?.turnEntries() ?? [] }
+        page.ownPreview = { [weak self] i in self?.turnPreview(i) ?? [] }
         addSubview(page)
         composer.font = Self.inputFont
         composer.isRichText = true
@@ -141,6 +145,37 @@ final class AgentConversationView: NSView, PaneContent {
             }
         }
     }
+
+    // MARK: Its outline
+
+    private var shownTurns: [AgentTurn] { Array((source()?.terminal?.turns ?? []).suffix(40)) }
+
+    private func turnEntries() -> [(item: Outline.Item, anchor: String)] {
+        let turns = shownTurns
+        return turns.map { t in
+            let title = AgentConversation.promptTitle(t.prompt)
+            let when = Age.short(t.began) == "now" ? "just now" : Age.short(t.began)
+            let detail = t.isRunning ? "running" : [BlockSummary.took(from: t.began, to: t.ended, least: 1), when].compactMap { $0 }.joined(separator: " · ")
+            return (Outline.Item(title: String(title.prefix(200)), detail: detail, running: t.isRunning), "turn-\(t.id)")
+        }
+    }
+
+    /// What a turn said, its first lines, plain.
+    private func turnPreview(_ i: Int) -> [String] {
+        let turns = shownTurns
+        guard turns.indices.contains(i) else { return [] }
+        let t = turns[i]
+        var said = AgentConversation.split(contents[t.id]).said.joined(separator: "\n")
+        if said.isEmpty { said = t.message ?? "" }
+        return said.split(whereSeparator: \.isNewline).map { Block.plainWords(String($0)) }.filter { !$0.isEmpty }.prefix(4).map { $0 }
+    }
+
+    /// Its page's: where it's scrolled, whether its outline shows — kept with the tile.
+    var keeper: ViewStateKeeper { page.keeper }
+    var outline: Outline? { page.outline }
+    var hasSidebar: Bool { true }
+    var sidebarShown: Bool { page.sidebarShown }
+    func toggleSidebar() { page.toggleSidebar() }
 
     // MARK: Writing
 

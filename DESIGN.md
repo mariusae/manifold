@@ -1075,7 +1075,12 @@ dashed, meanwhile); asleep, it's woken; Stop (while it works) is Esc.
 Needing you, the conversation says so, its terminal a ⌘↩ away. A turn
 clicked in its terminal's outline is shown in the conversation (this
 space's, else one made beside); Turn as a Tile, from its menu, is the
-block of its own it was before.
+block of its own it was before. Its outline is its turns, as its
+terminal's is — what was asked (from a thread, only what was said
+there), how long it took, when — ticks on its scroll bar whose cards
+say what it answered, and the sidebar (⌘/) beside it, kept with the
+tile. What's sent from it is only what you wrote: the name an agent
+goes by in threads is said only to one asked from them.
 
 (Insert Path, ⌃⌘I, is a terminal's too: a menu over its cursor of the
 paths under where its shell is — listed on its host, a folder at a

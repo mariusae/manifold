@@ -71,3 +71,15 @@ import Testing
     #expect(md.contains("and what else?"))
     #expect(!md.contains("mani thread read"))
 }
+
+// A prompt once sent with the name it goes by in threads: shown without it.
+@Test func aPromptIsShownWithoutItsThreadName() {
+    #expect(AgentConversation.promptShown("(You are Yarrow in these threads.) summarize the recent change") == (false, "summarize the recent change"))
+    #expect(AgentConversation.promptShown("plain") == (false, "plain"))
+}
+
+@Test func aTurnFromAThreadIsTitledByWhatWasSaid() {
+    let prompt = "(You are Elm in these threads.) [Manifold thread manifold:h/01, about x.proto] The user wrote: \"and what else?\" — read it with `mani thread read`"
+    #expect(AgentConversation.promptTitle(prompt) == "and what else?")
+    #expect(AgentConversation.promptTitle("fix it\nplease") == "fix it")
+}
