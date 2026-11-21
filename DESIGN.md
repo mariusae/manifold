@@ -1058,8 +1058,10 @@ PreToolUse was one of ours have it added as they're refreshed, with the
 the status was reported, and what it said (its title, its message) is
 on the line beneath the name — but an agent's row is one line, its
 monogram saying who: what it says it's doing, or asking, while it
-says; else its task (its program's name for its window), else its
-name. The Dock badge counts the blocks blocked
+says — in grey, a status and not a name, and too long for its room
+running on into the working dots and fading out there, dimmer still,
+not cut short with "…" — else its task (its program's name for its
+window), else its name. The Dock badge counts the blocks blocked
 and done.
 
 Read, as **attended to**: a tile focused while the window is key (and

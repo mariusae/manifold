@@ -988,8 +988,10 @@ extension MainWindowController {
     /// name for it), else its name.
     func agentRow(_ n: OrgNode, _ b: Block) {
         n.detail = ""
+        n.saying = true
         if let doing = b.agentDoing { n.title = doing; return }
         if b.statusState == .blocked, let m = b.statusRecord?.msg, !m.isEmpty { n.title = Block.oneLine(m); return }
+        n.saying = false
         n.title = Self.agentTask(b) ?? AgentLook.name(of: b)
     }
 

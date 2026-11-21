@@ -56,6 +56,10 @@ final class OrgNode {
     var dimmed = false
     /// A docked tile's row (§3.1): its name quieter, out of the grid.
     var docked = false
+    /// Its title is what it says it's doing (an agent's status, §3.7), not
+    /// its name: in grey, and fading into the status at its right where
+    /// it's too long, not cut short with "…".
+    var saying = false
     /// What the block is doing (§3.7), shown by its name (`StatusMark`).
     var look: StatusGlyph.Look?
     /// What it needs, when it's blocked: the pill's word.
@@ -155,7 +159,7 @@ final class OrgNode {
         title == o.title && symbol == o.symbol && detail == o.detail && detailSymbol == o.detailSymbol && count == o.count && pill == o.pill && badge == o.badge
             && age == o.age && emphasis == o.emphasis && dimmed == o.dimmed && look == o.look && trailing == o.trailing
             && tooltip == o.tooltip && (pings == nil) == (o.pings == nil) && (liveTooltip == nil) == (o.liveTooltip == nil)
-            && dirty == o.dirty && stale == o.stale && image === o.image && docked == o.docked
+            && dirty == o.dirty && stale == o.stale && image === o.image && docked == o.docked && saying == o.saying
     }
 
     /// Takes another's values (the same row made again), its children
@@ -164,7 +168,7 @@ final class OrgNode {
         block = o.block; title = o.title; symbol = o.symbol; detail = o.detail; detailSymbol = o.detailSymbol
         count = o.count; age = o.age; isGroup = o.isGroup; emphasis = o.emphasis; dimmed = o.dimmed; look = o.look
         trailing = o.trailing; tooltip = o.tooltip; pings = o.pings; liveTooltip = o.liveTooltip; style = o.style
-        dirty = o.dirty; stale = o.stale; image = o.image; docked = o.docked
+        dirty = o.dirty; stale = o.stale; image = o.image; docked = o.docked; saying = o.saying
         arrangement = o.arrangement; column = o.column; placement = o.placement; action = o.action
         accessories = o.accessories
         pill = o.pill; badge = o.badge
@@ -1618,8 +1622,11 @@ final class OrgRowView: NSTableCellView {
             name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-            name.textColor = node.dimmed || node.docked || mark.dim ? Theme.secondaryText : Theme.text
+            name.textColor = node.dimmed || node.docked || node.saying || mark.dim ? Theme.secondaryText : Theme.text
         }
+        // What it says it's doing: run on, faded at the end (`fadeName`).
+        name.lineBreakMode = node.saying ? .byClipping : .byTruncatingTail
+        name.cell?.truncatesLastVisibleLine = !node.saying
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {
             let s = NSMutableAttributedString(string: node.title + " •", attributes: [.font: font, .foregroundColor: color])
@@ -1773,9 +1780,12 @@ final class OrgRowView: NSTableCellView {
         }
         statusAtRight(&right, y: (h - 17) / 2)
         let nameWidth = max(0, right - 22 - ix)
+        defer { fadeName() }
         if detail.isHidden {
             if faceViews.isEmpty {
-                name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth, height: 17)
+                // What it says: on into the gap before the status, to fade there.
+                let more: CGFloat = node?.saying == true && !glyph.isHidden ? 6 : 0
+                name.frame = NSRect(x: 22 + ix, y: (h - 17) / 2, width: nameWidth + more, height: 17)
             } else {
                 // Folded: its agents' faces after the name, as many as fit.
                 let wanted = ceil((name.stringValue as NSString).size(withAttributes: [.font: name.font ?? UIType.row]).width) + 4
@@ -1808,6 +1818,31 @@ final class OrgRowView: NSTableCellView {
             glyph.alphaValue = 1
             detailIcon.alphaValue = shown ? 1 : 0
         }
+    }
+}
+
+extension OrgRowView {
+    /// What a row says it's doing, too long for its room: fading out over
+    /// its last stretch into the status beside it, dimmer still, rather
+    /// than cut short with "…".
+    fileprivate func fadeName() {
+        let wanted = name.attributedStringValue.size().width
+        guard node?.saying == true, wanted > name.frame.width, name.frame.width > 40 else {
+            name.layer?.mask = nil
+            return
+        }
+        name.wantsLayer = true
+        let mask = (name.layer?.mask as? CAGradientLayer) ?? CAGradientLayer()
+        let w = name.bounds.width, fade = min(36, w / 3)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = name.bounds
+        mask.startPoint = CGPoint(x: 0, y: 0.5)
+        mask.endPoint = CGPoint(x: 1, y: 0.5)
+        mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.black.withAlphaComponent(0).cgColor]
+        mask.locations = [0, NSNumber(value: Double((w - fade) / w)), 1]
+        CATransaction.commit()
+        name.layer?.mask = mask
     }
 }
 
