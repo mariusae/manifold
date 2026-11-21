@@ -259,7 +259,9 @@ final class GridView: NSView, NSDraggingSource {
         self.full = full
         var addedViews = false
         for column in columns {
-            for tile in column {
+            // Each tile's shares in its column, for which way a click grows it.
+            let shares = column.map { heights[$0.shown.id] ?? 1 / Double(column.count) }
+            for (row, tile) in column.enumerated() {
                 if tile.view.superview !== self {
                     Self.styleBody(tile.view)
                     addSubview(tile.view)
@@ -273,6 +275,7 @@ final class GridView: NSView, NSDraggingSource {
                 }()
                 let id = tile.shown.id
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full)
+                pill.growEdges = ArrangementState.growthEdges(shares, at: row)
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
@@ -3076,7 +3079,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Debugging: where the place to edit is, and the field and name while editing (window coordinates).
     var debugEdit: String {
         func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
-        func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : c == .resizeUpDown ? "grow" : c == .closedHand ? "held" : "open" }
+        func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : GrowCursor.word(c).map { "grow" + $0 } ?? (c == .closedHand ? "held" : "open") }
         let cursors = (cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\(word($0.1))" } + ["bar:\(word(barCursor))"]).joined(separator: ",")
         return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
     }
@@ -3235,7 +3238,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// is taken to drag: the closed hand, and letting go doesn't grow it.
     private var barCursor: NSCursor {
         if held { return .closedHand }
-        return focused || collapsed ? .resizeUpDown : .pointingHand
+        guard focused || collapsed, let e = growEdges else { return .pointingHand }
+        return GrowCursor.cursor(down: e.down, up: e.up)
+    }
+    /// Which way a click grows its tile (`ArrangementState.growthEdges`):
+    /// its bottom edge down, its top edge up; nil, it can't.
+    var growEdges: (down: Bool, up: Bool)? {
+        didSet {
+            guard growEdges?.down != oldValue?.down || growEdges?.up != oldValue?.up else { return }
+            window?.invalidateCursorRects(for: self)
+        }
     }
     /// The button held on the bar long enough to be a drag, not a click.
     private var held = false
@@ -4010,4 +4022,52 @@ final class AgentNamePill: NSControl {
     override func mouseUp(with event: NSEvent) { superview?.mouseUp(with: event) }
     override var mouseDownCanMoveWindow: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// The pointer over a bar a click grows (§3.1): double chevrons the way
+/// the tile will grow — down (its bottom edge, taken from those below),
+/// up (its top edge), or both apart — black on a white halo, to be seen
+/// on any ground. One cursor each, made once.
+enum GrowCursor {
+    private static let down = make(down: true, up: false)
+    private static let up = make(down: false, up: true)
+    private static let both = make(down: true, up: true)
+
+    static func cursor(down d: Bool, up u: Bool) -> NSCursor { d && u ? both : d ? down : up }
+
+    /// Debugging: which one, if it's one.
+    static func word(_ c: NSCursor) -> String? { c === down ? "Down" : c === up ? "Up" : c === both ? "Both" : nil }
+
+    private static func make(down: Bool, up: Bool) -> NSCursor {
+        let side: CGFloat = 20
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
+            let path = NSBezierPath()
+            let w: CGFloat = 4.5, h: CGFloat = 3, mid = side / 2
+            /// A chevron pointing down (or up) with its tip at `y`.
+            func chevron(tip y: CGFloat, pointsDown: Bool) {
+                let base = pointsDown ? y - h : y + h
+                path.move(to: NSPoint(x: mid - w, y: base))
+                path.line(to: NSPoint(x: mid, y: y))
+                path.line(to: NSPoint(x: mid + w, y: base))
+            }
+            if down && up {
+                chevron(tip: 2.5, pointsDown: false); chevron(tip: 6.5, pointsDown: false)
+                chevron(tip: 13.5, pointsDown: true); chevron(tip: 17.5, pointsDown: true)
+            } else if down {
+                chevron(tip: 9.5, pointsDown: true); chevron(tip: 14.5, pointsDown: true)
+            } else {
+                chevron(tip: 5.5, pointsDown: false); chevron(tip: 10.5, pointsDown: false)
+            }
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            NSColor.white.setStroke()
+            path.lineWidth = 4.2
+            path.stroke()
+            NSColor.black.setStroke()
+            path.lineWidth = 1.8
+            path.stroke()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: side / 2, y: side / 2))
+    }
 }

@@ -299,6 +299,25 @@ extension ArrangementState {
         return [.heights(h)]
     }
 
+    /// Which way a tile grows a step, as `growing` takes it — its bottom
+    /// edge down (from those below, the nearest first) and its top edge up
+    /// (from those above) — from its column's shares; nil, it can't (alone
+    /// in its column, or nothing left to give). For a pointer to say so.
+    public static func growthEdges(_ shares: [Double], at i: Int, step: Double = 0.15, sliver: Double = 0.04) -> (down: Bool, up: Bool)? {
+        guard shares.count > 1, shares.indices.contains(i) else { return nil }
+        var want = step, down = false, up = false
+        var d = 1
+        while want > 0, i + d < shares.count || i - d >= 0 {
+            for j in [i + d, i - d] where shares.indices.contains(j) && want > 0 {
+                let give = min(want, max(0, shares[j] - sliver))
+                if give > 0 { if j > i { down = true } else { up = true } }
+                want -= give
+            }
+            d += 1
+        }
+        return down || up ? (down, up) : nil
+    }
+
     /// A tile taking its column but for the others' bars (a bar ⌥-clicked):
     /// each other down to a sliver — its bar alone, as the grid draws one
     /// that short — still in the grid, not docked; the rest this one's.
