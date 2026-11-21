@@ -480,7 +480,9 @@ which its symbol says, nor an agent's program, which its pill does; a
 note's "Untitled" stays), where it is — in
 a project (§2.6), from the project: its name set apart, a shade darker
 and heavier than a folder's, after its box (as tall as its letters), on the title's baseline, then the path in it, `brick/src/net`; the name
-clicked, the project's tile (the one here, else one made beside) — its
+clicked, the project's tile (the one here, else one made beside), the
+pointing hand over it saying so; right-clicked, the project's menu
+(opened so, beside, over; its neighbourhood), not the tile's — its
 host in a chip after the title (a server's symbol and the host's name,
 in the accent) when that isn't the space's host — the last thing the
 bar gives up as it narrows — its **links** (the linked blocks' faces,
@@ -750,7 +752,10 @@ destination:
    worth knowing of it at a glance — a terminal its last command and how
    it ended, a note its first lines, a diff its files and lines changed
    (`BlockSummary`, from its state alone, so a block off screen or on
-   another host has one too). A tile short of room shows its summary
+   another host has one too); an agent's answer is Markdown made one
+   line, its headings', bullets' and quotes' marks gone, set as it says
+   (bold, italic, code) where it's drawn — a card, a bar — and its words
+   alone where it's searched (`InlineMarkdown`). A tile short of room shows its summary
    card; so do Open Quickly's rows, ⌃⇥'s cards, a link's face
    rested on, Overview past ten blocks, `mani ls`. A sidebar row's hover card is a picture of the tile,
    never the live view. With a stamp, a summary could show the node *as
@@ -1110,7 +1115,10 @@ there ⌘⌥ is over and ⌘ alone beside).
 **An agent's conversation** — its "default thread": ⌘↩ turns an agent's
 tile from its terminal to its conversation and back, in place, as a
 text goes from editing to viewing (⌃⌘↩, the other beside). Every turn:
-what you asked, in the **technical** face, as typed (one asked from a
+what you asked, in the **technical** face, as typed, at the right in
+a rounded bubble of its own, as wide as its words (as Claude's apps set
+yours; waiting its turn, the bubble dashed and empty; its copy button
+beside it) — turns apart by room, no rule between (one asked from a
 thread, the thread and what was said there, not the instructions round
 it; one its harness sent — Claude Code's `<task-notification>`, a
 background command of its own finished — said as what happened, a quiet
@@ -1119,11 +1127,16 @@ it went ("I'm copying the protos over unchanged…"), a shade quieter,
 and each run of tools between folded to a line in the same face ("Read
 6 files · ran 3 commands · made 2 edits", unfolded as a list, kept
 unfolded as it grows); what it said after its last tool — its answer —
-rendered as a preview renders Markdown, in the **reading** face. At
+rendered as a preview renders Markdown, but in the **editing** face —
+talk, as a thread's comments are (in Humanist, Ideal Sans, its bold
+Semibold, as in the editor), at the size that meets the code's
+x-height (Ideal's 14.5 is 14), its headings from that size, not a
+document's; the reading face is kept for documents, a
+preview's, so a serif says *this was written to be read*. At
 work, its end says what it's doing now, after the working dots — what
-it says, the same words its sidebar row and its bar say (below). The
-faces tell it from a thread, whose comments are cards in the editing
-face: this is a page to read, your words its headings. Its host reads
+it says, the same words its sidebar row and its bar say (below). Its
+answers are the face a thread's comments are, but a page, not cards:
+your words in their bubbles, its at the page's full width. Its host reads
 the turns from the agent's transcript when asked (`turnContent`, not
 kept — a transcript is read again only for what it gained), the
 conversation asking each second while a turn runs and it's in sight;
@@ -1133,8 +1146,11 @@ does — now if it's free, else once its turn ends (shown at the end,
 dashed, meanwhile); asleep, it's woken; Stop (while it works) is Esc.
 A block dropped into what you write shows as its pill there, as in a
 note, not as its Markdown. Every line in the technical face is at
-that face's own weight (Humanist's Whitney, Medium: CSS's 400,
-unasked, was its Bold). What's written keeps its lines: more than one is typed in as a paste
+that face's own weight (CSS's 400, unasked, is Ideal's Bold, as it was
+Whitney's when that was Humanist's technical face). The technical face
+is the editing face set beside code — its size and spacing its own,
+its family, face and features always editing's — so one sans is said
+to an agent and by it, in a doc comment and a note. What's written keeps its lines: more than one is typed in as a paste
 (bracketed), as a line break typed would be Return. What's being
 written stays, the tile turned to its terminal and back. Which of the
 two an agent was last turned to is kept with it (`agent.view`): shown
@@ -2061,7 +2077,11 @@ What it is to use, modelled on Panic's Nova, without syntax highlighting:
   the definitions the top of the view is inside of, three at most,
   pinned over it, each its first line as the text has it (and its
   number), while that line's out of view (`PinnedDefinitions`) — a
-  click goes to it. The definitions are the declarations query's, found
+  click goes to it; the band down to the next row's top, so no row
+  shows cut through under it. A line wrapped (as text is, to the
+  tile's width) hangs: its later rows set in past its indent — code's
+  two spaces further, a list item's under its words, past its bullet —
+  and code's broken after punctuation or a space, not inside a name. The definitions are the declarations query's, found
   once per parse and moved by edits until the next (a pass over the
   tree: 27 ms in 10,000 lines), found again too a moment after typing
   stops. What a doc comment is is the
@@ -2113,6 +2133,9 @@ placed, so a server knows what's open after either side restarts.
 ### 7.2 Preview
 
 Markdown rendered by cmark-gfm into a web view, as now, on a `text` block.
+A table reads as text does, from the left and the top — its header over
+its column's left, a short cell at a long one's top, not WebKit's centre
+— unless a column's alignment says otherwise.
 
 ### 7.3 Terminal
 
@@ -2495,8 +2518,12 @@ Row Text and Select Branch.
 A note's outline — what its tile shows as ticks and in its sidebar, and
 ⌘P finds — is the same in every lens (`NoteOutlineMarkdown.items`): its
 headings, and its top-level items each under the heading before it, with
-the line each starts on; the editor goes there by line, the preview by
-the element its line starts.
+the line each starts on — an item that leads with a bold phrase
+(`**Tables.** The header…`) by that phrase, its name as it's written to
+be; the editor goes there by line, the preview by
+the element its line starts. An outline's entries are a text's words, so
+in the technical face (its headings a face heavier), their quotes curled
+as the text's are set; a command's, in the code face, as typed.
 
 ## 8. Hosts, attachments and the wire
 
@@ -3295,7 +3322,9 @@ day its white a grey and its brights 3:1, as a light terminal's are; by
 night bright black, the dim text of suggestions and comments, 3.7:1);
 the sidebar's words — its text, secondary and tertiary — 4.5:1 on the
 backdrop too, its wash and its pools (`Palette.legible` lifts them by
-night and deepens them by day only as far as that takes); a listing's
+night and deepens them by day only as far as that takes) — and its
+secondary a third of the way to its text there (`washSecondaryText`),
+4.5:1 being what it reads at on a card, not over a pool's pink; a listing's
 folders, its terminal's blue, apart from its files, the ink; and a
 diff's added and removed lines apart to a deuteranope — what's
 added a pale blue, what's taken away a pale orange, hunks a grey, as

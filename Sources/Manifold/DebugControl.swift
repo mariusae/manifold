@@ -618,6 +618,11 @@ enum DebugControl {
                 w.removeSubrange(i...(i + 1))
             }
             return wc?.debugDrop(w, as: form, grid: slot, palette: palette) ?? "no window"
+        case "projectmenu":
+            // "projectmenu": the focused tile's project's menu, as its name in the place right-clicked has it.
+            guard let wc, let f = wc.arrangement?.focused else { return "no focus" }
+            guard let m = wc.gridProjectMenu(for: f) else { return "no project" }
+            return m.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: " | ")
         case "pills":
             return wc?.debugPills ?? "no window"
         case "pasteimage":

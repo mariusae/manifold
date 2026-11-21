@@ -419,16 +419,39 @@ enum MarkdownPage {
         blockquote { margin-left: 0; padding: 0 1em; color: var(--page-quote); border-left: 3px solid var(--page-quote-rule); }
         /* An agent's conversation (§3.8): what you asked in the technical
            face, as typed; what it did on the way folded to a line; what it
-           said as the page is, in the reading face. */
+           said in the editing face — talk, as a thread's comments are; the
+           reading face is a document's. */
+        main:has(.mf-conversation) {
+          font-family: var(--talk), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+          font-size: var(--talk-size, 14px); font-weight: var(--talk-weight, 400); line-height: var(--talk-leading, 1.45);
+          letter-spacing: var(--talk-tracking, normal); font-feature-settings: var(--talk-features, normal);
+          --read-gap: 0.85em; --read-bold: var(--talk-bold, 600); --read-heading: var(--talk-heading, 600);
+        }
+        /* Its headings from its own size, not a document's (a #### was
+           barely bigger than what's under it), with room above. */
+        main:has(.mf-conversation) :is(h1, h2, h3, h4, h5, h6) { margin: 1.5em 0 0.5em; }
+        main:has(.mf-conversation) h1 { font-size: 1.55em; } main:has(.mf-conversation) h2 { font-size: 1.35em; }
+        main:has(.mf-conversation) h3 { font-size: 1.2em; } main:has(.mf-conversation) h4 { font-size: 1.08em; }
+        main:has(.mf-conversation) :is(h5, h6) { font-size: 1em; color: var(--page-quote); }
         .mf-turn { margin: 0 0 2.4em; }
-        .mf-turn + .mf-turn { border-top: 1px solid var(--page-rule); padding-top: 1.6em; }
-        /* The technical face at its own weight throughout: Whitney's run
-           300 to 450, and CSS's 400, unasked, was its Bold. */
-        pre.mf-prompt { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400);
+        /* Turns apart by room alone: what you asked, a bubble at the right, begins each. */
+        .mf-turn + .mf-turn { padding-top: 0.8em; }
+        /* The technical face at its own weight throughout: Ideal's run
+           275 to 400, and CSS's 400, unasked, is its Bold. */
+        /* What you asked, at the right, in a rounded bubble of its own
+           (as Claude's apps set yours): the page's ground a shade toward
+           its text; as wide as its words, up to most of the line. */
+        pre.mf-prompt, p.mf-asked { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400);
           font-size: calc(0.86rem * var(--tech-scale, 1)); line-height: 1.45; white-space: pre-wrap; word-wrap: break-word;
-          background: none; border: none; border-left: 3px solid var(--page-quote-rule); border-radius: 0;
-          padding: 0.1em 0 0.1em 0.9em; margin: 0 0 1.1em; color: var(--page-strong); }
-        pre.mf-prompt.mf-queued { color: var(--page-quote); border-left-style: dashed; }
+          width: fit-content; max-width: 82%; box-sizing: border-box; margin: 0 0 1.1em auto;
+          background: color-mix(in srgb, var(--page-text) 6%, var(--page-background)); border: none; border-radius: 16px;
+          padding: 0.6em 0.95em; color: var(--page-strong); }
+        /* Waiting for its turn: the bubble's outline, dashed, its words quieter. */
+        pre.mf-prompt.mf-queued { background: none; color: var(--page-quote); border: 1px dashed var(--page-quote-rule); }
+        /* Its copy button (every block of code's) beside it, at its foot, not over its corner. */
+        .codeblock:has(> pre.mf-prompt) { display: flex; justify-content: flex-end; align-items: flex-end; gap: 6px; margin: 0 0 1.1em; }
+        .codeblock:has(> pre.mf-prompt) > pre.mf-prompt { margin: 0; }
+        .codeblock:has(> pre.mf-prompt) > .copy { position: static; order: -1; flex: none; }
         details.mf-steps { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
           color: var(--page-quote); margin: 0 0 1em; }
         details.mf-steps summary { cursor: default; list-style: none; }
@@ -437,8 +460,6 @@ enum MarkdownPage {
         details.mf-steps[open] summary::before { transform: rotate(90deg); }
         details.mf-steps[open] { padding-bottom: 0.4em; border-bottom: 1px solid var(--page-rule); }
         details.mf-steps p, details.mf-steps ul { margin: 0.5em 0 0.5em 1em; }
-        p.mf-asked { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.86rem * var(--tech-scale, 1));
-          color: var(--page-strong); border-left: 3px solid var(--page-quote-rule); padding-left: 0.9em; margin: 0 0 1.1em; }
         p.mf-event { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
           color: var(--page-quote); margin: 0 0 1em; }
         .mf-aside { color: var(--page-quote); }
@@ -452,7 +473,11 @@ enum MarkdownPage {
         .mf-standing, .mf-earlier { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
           color: var(--page-quote); }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
-        th, td { border: 1px solid var(--page-rule); padding: 6px 12px; } th { font-weight: 600; background: var(--page-table-head); }
+        /* Read as text is: from the left and the top (WebKit's own centre
+           each, a header over a column, a short cell beside a long one). */
+        th, td { border: 1px solid var(--page-rule); padding: 6px 12px; text-align: left; vertical-align: top; }
+        th { font-weight: 600; background: var(--page-table-head); }
+        th[align=center], td[align=center] { text-align: center; } th[align=right], td[align=right] { text-align: right; }
         tr:nth-child(2n) td { background: var(--page-table-stripe); }
         img { max-width: 100%; }
         hr { border: 0; border-top: 1px solid var(--page-rule); margin: 1.6em 0; }

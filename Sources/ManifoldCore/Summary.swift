@@ -26,6 +26,14 @@ public struct BlockSummary: Codable, Equatable, Sendable {
     public var wantsThumbnail: Bool
     /// Its lines are code — a command and what it printed — and set so.
     public var code = false
+    /// Which of its lines are Markdown, made one line (an agent's answer):
+    /// set as it says where they can be (`InlineMarkdown`), else its words.
+    public var formatted: [Int] = []
+
+    /// Its lines as words alone, the Markdown's marks gone.
+    public var plainLines: [String] {
+        lines.enumerated().map { formatted.contains($0.offset) ? InlineMarkdown.plain($0.element) : $0.element }
+    }
 
     public init(title: String, place: String? = nil, lines: [String] = [], note: String? = nil, tone: Tone = .plain,
                 progress: Double? = nil, wantsThumbnail: Bool = false) {
@@ -134,7 +142,12 @@ extension Block {
             if let turn = term.turns?.last {
                 // An agent: what it was asked, and what it said or is doing.
                 s.lines = [Self.oneLine(AgentConversation.notification(turn.prompt) ?? ThreadText.askShown(turn.prompt) ?? turn.prompt)]
-                if let m = statusRecord?.msg, !m.isEmpty { s.lines.append(Self.oneLine(m)) } else if let m = turn.message { s.lines.append(Self.oneLine(m)) }
+                if let m = statusRecord?.msg, !m.isEmpty { s.lines.append(Self.oneLine(m)) } else if let m = turn.message {
+                    // What it said, as Markdown on one line: set so where it can be.
+                    s.formatted.append(s.lines.count)
+                    // Long enough that a cut seldom falls inside a mark: the line is cut where it's shown.
+                    s.lines.append(Self.oneLine(InlineMarkdown.flattened(m), max: 400))
+                }
                 if let files = turn.files, !files.isEmpty { s.lines.append("\(files.count) file\(files.count == 1 ? "" : "s") changed") }
                 s.note = turn.ended == nil ? "working" : BlockSummary.ago(turn.ended, now: now)
                 if turn.ended == nil, s.tone == .plain { s.tone = .running }

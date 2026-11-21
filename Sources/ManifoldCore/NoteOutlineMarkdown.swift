@@ -451,6 +451,21 @@ extension NoteOutlineMarkdown {
     /// A note's outline whatever shows it — its editor, its preview, its
     /// outline: its headings, and its top-level items each under the
     /// heading before it (what's deeper in is the outline's own to show).
+    /// A line's bold lead-in — `**Tables.** The header…` — its words, the
+    /// colon or full stop that ends it gone; nil without one, or with
+    /// nothing after it.
+    static func leadIn(_ line: String) -> String? {
+        let ns = line as NSString
+        let spans = InlineMarkup.spans(in: ns, range: NSRange(location: 0, length: ns.length))
+        guard let strong = spans.first(where: { $0.kind == .strong && $0.range.location == 0 }),
+              NSMaxRange(strong.range) < ns.length,
+              !ns.substring(from: NSMaxRange(strong.range)).trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        var lead = InlineMarkup.plainText(ns.substring(with: strong.content)).trimmingCharacters(in: .whitespaces)
+        while let last = lead.last, ":.—–-".contains(last) { lead.removeLast() }
+        lead = lead.trimmingCharacters(in: .whitespaces)
+        return lead.isEmpty ? nil : lead
+    }
+
     public static func items(of outline: NoteOutline) -> [NoteOutlineItem] {
         var line = outline.frontmatter.map { $0.components(separatedBy: "\n").count } ?? 0
         let top = outline.rows.compactMap { row -> Int? in
@@ -463,8 +478,12 @@ extension NoteOutlineMarkdown {
             line += row.gap.count
             defer { line += row.lineCount }
             guard row.depth == 0 else { continue }
-            // Its words, as they read: emphasis, links, code without their marks.
-            let title = InlineMarkup.plainText(String(row.text.prefix { $0 != "\n" }))
+            // Its words, as they read: emphasis, links, code without their
+            // marks — a list item that leads with a bold phrase, by that
+            // phrase (its name, as it's written to be), not the line it begins.
+            let first = String(row.text.prefix { $0 != "\n" })
+            var title = InlineMarkup.plainText(first)
+            if row.kind.isListItem, let lead = Self.leadIn(first) { title = lead }
             if case let .heading(level) = row.kind {
                 let rank = min(max(level - (top ?? level), 0), 3)
                 under = rank + 1

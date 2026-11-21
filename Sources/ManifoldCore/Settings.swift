@@ -374,10 +374,22 @@ public struct Typography: Codable, Equatable, Sendable {
     public var editing: TypeStyle
     public var reading: TypeStyle
     public var monospaced: TypeStyle
-    /// Beside the monospaced: a proportional face for what's said about
-    /// code — its comments. Its size is where the monospaced is set at 13;
-    /// its lines are the monospaced's.
+    /// Beside the monospaced: what's said about code — its comments, a
+    /// commit's message, an agent's steps — in the editing face, set to sit
+    /// with code: only its size (where the monospaced is set at 13), line
+    /// height and letter spacing are its own (`technicalStyle`); its
+    /// family, face, features and bold are always editing's, whatever's kept.
     public var technical: TypeStyle
+
+    /// The technical role as it's set: the editing face at technical's
+    /// size and spacing.
+    public var technicalStyle: TypeStyle {
+        var t = editing
+        t.size = technical.size
+        t.lineHeight = technical.lineHeight
+        t.tracking = technical.tracking
+        return t
+    }
 
     public init(editing: TypeStyle, reading: TypeStyle, monospaced: TypeStyle, technical: TypeStyle) {
         self.editing = editing
@@ -399,25 +411,26 @@ public struct Typography: Codable, Equatable, Sendable {
     /// Ideal Sans Book to edit, with lining, tabular figures (its own are
     /// old-style, proportional) and ligatures; Chronicle to read, with
     /// ligatures, its headings a step below Bold (Semibold, or Medium where
-    /// the family has none); Menlo for code, and Whitney beside it, made for
-    /// information, at 13.5 to meet Menlo's x-height, in its Medium (its
-    /// weights run 300 to 450: Book 325, Medium 350, Bold 400 — so asked
-    /// for at 400 it was Bold; SF where it isn't installed). Lines: 1.45 to edit, 1.55 to read (a
-    /// serif's longer lines and smaller eye want more), 1.3 for code.
+    /// the family has none); Menlo for code, and Ideal beside it at 13.5,
+    /// on code's lines (Whitney was, until Ideal there read as well and one
+    /// sans did for both). Ideal's weights run 275 to 400: Book 325, Medium
+    /// 350, Bold 400 — so asked for at 400 it's Bold. Lines: 1.45 to edit,
+    /// 1.55 to read (a serif's longer lines and smaller eye want more), 1.3
+    /// for code.
     public static let humanist = Typography(
         editing: TypeStyle(family: "Ideal Sans SSm", size: 14.5, weight: 325, lineHeight: 1.45, features: "lnum, tnum, liga", boldFace: "Semibold"),
         reading: TypeStyle(family: "Chronicle SSm", size: 15.5, lineHeight: 1.55, features: "liga", headingWeight: 600),
         monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"),
-        technical: TypeStyle(family: "Whitney SSm", size: 13.5, weight: 350, lineHeight: 1.3, features: "lnum"))
+        technical: TypeStyle(family: "Ideal Sans SSm", size: 13.5, weight: 325, lineHeight: 1.3, features: "lnum, tnum, liga", boldFace: "Semibold"))
 
     /// Apple: Avenir Next to edit (its tall x-height and long extenders
-    /// set at 1.45), New York to read (at 1.5), Menlo for code, and Lucida
-    /// Grande beside it, at 13.5 to meet Menlo's x-height.
+    /// set at 1.45), New York to read (at 1.5), Menlo for code, and Avenir
+    /// Next beside it at 13.5.
     public static let apple = Typography(
         editing: TypeStyle(family: "Avenir Next", size: 15, lineHeight: 1.45),
         reading: TypeStyle(family: "New York", size: 16, lineHeight: 1.5),
         monospaced: TypeStyle(family: "Menlo", size: 13, lineHeight: 1.3, features: "calt"),
-        technical: TypeStyle(family: "Lucida Grande", size: 13.5, lineHeight: 1.3))
+        technical: TypeStyle(family: "Avenir Next", size: 13.5, lineHeight: 1.3))
 
     /// System: SF, and SF Mono with SF beside it (as Xcode has them).
     public static let system = Typography(

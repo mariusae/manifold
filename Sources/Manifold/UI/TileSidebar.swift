@@ -50,7 +50,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     private var onSearchEnd: (() -> Void)?
     private var filtering: Bool { !search.stringValue.trimmingCharacters(in: .whitespaces).isEmpty }
     private let scroll = ClippingScrollView()
-    private let table = FlatTable(column: "entry", rowHeight: TileMetrics.nameRow)
+    /// A little tighter than a list of names: an outline is read down, a line at a time.
+    private let table = FlatTable(column: "entry", rowHeight: 21)
     private let empty = NSTextField.label(color: Theme.secondaryText, align: .center)
     private let tabs: FlatSegments?
     private let pagesView: NSView?

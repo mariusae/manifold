@@ -64,7 +64,7 @@ extension FontTheme {
     /// The reading font's name.
     var readingName: String { styles.reading.displayName(.reading) }
     var monospacedName: String { styles.monospaced.displayName(.monospaced) }
-    var technicalName: String { styles.technical.displayName(.technical) }
+    var technicalName: String { styles.technicalStyle.displayName(.technical) }
 
     /// The Ghostty config's font lines.
     var terminalConfig: String { styles.monospaced.terminalConfig }
@@ -92,12 +92,12 @@ extension FontTheme {
     /// The technical font, where the monospaced is set at `size` (each at
     /// its role's size where 13 is asked for): code's comments.
     func technicalFont(size: CGFloat) -> NSFont {
-        let t = styles.technical
+        let t = styles.technicalStyle
         return t.font(size: size * t.size / 13, role: .technical)
     }
 
     /// The technical font's letter spacing, in points.
-    func technicalTracking(_ font: NSFont) -> CGFloat { styles.technical.tracking / 1000 * font.pointSize }
+    func technicalTracking(_ font: NSFont) -> CGFloat { styles.technicalStyle.tracking / 1000 * font.pointSize }
 
     /// The editor's lines, as a multiple of the font's own height: the
     /// role's line height (a multiple of its size) made one of the font's.
@@ -147,8 +147,22 @@ extension FontTheme {
         out += " --read-gap: \(r.paragraphSpacing)em; --mono-weight: \(m.weight); --mono-tracking: \(m.tracking / 1000)em;"
         out += " --mono-scale: \(m.size / 13);"
         // The technical face (an agent's conversation's prompts, §3.8).
-        let t = styles.technical
+        let t = styles.technicalStyle
         out += " --tech: \(t.cssFamily(.technical)); --tech-weight: \(t.weight); --tech-scale: \(t.size / 13);"
+        // The editing face (an agent's conversation's answers, §3.8: talk,
+        // as a thread's comments are), its bold the editor's, its headings
+        // its face nearest their weight.
+        let e = styles.editing
+        let eBold = e.family.isEmpty ? min(900, e.weight + FontFace.boldStep)
+            : FontFace.emphasis(in: e.family, from: e.weight, bold: true, italic: false)?.weight ?? min(900, e.weight + FontFace.boldStep)
+        // At most its own size, and no bigger than meets the code's
+        // x-height, as the technical face is set (else a conversation beside
+        // code reads a step larger): Ideal's 14.5 is 14 there.
+        let xe = e.font(size: CGFloat(e.size), role: .editing).xHeight, xm = m.font(size: CGFloat(m.size), role: .monospaced).xHeight
+        let met = xe > 0 && xm > 0 ? (Double(xm / xe) * e.size * 2).rounded() / 2 : e.size
+        let talk = max(min(e.size, met), e.size - 1.5)
+        out += " --talk: \(e.cssFamily(.editing)); --talk-size: \(talk)px; --talk-weight: \(e.weight); --talk-leading: \(e.lineHeight);"
+        out += " --talk-tracking: \(e.tracking / 1000)em; --talk-features: \(e.cssFeatures); --talk-bold: \(eBold); --talk-heading: \(e.headingFaceWeight);"
         // Bold as the editor takes it: a face heavier by a step, not CSS's
         // "bolder" (from Light, only Regular).
         out += " --read-bold: \(min(900, r.weight + FontFace.boldStep)); --read-heading: \(r.headingFaceWeight);"

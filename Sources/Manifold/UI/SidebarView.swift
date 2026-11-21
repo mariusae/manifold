@@ -58,7 +58,7 @@ final class SidebarView: NSView {
     /// The threads' filter narrows them (not all, or not only the space's): its button filled, in the accent.
     func setThreadsFilter(narrowed: Bool, unseen: Int) {
         threadsFilter.image = Theme.symbol(narrowed ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", size: 13, weight: .medium)
-        threadsFilter.contentTintColor = narrowed ? Theme.accent : Theme.secondaryText
+        threadsFilter.contentTintColor = narrowed ? Theme.accent : Theme.washSecondaryText
         threadsRead.isEnabled = unseen > 0
         threadsRead.toolTip = unseen > 0 ? "Mark All Read (\(unseen))" : "All Read"
     }
@@ -86,7 +86,7 @@ final class SidebarView: NSView {
     static let pushedHeight: CGFloat = 36
     private let backButton = IconButton("chevron.left", size: 12, tip: "Back to Spaces")
     private let pushedTitle = NSTextField(labelWithString: "")
-    private let pushedSubtitle = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
+    private let pushedSubtitle = NSTextField.label(font: UIType.detail, color: Theme.washSecondaryText)
     /// Under a space's name: the host it's on, a remote's ping times by it.
     let spaceHost = SpaceHostLine()
     private var pushed: Bool { organization == .closed }
@@ -400,7 +400,7 @@ final class SidebarView: NSView {
             chromeThemed = true
             card.themed { [weak self] v in self?.applyCard(v) }
         }
-        pinButton.contentTintColor = pinned ? Theme.text : Theme.secondaryText
+        pinButton.contentTintColor = pinned ? Theme.text : Theme.washSecondaryText
         pinButton.toolTip = pinned ? "Let Sidebar Slide Out (⇧⌘/)" : "Keep Sidebar Shown (⇧⌘/)"
     }
 
@@ -567,7 +567,7 @@ final class SidebarTab: ClickView {
     required init?(coder: NSCoder) { fatalError() }
 
     private func update() {
-        icon.contentTintColor = chosen ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = chosen ? Theme.text : Theme.washSecondaryText
         badge.stringValue = count > 99 ? "99+" : "\(count)"
         badge.isHidden = count == 0
         needsDisplay = true
@@ -610,9 +610,9 @@ final class SpaceHostLine: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         icon.image = Theme.symbol(Theme.hostSymbol(remote: false), size: 11, weight: .regular)
-        icon.contentTintColor = Theme.secondaryText
+        icon.contentTintColor = Theme.washSecondaryText
         label.font = .systemFont(ofSize: 13, weight: .regular)
-        label.textColor = Theme.secondaryText
+        label.textColor = Theme.washSecondaryText
         label.lineBreakMode = .byTruncatingTail
         for v in [icon, label, sparkline] as [NSView] { addSubview(v) }
     }
@@ -622,7 +622,7 @@ final class SpaceHostLine: NSView {
     func show(host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false) {
         icon.image = Theme.symbol(Theme.hostSymbol(remote: remote), size: 11, weight: .regular)
         label.stringValue = host + (standing.map { " · " + $0 } ?? "")
-        label.textColor = standing == nil ? Theme.secondaryText : Status.attention
+        label.textColor = standing == nil ? Theme.washSecondaryText : Status.attention
         sparkline.pings = pings
         sparkline.isHidden = pings == nil
         needsLayout = true

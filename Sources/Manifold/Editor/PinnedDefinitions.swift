@@ -41,7 +41,14 @@ final class PinnedDefinitions: NSView {
             needsDisplay = true
         }
         isHidden = lines.isEmpty
-        return CGFloat(lines.count) * h
+        guard !lines.isEmpty else { return 0 }
+        // Down to the next row's top: a row half under the pinned ones,
+        // cut through, read as a line of its own; the
+        // band grows over it instead, as the text scrolls, and lets it go.
+        let pinnedBottom = visible.minY + CGFloat(lines.count) * h
+        let origin = tv.top(ofLine: 0)
+        let next = origin + (((pinnedBottom - origin) / h) - 0.001).rounded(.up) * h
+        return max(CGFloat(lines.count) * h, next - visible.minY)
     }
 
     override func draw(_ dirtyRect: NSRect) {

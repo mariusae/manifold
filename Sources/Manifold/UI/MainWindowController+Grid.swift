@@ -53,11 +53,12 @@ extension MainWindowController: GridDelegate {
                 screen.removeAll { $0.hasPrefix(prompt) }
             }
             let tail = screen.suffix(2).map { String($0) }
-            if !tail.isEmpty { s.lines = Array(s.lines.prefix(1)) + tail }
+            if !tail.isEmpty { s.lines = Array(s.lines.prefix(1)) + tail; s.formatted = [] }
         }
         // An agent at work: what it's doing now, after what it was asked.
         if let doing = b.agentDoing {
             s.lines = Array(s.lines.prefix(1)) + [doing + "…"]
+            s.formatted = []
         }
         s.place = s.place.map { $0.abbreviatingHome }
         var thumbnail: NSImage?
@@ -477,6 +478,30 @@ extension MainWindowController: GridDelegate {
         guard let b = arrangement?.placement(placement)?.block,
               let p = project(pinning: b) ?? project(of: b) else { return }
         openProject(p, on: p.block?.host ?? b.host, near: placement)
+    }
+
+    /// The project's name in a tile's place, right-clicked: the project
+    /// opened as the click opens it, beside or over the tile, and what its
+    /// folder's link has (copied, in a note, an agent asked, Quick Look).
+    func gridProjectMenu(for placement: PlacementID) -> NSMenu? {
+        guard let b = arrangement?.placement(placement)?.block,
+              let p = project(pinning: b) ?? project(of: b) else { return nil }
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem("Open \(p.name)", symbol: Theme.projectSymbol) { [weak self] in self?.gridOpenProject(placement) })
+        guard let block = p.block else { return menu }
+        menu.addItem(ClosureMenuItem("Show Beside", symbol: "rectangle.split.2x1") { [weak self] in
+            self?.follow(block, from: placement, Disposition([.command]), context: "from a tile's project")
+        })
+        menu.addItem(ClosureMenuItem("Show Over", symbol: "square.stack") { [weak self] in
+            self?.follow(block, from: placement, Disposition([.option]), context: "from a tile's project")
+        })
+        menu.addItem(.separator())
+        if let path = LinkMenus.pathOf?(block) {
+            LinkMenus.append(path, from: placement, on: block.host, to: menu, skipping: ["Open", "Open Over"])
+            menu.addItem(.separator())
+        }
+        menu.addItem(neighborhoodItem(block))
+        return menu
     }
 
     /// ⌘-click on a pill: where the block is, as a path — the file or

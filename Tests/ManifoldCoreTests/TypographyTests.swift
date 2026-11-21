@@ -26,3 +26,14 @@ import Testing
     let old = try JSONDecoder().decode(Typography.self, from: Data(#"{"editing":\#(style),"reading":\#(style),"monospaced":\#(style)}"#.utf8))
     #expect(old.monospaced.family == "Menlo" && old.technical == Typography.system.technical)
 }
+
+// The technical role is the editing face set beside code: its size and
+// spacing its own, its family, face, features and bold always editing's.
+@Test func technicalIsTheEditingFaceBesideCode() {
+    var t = Typography.humanist
+    t.technical = TypeStyle(family: "Whitney SSm", size: 12, weight: 350, lineHeight: 1.2, tracking: 10, features: "lnum")
+    let s = t.technicalStyle
+    #expect(s.family == "Ideal Sans SSm" && s.weight == 325 && s.features == "lnum, tnum, liga" && s.boldFace == "Semibold")
+    #expect(s.size == 12 && s.lineHeight == 1.2 && s.tracking == 10)
+    #expect(Typography.humanist.technicalStyle.size == 13.5)
+}

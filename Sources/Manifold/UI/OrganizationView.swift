@@ -1425,7 +1425,7 @@ final class OrgRowView: NSTableCellView {
     private let icon = NSImageView()
     private let name = NSTextField(labelWithString: "")
     private let count = CountPill()
-    private let detail = NSTextField.label(font: UIType.footnote, color: Theme.secondaryText)
+    private let detail = NSTextField.label(font: UIType.footnote, color: Theme.washSecondaryText)
     private let detailIcon = NSImageView()
     private let glyph = StatusGlyph()
     private let pill = StatusPillView()
@@ -1487,15 +1487,15 @@ final class OrgRowView: NSTableCellView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.contentTintColor = Theme.secondaryText
+        icon.contentTintColor = Theme.washSecondaryText
         name.font = UIType.row
         name.textColor = Theme.text
         name.lineBreakMode = .byTruncatingTail
         name.cell?.truncatesLastVisibleLine = true
         trailing.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        trailing.textColor = Theme.secondaryText
+        trailing.textColor = Theme.washSecondaryText
         trailing.alignment = .right
-        detailIcon.contentTintColor = Theme.secondaryText
+        detailIcon.contentTintColor = Theme.washSecondaryText
         detailIcon.isHidden = true
         for v in [icon, name, count, detail, detailIcon, trailing, glyph, pill, sparkline, rule, badge, columnMap] { addSubview(v) }
         rule.isHidden = true
@@ -1597,14 +1597,14 @@ final class OrgRowView: NSTableCellView {
         glyph.isHidden = mark.glyph == nil
         glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
         pill.kind = node.style == .section ? nil : node.pill
-        badge.image = node.badge.flatMap { Theme.symbol($0, size: 6.5, weight: .bold, color: Theme.secondaryText) }
+        badge.image = node.badge.flatMap { Theme.symbol($0, size: 6.5, weight: .bold, color: Theme.washSecondaryText) }
         badge.isHidden = node.badge == nil
         pill.toolTip = node.liveTooltip == nil ? node.tooltip : nil
         sparkline.pings = node.pings
         sparkline.isHidden = node.pings == nil
         trailing.stringValue = node.trailing ?? ""
         trailing.isHidden = node.trailing == nil
-        trailing.textColor = Theme.secondaryText
+        trailing.textColor = Theme.washSecondaryText
         if let image = node.image {
             symbol = ""
             icon.image = image
@@ -1619,10 +1619,10 @@ final class OrgRowView: NSTableCellView {
             name.textColor = Theme.text
         case .section:
             name.font = UIType.section
-            name.textColor = node.emphasis ? Theme.text : Theme.secondaryText
+            name.textColor = node.emphasis ? Theme.text : Theme.washSecondaryText
         case .row, .divider:
             name.font = .systemFont(ofSize: 13, weight: node.emphasis ? .semibold : node.isGroup ? .medium : .regular)
-            name.textColor = node.dimmed || node.docked || node.saying || mark.dim ? Theme.secondaryText : Theme.text
+            name.textColor = node.dimmed || node.docked || node.saying || mark.dim ? Theme.washSecondaryText : Theme.text
         }
         // What it says it's doing: run on, faded at the end (`fadeName`).
         name.lineBreakMode = node.saying ? .byClipping : .byTruncatingTail
@@ -1630,12 +1630,12 @@ final class OrgRowView: NSTableCellView {
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {
             let s = NSMutableAttributedString(string: node.title + " •", attributes: [.font: font, .foregroundColor: color])
-            s.addAttribute(.foregroundColor, value: node.stale ? StatusGlyph.amber : Theme.secondaryText,
+            s.addAttribute(.foregroundColor, value: node.stale ? StatusGlyph.amber : Theme.washSecondaryText,
                            range: NSRange(location: (node.title as NSString).length + 1, length: 1))
             name.attributedStringValue = s
         }
         icon.isHidden = node.style == .section
-        icon.contentTintColor = node.emphasis ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = node.emphasis ? Theme.text : Theme.washSecondaryText
         icon.alphaValue = node.dimmed ? 0.6 : 1
         let shownCount = node.foldable ? (folded ? node.foldedCount : nil) : node.count
         count.stringValue = shownCount.map { "\($0)" } ?? ""
@@ -1859,7 +1859,7 @@ final class ColumnMapView: NSView {
         var x = ((bounds.width - total) / 2).rounded()
         for i in 0..<n {
             let r = NSRect(x: x, y: 0, width: w, height: bounds.height)
-            (i == map.index ? Theme.secondaryText : Theme.tertiaryText.withAlphaComponent(0.4)).setFill()
+            (i == map.index ? Theme.washSecondaryText : Theme.tertiaryText.withAlphaComponent(0.4)).setFill()
             NSBezierPath(roundedRect: r, xRadius: 1, yRadius: 1).fill()
             x += w + gap
         }

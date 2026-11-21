@@ -17,6 +17,17 @@ enum Theme {
     /// Each at least 4.5:1 on a panel or a card, in either appearance
     /// (WCAG AA for text this size): quieter, but read.
     static let secondaryText = NSColor.themed { $0.text.secondary }
+    /// The same over the backdrop's wash (the sidebar): its pools of
+    /// colour — the pink end of one — took the grey below what a card's
+    /// ground keeps it at, so a third of the way to the text.
+    static let washSecondaryText = NSColor(name: nil) { a in
+        let p = Palette.current, dark = a.isDark
+        let quiet = p.text.secondary.color(dark: dark)
+        guard let q = quiet.usingColorSpace(.sRGB), let t = p.text.primary.color(dark: dark).usingColorSpace(.sRGB) else { return quiet }
+        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * 0.35 }
+        return NSColor(srgbRed: mix(q.redComponent, t.redComponent), green: mix(q.greenComponent, t.greenComponent),
+                       blue: mix(q.blueComponent, t.blueComponent), alpha: mix(q.alphaComponent, t.alphaComponent))
+    }
     /// Quieter still: a hint, a note at a row's end.
     static let tertiaryText = NSColor.themed { $0.text.tertiary }
     static let hover = NSColor.themed { $0.chrome.hover }

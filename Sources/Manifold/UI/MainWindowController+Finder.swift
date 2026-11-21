@@ -484,7 +484,7 @@ extension MainWindowController {
             let id = block.id
             // What its summary says is found too: often the best of what
             // it holds (a terminal's last command, an agent's last words).
-            let summary = block.kind == .arrangement ? "" : block.summary().lines.joined(separator: " ")
+            let summary = block.kind == .arrangement ? "" : block.summary().plainLines.joined(separator: " ")
             var candidate = FinderCandidate(symbol: Theme.symbolName(for: block), title: title, detail: detail + remote, note: note, age: age,
                                             name: title + " " + kindWord + agentWords, aliases: agent.map { [$0.command, $0.name] } ?? [], around: secondary,
                                             summary: summary,

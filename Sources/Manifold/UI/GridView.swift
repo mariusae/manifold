@@ -56,6 +56,8 @@ protocol GridDelegate: AnyObject {
     func gridToggleFull(_ placement: PlacementID)
     /// The project's name in a bar's place clicked: the project's tile.
     func gridOpenProject(_ placement: PlacementID)
+    /// The project's name in a tile's place, right-clicked: the project's menu.
+    func gridProjectMenu(for placement: PlacementID) -> NSMenu?
     /// The bar's ×: the tile taken off (as ⌘W does).
     func gridClose(_ placement: PlacementID)
     /// A tile's × clicked: closed, the pointer onto the × of the tile that
@@ -336,10 +338,15 @@ final class GridView: NSView, NSDraggingSource {
                     self.delegate?.gridFocus(id)
                     self.showPillMenu(id)
                 }
-                // Right-clicked, the title calls up the tile's menu.
-                pill.onRightClick = { [weak self] _ in
+                // Right-clicked, the title calls up the tile's menu; the
+                // project's name in its place, the project's.
+                pill.onRightClick = { [weak self, weak pill] event in
                     guard let self else { return }
                     self.delegate?.gridFocus(id)
+                    if let pill, !pill.isEditing, pill.isOnProject(pill.convert(event.locationInWindow, from: nil)),
+                       let menu = self.delegate?.gridProjectMenu(for: id) {
+                        return self.popUp(menu, in: id)
+                    }
                     self.showPillMenu(id)
                 }
                 pill.onDragStart = { [weak self, weak pill] event, thing in
@@ -598,6 +605,7 @@ final class GridView: NSView, NSDraggingSource {
             ?? tile.shown.block.map({ SummaryCardContent(id: tile.shown.id, symbol: tile.shown.symbol, summary: $0.summary()) }) else { return nil }
         if let b = tile.shown.block, b.kind == .text, let t = b.text, c.summary.title != tile.shown.title {
             c.summary.lines = Block.firstLines(t.text.string, skipping: "", count: 3)
+            c.summary.formatted = []
         }
         return c
     }
@@ -1803,7 +1811,13 @@ final class GridView: NSView, NSDraggingSource {
 
     /// A tile's menu, under the pointer, as a menu is.
     private func showPillMenu(_ id: PlacementID) {
-        guard let menu = delegate?.gridPillMenu(for: id), let pill = pills[id] else { return }
+        guard let menu = delegate?.gridPillMenu(for: id) else { return }
+        popUp(menu, in: id)
+    }
+
+    /// A menu under the pointer, in a tile's bar.
+    private func popUp(_ menu: NSMenu, in id: PlacementID) {
+        guard let pill = pills[id] else { return }
         let at = NSApp.currentEvent.map { pill.convert($0.locationInWindow, from: nil) } ?? NSPoint(x: pill.bounds.midX, y: 0)
         menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y - 4), in: pill)
     }
@@ -2340,6 +2354,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var focused = false
     private var maximized = false
     private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.barInk, cut: .byTruncatingMiddle)
+    /// Whether the subtitle is an agent's answer set as it said it (so a
+    /// plain one, the same words, is set again).
+    private var subtitleFormatted = false
     private let close = IconButton.close(tip: "Close (⌘W)")
     /// The view's own sidebar (an outline, a PDF's pages), shown or not;
     /// nil, a view without one: no button.
@@ -2816,8 +2833,24 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// it ended, a note's first line), its content being out of sight.
     private func updateSubtitle(_ shown: Shown) {
         if collapsed, let s = shown.block?.summary() {
-            let line = (s.lines.prefix(2) + [s.note].compactMap { $0 }).joined(separator: " · ")
-            if subtitle.stringValue != line { subtitle.stringValue = line; needsLayout = true }
+            let parts = s.lines.prefix(2).enumerated().map { ($0.element, s.formatted.contains($0.offset)) } + [s.note].compactMap { $0 }.map { ($0, false) }
+            if parts.contains(where: \.1), let font = subtitle.font, let color = subtitle.textColor {
+                // An agent's answer, as it set it.
+                let line = NSMutableAttributedString()
+                for (i, (text, md)) in parts.enumerated() {
+                    if i > 0 { line.append(NSAttributedString(string: " · ", attributes: [.font: font, .foregroundColor: color])) }
+                    line.append(md ? InlineMarkdown.attributed(text, font: font, color: color)
+                                   : NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color]))
+                }
+                if !subtitleFormatted || !subtitle.attributedStringValue.isEqual(to: line) {
+                    subtitle.attributedStringValue = line
+                    subtitleFormatted = true
+                    needsLayout = true
+                }
+            } else {
+                let line = parts.map(\.0).joined(separator: " · ")
+                if subtitle.stringValue != line || subtitleFormatted { subtitle.stringValue = line; subtitleFormatted = false; needsLayout = true }
+            }
             projectKey = nil
             projectWidth = nil
             return
@@ -3115,7 +3148,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Debugging: where the place to edit is, and the field and name while editing (window coordinates).
     var debugEdit: String {
         func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
-        return "place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
+        let cursors = cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\($0.1 == .pointingHand ? "hand" : $0.1 == .iBeam ? "beam" : "open")" }.joined(separator: ",")
+        return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
     }
 
     /// Whether a point (the pill's coordinates) is on the place to edit.
@@ -3267,12 +3301,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// The open hand over the bar, which drags, and over the icon, which
     /// drags what the tile stands for (and clicked, its menu); the
-    /// pointing hand over maximize and close; the I-beam over an address
-    /// to edit.
+    /// pointing hand over maximize and close, and over a project's name
+    /// in the place, which goes to it; the I-beam over an address to edit.
     private var cursorSpots: [(NSRect, NSCursor)] {
         var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
-        if let r = placeRect { spots.append((r, .iBeam)) }
+        let project = projectRect
+        if let r = project { spots.append((r, .pointingHand)) }
+        if var r = placeRect {
+            // Not under the project's name, which goes to the project.
+            if let project, r.minX < project.maxX { r = NSRect(x: project.maxX, y: r.minY, width: max(0, r.maxX - project.maxX), height: r.height) }
+            if r.width > 0 { spots.append((r, .iBeam)) }
+        }
         return spots.sorted { $0.0.minX < $1.0.minX }
     }
 

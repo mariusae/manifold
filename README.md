@@ -745,9 +745,11 @@ around it, and comes back with its history.
   folder (so their images and stylesheets work), from a terminal, the
   Open Quickly, a folder listing, a link in a preview, or the `mani`
   command.
-- **Fonts**: besides the interface's system font, a theme has four: a
-  **monospaced** one for terminals and code, a **technical** one beside
-  it — proportional, for what's said about code: in an editor set
+- **Fonts**: besides the interface's system font, a theme has three
+  and a fourth role: a
+  **monospaced** one for terminals and code, a **technical** role beside
+  it — the editing font at a size and spacing of its own, for what's
+  said about code: in an editor set
   monospaced, a doc comment's words are set in it, its `///` or `/**`
   left in the monospaced, and other comments stay monospaced. What's a
   doc comment is the language's: `///` and `/** */` in Swift, Rust's
@@ -763,12 +765,11 @@ around it, and comes back with its history.
   no fonts are shipped: **System** (SF and SF Mono, SF beside it, as
   Xcode has them), **Apple** (the
   default: Avenir Next 15 to edit, New York 16 to read — the system's
-  serif — and Menlo 13, with Lucida Grande 13.5 beside it, meeting
-  Menlo's x-height), and **Humanist** (Hoefler&Co.'s ScreenSmart
+  serif — and Menlo 13, with Avenir Next 13.5 beside it), and
+  **Humanist** (Hoefler&Co.'s ScreenSmart
   faces: Ideal Sans Book 14.5 to edit, with lining, tabular figures and
   ligatures, `lnum, tnum, liga`; Chronicle 15.5 to read, at 1.55, with
-  ligatures; Menlo 13, with Whitney Medium 13.5 beside it — SF where Whitney
-  isn't installed), which is offered only where Ideal Sans SSm and
+  ligatures; Menlo 13, with Ideal 13.5 beside it, on code's lines), which is offered only where Ideal Sans SSm and
   Chronicle SSm are installed (without them, a saved Humanist is set as
   Apple, and it comes back when they are). Headings in a preview take the reading role's heading weight, as the
   family's nearest face (Humanist's a step below Bold: Chronicle has no
@@ -785,9 +786,10 @@ around it, and comes back with its history.
   OpenType features by tag (`ss01, zero, -liga, cv05=2`, or checked off
   a menu of those the font has); the reading role also its measure (the
   longest line in a preview, in characters) and the space between
-  paragraphs (and its headings' face); the technical role no line height
-  — it's set on the monospaced's lines, its size where the monospaced is
-  13 pt, and its sample is code with comments. Bold and italic come from the family's own faces, by
+  paragraphs (and its headings' face); the technical role only its size
+  and letter spacing — its face, features and bold are the editing
+  role's, shown greyed; it's set on the monospaced's lines, its size
+  where the monospaced is 13 pt, and its sample is code with comments. Bold and italic come from the family's own faces, by
   their weights: bold a face about three hundred heavier (Regular's
   Bold) — or the face a role names (its **Bold** menu: Humanist's
   editing role names Semibold, Ideal's Bold being heavy beside Book, and
@@ -1167,7 +1169,7 @@ around it, and comes back with its history.
   note, its output given an agent).
 - **An agent's conversation** (⌘↩ in its tile, ⌃⌘↩ beside): its turns
   as a page — what you asked in the technical face, what it did folded
-  to a line, what it said rendered in the reading face — the latest last,
+  to a line, what it said rendered in the editing face — the latest last,
   live as it works; a composer under it asks it next (once it's free, or
   waking it), Stop while it works.
 - **A tile's own sidebar**: the same outline — a terminal's commands (an

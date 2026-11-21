@@ -1063,7 +1063,14 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
     private func cardMoved(from was: Int, to now: Int) {
         let rows = IndexSet([was, now].filter { $0 >= 0 && $0 < shown.count })
         guard !rows.isEmpty else { return }
-        table.noteHeightOfRows(withIndexesChanged: rows)
+        // At once, not eased: a row made during the ease was laid out at a
+        // height it then left (the one the card had left, its words above
+        // its top, cut; the card's neighbours over it).
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0
+            ctx.allowsImplicitAnimation = false
+            table.noteHeightOfRows(withIndexesChanged: rows)
+        }
         table.reloadData(forRowIndexes: rows, columnIndexes: [0])
     }
 
@@ -1163,6 +1170,14 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
 /// the right. Laid out by hand, its symbols cached: rows are made and
 /// filled with every keystroke.
 final class FileCell: NSTableCellView {
+    /// Laid out again at every size it's given (a row's height changes as
+    /// the card moves), not only the first.
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { needsLayout = true }
+    }
+
     static let identifier = NSUserInterfaceItemIdentifier("FileCell")
     private let symbol = NSImageView()
     private let title = NSTextField.label(font: FileCell.titleFont)
@@ -1247,6 +1262,14 @@ final class FileCell: NSTableCellView {
 /// The chosen block's row, opened into its summary card (the row's
 /// highlight its ground).
 final class CardCell: NSTableCellView {
+    /// Laid out again at every size it's given (a row's height changes as
+    /// the card moves), not only the first.
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { needsLayout = true }
+    }
+
     static let identifier = NSUserInterfaceItemIdentifier("CardCell")
     private var card: SummaryCard?
 
@@ -1278,6 +1301,14 @@ final class CardCell: NSTableCellView {
 /// site shows it: the name (the query marked in it), where it is, the
 /// matching lines — two lines' worth at most — each match marked.
 final class ExcerptCell: NSTableCellView {
+    /// Laid out again at every size it's given (a row's height changes as
+    /// the card moves), not only the first.
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if changed { needsLayout = true }
+    }
+
     static let identifier = NSUserInterfaceItemIdentifier("ExcerptCell")
     private let symbol = NSImageView()
     private let title = NSTextField(labelWithString: "")

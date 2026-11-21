@@ -3,7 +3,8 @@ import ManifoldCore
 import ManifoldSyntax
 
 /// Settings ▸ Typography: custom typography (the Custom font theme), a
-/// role at a time — editing, reading, monospaced, technical — each with its family
+/// role at a time — editing, reading, monospaced, technical (the editing
+/// face beside code: its size and spacing alone its own) — each with its family
 /// and face, size, line height, letter spacing and OpenType features (and
 /// for reading, its measure and the space between paragraphs), set in a
 /// sample as it changes. Changing anything here sets Manifold in it.
@@ -61,7 +62,7 @@ final class TypographyPane: SettingsPane {
         family.target = self
         family.action = #selector(pickFamily)
         family.widthAnchor.constraint(equalToConstant: 260).isActive = true
-        row("Font", family)
+        row("Font", family, note: "Technical is the editing font, set beside code: its size and spacing are its own.")
         face.target = self
         face.action = #selector(pickFace)
         face.widthAnchor.constraint(equalToConstant: 160).isActive = true
@@ -142,8 +143,9 @@ final class TypographyPane: SettingsPane {
         let a = source.appearance()
         use.state = a.theme == .custom ? .on : .off
         showRole?(role)
-        // Not over what's being edited.
-        if commit == nil { style = a.typography[role] }
+        // Not over what's being edited (an edit waiting to be kept).
+        // Technical's face is editing's: shown as it's set.
+        if !commit.isPending { style = role == .technical ? a.typography.technicalStyle : a.typography[role] }
         show()
     }
 
@@ -169,6 +171,12 @@ final class TypographyPane: SettingsPane {
         fillHeadings()
         headings.isEnabled = reading
         fillBold()
+        // Technical's face, features and bold are editing's.
+        let own = role != .technical
+        family.isEnabled = own
+        if !own { face.isEnabled = false; bold.isEnabled = false }
+        features.isEnabled = own
+        featureMenu.isEnabled = own
         gapSlider.doubleValue = style.paragraphSpacing
         gapValue.stringValue = String(format: "%.2f em", style.paragraphSpacing)
         showSample()
@@ -287,7 +295,9 @@ final class TypographyPane: SettingsPane {
         ])
         // Its doc comments found as the editor finds them.
         let rope = Rope(text)
-        let tree = SyntaxTree(SyntaxLanguage.forPath("sample.swift")!, text: rope)
+        // Parsed here and now (a tree parsed in the background had nothing
+        // yet, and the comments stayed in the code's face).
+        let tree = SyntaxTree(SyntaxLanguage.forPath("sample.swift")!, text: rope, background: false)
         for n in 0..<rope.lineCount {
             for r in tree.docWords(in: rope.lineRange(n)) {
                 let a = rope.utf16Offset(ofByte: r.start), b = rope.utf16Offset(ofByte: r.end)

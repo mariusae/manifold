@@ -128,23 +128,64 @@ class SettingsPane: NSViewController {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The form scrolls, in a pane taller than the screen has room for
+    /// (Typography's, on a laptop's): the window as tall as the form, at
+    /// most as tall as the screen's room under its title and toolbar.
+    private let scroll = NSScrollView()
+    private var height: NSLayoutConstraint?
+
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: Self.width, height: 200))
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        let page = FlippedView()
+        page.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = page
+        view.addSubview(scroll)
         form.translatesAutoresizingMaskIntoConstraints = false
         form.rowSpacing = 14
         form.columnSpacing = 12
-        view.addSubview(form)
+        page.addSubview(form)
         NSLayoutConstraint.activate([
-            form.topAnchor.constraint(equalTo: view.topAnchor, constant: 24),
-            form.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            form.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
-            form.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -24),
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            page.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            page.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            page.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            form.topAnchor.constraint(equalTo: page.topAnchor, constant: 24),
+            form.leadingAnchor.constraint(equalTo: page.leadingAnchor, constant: 24),
+            form.trailingAnchor.constraint(lessThanOrEqualTo: page.trailingAnchor, constant: -24),
+            form.bottomAnchor.constraint(equalTo: page.bottomAnchor, constant: -24),
             view.widthAnchor.constraint(equalToConstant: Self.width),
         ])
         build()
         form.column(at: 0).xPlacement = .trailing
         refresh()
-        preferredContentSize = view.fittingSize
+        fitHeight()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        fitHeight()
+    }
+
+    /// As tall as the form, but no taller than the screen allows.
+    private func fitHeight() {
+        let natural = form.fittingSize.height + 48
+        let screen = view.window?.screen ?? NSScreen.main
+        // The title bar and the toolbar's tabs, and a little room.
+        let room = (screen?.visibleFrame.height ?? 900) - 110
+        let h = ceil(min(natural, max(room, 240)))
+        if let height { height.constant = h } else {
+            height = view.heightAnchor.constraint(equalToConstant: h)
+            height?.isActive = true
+        }
+        preferredContentSize = NSSize(width: Self.width, height: h)
     }
 
     func build() {}

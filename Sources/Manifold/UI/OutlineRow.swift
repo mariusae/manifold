@@ -39,11 +39,30 @@ final class OutlineRow: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A heading over what's under it: the family's next face up (Ideal's
+    /// Medium from its Book — its Bold, steps on, is a shout here).
+    private static func heavier(_ f: NSFont) -> NSFont {
+        guard let family = f.familyName, !family.hasPrefix(".") else { return .systemFont(ofSize: f.pointSize, weight: .semibold) }
+        let weight = FontFace.weightClass(f.fontName) ?? 400
+        guard let next = FontFace.faces(of: family, role: .technical).first(where: { $0.weight > weight }),
+              let font = NSFont(name: next.postScript, size: f.pointSize) else { return f }
+        return font
+    }
+
     func show(_ e: OutlineEntry) {
         level = e.level
-        title.stringValue = e.title
+        // Set as the text it's from is (its quotes curled), but a command's as typed.
+        title.stringValue = e.line != nil ? InlineMarkdown.curled(e.title) : e.title
         title.lineBreakMode = e.path ? .byTruncatingHead : .byTruncatingTail
-        title.font = e.line != nil ? .systemFont(ofSize: e.level == 0 ? 12.5 : 12, weight: e.level == 0 ? .semibold : .regular) : FontTheme.code(11.5)
+        // What a text says of itself in the technical face, as a
+        // conversation's steps are — the outline's own words (a lens's
+        // chrome) in the system's; a command, code.
+        if e.line != nil {
+            let f = FontTheme.current.technicalFont(size: e.level == 0 ? 12 : 11.5)
+            title.font = e.level == 0 ? Self.heavier(f) : f
+        } else {
+            title.font = FontTheme.code(11.5)
+        }
         detail.stringValue = e.detail
         detail.isHidden = e.detail.isEmpty
         markColor = e.failed ? Theme.statusError : e.running ? Theme.accent : Theme.secondaryText.withAlphaComponent(0.6)

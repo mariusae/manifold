@@ -9,7 +9,9 @@ extension MainWindowController {
     // MARK: Debugging aids
 
     var debugFocusedBlock: BlockID? { focusedShown?.placement.block }
-    var debugFocusedMarkdown: MarkdownView? { focusedShown.flatMap { views[$0.id] as? MarkdownView } }
+    var debugFocusedMarkdown: MarkdownView? {
+        focusedShown.flatMap { views[$0.id] as? MarkdownView ?? (views[$0.id] as? AgentConversationView)?.page }
+    }
     var debugFocusedView: NSView? { focusedView }
     var debugFocusedWebView: WKWebView? {
         guard let v = debugFocusedView else { return nil }

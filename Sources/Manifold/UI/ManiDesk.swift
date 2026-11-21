@@ -1018,6 +1018,7 @@ final class ManiDesk {
               var o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         o.removeValue(forKey: "wantsThumbnail")
         o.removeValue(forKey: "code")
+        o.removeValue(forKey: "formatted")
         if o["tone"] as? String == "plain" { o.removeValue(forKey: "tone") }
         return o
     }

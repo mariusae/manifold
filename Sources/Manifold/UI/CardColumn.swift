@@ -289,10 +289,12 @@ final class SummaryCard: NSView {
             a.draw(at: NSPoint(x: right - a.size().width, y: top + 1))
         }
         for (i, line) in s.lines.prefix(max(0, min(3, room))).enumerated() {
-            let a = NSAttributedString(string: line, attributes: [
-                .font: s.code ? FontTheme.code(11.5) : UIType.body, .foregroundColor: i == 0 ? Theme.text.withAlphaComponent(0.85) : Theme.secondaryText,
-                .paragraphStyle: style,
-            ])
+            let font = s.code ? FontTheme.code(11.5) : UIType.body
+            let color = i == 0 ? Theme.text.withAlphaComponent(0.85) : Theme.secondaryText
+            // An agent's answer, as it set it.
+            let a = s.formatted.contains(i)
+                ? InlineMarkdown.attributed(line, font: font, color: color, extra: [.paragraphStyle: style])
+                : NSAttributedString(string: line, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: style])
             let r = i == 0 ? right - noteWidth : right
             a.draw(with: NSRect(x: x, y: top + CGFloat(i) * 16, width: max(0, r - x), height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }

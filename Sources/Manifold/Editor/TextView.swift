@@ -360,6 +360,11 @@ final class TextView: NSView, NSTextInputClient {
         var text: String
         /// Each row's first UTF-16 index within the line.
         var rowStarts: [Int]
+        /// How far a wrapped line's later rows are set in: past its own
+        /// indent, so they read as its continuation, not lines of their own.
+        var indent: CGFloat = 0
+        /// Where a row starts across, from the text's left.
+        func dx(_ row: Int) -> CGFloat { row > 0 ? indent : 0 }
     }
     private var layouts: [Int: LineLayout] = [:]
     /// Visual rows per logical line, estimated as 1 until laid out.
@@ -790,9 +795,19 @@ final class TextView: NSView, NSTextInputClient {
         var starts: [Int] = []
         let length = (attributed.string as NSString).length
         var i = 0
+        // A wrapped line's later rows hang past its indent — a list item's
+        // under its words (past its bullet), code's a step further in —
+        // and code breaks after punctuation, not inside a name.
+        let indent = wraps ? hangingIndent(string, attributed) : 0
+        let units = Array(attributed.string.utf16)
         if wraps {
             while i < length {
-                let count = CTTypesetterSuggestLineBreak(typesetter, i, Double(wrapWidth))
+                let width = Double(wrapWidth - (rows.isEmpty ? 0 : indent))
+                var count = CTTypesetterSuggestLineBreak(typesetter, i, width)
+                if !markdown, i + count < length, count > 1, Self.isNameUnit(units[i + count - 1]), Self.isNameUnit(units[i + count]),
+                   let k = (i + 1..<i + count).last(where: { !Self.isNameUnit(units[$0 - 1]) && $0 - i > count / 3 }) {
+                    count = k - i
+                }
                 let take = max(count, 1)
                 // Past 2,000 rows, the rest of the line on one row: it went
                 // undrawn (a minified file's one line).
@@ -810,7 +825,7 @@ final class TextView: NSView, NSTextInputClient {
             rows.append(CTTypesetterCreateLine(typesetter, CFRange(location: 0, length: length)))
             starts.append(0)
         }
-        let l = LineLayout(rows: rows, text: string, rowStarts: starts)
+        let l = LineLayout(rows: rows, text: string, rowStarts: starts, indent: rows.count > 1 ? indent : 0)
         layouts[n] = l
         // Rows enough for its card; and for a note about it (§2.5) under it.
         var total = rows.count
@@ -832,10 +847,34 @@ final class TextView: NSView, NSTextInputClient {
         return l
     }
 
+    /// Whether a UTF-16 unit is part of a name (a letter, a digit, an
+    /// underscore): a row of code isn't broken between two.
+    private static func isNameUnit(_ u: UInt16) -> Bool {
+        guard let c = Unicode.Scalar(u) else { return true }
+        return CharacterSet.alphanumerics.contains(c) || u == 95
+    }
+
+    /// How far a wrapped line's later rows are set in: its leading
+    /// space's width — and a list item's marker's, so they're under its
+    /// words; code's two spaces more — at most half the width.
+    private func hangingIndent(_ string: String, _ attributed: NSAttributedString) -> CGFloat {
+        let ns = string as NSString
+        var end = 0
+        while end < ns.length, let c = Unicode.Scalar(ns.character(at: end)), c == " " || c == "\t" { end += 1 }
+        if markdown, let r = string.range(of: #"^\s*([-*+]|\d{1,3}[.)])\s+(\[[ xX]\]\s+)?|^\s*>\s*"#, options: .regularExpression) {
+            end = NSRange(r, in: string).length
+        }
+        guard end < ns.length else { return 0 }
+        let lead = CTLineCreateWithAttributedString(attributed.attributedSubstring(from: NSRange(location: 0, length: end)))
+        var w = end > 0 ? CGFloat(CTLineGetTypographicBounds(lead, nil, nil, nil)) : 0
+        if !markdown { w += 2 * averageAdvance }
+        return min(w, wrapWidth / 2)
+    }
+
     /// The tints behind a row's chips (code spans, blocks' links): drawn
     /// under the text, around each such run.
-    private func drawChips(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
-        let runs = runs(in: row)
+    private func drawChips(in row: CTLine, at rowTop: CGFloat, dx: CGFloat = 0, _ ctx: CGContext) {
+        let runs = runs(in: row, dx: dx)
         guard !runs.isEmpty else { return }
         withViewCoordinates(ctx) { drawChips(runs, at: rowTop) }
     }
@@ -872,13 +911,15 @@ final class TextView: NSView, NSTextInputClient {
     private struct Run {
         let run: CTRun
         let row: CTLine
+        /// Where its row starts across (a wrapped line's later rows, set in).
+        var dx: CGFloat = 0
         var attributes: NSDictionary { CTRunGetAttributes(run) as NSDictionary }
-        var x: CGFloat { CTLineGetOffsetForStringIndex(row, CTRunGetStringRange(run).location, nil) }
+        var x: CGFloat { dx + CTLineGetOffsetForStringIndex(row, CTRunGetStringRange(run).location, nil) }
         var width: CGFloat { CGFloat(CTRunGetTypographicBounds(run, CFRange(location: 0, length: 0), nil, nil, nil)) }
     }
 
-    private func runs(in row: CTLine) -> [Run] {
-        (CTLineGetGlyphRuns(row) as? [CTRun] ?? []).map { Run(run: $0, row: row) }
+    private func runs(in row: CTLine, dx: CGFloat = 0) -> [Run] {
+        (CTLineGetGlyphRuns(row) as? [CTRun] ?? []).map { Run(run: $0, row: row, dx: dx) }
     }
 
     /// The text's state for drawing a row (its matrix flipped for this
@@ -962,7 +1003,7 @@ final class TextView: NSView, NSTextInputClient {
         for (i, s) in l.rowStarts.enumerated() where s <= u16 { row = i }
         // A caret at the very end of a wrapped row belongs to the next row.
         if row + 1 < l.rowStarts.count, l.rowStarts[row + 1] == u16 { row += 1 }
-        let x = CTLineGetOffsetForStringIndex(l.rows[row], u16, nil)
+        let x = l.dx(row) + CTLineGetOffsetForStringIndex(l.rows[row], u16, nil)
         return (n, row, x)
     }
 
@@ -986,7 +1027,7 @@ final class TextView: NSView, NSTextInputClient {
     /// The index (UTF-16, in its line) at an x across a row of a line's
     /// layout. Past a wrapped row's end stays on that row.
     private func index(inRow row: Int, of l: LineLayout, atX x: CGFloat) -> Int {
-        var u16 = CTLineGetStringIndexForPosition(l.rows[row], CGPoint(x: max(0, x), y: 0))
+        var u16 = CTLineGetStringIndexForPosition(l.rows[row], CGPoint(x: max(0, x - l.dx(row)), y: 0))
         if u16 == kCFNotFound { u16 = 0 }
         let length = (l.text as NSString).length
         let wrapped = row + 1 < l.rows.count
@@ -1084,7 +1125,7 @@ final class TextView: NSView, NSTextInputClient {
             note.text.draw(with: NSRect(x: r.minX + 12, y: r.minY, width: note.width, height: r.height), options: [.usesLineFragmentOrigin, .usesFontLeading])
         }
         if let i = foldStarts[n], let last = l.rows.last {
-            let w = CGFloat(CTLineGetTypographicBounds(last, nil, nil, nil))
+            let w = l.dx(l.rows.count - 1) + CGFloat(CTLineGetTypographicBounds(last, nil, nil, nil))
             let label = NSAttributedString(string: "⋯", attributes: [.font: font, .foregroundColor: Theme.secondaryText])
             let size = label.size()
             let rowTop = lineTop + CGFloat(l.rows.count - 1) * lineHeight
@@ -1309,8 +1350,8 @@ final class TextView: NSView, NSTextInputClient {
 
     /// A block's pill over its link's run (§7): the symbol, name and
     /// status its tile's pill shows, at the row's height.
-    private func drawPills(in row: CTLine, at rowTop: CGFloat, _ ctx: CGContext) {
-        let pills = runs(in: row).compactMap { run in (run.attributes[MarkdownStyle.pill] as? PillLook).map { (run, $0) } }
+    private func drawPills(in row: CTLine, at rowTop: CGFloat, dx: CGFloat = 0, _ ctx: CGContext) {
+        let pills = runs(in: row, dx: dx).compactMap { run in (run.attributes[MarkdownStyle.pill] as? PillLook).map { (run, $0) } }
         guard !pills.isEmpty else { return }
         withViewCoordinates(ctx) {
             for (run, look) in pills { drawPill(look, over: run, at: rowTop, ctx) }
@@ -1332,7 +1373,7 @@ final class TextView: NSView, NSTextInputClient {
         let row = l.rows[r]
         let x = p.x - textLeft
         guard x >= 0 else { return nil }
-        for run in runs(in: row) {
+        for run in runs(in: row, dx: l.dx(r)) {
             guard let target = run.attributes[MarkdownStyle.target] as? String else { continue }
             if x >= run.x, x <= run.x + run.width { return target }
         }
@@ -1387,14 +1428,14 @@ final class TextView: NSView, NSTextInputClient {
             guard !l.text.isEmpty else { continue }
             for (r, row) in l.rows.enumerated() {
                 let rowTop = lineTop + CGFloat(r) * lineHeight
-                if markdown { drawChips(in: row, at: rowTop, ctx) }
-                let origin = CGPoint(x: textLeft, y: rowTop + ascent)
+                if markdown { drawChips(in: row, at: rowTop, dx: l.dx(r), ctx) }
+                let origin = CGPoint(x: textLeft + l.dx(r), y: rowTop + ascent)
                 // (The text position isn't part of the graphics state: set
                 // again after the glow's.)
                 if !linkRanges.isEmpty { drawGlow(row, at: origin, ctx) }
                 ctx.textPosition = origin
                 CTLineDraw(row, ctx)
-                if markdown { drawPills(in: row, at: rowTop, ctx) }
+                if markdown { drawPills(in: row, at: rowTop, dx: l.dx(r), ctx) }
             }
             if cardLines[n] != nil {
                 withViewCoordinates(ctx) { drawCard(ofLine: n) }
@@ -1516,8 +1557,8 @@ final class TextView: NSView, NSTextInputClient {
                 let re = r + 1 < l.rowStarts.count ? l.rowStarts[r + 1] : (l.text as NSString).length
                 let a = max(su, rs), b = min(eu, re)
                 guard a <= b, su <= re, eu >= rs else { continue }
-                let x1 = CTLineGetOffsetForStringIndex(row, a, nil)
-                var x2 = CTLineGetOffsetForStringIndex(row, b, nil)
+                let x1 = l.dx(r) + CTLineGetOffsetForStringIndex(row, a, nil)
+                var x2 = l.dx(r) + CTLineGetOffsetForStringIndex(row, b, nil)
                 if extendingBreaks, range.end > lineEnd, b == re { x2 = max(x2, x1) + 6 }
                 each(NSRect(x: textLeft + x1, y: lineTop + CGFloat(r) * lineHeight, width: max(x2 - x1, 0), height: lineHeight))
             }
