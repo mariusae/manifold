@@ -469,13 +469,11 @@ takes a fair share of the width from every column in proportion, and
 gives it back in proportion when it goes — the widths as they were, not
 made equal. Every copy of the space works the loans out alike from the
 same events.
-Each tile has a **bar** across its top: the block's symbol — behind it,
-where the block is pinned (in its project if it's in one, else in the
-space; the tooltip says which, and the place says what project), a few
-strokes of a highlighter in the theme's accent, rising to the right,
-see-through and darker where they cross, the symbol over them. The
-bookmark (a ribbon) is pinning's mark elsewhere, its menus' Pin and
-the drop that pins — and its
+Each tile has a **bar** across its top: the block's symbol — nothing
+on it for being pinned, which the sidebar's Pinned says (strokes of a
+highlighter behind the symbol were tried, and read as more to see, not
+as kept); the bookmark (a ribbon) is pinning's mark elsewhere, its
+menus' Pin and the drop that pins — and its
 **title** (a dot after it while edited and unsaved; none where it
 would only name its kind — "Terminal", "Shell Notebook", "Processes" —
 which its symbol says, nor an agent's program, which its pill does; a
@@ -1668,9 +1666,10 @@ program says it's doing (Claude Code's summary of its task, or of what it
 did). So its tile's bar has its name in a pill of its colour before that
 title, in the icon's place — the icon gone: the pill is the bar's
 handle, as the icon is for other tiles (clicked, the tile's menu, Rename
-first; dragged, the agent), and under the pointer it lifts, a short
-shadow under it. Its maker's mark (Claude's spark, Codex's blossom) is
-before its name, in its ink, and in its tooltip and menu. Pinned or not, it's the same pill: an agent's colour and shape are
+first; dragged, the agent), and under the pointer its maker's mark (Claude's spark, Codex's blossom), before its name in
+its ink, peels out as another tile's icon does — swung out about its
+left edge, a short shadow falling from it — and back. The mark is in
+its tooltip and menu too. Pinned or not, it's the same pill: an agent's colour and shape are
 who it is, not what's become of it (a highlighter's swipe for its pin
 read as more to see, not as kept), and the sidebar's Pinned says it. With no room on the bar for more, the pill is its initial
 in a disc, as the sidebar shows it. Its colour is enough to tell it by,

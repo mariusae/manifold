@@ -2256,41 +2256,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         v.toolTip = "Editing: closing the editor brings the terminal back"
         return v
     }()
-    /// Pinned: a few strokes of a highlighter, in the theme's accent,
-    /// behind the icon — the tile's block pinned in its project (the
-    /// place says which), else the space.
-    private let pinBadge: NSImageView = {
-        let v = NSImageView()
-        v.isHidden = true
-        v.imageScaling = .scaleNone
-        return v
-    }()
-    private var isPinned = false
-    private var highlightKey: String?
-    private func drawHighlight() {
-        let r = pinBadge.frame
-        let image = icon.image
-        let key = "\(effectiveAppearance.isDark)|\(Palette.current.id)|\(r)|\(icon.frame)|\(image.map { ObjectIdentifier($0).hashValue } ?? 0)"
-        guard key != highlightKey, r.width > 0 else { return }
-        highlightKey = key
-        // The icon's shape, a point wider, cut out of the strokes: the bar
-        // round it whatever its ink (paler, unfocused) and the accent's.
-        let cut = image.map { img -> (NSImage, NSRect) in
-            let f = icon.frame
-            let k = min(1, f.width / max(img.size.width, 1), f.height / max(img.size.height, 1))
-            let size = NSSize(width: img.size.width * k, height: img.size.height * k)
-            return (img, NSRect(x: f.midX - size.width / 2 - r.minX, y: f.midY - size.height / 2 - r.minY, width: size.width, height: size.height))
-        }
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let ink = Theme.accent.usingColorSpace(.sRGB) ?? Theme.accent
-            pinBadge.image = TilePill.highlighted(ink: ink, dark: effectiveAppearance.isDark, cut: cut)
-        }
-    }
-    private func updatePinBadge() {
-        // An agent's pill doesn't say it's pinned: the sidebar does.
-        pinBadge.isHidden = !isPinned || pillHandles
-        if isPinned, !pillHandles { drawHighlight() }
-    }
     private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
@@ -2476,13 +2441,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         handle.onIn = { [weak self] in
             guard let self else { return }
             self.icon.isHidden = self.pillHandles
-            self.updatePinBadge()
         }
         for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
         // An agent's pill over the title and its place: opened, it lifts over them.
         addSubview(agentPill, positioned: .below, relativeTo: editor)
         // The highlight behind the icon: the icon over it.
-        addSubview(pinBadge, positioned: .below, relativeTo: icon)
         inkButtons()
         hostPill.isHidden = true
         themed { $0.updateColors() }
@@ -2730,7 +2693,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             agentPill.isHidden = agentColor == nil
             icon.isHidden = pillHandles || handle.out
             paintAgent()
-            updatePinBadge()
             needsLayout = true
         }
     }
@@ -2751,9 +2713,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// redone each time and seen to blink.
     func show(_ shown: Shown, focused: Bool, maximized: Bool = false) {
         stackBadge.isHidden = shown.stackedOver == nil
-        if (shown.pinnedIn != nil) != isPinned { isPinned = shown.pinnedIn != nil; needsLayout = true }
-        pinBadge.toolTip = shown.pinnedIn.map { "Pinned in \($0)" }
-        updatePinBadge()
         // Shown again as it was — every render, a keystroke's in another
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
@@ -2909,7 +2868,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             self.focused = focused
             updateColors()
             showButtons(animated: true)
-            updatePinBadge()
         }
         needsLayout = true
     }
@@ -2976,11 +2934,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         icon.frame = NSRect(x: x, y: (h - 14) / 2, width: 16, height: 14)
         handle.frame = icon.frame
         stackBadge.frame = NSRect(x: icon.frame.maxX - 6, y: icon.frame.minY - 4, width: 11, height: 11)
-        // Pinned: under the icon, rising to the right, its strokes drawn there.
-        let size = Self.highlightSize
-        let at = NSPoint(x: icon.frame.midX + 1, y: h / 2)
-        pinBadge.frame = NSRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height)
-        updatePinBadge()
         agentPill.compact = false
         var pillFull: CGFloat = 0
         if pillHandles {
@@ -2994,9 +2947,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
             x += pillFull + Self.gap - Self.wordsInset
         } else {
             x += 22
-            // Pinned, past the highlighter's strokes (they rise to the
-            // icon's right), not on them nor hard against them.
-            if isPinned { x = max(x, (pinBadge.frame.maxX + 4).rounded()) }
         }
         if iconSpot != trackedSpot { updateTrackingAreas() }
         // Shrinkage (§3.1): as the bar narrows, what's on it gives way in
@@ -3186,63 +3136,23 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Whether a point (the pill's coordinates) is on the project's name.
     func isOnProject(_ p: NSPoint) -> Bool { projectRect?.contains(p) ?? false }
 
-    /// A few strokes of a highlighter over the icon: rising to the right,
-    /// each a little uneven, its ends cut by the chisel tip, see-through —
-    /// darker where they cross, as a marker's are.
-    static let highlightSize = NSSize(width: 28, height: 22)
-    /// `cut`: an image (where it's drawn) whose shape, a point wider, is
-    /// cut out of the strokes — the icon over them.
-    static func highlighted(ink: NSColor, dark: Bool, cut: (NSImage, NSRect)? = nil) -> NSImage {
-        let size = highlightSize
-        // Each stroke: from, to (its middle line), how thick.
-        let strokes: [(NSPoint, NSPoint, CGFloat)] = [
-            (NSPoint(x: 3, y: 6), NSPoint(x: 23, y: 11), 6),
-            (NSPoint(x: 5, y: 9), NSPoint(x: 25, y: 14.5), 6),
-            (NSPoint(x: 3.5, y: 12), NSPoint(x: 21.5, y: 17), 5.5),
-        ]
-        return NSImage(size: size, flipped: false) { _ in
-            let alpha: CGFloat = dark ? 0.42 : 0.32
-            for (i, (a, b, t)) in strokes.enumerated() {
-                // The chisel's ends, upright and a little slanted.
-                let slant: CGFloat = 1.2
-                let bow = NSPoint(x: (a.x + b.x) / 2 + (i == 1 ? 0.4 : -0.3), y: (a.y + b.y) / 2 + (i == 1 ? -0.5 : 0.4))
-                let p = NSBezierPath()
-                p.move(to: NSPoint(x: a.x - slant, y: a.y + t / 2))
-                p.curve(to: NSPoint(x: b.x - slant, y: b.y + t / 2),
-                        controlPoint1: NSPoint(x: bow.x - slant, y: bow.y + t / 2), controlPoint2: NSPoint(x: bow.x - slant, y: bow.y + t / 2))
-                p.line(to: NSPoint(x: b.x + slant, y: b.y - t / 2))
-                p.curve(to: NSPoint(x: a.x + slant, y: a.y - t / 2),
-                        controlPoint1: NSPoint(x: bow.x + slant, y: bow.y - t / 2), controlPoint2: NSPoint(x: bow.x + slant, y: bow.y - t / 2))
-                p.close()
-                ink.withAlphaComponent(alpha).setFill()
-                p.fill()
-            }
-            if let (image, at) = cut {
-                for dx in [-1.0, 0, 1] { for dy in [-1.0, 0, 1] {
-                    image.draw(in: at.offsetBy(dx: dx, dy: dy), from: .zero, operation: .destinationOut, fraction: 1)
-                } }
-            }
-            return true
-        }
-    }
-
     /// A place in a project, as a bar says it: the project's box and its
     /// name, a shade darker and heavier than a folder's, then the path in it in the bar's grey — and the name's
     /// width, where a click goes to the project.
     static func projectPlace(_ p: ShownProject, place: String) -> (text: NSAttributedString, chipWidth: CGFloat) {
         let s = NSMutableAttributedString()
         let ink = Theme.secondaryText
-        // Pinned or not, its box: the pin is on the bar's icon.
+        let font = UIType.detail
+        // Pinned or not, its box (what's pinned the sidebar says).
         // As tall as the name's letters (a size larger, it hung below
         // their baseline and over their tops), its middle on their capitals'.
         let mark = Theme.symbol(Theme.projectSymbol, size: 7.75, weight: .medium, color: ink)
         if let image = mark {
             let a = NSTextAttachment()
             a.image = image
-            let font = UIType.detail
             a.bounds = NSRect(x: 0, y: ((font.capHeight - image.size.height)).rounded() / 2, width: image.size.width, height: image.size.height)
             s.append(NSAttributedString(attachment: a))
-            s.append(NSAttributedString(string: "\u{200A}", attributes: [.font: UIType.detail]))
+            s.append(NSAttributedString(string: "\u{200A}", attributes: [.font: font]))
         }
         s.append(NSAttributedString(string: p.name, attributes: [.font: NSFont.systemFont(ofSize: UIType.detail.pointSize, weight: .semibold), .foregroundColor: ink]))
         let chip = ceil(s.size().width)
@@ -3250,7 +3160,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var rest = ""
         if place.hasPrefix(root + "/") { rest = String(place.dropFirst(root.count)) }
         else if place != root { rest = "  " + place.abbreviatingHome }
-        s.append(NSAttributedString(string: rest, attributes: [.font: UIType.detail, .foregroundColor: Theme.barInk]))
+        s.append(NSAttributedString(string: rest, attributes: [.font: font, .foregroundColor: Theme.barInk]))
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingMiddle
         s.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: s.length))
@@ -3347,13 +3257,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         guard handle.out != out else { return }
         handle.set(out: out, image: icon.image, tint: icon.contentTintColor, mark: symbolName)
         if out { icon.isHidden = true }
-        updatePinBadge()
     }
 
     /// Debugging: the icon's handle folded out or in, and how it is.
     func debugHandle(_ arg: String) -> String {
         if arg == "on" || arg == "off" { setHandle(arg == "on") }
-        return handle.debugState
+        return pillHandles ? agentPill.debugState : handle.debugState
     }
 
     /// The open hand over the bar, which drags, and over the icon, which
@@ -3471,7 +3380,7 @@ final class IconHandle: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     /// Swung out: its right edge toward you, about 40°, and a fifth larger.
-    private static let swung = CATransform3DScale(CATransform3DMakeRotation(-.pi * 40 / 180, 0, 1, 0), 1.2, 1.2, 1)
+    static let swung = CATransform3DScale(CATransform3DMakeRotation(-.pi * 40 / 180, 0, 1, 0), 1.2, 1.2, 1)
 
     override func layout() {
         super.layout()
@@ -3923,8 +3832,9 @@ extension GridView: DropTaking {
 
 /// An agent's name in a pill of its colour, on its tile's bar — in the
 /// icon's place, and its handle as the icon is for other tiles: clicked,
-/// the tile's menu; dragged, the agent; under the pointer it lifts. Its
-/// maker's mark (Claude's spark, Codex's blossom) before its name. Pinned
+/// the tile's menu; dragged, the agent; under the pointer its maker's
+/// mark (Claude's spark, Codex's blossom), before its name, peels out as
+/// another tile's icon does. Pinned
 /// or not, the same pill: what's pinned the sidebar says (a pinned tile's
 /// strokes are behind its icon, and this has none). Its parts are layers,
 /// the name drawn the same room either side of it (a label's own inset
@@ -3952,11 +3862,18 @@ final class AgentNamePill: NSControl {
         wantsLayer = true
         layer?.masksToBounds = false
         capsule.cornerRadius = Self.height / 2
-        capsule.shadowColor = NSColor.black.cgColor
-        capsule.shadowOffset = CGSize(width: 0, height: -1)
-        capsule.shadowRadius = 2.5
         markLayer.contentsGravity = .resizeAspect
         markLayer.opacity = 0
+        // Its mark peels out under the pointer as another tile's icon does
+        // (`IconHandle`): turned about its left edge, in perspective.
+        markLayer.anchorPoint = CGPoint(x: 0, y: 0.5)
+        markLayer.shadowColor = NSColor.black.cgColor
+        markLayer.shadowRadius = 1.5
+        markLayer.shadowOffset = CGSize(width: 1.5, height: -1)
+        markLayer.shadowOpacity = 0
+        var perspective = CATransform3DIdentity
+        perspective.m34 = -1 / 90
+        layer?.sublayerTransform = perspective
         for l in [capsule, markLayer, words] as [CALayer] { layer?.addSublayer(l) }
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -3971,11 +3888,39 @@ final class AgentNamePill: NSControl {
     var shownWidth: CGFloat { wantedWidth }
     var frameWidth: CGFloat { wantedWidth }
 
-    /// Under the pointer (or not): lifted.
+    /// Debugging: how its mark stands — turned, and its shadow.
+    var debugState: String {
+        let t = markLayer.presentation()?.transform ?? markLayer.transform
+        let angle = atan2(-t.m13, t.m11) * 180 / .pi
+        return String(format: "%@ turned=%.0f° shadow=%.2f", out ? "out" : "in", angle, markLayer.presentation()?.shadowOpacity ?? markLayer.shadowOpacity)
+    }
+
+    /// Under the pointer (or not): its mark peeled out.
     func set(out: Bool) {
         guard out != self.out else { return }
         self.out = out
-        place(animated: true)
+        // The mark swung out, a short shadow falling from it, and back —
+        // as `IconHandle` swings another tile's icon; with less motion,
+        // only the shadow.
+        let to = out && !Motion.reduced && !compact ? IconHandle.swung : CATransform3DIdentity
+        let from = markLayer.presentation()?.transform ?? markLayer.transform
+        let fromShadow = markLayer.presentation()?.shadowOpacity ?? markLayer.shadowOpacity
+        let d = out ? Motion.spatial : Motion.base
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        markLayer.transform = to
+        markLayer.shadowOpacity = out && !compact ? 0.5 : 0
+        CATransaction.commit()
+        let turn = CABasicAnimation(keyPath: "transform")
+        turn.fromValue = from
+        turn.toValue = to
+        turn.duration = d
+        turn.timingFunction = out ? Motion.settle : Motion.disappear
+        markLayer.add(turn, forKey: "swing")
+        let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+        shadow.fromValue = fromShadow
+        shadow.duration = d
+        markLayer.add(shadow, forKey: "shadow")
     }
 
     private func refresh() {
@@ -4026,10 +3971,10 @@ final class AgentNamePill: NSControl {
         let nx = compact ? ((w - size.width) / 2).rounded() : w - Self.pad - ceil(size.width)
         words.frame = CGRect(x: nx, y: baseline + font.ascender - size.height, width: ceil(size.width) + 1, height: ceil(size.height))
         let ms = Self.markSide
-        markLayer.frame = CGRect(x: Self.pad - 1, y: y + (h - ms) / 2, width: ms, height: ms)
+        // By its left edge, which it turns about.
+        markLayer.bounds = CGRect(x: 0, y: 0, width: ms, height: ms)
+        markLayer.position = CGPoint(x: Self.pad - 1, y: y + h / 2)
         markLayer.opacity = compact ? 0 : 1
-        // Lifted: a short shadow under it.
-        capsule.shadowOpacity = out ? 0.3 : 0
         CATransaction.commit()
     }
 
