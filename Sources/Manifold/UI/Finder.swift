@@ -984,7 +984,10 @@ final class Finder: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTabl
             // On its own host (a file found on another, not this Mac's).
             else if let path = c.path, c.action < 0 { let host = c.host ?? Drags.localHost; drag = { Drags.file(path, isDirectory: false, on: host) } }
             else { drag = nil }
-            var item = FinderItem(symbol: c.symbol, title: c.title, detail: c.detail, note: c.note, age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
+            // On one line each: a thread's title, a turn's prompt, can have
+            // several, and a row drew them over the next.
+            var item = FinderItem(symbol: c.symbol, title: Block.oneLine(c.title, max: 300), detail: Block.oneLine(c.detail, max: 300), note: Block.oneLine(c.note, max: 120),
+                                  age: c.age, run: run, drag: drag, block: c.block, kinds: c.kinds)
             if let path = c.path, c.action < 0 { item.link = (path, c.host) }
             return item
         }

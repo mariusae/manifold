@@ -227,6 +227,17 @@ extension MainWindowController {
 
     // MARK: Tiles
 
+    /// A row's title in ⇧⌘A: an agent by its name, then what it's at
+    /// (not its program's name for its window, which says nothing).
+    static func rowTitle(_ b: Block) -> String {
+        let title = linkTitle(b)
+        guard let a = b.agent, AgentIdentity.name(of: b) != nil else { return title }
+        let name = AgentLook.name(of: b)
+        let said = title.trimmingCharacters(in: .whitespaces)
+        if said.isEmpty || [a.name, a.command, name, b.kind.defaultTitle, "Agent"].contains(where: { $0.caseInsensitiveCompare(said) == .orderedSame }) { return name }
+        return "\(name) · \(title)"
+    }
+
     func tilesMenu(_ query: String) -> [PopMenu.Section] {
         guard let space = selected, let a = hosts.arrangement(space) else { return [] }
         let q = query.lowercased()
@@ -240,7 +251,7 @@ extension MainWindowController {
                          b.agent?.command ?? "", b.terminal?.cwd ?? "", b.place ?? "", hosts.label(of: b.id.host)]
             if let s = StatusGlyph.remark(b) { words.append(s) }
             if b.isNote { words.append("note") }
-            if b.agent != nil { words.append("agent") }
+            if b.agent != nil { words += ["agent", AgentLook.name(of: b)] }
             let all = words.joined(separator: " ").lowercased()
             return q.split(separator: " ").allSatisfy { all.contains($0) }
         }
@@ -258,7 +269,7 @@ extension MainWindowController {
                                     run: { [weak self] in self?.arrive(atTile: p.id) })
             }
             return PopMenu.Item(symbol: b.map { Theme.symbolName(for: $0) } ?? "square.dashed", image: b?.web.flatMap { Favicons.image(forPage: $0.url) },
-                                title: b.map(Self.linkTitle) ?? "Untitled", trailing: a.isDocked(p.id) ? "Docked" : "",
+                                title: b.map(Self.rowTitle) ?? "Untitled", trailing: a.isDocked(p.id) ? "Docked" : "",
                                 status: StatusMark(of: b).glyph,
                                 run: { [weak self] in self?.arrive(atTile: p.id) })
         }
@@ -279,7 +290,7 @@ extension MainWindowController {
             .filter { $0.kind != .arrangement && matchesQuery($0) }
             .sorted { seen($0.id) > seen($1.id) }
         let closedItems = closed.prefix(q.isEmpty ? 5 : 20).map { b in
-            PopMenu.Item(symbol: Theme.symbolName(for: b), image: b.web.flatMap { Favicons.image(forPage: $0.url) }, title: Self.linkTitle(b),
+            PopMenu.Item(symbol: Theme.symbolName(for: b), image: b.web.flatMap { Favicons.image(forPage: $0.url) }, title: Self.rowTitle(b),
                          run: { [weak self] in self?.follow(b.id, from: self?.arrangement?.focused, .goTo, context: "recently closed") })
         }
         var sections = [PopMenu.Section(title: q.isEmpty ? "Tiles" : "Search Results", items: tiles)]

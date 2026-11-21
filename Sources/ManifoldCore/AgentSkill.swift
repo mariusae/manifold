@@ -104,16 +104,16 @@ public enum AgentSkill {
                    install: { try installClaudeStyle(at: claude, agent: "claude", events: claudeEvents); try installSkillFile(at: claudeSkill)
                        try installBlockSkill(at: blockSkill) },
                    uninstall: { try uninstallClaudeStyle(at: claude); try uninstallSkillFile(at: claudeSkill); try uninstallBlockSkill(at: blockSkill) },
-                   refresh: { try refreshClaudeStyle(at: claude); try refreshSkillFile(at: claudeSkill); try refreshBlockSkill(at: blockSkill) }),
+                   refresh: { try refreshClaudeStyle(at: claude, events: claudeEvents); try refreshSkillFile(at: claudeSkill); try refreshBlockSkill(at: blockSkill) }),
             Target(name: "codex", file: codex, present: here("codex", codexHome),
                    install: { try installClaudeStyle(at: codex, agent: "codex", events: codexEvents); try installAgentsNote(at: codexAgents) },
                    uninstall: { try uninstallClaudeStyle(at: codex); try uninstallAgentsNote(at: codexAgents) },
-                   refresh: { try refreshClaudeStyle(at: codex); try refreshAgentsNote(at: codexAgents) },
+                   refresh: { try refreshClaudeStyle(at: codex, events: codexEvents); try refreshAgentsNote(at: codexAgents) },
                    note: "Codex asks to review new hooks once: choose Review hooks (or /hooks) and trust Manifold's."),
             Target(name: "muse", file: muse, present: here("muse", museDir),
                    install: { try installClaudeStyle(at: muse, agent: "muse", events: museEvents) },
                    uninstall: { try uninstallClaudeStyle(at: muse) },
-                   refresh: { try refreshClaudeStyle(at: muse) }),
+                   refresh: { try refreshClaudeStyle(at: muse, events: museEvents) }),
             Target(name: "pi", file: pi, present: here("pi", piDir),
                    install: { try installPiExtension(at: pi) },
                    uninstall: { try uninstallPiExtension(at: pi) },
@@ -126,6 +126,7 @@ public enum AgentSkill {
     static let claudeEvents: [(hook: String, event: String)] = [
         ("SessionStart", "start"),
         ("UserPromptSubmit", "prompt"),
+        ("PreToolUse", "doing"),
         ("PostToolUse", "working"),
         ("PermissionRequest", "waiting"),
         ("Notification", "waiting"),
@@ -290,6 +291,20 @@ public enum AgentSkill {
         for t in targets { try? t.refresh() }
     }
 
+    /// One of our hooks' commands in `hooks` (the UserPromptSubmit one if
+    /// it's there, so it's the same every time), to make another like it.
+    static func ourCommand(in hooks: [String: Any]) -> String? {
+        let order = ["UserPromptSubmit"] + hooks.keys.sorted()
+        for key in order {
+            for group in (hooks[key] as? [[String: Any]]) ?? [] {
+                for hook in (group["hooks"] as? [[String: Any]]) ?? [] {
+                    if let c = hook["command"] as? String, isOurs(c), c.contains(" --agent ") { return c }
+                }
+            }
+        }
+        return nil
+    }
+
     /// A hook's command moved over to `mani`; nil if it needn't (or can't
     /// yet) be.
     static func movedOver(_ command: String) -> String? {
@@ -303,11 +318,28 @@ public enum AgentSkill {
         return command.replacingCharacters(in: end, with: "/mani' agent ")
     }
 
-    static func refreshClaudeStyle(at url: URL) throws {
+    /// Ours moved over to where `mani` is now; and, where ours are in at
+    /// all, an event of `events` they're not on yet (one added since they
+    /// were put in: PreToolUse, for what it's doing) added.
+    static func refreshClaudeStyle(at url: URL, events: [(hook: String, event: String)] = []) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         var settings = try readJSON(url)
-        guard let hooks = settings["hooks"] as? [String: Any] else { return }
+        guard var hooks = settings["hooks"] as? [String: Any] else { return }
         var changed = false
+        func hasOurs(_ value: Any?) -> Bool {
+            ((value as? [[String: Any]]) ?? []).contains { (($0["hooks"] as? [[String: Any]]) ?? []).contains { isOurs(($0["command"] as? String) ?? "") } }
+        }
+        // As the others are: the same `mani` (the one they were put in
+        // with, not whichever program refreshes them — a test build's).
+        if let sample = ourCommand(in: hooks) {
+            for (hook, event) in events where !hasOurs(hooks[hook]) {
+                guard let r = sample.range(of: #" agent \S+ --agent"#, options: .regularExpression) else { break }
+                var groups = hooks[hook] as? [[String: Any]] ?? []
+                groups.append(["hooks": [["type": "command", "command": sample.replacingCharacters(in: r, with: " agent \(event) --agent"), "timeout": 10]]])
+                hooks[hook] = groups
+                changed = true
+            }
+        }
         var out: [String: Any] = [:]
         for (event, value) in hooks {
             guard let groups = value as? [[String: Any]] else { out[event] = value; continue }

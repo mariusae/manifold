@@ -154,7 +154,11 @@ extension MainWindowController {
     /// back, in place (⌘↩, as a text goes from editing to viewing).
     func toggleConversation(_ id: PlacementID) {
         guard let p = arrangement?.placement(id), let b = hosts.block(p.block), b.agent != nil else { return NSSound.beep() }
-        replace(id, with: p.block, lens: p.lens == .thread ? b.defaultLens : .thread, as: ULID.make())
+        let toConversation = p.lens != .thread
+        // Kept with the agent: shown again (its tile closed, then opened
+        // from the sidebar), it's as it was turned to.
+        hosts.append(.annotate([Block.agentViewKey: toConversation ? "conversation" : ""]), to: .block(p.block))
+        replace(id, with: p.block, lens: toConversation ? .thread : Lens.default(for: b.kind, path: b.path), as: ULID.make())
     }
 
     /// Tile ▸ Interrupt (⌘.): a notebook's running cell stopped.

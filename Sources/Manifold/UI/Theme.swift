@@ -538,7 +538,7 @@ final class SelectionRowView: NSTableRowView {
     private var hovered = false {
         didSet {
             guard hovered != oldValue else { return }
-            showHover()
+            needsDisplay = true
             if hovered {
                 if let last = Self.hoveredRow, last !== self { last.hovered = false }
                 Self.hoveredRow = self
@@ -548,41 +548,6 @@ final class SelectionRowView: NSTableRowView {
         }
     }
     private static weak var hoveredRow: SelectionRowView?
-
-    /// The hover's glass, a view of its own under the row's cells, so it
-    /// fades in as the pointer comes and out as it goes, not on and off.
-    private lazy var glass: HoverGlass = {
-        let g = HoverGlass()
-        g.alphaValue = 0
-        addSubview(g, positioned: .below, relativeTo: nil)
-        return g
-    }()
-
-    private var hoverShows: Bool { hovered && !isSelected && !isGroupRowStyle && !inert && panel?.quiet != true }
-
-    private func showHover(animated: Bool = true) {
-        let want: CGFloat = hoverShows ? 1 : 0
-        guard glass.alphaValue != want || !animated else { return }
-        if want > 0 { placeGlass() }
-        guard animated, window != nil else { glass.alphaValue = want; return }
-        NSAnimationContext.runAnimationGroup { c in
-            c.duration = want > 0 ? 0.12 : 0.3
-            c.timingFunction = CAMediaTimingFunction(name: want > 0 ? .easeOut : .easeInEaseOut)
-            glass.animator().alphaValue = want
-        }
-    }
-
-    private func placeGlass() {
-        glass.frame = bounds
-        if glass.band != band { glass.band = band }
-    }
-
-    override var isSelected: Bool { didSet { if isSelected != oldValue { showHover() } } }
-
-    override func layout() {
-        super.layout()
-        if glass.alphaValue > 0 { placeGlass() }
-    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -597,7 +562,6 @@ final class SelectionRowView: NSTableRowView {
     override func prepareForReuse() {
         super.prepareForReuse()
         hovered = false
-        showHover(animated: false)
     }
 
     override func viewDidMoveToSuperview() {
@@ -641,6 +605,10 @@ final class SelectionRowView: NSTableRowView {
             bounds.fill()
         }
         if let p = panel { drawPanel(p) }
+        if hovered, !isSelected, !isGroupRowStyle, !inert, panel?.quiet != true {
+            Flat.hovered.setFill()
+            Flat.rowPill(band).fill()
+        }
         guard marked else { return }
         Flat.mark.setFill()
         NSBezierPath(roundedRect: NSRect(x: 0, y: 5, width: Flat.markWidth, height: bounds.height - 10), xRadius: Radius.hair, yRadius: Radius.hair).fill()
@@ -679,14 +647,5 @@ final class SelectionRowView: NSTableRowView {
         path.lineWidth = 0.5
         path.stroke()
         NSGraphicsContext.restoreGraphicsState()
-    }
-}
-
-/// A row's hover (`SelectionRowView`): its glass, faded in and out by the row.
-final class HoverGlass: NSView {
-    var band: NSRect = .zero { didSet { needsDisplay = true } }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draw(_ dirtyRect: NSRect) {
-        Flat.hoverRow(band, dark: effectiveAppearance.isDark)
     }
 }

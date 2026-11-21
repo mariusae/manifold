@@ -326,7 +326,7 @@ extension MainWindowController {
     /// `waking`: an agent asleep, which the host starts again and types
     /// to once it's ready — no Return again, no saying it didn't take it.
     func say(_ text: String, to agent: BlockID, threads: [BlockID] = [], waking: Bool = false) {
-        hosts.propose(.input(block: agent, text: text))
+        hosts.propose(.input(block: agent, text: Self.typed(text)))
         let reports = hosts.block(agent)?.statusRecord != nil && !waking
         let landed = 0.3 + min(0.7, Double(text.count) / 2000)
         DispatchQueue.main.asyncAfter(deadline: .now() + landed) { [weak self] in
@@ -339,6 +339,16 @@ extension MainWindowController {
             guard reports else { return }
             self.pressAgain(agent, since: before, turns: turns, tries: 2, threads: threads)
         }
+    }
+
+    /// What's typed into an agent for `text`: as it is on one line; with
+    /// more, a bracketed paste — a line break typed is Return, which would
+    /// send its first line alone (the agents' prompts take pastes: Claude
+    /// Code's "[Pasted text +3 lines]").
+    static func typed(_ text: String) -> String {
+        guard text.contains("\n") else { return text }
+        let clean = text.replacingOccurrences(of: "\u{1b}[201~", with: "")
+        return "\u{1b}[200~" + clean + "\u{1b}[201~"
     }
 
     /// Return again if the agent hasn't said it's started since it said
@@ -393,10 +403,9 @@ extension MainWindowController {
         }
         threadUI.asks = waiting
         for (agent, asks) in byAgent {
-            // On one line: a line break typed in is a new line in its prompt,
-            // and the whole a paste ("[Pasted text +3 lines]").
-            let text = (asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: " — and: "))
-                .replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            // Its lines as written: `say` pastes what has more than one.
+            let text = (asks.count == 1 ? asks[0].prompt : asks.map(\.prompt).joined(separator: "\n\n— and: "))
+                .replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
             // Its name, as the threads call it: with other agents in them, which one it is.
             let named = hosts.block(agent).flatMap(AgentIdentity.name(of:))
             let name = named ?? hosts.block(agent)?.agent?.name ?? "The agent"

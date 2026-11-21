@@ -95,51 +95,31 @@ enum Flat {
     /// from the row's sides and a hair from its top and bottom, rounded as
     /// a control is.
     /// A row chosen in a list (the sidebar's, a tree's): raised a step off
-    /// what it's on, a pill of glass — its ground a shade lighter, a sheen
-    /// at its top, and a rim catching the light along its top and bottom
-    /// that fades round its ends — its words as they were; not a band of
-    /// the tint, which said "chosen" louder than anything else in the
-    /// sidebar. Fainter in a window not in front.
+    /// what it's on, a pill — its ground a shade lighter, a hairline round
+    /// it, its words as they were — not a band of the tint, which said
+    /// "chosen" louder than anything else in the sidebar. Fainter in a
+    /// window not in front.
     static func chosenRow(_ r: NSRect, emphasized: Bool, dark: Bool) {
-        glassRow(r, strength: emphasized ? 1 : 0.6, dark: dark)
-    }
-
-    /// The pointer over a row: the same glass, fainter (faded in and out
-    /// by the row, `SelectionRowView`).
-    static func hoverRow(_ r: NSRect, dark: Bool) {
-        glassRow(r, strength: 0.55, dark: dark)
-    }
-
-    /// A row's glass at `k` of its full strength.
-    static func glassRow(_ r: NSRect, strength k: CGFloat, dark: Bool) {
         let box = r.insetBy(dx: 6, dy: 1.5)
-        guard box.width > 2, box.height > 2, let ctx = NSGraphicsContext.current?.cgContext else { return }
         let radius = min(box.height * 0.38, 11)
         let path = rowPill(r)
-        // By night lighter than its ground; by day a step darker (a white
-        // pill was lost on a white list), its sheen and rim white.
-        let ink = Theme.text
-        ink.withAlphaComponent((dark ? 0.11 : 0.065) * k).setFill()
-        path.fill()
-        // The sheen: light at its top, gone a third of the way down.
-        let shine = dark ? ink : NSColor.white
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        NSGradient(starting: shine.withAlphaComponent((dark ? 0.06 : 0.35) * k), ending: shine.withAlphaComponent(0))?
-            .draw(from: NSPoint(x: box.midX, y: box.maxY), to: NSPoint(x: box.midX, y: box.maxY - box.height * 0.35), options: [])
-        NSGraphicsContext.restoreGraphicsState()
-        // The rim: bright along the top and bottom, fading round the ends.
-        let rimLine = CGPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), cornerWidth: radius - 0.5, cornerHeight: radius - 0.5, transform: nil)
-            .copy(strokingWithWidth: 1, lineCap: .butt, lineJoin: .miter, miterLimit: 10)
-        let e = min(0.45, radius * 1.3 / box.width)
-        let rim = ink
-        ctx.saveGState()
-        ctx.addPath(rimLine)
-        ctx.clip()
-        NSGradient(colorsAndLocations: (rim.withAlphaComponent((dark ? 0.06 : 0.04) * k), 0), (rim.withAlphaComponent((dark ? 0.24 : 0.12) * k), e),
-                   (rim.withAlphaComponent((dark ? 0.24 : 0.12) * k), 1 - e), (rim.withAlphaComponent((dark ? 0.06 : 0.04) * k), 1))?
-            .draw(in: box, angle: 0)
-        ctx.restoreGState()
+        if dark {
+            Theme.text.withAlphaComponent(emphasized ? 0.13 : 0.08).setFill()
+            path.fill()
+            let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
+            rim.lineWidth = 1
+            Theme.text.withAlphaComponent(emphasized ? 0.15 : 0.08).setStroke()
+            rim.stroke()
+        } else {
+            // On a light ground the same, a step darker: a white pill was
+            // lost on a white list.
+            Theme.text.withAlphaComponent(emphasized ? 0.075 : 0.045).setFill()
+            path.fill()
+            let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: radius - 0.5, yRadius: radius - 0.5)
+            rim.lineWidth = 1
+            Theme.text.withAlphaComponent(emphasized ? 0.09 : 0.05).setStroke()
+            rim.stroke()
+        }
     }
 
     /// A row's pill: where its selection and its hover go.

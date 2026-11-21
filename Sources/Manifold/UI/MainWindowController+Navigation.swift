@@ -271,6 +271,8 @@ extension MainWindowController {
         navKeysMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // ⌘Z while a deletion counts down: the deletion undone.
             if let self, event.window === self.window, event.keyCode == 6, event.keyMods == .command, self.toast.undoLatest() { return nil }
+            // Typing in a tile that finished: it's read.
+            if let self, event.window === self.window { self.attendFocused() }
             guard let self, event.window === self.window, [27, 48, 50].contains(event.keyCode) else { return event }
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if event.keyCode == 50 {

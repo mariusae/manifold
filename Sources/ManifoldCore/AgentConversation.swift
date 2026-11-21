@@ -17,8 +17,10 @@ public enum AgentConversation {
     /// The conversation: `turns` (the agent's, oldest first), what each
     /// did as its host read it (`contents`, by turn; none for one it
     /// couldn't), and what you've sent that waits for it (`queued`).
+    /// `doing`: what it says it's doing now (`Block.agentDoing`), said at
+    /// the end while it works; else its last tool's, as read.
     public static func markdown(turns: [AgentTurn], contents: [Int: [TurnTranscript.Part]], standing: Standing,
-                                queued: [String] = [], most: Int = 40) -> String {
+                                queued: [String] = [], doing: String? = nil, most: Int = 40) -> String {
         var out = "<div class=\"mf-conversation\"></div>\n\n"
         let shown = turns.suffix(most)
         if turns.count > shown.count {
@@ -29,22 +31,29 @@ public enum AgentConversation {
         }
         for t in shown {
             out += "<section class=\"mf-turn\" id=\"turn-\(t.id)\">\n\n"
-            // Asked from a thread: the thread and what was said there, not
-            // the instructions Manifold wrote round it.
-            let (asked, words) = promptShown(t.prompt)
-            out += asked ? "<p class=\"mf-asked\">\(escape(words))</p>\n\n" : prompt(words)
-            let (steps, said) = split(contents[t.id])
-            if !steps.isEmpty {
-                out += "<details class=\"mf-steps\" id=\"steps-\(t.id)\"><summary>\(escape(summary(steps, files: t.files)))</summary>\n\n"
-                out += TurnTranscript.markdown(steps) + "\n\n</details>\n\n"
+            if let note = notification(t.prompt) {
+                // Not asked: its harness telling it something (a task of its
+                // own finished) — said as what happened, not as a prompt.
+                out += "<p class=\"mf-event\">\(escape(note))</p>\n\n"
+            } else {
+                // Asked from a thread: the thread and what was said there, not
+                // the instructions Manifold wrote round it.
+                let (asked, words) = promptShown(t.prompt)
+                out += asked ? "<p class=\"mf-asked\">\(linked(escape(words)))</p>\n\n" : prompt(words)
             }
+            let (steps, said) = split(contents[t.id])
+            out += along(steps, turn: t.id, files: t.files)
             var reply = said.joined(separator: "\n\n")
             // What it didn't say along the way, its last words (an agent whose
             // transcript can't be read, or one read before it ended).
             if reply.isEmpty, t.ended != nil, let m = t.message?.trimmingCharacters(in: .whitespacesAndNewlines) { reply = m }
             if !reply.isEmpty { out += reply + "\n\n" }
-            if t.isRunning, standing == .working || standing == .needsYou {
-                out += "<p class=\"mf-standing mf-working\">\(standing == .needsYou ? "Needs you — answer in its terminal (⌘↩)" : "Working…")</p>\n\n"
+            if t.isRunning, standing == .needsYou {
+                out += "<p class=\"mf-standing mf-working\">Needs you — answer in its terminal (⌘↩)</p>\n\n"
+            } else if t.isRunning, standing == .working {
+                // What it's doing now, beside the dots that say it's at it.
+                let now = doing ?? activity(contents[t.id]) ?? "Working"
+                out += "<p class=\"mf-standing mf-working\"><span class=\"mf-dots\"><i></i><i></i><i></i></span>\(escape(now))…</p>\n\n"
             }
             out += "</section>\n\n"
         }
@@ -74,6 +83,7 @@ public enum AgentConversation {
     /// What was asked, in a line for an outline: from a thread, only what
     /// was said there (every entry began "In the thread on…").
     public static func promptTitle(_ prompt: String) -> String {
+        if let note = notification(prompt) { return note }
         let (asked, words) = promptShown(prompt)
         if asked, let open = words.firstIndex(of: "“"), let close = words.lastIndex(of: "”"), open < close {
             return String(words[words.index(after: open)..<close])
@@ -86,7 +96,14 @@ public enum AgentConversation {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return "" }
         let title = queued ? " title=\"Sent once it's done\"" : ""
-        return "<pre class=\"mf-prompt\(queued ? " mf-queued" : "")\"\(title)>\(escape(t))</pre>\n\n"
+        return "<pre class=\"mf-prompt\(queued ? " mf-queued" : "")\"\(title)>\(linked(escape(t)))</pre>\n\n"
+    }
+
+    /// What was written, escaped, with its references — a block dropped
+    /// in, `[name](manifold:…)` — links again, which the page shows as
+    /// their pills (as a note does).
+    static func linked(_ escaped: String) -> String {
+        escaped.replacingOccurrences(of: #"\[([^\]\n]+)\]\((manifold:[^)\s"]+)\)"#, with: "<a href=\"$2\">$1</a>", options: .regularExpression)
     }
 
     /// A turn's parts as what it did on the way (up to its last tool) and
@@ -98,6 +115,69 @@ public enum AgentConversation {
         }
         let said = parts[(last + 1)...].compactMap { p -> String? in if case .text(let t) = p { t } else { nil } }
         return (Array(parts[...last]), said)
+    }
+
+    /// What it did on the way, in order: what it said as it went (what it
+    /// was about to do, what it found), each run of tools between folded
+    /// to a line — the last run's line saying the files the turn changed.
+    static func along(_ steps: [TurnTranscript.Part], turn: Int, files: [String]?) -> String {
+        var out = "", run: [TurnTranscript.Part] = [], runs = 0
+        let tools = steps.filter { if case .tool = $0 { true } else { false } }.count
+        var seen = 0
+        func flush() {
+            guard !run.isEmpty else { return }
+            seen += run.count
+            let line = summary(run, files: seen == tools ? files : nil)
+            out += "<details class=\"mf-steps\" id=\"steps-\(turn)\(runs == 0 ? "" : "-\(runs)")\"><summary>\(escape(line))</summary>\n\n"
+            out += TurnTranscript.markdown(run) + "\n\n</details>\n\n"
+            run = []
+            runs += 1
+        }
+        for p in steps {
+            switch p {
+            case .tool: run.append(p)
+            case .text(let t):
+                flush()
+                out += "<div class=\"mf-aside\">\n\n\(t)\n\n</div>\n\n"
+            }
+        }
+        flush()
+        return out
+    }
+
+    /// What a turn at work is doing now, in a few words: its last tool,
+    /// as "Running `make`" or "Reading main.swift"; nil when it's last
+    /// said something (that's on the page) or nothing's been read.
+    public static func activity(_ parts: [TurnTranscript.Part]?) -> String? {
+        guard case let .tool(name, summary)? = parts?.last else { return nil }
+        let what = summary.replacingOccurrences(of: "`", with: "")
+        let file = what.split(separator: "/").last.map(String.init) ?? what
+        switch name {
+        case "Read", "NotebookRead": return what.isEmpty ? "Reading" : "Reading \(file)"
+        case "Edit", "MultiEdit", "Write", "NotebookEdit": return what.isEmpty ? "Editing" : "Editing \(file)"
+        case "Bash": return what.isEmpty ? "Running a command" : "Running \(what.prefix(80))"
+        case "BashOutput": return "Watching a command"
+        case "Grep", "Glob", "LS": return what.isEmpty ? "Searching" : "Searching for \(what.prefix(60))"
+        case "WebFetch", "WebSearch": return "Looking on the web"
+        case "Task", "Agent": return what.isEmpty ? "Asking a subagent" : "Asking a subagent: \(what.prefix(60))"
+        case "TodoWrite": return "Updating its to-do list"
+        default: return "Using \(name)"
+        }
+    }
+
+    /// A prompt that wasn't asked but is its harness telling it something
+    /// (Claude Code's `<task-notification>`: a background command of its
+    /// own finished), in a line: "Build brick compiler — completed". Nil for
+    /// one that was asked.
+    public static func notification(_ prompt: String) -> String? {
+        let p = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard p.hasPrefix("<task-notification>") else { return nil }
+        func tag(_ name: String) -> String? {
+            guard let a = p.range(of: "<\(name)>"), let b = p.range(of: "</\(name)>", range: a.upperBound..<p.endIndex) else { return nil }
+            return String(p[a.upperBound..<b.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let s = tag("summary"), !s.isEmpty { return s }
+        return "A background task " + (tag("status") ?? "finished")
     }
 
     /// What it did on the way, in a line: "read 6 files · edited 2 ·
@@ -146,5 +226,17 @@ public enum AgentConversation {
     static func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+extension Block {
+    /// An agent at work: what it says it's doing now — its last tool's
+    /// report, kept as its status's message by its host (`AgentEvent.doing`);
+    /// nil before it's said anything since it was asked (the message is
+    /// then what it was asked), or when it isn't at work.
+    public var agentDoing: String? {
+        guard agent != nil, let r = statusRecord, r.state == .working, let m = r.msg?.trimmingCharacters(in: .whitespaces), !m.isEmpty else { return nil }
+        if let t = terminal?.turns?.last, t.prompt.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(m) { return nil }
+        return m
     }
 }

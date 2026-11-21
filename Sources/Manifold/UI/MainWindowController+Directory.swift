@@ -278,7 +278,7 @@ extension MainWindowController: DirectoryViewDelegate {
             }
             return out
         }
-        func asked(_ p: String) -> String { Block.oneLine(named(ThreadText.askShown(p) ?? p), max: 200) }
+        func asked(_ p: String) -> String { Block.oneLine(named(AgentConversation.notification(p) ?? ThreadText.askShown(p) ?? p), max: 200) }
         func ago(_ s: Stamp?) -> String { BlockSummary.since(s, now: now) ?? "" }
         var detail = [b.agent?.name ?? "Agent", (project(holding: id) ?? project(of: id)).map { "in \($0.name)" }].compactMap { $0 }.joined(separator: " · ")
         if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }

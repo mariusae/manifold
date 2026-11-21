@@ -28,6 +28,9 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     var runs: (Block) -> Bool = { _ in true }
     var onSend: ((String) -> Void)?
     var onStop: (() -> Void)?
+    /// Whether the end of the page, where what it's doing is said, is out
+    /// of sight while it works: for its bar to say it instead.
+    var onEndHidden: ((Bool) -> Void)?
 
     var focusView: NSView { composer }
 
@@ -66,8 +69,14 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         stopButton.onClick = { [weak self] in self?.onStop?() }
         stopButton.toolTip = "Stop it (⎋ in its terminal)"
         addSubview(box)
+        // What was being written, as it was left: the tile turned to its
+        // terminal and back is a view made afresh.
+        if let draft = Self.drafts[block] { composer.textStorage?.setAttributedString(draft) }
         composerChanged()
     }
+
+    /// What's being written to each agent, kept past its view.
+    private static var drafts: [BlockID: NSAttributedString] = [:]
 
     required init?(coder: NSCoder) { fatalError() }
 
@@ -121,14 +130,25 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     private func rebuild() {
         guard let b = source() else { return }
         let standing: AgentConversation.Standing = !runs(b) ? .asleep : b.statusState == .blocked ? .needsYou : b.statusState == .working ? .working : .idle
-        let md = AgentConversation.markdown(turns: b.terminal?.turns ?? [], contents: contents, standing: standing, queued: queued())
+        let md = AgentConversation.markdown(turns: b.terminal?.turns ?? [], contents: contents, standing: standing, queued: queued(), doing: b.agentDoing)
         let name = AgentLook.name(of: b)
         box.placeholder.stringValue = standing == .asleep ? "Wake \(name) with a prompt…" : (b.terminal?.turns?.isEmpty ?? true) ? "Ask \(name)…" : "Reply to \(name)…"
         box.leading = standing == .working ? [stopButton] : []
+        tellEnd(working: standing == .working)
         guard md != document else { return }
         document = md
         version &+= 1
         page.textChanged()
+    }
+
+    /// Whether the working line at the page's end is out of sight, told
+    /// (asked of the page: it may be scrolled up); not at work, it isn't.
+    private func tellEnd(working: Bool) {
+        guard working else { return (onEndHidden?(false)) ?? () }
+        let js = "(function(){var e=document.querySelector('.mf-working');if(!e)return true;var r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=window.innerHeight;})()"
+        page.page.evaluateJavaScript(js) { [weak self] result, _ in
+            self?.onEndHidden?(!((result as? Bool) ?? true))
+        }
     }
 
     /// A turn scrolled to the top of what shows — once it's on the page
@@ -180,6 +200,7 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     // MARK: Writing
 
     private func composerChanged() {
+        Self.drafts[block] = composer.string.isEmpty ? nil : NSAttributedString(attributedString: composer.attributedString())
         box.placeholder.isHidden = !composer.string.isEmpty
         box.canSend = !composer.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         box.updateMentions()

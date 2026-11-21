@@ -3,13 +3,10 @@ import ManifoldCore
 
 /// How a block's status shows by its name (§3.7), wherever its name is —
 /// a sidebar row, a tile's bar, an overview's card: one glyph at the
-/// trailing edge, the same everywhere — hollow while it's at work, filled
-/// when there's something for you, gone once seen. Working, an open ring
-/// turning (filling as a program says how far; still, with Reduce
-/// motion); needing you, an amber ring with a dot — not why (you'll go to
-/// it anyway: the tooltip says); done and not seen, a filled disc with a
-/// check, red if it failed; asleep or inactive, a moon, the name dimmed;
-/// seen, nothing. A host's states (connecting, offline, quiet, watching)
+/// trailing edge, the same everywhere: three dots while it's at work, a
+/// filled dot when there's something for you — amber, needed; the done
+/// colour, done and not seen; red, failed — gone once seen; asleep or
+/// inactive, a moon, the name dimmed. A host's states (connecting, offline, quiet, watching)
 /// are glyphs too, and a notebook's cells their own.
 struct StatusMark: Equatable {
     /// The glyph at the trailing edge, if any.

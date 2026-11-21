@@ -77,7 +77,15 @@ enum PinMenu {
 
 extension Block {
     /// How it's shown when nothing says otherwise.
-    var defaultLens: Lens { Lens.default(for: kind, path: path) }
+    /// How it's shown when it's put on screen: as its kind is — an agent
+    /// as it was last turned to, its terminal or its conversation (⌘↩).
+    var defaultLens: Lens {
+        if agent != nil, annotations?[Self.agentViewKey] == "conversation" { return .thread }
+        return Lens.default(for: kind, path: path)
+    }
+
+    /// The annotation an agent's last way of being shown is kept under.
+    static let agentViewKey = "agent.view"
 }
 
 extension FindKinds {
@@ -86,6 +94,10 @@ extension FindKinds {
 }
 
 extension AgentTurn {
-    /// The first line of what it was asked, to name it by.
-    var headline: String? { prompt.split(whereSeparator: \.isNewline).first.map(String.init) }
+    /// What it was asked, in a line, to name it by: from a thread, what
+    /// was said there; a notification from its harness, what happened.
+    var headline: String? {
+        let t = AgentConversation.promptTitle(prompt).trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : t
+    }
 }

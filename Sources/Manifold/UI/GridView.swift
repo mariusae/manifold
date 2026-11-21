@@ -482,6 +482,8 @@ final class GridView: NSView, NSDraggingSource {
     /// under them): their content stays hidden between layouts, as renders
     /// (every keystroke) come and go.
     private var collapsed: Set<PlacementID> = []
+    /// A tile down to its bar.
+    func isCollapsed(_ id: PlacementID) -> Bool { collapsed.contains(id) }
     /// The tiles the last layout summarized (too short for their content,
     /// tall enough for a line or more of their summary), and the cards
     /// standing in for their content.
@@ -2516,6 +2518,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     var debugDirty: String { !isDirty ? "clean" : isStale ? "amber" : "grey" }
     private var isDirty = false
+    /// Saying what an agent's doing, the dots before it.
+    private var doingShown = false
     private var isStale = false
 
     // MARK: Editing in place
@@ -2754,7 +2758,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // tile too — nothing to do: its block the same (by its version),
         // its place and state, the minute (what it says can be an age).
         let key = ShowKey(placement: shown.placement, version: shown.version, offline: shown.offline, foreignHost: shown.foreignHost,
-                          caption: shown.caption, focused: focused, maximized: maximized, collapsed: collapsed,
+                          caption: shown.caption, doing: shown.doing, doingHidden: shown.doingHidden, focused: focused, maximized: maximized, collapsed: collapsed,
                           minute: Int(Date().timeIntervalSince1970 / 60), favicon: shown.block?.web.flatMap { Favicons.image(forPage: $0.url) })
         if key == lastKey, shown.block != nil { return }
         lastKey = key
@@ -2801,7 +2805,13 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if agentColor == nil, let b = shown.block, Self.kindSaysIt.contains(b.kind),
            base.trimmingCharacters(in: .whitespaces) == b.kind.defaultTitle { base = "" }
         let after = base.isEmpty && shown.isDormant ? nil : shown.isDormant ? "(dormant)" : shown.exitedWords.map { "(\($0))" }
-        let title = [base, after].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
+        var title = [base, after].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
+        // An agent at work whose tile can't show what it's doing (down to
+        // its bar, its conversation's end out of sight): that, after the
+        // dots, instead of its title (its tooltip still).
+        let doing = shown.doing.flatMap { collapsed || shown.doingHidden ? $0 : nil }
+        if doingShown != (doing != nil) { doingShown = doing != nil; needsLayout = true }
+        if let doing { title = doing }
         // Edited and unsaved: a dot after the name, amber when the file
         // changed on disk under the edits (the menu says what to do).
         let stale = shown.block?.text?.stale == true
@@ -2834,6 +2844,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var offline: Bool
         var foreignHost: String?
         var caption: String?
+        var doing: String?
+        var doingHidden: Bool
         var focused, maximized, collapsed: Bool
         var minute: Int
         var favicon: NSImage?
@@ -3072,13 +3084,23 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // by `rightTaken`); the status before it, by the name, whatever
         // else shows.
         right -= linkRoom
+        // With the controls put away, the status at the bar's end, not
+        // left where they'd be (their room is kept for the title, not for
+        // it): it moves over as they come and go.
+        statusRest = bounds.width - 10 - right
+        let restShift = chromeShown ? 0 : statusRest
+        statusAtRest = !chromeShown
         if !statusPill.isHidden {
             let s = statusPill.wanted
-            statusPill.frame = NSRect(x: right - s.width, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
+            statusPill.frame = NSRect(x: right - s.width + restShift, y: ((h - s.height) / 2).rounded(), width: s.width, height: s.height)
             right -= s.width + 8
         }
-        if !glyph.isHidden {
-            glyph.frame = NSRect(x: right - StatusGlyph.size, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+        if !glyph.isHidden, doingShown {
+            // Before what it's doing, where the title begins.
+            glyph.frame = NSRect(x: x - 2, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
+            x += StatusGlyph.size + 4
+        } else if !glyph.isHidden {
+            glyph.frame = NSRect(x: right - StatusGlyph.size + restShift, y: (h - StatusGlyph.size) / 2, width: StatusGlyph.size, height: StatusGlyph.size)
             right -= StatusGlyph.size + 8
         }
         let th = ceil(name.intrinsicContentSize.height)
@@ -3121,7 +3143,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             editor.frame = NSRect(x: ex, y: ((h - eh) / 2).rounded(), width: max(0, right - ex), height: eh)
         } else {
             agentPill.isHidden = agentColor == nil
-            subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40
+            subtitle.isHidden = subtitle.stringValue.isEmpty || right - sx < 40 || doingShown
         }
         window?.invalidateCursorRects(for: self)
         let said = (rightTaken, linkGiven)
@@ -3279,9 +3301,27 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// and hidden with its own: whether shown, and whether to fade.
     var onChromeShown: ((Bool, Bool) -> Void)?
 
+    /// How far the status moves right while the controls are put away.
+    private var statusRest: CGFloat = 0
+    private var statusAtRest = false
+
     private func showButtons(animated: Bool) {
         let shown = chromeShown
         let a: CGFloat = shown ? 1 : 0
+        // The status over to the bar's end, or back before the controls.
+        if statusAtRest == shown {
+            statusAtRest = !shown
+            let dx = shown ? -statusRest : statusRest
+            let moving = [doingShown ? nil : glyph, statusPill as NSView].compactMap { $0 }.filter { !$0.isHidden }
+            if animated && !Motion.reduced {
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = Motion.fast
+                    for v in moving { v.animator().frame.origin.x += dx }
+                }
+            } else {
+                for v in moving { v.frame.origin.x += dx }
+            }
+        }
         // The place too, but a page's address (what's clicked to type
         // another) and a bar standing for its tile (its summary).
         let place: CGFloat = shown || collapsed || lastShown?.block?.web != nil ? 1 : 0
@@ -3883,13 +3923,12 @@ extension GridView: DropTaking {
 
 /// An agent's name in a pill of its colour, on its tile's bar — in the
 /// icon's place, and its handle as the icon is for other tiles: clicked,
-/// the tile's menu; dragged, the agent; under the pointer it lifts and
-/// opens at its left to show its maker's mark (Claude's spark, Codex's
-/// blossom). Pinned or not, the same pill: what's pinned the sidebar
-/// says (a pinned tile's strokes are behind its icon, and this has
-/// none). Its parts are layers, so the opening is smooth:
-/// the name drawn the same room either side of it at rest (a label's own
-/// inset had it off centre).
+/// the tile's menu; dragged, the agent; under the pointer it lifts. Its
+/// maker's mark (Claude's spark, Codex's blossom) before its name. Pinned
+/// or not, the same pill: what's pinned the sidebar says (a pinned tile's
+/// strokes are behind its icon, and this has none). Its parts are layers,
+/// the name drawn the same room either side of it (a label's own inset
+/// had it off centre).
 final class AgentNamePill: NSControl {
     var name = "" { didSet { if name != oldValue { refresh() } } }
     var ink: NSColor = .white { didSet { if ink != oldValue { refresh() } } }
@@ -3925,17 +3964,14 @@ final class AgentNamePill: NSControl {
     private var shownName: String { compact ? String(name.prefix(1)) : name }
     private var attributes: [NSAttributedString.Key: Any] { [.font: Self.font, .foregroundColor: ink] }
     private var nameSize: NSSize { (shownName as NSString).size(withAttributes: attributes) }
-    /// At rest: its name and the room either side; compact, a disc.
-    var wantedWidth: CGFloat { compact ? Self.height : ceil(nameSize.width) + Self.pad * 2 }
-    /// Opened: the mark's room too.
-    private var openWidth: CGFloat { wantedWidth + (mark != nil && !compact ? Self.markSide + 4 : 0) }
-    /// How wide it shows now.
-    var shownWidth: CGFloat { out ? openWidth : wantedWidth }
-    /// Its frame: as wide as it opens, so it's drawn whole as it does
-    /// (what's past it, transparent, the bar's anyway).
-    var frameWidth: CGFloat { max(wantedWidth, openWidth) }
+    /// Its maker's mark, then its name, and the room either side; compact,
+    /// its initial in a disc.
+    var wantedWidth: CGFloat { compact ? Self.height : ceil(nameSize.width) + Self.pad * 2 + (mark != nil ? Self.markSide + 4 : 0) }
+    /// How wide it shows.
+    var shownWidth: CGFloat { wantedWidth }
+    var frameWidth: CGFloat { wantedWidth }
 
-    /// Under the pointer (or not): lifted, opened to show its mark.
+    /// Under the pointer (or not): lifted.
     func set(out: Bool) {
         guard out != self.out else { return }
         self.out = out
@@ -3991,7 +4027,7 @@ final class AgentNamePill: NSControl {
         words.frame = CGRect(x: nx, y: baseline + font.ascender - size.height, width: ceil(size.width) + 1, height: ceil(size.height))
         let ms = Self.markSide
         markLayer.frame = CGRect(x: Self.pad - 1, y: y + (h - ms) / 2, width: ms, height: ms)
-        markLayer.opacity = out && !compact ? 1 : 0
+        markLayer.opacity = compact ? 0 : 1
         // Lifted: a short shadow under it.
         capsule.shadowOpacity = out ? 0.3 : 0
         CATransaction.commit()

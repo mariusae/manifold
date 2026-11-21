@@ -55,6 +55,10 @@ extension MainWindowController: GridDelegate {
             let tail = screen.suffix(2).map { String($0) }
             if !tail.isEmpty { s.lines = Array(s.lines.prefix(1)) + tail }
         }
+        // An agent at work: what it's doing now, after what it was asked.
+        if let doing = b.agentDoing {
+            s.lines = Array(s.lines.prefix(1)) + [doing + "…"]
+        }
         s.place = s.place.map { $0.abbreviatingHome }
         var thumbnail: NSImage?
         if s.wantsThumbnail {
@@ -490,11 +494,14 @@ extension MainWindowController: GridDelegate {
         // folder, a folder's (a project's, a Finder's) the one it's in; a
         // terminal's where it is, as it isn't one of the rows itself.
         var own: NSMenuItem?
+        // A folder that's a project: its mark, not a plain folder's.
+        let projects = Set(hosts.client(on)?.node.graph.projects(on: on) ?? [])
         while true {
             let name = path == "/" ? "/" : path.lastPathComponent
             let isFolder = !first || b.path == nil || b.kind == .directory
             let here = path
-            let item = ClosureMenuItem(name, symbol: isFolder ? "folder" : Theme.symbolName(for: b)) { [weak self] in
+            let symbol = !isFolder ? Theme.symbolName(for: b) : projects.contains(path) ? Theme.projectSymbol : "folder"
+            let item = ClosureMenuItem(name, symbol: symbol) { [weak self] in
                 guard let self else { return }
                 if isFolder, let client = self.hosts.client(on) {
                     self.show(client.directoryBlock(for: here), lens: .directory, .here)

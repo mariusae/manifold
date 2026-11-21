@@ -30,10 +30,41 @@ public enum AgentEvent: Codable, Equatable, Sendable {
     /// A tool wrote a file (Edit, Write): working, and which file — so an
     /// edit to a thread's place there is the agent's (§3.12).
     case wrote(agent: String, path: String)
+    /// About to use a tool: what it's doing, as it says it (the tool's
+    /// description — Claude Code's Bash and Task carry one — its to-do
+    /// item's "active form"), else in a few words ("Reading main.swift").
+    case doing(agent: String, what: String)
 
     public var agent: String {
         switch self {
-        case let .started(a), let .prompt(a, _, _), let .working(a), let .finished(a, _, _), let .todos(a, _), let .waiting(a, _), let .ended(a), let .wrote(a, _): a
+        case let .started(a), let .prompt(a, _, _), let .working(a), let .finished(a, _, _), let .todos(a, _), let .waiting(a, _), let .ended(a), let .wrote(a, _), let .doing(a, _): a
+        }
+    }
+
+    /// What a tool about to be used is doing, in a line: as the agent
+    /// describes it, else made from what it works on; nil for one with
+    /// nothing to say (an MCP tool's call).
+    public static func doing(tool: String, input: [String: Any]) -> String? {
+        func s(_ k: String) -> String? { (input[k] as? String).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } }
+        func file(_ p: String) -> String { p.split(separator: "/").last.map(String.init) ?? p }
+        func cap(_ t: String) -> String { String(t.split(whereSeparator: \.isNewline).first ?? "").prefix(160).description }
+        if tool == "TodoWrite", let items = input["todos"] as? [[String: Any]],
+           let now = items.first(where: { $0["status"] as? String == "in_progress" }) {
+            return ((now["activeForm"] as? String) ?? (now["content"] as? String)).map(cap)
+        }
+        if let d = s("description") { return cap(d) }
+        let path = s("file_path") ?? s("notebook_path") ?? s("path")
+        switch tool {
+        case "Read", "NotebookRead": return path.map { "Reading " + file($0) } ?? "Reading"
+        case "Edit", "MultiEdit", "NotebookEdit": return path.map { "Editing " + file($0) } ?? "Editing"
+        case "Write": return path.map { "Writing " + file($0) } ?? "Writing"
+        case "Grep", "Glob": return s("pattern").map { "Searching for " + cap($0).prefix(60) } ?? "Searching"
+        case "LS": return path.map { "Looking in " + file($0) } ?? "Looking around"
+        case "WebFetch": return s("url").flatMap { URL(string: $0)?.host }.map { "Reading " + $0 } ?? "Reading the web"
+        case "WebSearch": return s("query").map { "Searching the web for " + cap($0).prefix(60) } ?? "Searching the web"
+        case "Bash": return s("command").map { "Running " + cap($0).prefix(60) }
+        case "Task", "Agent": return "Asking a subagent"
+        default: return nil
         }
     }
 }
@@ -56,7 +87,7 @@ public struct AgentTodo: Codable, Equatable, Sendable {
 
 public enum AgentHookCommand {
     /// The events a hook can say.
-    public static let events = ["start", "prompt", "working", "stop", "waiting", "end"]
+    public static let events = ["start", "prompt", "doing", "working", "stop", "waiting", "end"]
 
     /// Tells the host `name` happened in the block this runs in, and exits:
     /// `input` read from the input unless not `readsInput` (pi's extension
@@ -115,6 +146,10 @@ public enum AgentHookCommand {
             let text = string("prompt", "user_prompt", "input")
                 ?? (input["input-messages"] as? [String])?.last ?? (input["input_messages"] as? [String])?.last
             return .prompt(agent: agent, text: text ?? "", transcript: string("transcript_path"))
+        case "doing":
+            // A tool about to run: what it's for.
+            guard let tool = string("tool_name"), let what = AgentEvent.doing(tool: tool, input: input["tool_input"] as? [String: Any] ?? [:]) else { return nil }
+            return .doing(agent: agent, what: what)
         case "working":
             // A tool ran; the to-do list one (TodoWrite), with the list.
             if string("tool_name") == "TodoWrite", let tool = input["tool_input"] as? [String: Any], let items = tool["todos"] as? [[String: Any]] {

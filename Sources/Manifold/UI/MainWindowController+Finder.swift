@@ -240,7 +240,7 @@ extension MainWindowController {
                 let lines = said.split(separator: "\n").map(String.init).filter { $0.lowercased().contains(q) }
                 let first = turn.headline ?? "Turn"
                 let agentID = block.id, turnID = turn.id
-                items.append(FinderItem(symbol: "text.bubble", title: String(first.prefix(120)), detail: "Turn of \(block.displayTitle) · \(Age.short(turn.began))",
+                items.append(FinderItem(symbol: "text.bubble", title: String(first.prefix(120)), detail: "Turn of \(AgentLook.name(of: block)) · \(Age.short(turn.began))",
                                         note: (turn.files?.count).map { "\($0) file\($0 == 1 ? "" : "s")" } ?? "",
                                         run: { [weak self] in
                                             guard let self else { return }
@@ -508,7 +508,7 @@ extension MainWindowController {
                 let agentID = block.id, turnID = turn.id
                 let files = (turn.files ?? []).prefix(3).joined(separator: ", ")
                 var candidate = FinderCandidate(symbol: "text.bubble", title: String(first.prefix(120)),
-                                                detail: "Turn of \(block.displayTitle)" + (files.isEmpty ? "" : " · " + files),
+                                                detail: "Turn of \(AgentLook.name(of: block))" + (files.isEmpty ? "" : " · " + files),
                                                 note: "", age: Age.short(turn.began) == "now" ? nil : Age.short(turn.began), name: first + " turn " + turn.agent,
                                                 around: (turn.repo ?? "") + " " + (turn.files ?? []).joined(separator: " "),
                                                 distance: 60, recency: turn.began.wall, action: actions.count, kinds: ["turn"])

@@ -793,6 +793,7 @@ extension MainWindowController {
             n.dirty = b?.text?.isDirty == true
             n.stale = b?.text?.stale == true
             n.image = b?.web.flatMap { Favicons.image(forPage: $0.url) } ?? b.flatMap { AgentLook.face(of: $0, size: 13) }
+            if let b, b.agent != nil { agentRow(n, b) }
             n.look = StatusGlyph.look(of: b); n.blocked = b?.statusRecord?.kind; n.tooltip = StatusGlyph.tooltip(b)
             n.trailing = StatusGlyph.at(of: b).map(Age.short)
             // On screen, its bar says done or failed, and when: not said again.
@@ -872,6 +873,7 @@ extension MainWindowController {
             guard shown.isEmpty, !a.placements.contains(where: { $0.block == block }), let b = hosts.block(block) else { continue }
             let title = Self.linkTitle(b)
             let n = node(for: b, id: "\(aid)/pin/\(block)", detail: StatusGlyph.remark(b) ?? "")
+            if b.agent != nil { agentRow(n, b) }
             n.arrangement = id
             n.dimmed = true
             n.age = nil
@@ -981,6 +983,25 @@ extension MainWindowController {
         return (out, Set(projects.map(\.id)))
     }
 
+    /// An agent's row: one line, its monogram saying who — what it says
+    /// it's doing, or asking, while it says; else its task (Claude Code's
+    /// name for it), else its name.
+    func agentRow(_ n: OrgNode, _ b: Block) {
+        n.detail = ""
+        if let doing = b.agentDoing { n.title = doing; return }
+        if b.statusState == .blocked, let m = b.statusRecord?.msg, !m.isEmpty { n.title = Block.oneLine(m); return }
+        n.title = Self.agentTask(b) ?? AgentLook.name(of: b)
+    }
+
+    /// An agent's task, as its program names its window — nil where that's
+    /// only the program's own name ("Claude Code"), or nothing.
+    static func agentTask(_ b: Block) -> String? {
+        let title = linkTitle(b).trimmingCharacters(in: .whitespaces)
+        guard let a = b.agent else { return title.isEmpty ? nil : title }
+        if title.isEmpty || [a.name, a.command, AgentLook.name(of: b), b.kind.defaultTitle, "Agent"].contains(where: { $0.caseInsensitiveCompare(title) == .orderedSame }) { return nil }
+        return title
+    }
+
     /// A project in a space's list (§2.6): its name, and under it what's
     /// pinned in it — its agents by their names, saying what they're at —
     /// then its open threads, the latest five (and a row for the rest).
@@ -990,14 +1011,13 @@ extension MainWindowController {
         var children: [OrgNode] = []
         for b in pinned(in: proj).compactMap({ hosts.block($0) }) {
             if let row = onScreen(b.id) {
-                if b.agent != nil { row.title = AgentLook.name(of: b) }
+                if b.agent != nil { agentRow(row, b) }
                 children.append(row)
                 continue
             }
             let n = node(for: b, id: "\(nid)/pin/\(b.id)")
             if b.agent != nil {
-                n.title = AgentLook.name(of: b)
-                n.detail = StatusGlyph.remark(b) ?? ""
+                agentRow(n, b)
                 // Not running: asleep — a moon, its name dim (asked, or
                 // shown, it starts again where it left off).
                 if n.look == nil, !Self.agentRuns(b) {

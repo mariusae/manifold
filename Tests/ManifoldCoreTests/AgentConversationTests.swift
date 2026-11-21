@@ -83,3 +83,49 @@ import Testing
     #expect(AgentConversation.promptTitle(prompt) == "and what else?")
     #expect(AgentConversation.promptTitle("fix it\nplease") == "fix it")
 }
+
+// What it said along the way shows, between its tools folded to lines.
+@Test func whatItSaidOnTheWayShowsBetweenItsTools() {
+    var t = AgentTurn(id: 3, agent: "Claude Code", prompt: "build it", began: Stamp(wall: 0))
+    t.ended = Stamp(wall: 5)
+    let parts: [TurnTranscript.Part] = [.text("I'm copying the protos over unchanged."), .tool(name: "Bash", summary: "`cp a b`"),
+                                        .text("Now a stub server."), .tool(name: "Write", summary: "`stub.go`"), .text("Done.")]
+    let md = AgentConversation.markdown(turns: [t], contents: [3: parts], standing: .idle)
+    #expect(md.contains("<div class=\"mf-aside\">\n\nI'm copying the protos over unchanged.\n\n</div>"))
+    #expect(md.contains("<div class=\"mf-aside\">\n\nNow a stub server.\n\n</div>"))
+    #expect(md.contains("id=\"steps-3\"><summary>Ran a command</summary>"))
+    #expect(md.contains("id=\"steps-3-1\"><summary>Made an edit</summary>"))
+    #expect(md.contains("Done."))
+    let order = ["copying the protos", "steps-3\"", "a stub server", "steps-3-1", "Done."].map { md.range(of: $0)!.lowerBound }
+    #expect(order == order.sorted())
+}
+
+// At work: what it's doing now, by its last tool.
+@Test func aTurnAtWorkSaysWhatItsDoing() {
+    let t = AgentTurn(id: 4, agent: "Claude Code", prompt: "go", began: Stamp(wall: 0))
+    let md = AgentConversation.markdown(turns: [t], contents: [4: [.tool(name: "Bash", summary: "`swift build`")]], standing: .working)
+    #expect(md.contains("mf-dots"))
+    #expect(md.contains("Running swift build…"))
+    #expect(AgentConversation.activity([.tool(name: "Read", summary: "`/a/b/main.swift`")]) == "Reading main.swift")
+    #expect(AgentConversation.activity([.text("Thinking aloud.")]) == nil)
+    #expect(AgentConversation.markdown(turns: [t], contents: [:], standing: .working).contains("Working…"))
+}
+
+// Its harness telling it a task finished: said as what happened, not as asked.
+@Test func aTaskNotificationIsAnEventNotAPrompt() {
+    let prompt = "<task-notification>\n<task-id>b9</task-id>\n<status>completed</status>\n<summary>Background command \"Build brick\" completed (exit code 0)</summary>\n</task-notification>"
+    let t = AgentTurn(id: 5, agent: "Claude Code", prompt: prompt, began: Stamp(wall: 0))
+    let md = AgentConversation.markdown(turns: [t], contents: [:], standing: .idle)
+    #expect(md.contains("<p class=\"mf-event\">Background command &quot;Build brick&quot; completed (exit code 0)</p>"))
+    #expect(!md.contains("mf-prompt"))
+    #expect(!md.contains("task-id"))
+    #expect(AgentConversation.promptTitle(prompt) == "Background command \"Build brick\" completed (exit code 0)")
+    #expect(AgentConversation.notification("fix it") == nil)
+}
+
+// A block dropped into what was asked: its pill, not its Markdown.
+@Test func aReferenceInAPromptIsALink() {
+    let t = AgentTurn(id: 9, agent: "Claude Code", prompt: "[mc2art](manifold:hw698j2smp0/01M7V7FG1MTQ8VTY2W8MD003ZX) they are here & there", began: Stamp(wall: 0))
+    let md = AgentConversation.markdown(turns: [t], contents: [:], standing: .idle)
+    #expect(md.contains("<pre class=\"mf-prompt\"><a href=\"manifold:hw698j2smp0/01M7V7FG1MTQ8VTY2W8MD003ZX\">mc2art</a> they are here &amp; there</pre>"))
+}

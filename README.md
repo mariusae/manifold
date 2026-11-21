@@ -1397,15 +1397,14 @@ around it, and comes back with its history.
   block's name says it wherever it's shown — its tile's bar, its sidebar
   row, its card in the Overview — and adds something only when the
   block needs you: one **glyph** at the right, the same everywhere —
-  hollow while it's at work, filled when there's something for you,
-  gone once seen. Working, three dots with a light going along them
-  (still, with Reduce motion), or a ring filling as
-  the program says how far, as OSC 9;4 progress does;
-  needing you, an amber ring with a dot (why — a permission, a
-  question — in its tooltip); done or failed and not yet seen, a
-  filled disc with a check, red if it failed; a thread an agent is at
-  work on, the ring, and one with something you haven't read, a filled
-  dot; an agent asleep, or an inactive terminal, a moon, its name dim.
+  moving while it's at work, a filled dot when there's something for
+  you, gone once seen. Working, three dots with a light going along them
+  (still, with Reduce motion), or lit as far as the program says it's
+  come, as OSC 9;4 progress does; needing you, an amber dot (why — a
+  permission, a question — in its tooltip); done and not yet seen, or a
+  thread with something you haven't read, a green dot; failed, a red
+  one; a thread an agent is at work on, the dots; an agent asleep, or
+  an inactive terminal, a moon, its name dim.
   In the sidebar it comes after how long ago; in a bar it's left of the
   links and the buttons, by the name; a folded project shows the most
   pressing of what's in it. Read as you'd expect — focusing its tile,

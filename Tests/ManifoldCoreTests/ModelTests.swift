@@ -2134,3 +2134,35 @@ private final class Seen: @unchecked Sendable {
     #expect(Block.withoutStatusMark("vim notes.md") == "vim notes.md")
     #expect(Block.withoutStatusMark("✳") == "")
 }
+
+// About to use a tool: what it's doing, as the agent describes it, else in a few words.
+@Test func aToolAboutToRunSaysWhatItsDoing() {
+    #expect(AgentHookCommand.event("doing", agent: "claude", input: ["tool_name": "Bash", "tool_input": ["command": "git log --oneline", "description": "List recent commits"]])
+            == .doing(agent: "claude", what: "List recent commits"))
+    #expect(AgentEvent.doing(tool: "Read", input: ["file_path": "/a/b/main.swift"]) == "Reading main.swift")
+    #expect(AgentEvent.doing(tool: "Bash", input: ["command": "make test\nmore"]) == "Running make test")
+    let todos: [String: Any] = ["todos": [["content": "Fix it", "activeForm": "Fixing it", "status": "in_progress"], ["content": "Ship", "status": "pending"]]]
+    #expect(AgentEvent.doing(tool: "TodoWrite", input: todos) == "Fixing it")
+    // Nothing to say (an MCP tool's call): no event.
+    #expect(AgentHookCommand.event("doing", agent: "claude", input: ["tool_name": "mcp__x__y", "tool_input": [:]]) == nil)
+}
+
+// Hooks put in before PreToolUse was one of ours: refreshed, it's added; not where none of ours are.
+@Test func refreshedHooksGainAnEventAddedSince() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hooks-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("settings.json")
+    let older = AgentSkill.claudeEvents.filter { $0.hook != "PreToolUse" }
+    try AgentSkill.installClaudeStyle(at: url, agent: "claude", events: older)
+    #expect((try AgentSkill.readJSON(url)["hooks"] as! [String: Any])["PreToolUse"] == nil)
+    try AgentSkill.refreshClaudeStyle(at: url, events: AgentSkill.claudeEvents)
+    let hooks = try AgentSkill.readJSON(url)["hooks"] as! [String: Any]
+    let pre = (hooks["PreToolUse"] as! [[String: Any]]).flatMap { $0["hooks"] as! [[String: Any]] }.map { $0["command"] as! String }
+    #expect(pre.count == 1 && pre[0].contains("agent doing --agent claude"))
+    // Theirs alone: left alone.
+    let theirs = dir.appendingPathComponent("theirs.json")
+    try Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#.utf8).write(to: theirs)
+    try AgentSkill.refreshClaudeStyle(at: theirs, events: AgentSkill.claudeEvents)
+    #expect((try AgentSkill.readJSON(theirs)["hooks"] as! [String: Any]).keys.sorted() == ["Stop"])
+}

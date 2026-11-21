@@ -130,6 +130,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// if their shell is still there (the server was restarted, not the
     /// shell ended).
     var recentlyClosed: Set<BlockID> = []
+    /// The conversations whose end, where what their agent's doing is
+    /// said, is out of sight (`conversationEnd`).
+    var conversationEndHidden: Set<PlacementID> = []
     /// Blocks being deleted: their tiles go in a puff (`departure(of:)`).
     var deleting: Set<BlockID> = []
     /// Terminals whose shell exited, a new one asked for: their views'
@@ -671,6 +674,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                 s.project = ShownProject(name: proj.name, root: proj.root, pinned: pinnedIn != nil)
             }
         }
+        if let b = s.block, let doing = b.agentDoing {
+            s.doing = doing
+            s.doingHidden = p.lens == .thread && conversationEndHidden.contains(p.id)
+        }
         if let proj = project(pinning: p.block) { s.pinnedIn = proj.name }
         else if selected.map({ pins(of: $0).contains { $0.to == p.block } }) == true { s.pinnedIn = "this space" }
         // A space's timeline (§3.12): said so, not the space's name.
@@ -1037,6 +1044,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // Esc, as its terminal takes it: an agent at work stops.
         c.onStop = { [weak self] in self?.hosts.propose(.input(block: agent, text: "\u{1b}")) }
         c.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
+        c.onEndHidden = { [weak self] hidden in self?.conversationEnd(p.id, hidden: hidden) }
         return c
     }
 
@@ -1070,6 +1078,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
                self.arrangement?.focused != v.placement {
                 self.focus(v.placement)
             }
+            // In the tile it's on: what it finished, read (the focus moved,
+            // rendering does it; a click in the tile already focused, this).
+            DispatchQueue.main.async { self.attendFocused() }
             return event
         }
     }
@@ -1500,25 +1511,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Status (§3.7)
 
-    /// The last done or failed record attended to: which block, and the
-    /// record's stamp, so one isn't proposed twice while the host answers.
-    private var attended: (BlockID, Stamp)?
+    /// The last done or failed record attended to: which block, the
+    /// record's stamp, and when — not proposed again while the host
+    /// answers, but again after a while if it's still unread (lost on the
+    /// way, a host that was away).
+    private var attended: (BlockID, Stamp, Date)?
 
     /// The focused block, while the window is key, is attended to: what
     /// it had done, or failed at, is read — whether you came to it done
     /// or it finished while you were looking. The Dock badge counts the
     /// blocks waiting on you, or done.
     private func attend() {
-        if window?.isKeyWindow == true, let b = focusedShown?.placement.block,
-           let r = hosts.block(b)?.statusRecord, r.state == .done || r.state == .error, r.read != true,
-           attended.map({ $0.0 != b || $0.1 != r.at }) ?? true {
-            attended = (b, r.at)
-            hosts.propose(.attend(b))
-        }
+        attendFocused()
         // Threads with something not seen (§3.12) wait on you too.
         let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count + hosts.unseenThreads.count
         let badge = waiting == 0 ? "" : "\(waiting)"
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
+    }
+
+    /// The focused tile's finished status read — also as you click or
+    /// type in the window, though nothing else changed.
+    func attendFocused() {
+        if window?.isKeyWindow == true, let b = focusedShown?.placement.block,
+           let r = hosts.block(b)?.statusRecord, r.state == .done || r.state == .error, r.read != true,
+           attended.map({ $0.0 != b || $0.1 != r.at || Date().timeIntervalSince($0.2) > 3 }) ?? true {
+            attended = (b, r.at, Date())
+            hosts.propose(.attend(b))
+        }
     }
 
     /// What waits on you (§3.7), in ⌘J's order: the blocks whose status
@@ -1998,13 +2017,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// grown to a glimpse if it's too short for its content (its summary
     /// in its place, or its bar alone) — taken from its neighbours as
     /// growing takes it.
-    func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil) -> [Event] {
+    /// `bump`: grown to the glimpse if it's any shorter (a row of the
+    /// sidebar clicked for it), not only when it's down to its summary.
+    func showingSome(_ events: [Event], in a: ArrangementState, placement: PlacementID? = nil, bump: Bool = false) -> [Event] {
         var after = a
         for e in events { after.apply(e) }
         guard let f = placement ?? after.focused, after.full == nil, let m = metrics(of: f, in: after),
               m.shown.count > 1, m.sum > 0, m.usable > 0 else { return events }
         let target = min(Self.glimpse.points, m.usable * Self.glimpse.share)
-        guard m.body(after.height(of: f)) < GridView.summarizeBelow else { return events }
+        guard m.body(after.height(of: f)) < (bump ? target - 1 : GridView.summarizeBelow) else { return events }
         return events + after.growing(f, step: m.share(forBody: target) - after.height(of: f))
     }
 

@@ -186,7 +186,7 @@ final class StatusGlyph: NSView {
     /// that's on screen.
     private var animates: Bool {
         guard !isHiddenOrHasHiddenAncestor, let window, window.occlusionState.contains(.visible) || Self.ignoresWindowOcclusion, let look else { return false }
-        // Reduce motion: still, three quarters of a ring.
+        // Reduce motion: the dots still.
         if Motion.reduced { return false }
         if case .working(nil) = look { return true }
         if case .connecting = look { return true }
@@ -434,71 +434,52 @@ final class StatusGlyph: NSView {
         let center = NSPoint(x: rect.midX, y: rect.midY)
         let radius = s / 2 - 1
         switch look {
-        case .unseen:
-            let r = radius * 0.62
-            Theme.text.withAlphaComponent(0.88).setFill()
+        case .unseen, .needsYou, .done(read: false), .failed(read: false):
+            // Something for you: a filled dot, its colour why — amber,
+            // you're needed; the done colour, something new to read (done,
+            // a thread's comments); red, it failed.
+            let tone: NSColor = switch look {
+            case .needsYou: amber
+            case .failed: Theme.statusError
+            default: Status.done
+            }
+            tone.setFill()
+            let r = radius * 0.66
             NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
-        case .working, .connecting:
-            // Running: an open ring. With no word of how far, three
-            // quarters of it, turning; with progress, as much of it as is
-            // done, clockwise from the top over a faint track.
-            let p: Int? = if case .working(let p) = look { p } else { nil }
-            let ink = look == .connecting ? Theme.secondaryText : Theme.text.withAlphaComponent(0.9)
+        case .done(read: true):
+            // Read: nothing more to say.
+            break
+        case .failed(read: true):
+            // Read, but it failed: a trace of it, faint (a notebook's cell).
+            Theme.statusError.withAlphaComponent(0.45).setFill()
+            let r = radius * 0.5
+            NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
+        case .working(let p?):
+            // At work, saying how far: the dots lit as far as it's come,
+            // left to right — still, as the light that goes along them
+            // when it doesn't say.
+            let lit = CGFloat(min(max(p, 0), 100)) / 100 * CGFloat(dotCount)
+            for (i, d) in dotRects(side: rect.width).enumerated() {
+                let f = min(max(lit - CGFloat(i), 0), 1)
+                Theme.text.withAlphaComponent(0.9 * (CGFloat(dotDim) + (1 - CGFloat(dotDim)) * f)).setFill()
+                NSBezierPath(ovalIn: d.offsetBy(dx: rect.minX, dy: rect.minY)).fill()
+            }
+        case .working(nil):
+            // Working, still (a menu's row, Reduce motion): the dots as
+            // they stand at this moment of their wave.
+            for (i, d) in dotRects(side: rect.width).enumerated() {
+                Theme.text.withAlphaComponent(0.9 * dotLight(i, phase: phase)).setFill()
+                NSBezierPath(ovalIn: d.offsetBy(dx: rect.minX, dy: rect.minY)).fill()
+            }
+        case .connecting:
+            // A host being reached: an open ring, turning.
+            let start = 45 - (phase * 180).truncatingRemainder(dividingBy: 360)
             let arc = NSBezierPath()
             arc.lineWidth = 2
             arc.lineCapStyle = .round
-            if let p {
-                let track = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-                track.lineWidth = 2
-                Theme.text.withAlphaComponent(0.15).setStroke()
-                track.stroke()
-                if p > 0 {
-                    arc.appendArc(withCenter: center, radius: radius, startAngle: 90, endAngle: 90 - 360 * Double(min(p, 100)) / 100, clockwise: true)
-                }
-            } else if look == .connecting {
-                let start = 45 - (phase * 180).truncatingRemainder(dividingBy: 360)
-                arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 270, clockwise: true)
-            } else {
-                // Working, still (a menu's row, Reduce motion): the dots
-                // as they stand at this moment of their wave.
-                for (i, d) in dotRects(side: rect.width).enumerated() {
-                    Theme.text.withAlphaComponent(0.9 * dotLight(i, phase: phase)).setFill()
-                    NSBezierPath(ovalIn: d.offsetBy(dx: rect.minX, dy: rect.minY)).fill()
-                }
-                return
-            }
-            ink.setStroke()
+            arc.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: start - 270, clockwise: true)
+            Theme.secondaryText.setStroke()
             arc.stroke()
-        case .needsYou:
-            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-            ring.lineWidth = 1.6
-            amber.setStroke()
-            ring.stroke()
-            amber.setFill()
-            let r = radius * 0.42
-            NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)).fill()
-        case .done(let read), .failed(let read):
-            let check = NSBezierPath()
-            check.lineWidth = read ? 1.6 : 1.8
-            check.lineCapStyle = .round
-            check.lineJoinStyle = .round
-            let k = s * 0.16
-            check.move(to: NSPoint(x: center.x - 1.9 * k, y: center.y - 0.1 * k))
-            check.line(to: NSPoint(x: center.x - 0.6 * k, y: center.y - 1.4 * k))
-            check.line(to: NSPoint(x: center.x + 2.0 * k, y: center.y + 1.3 * k))
-            let failed = look == .failed(read: read)
-            if read {
-                (failed ? Theme.statusError.withAlphaComponent(0.6) : Theme.secondaryText.withAlphaComponent(0.8)).setStroke()
-                check.stroke()
-            } else {
-                // Not yet read: a filled disc with the check cut in it.
-                let disc = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-                (failed ? Theme.statusError : Theme.text.withAlphaComponent(0.88)).setFill()
-                disc.fill()
-                Theme.panel.setStroke()
-                check.lineWidth = 1.6
-                check.stroke()
-            }
         case .offline:
             // A ring with a slash through it.
             let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))

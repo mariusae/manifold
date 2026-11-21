@@ -94,8 +94,12 @@ extension MainWindowController: OrganizationViewDelegate {
             hideStateView()
             if let p = node.placement, let a = hosts.arrangement(arr), a.placement(p) != nil {
                 // Out of its stack, from behind a maximized tile, focused,
-                // and the pointer on it.
-                land(on: p, in: arr, a)
+                // grown if it's down to its bar or not much more (focused
+                // already, too), and the pointer on it.
+                if selected != arr { hosts.select(arr) }
+                let events = showingSome(a.revealing(p), in: a, placement: p, bump: true)
+                // Nothing to do but focus what's focused: nothing appended.
+                if !(events.count == 1 && a.focused == p) { hosts.append(events, to: .block(arr)) }
                 warpPointerToFocus()
             } else {
                 if arr != selected { hosts.select(arr) }

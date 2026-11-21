@@ -422,12 +422,14 @@ enum MarkdownPage {
            said as the page is, in the reading face. */
         .mf-turn { margin: 0 0 2.4em; }
         .mf-turn + .mf-turn { border-top: 1px solid var(--page-rule); padding-top: 1.6em; }
+        /* The technical face at its own weight throughout: Whitney's run
+           300 to 450, and CSS's 400, unasked, was its Bold. */
         pre.mf-prompt { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400);
           font-size: calc(0.86rem * var(--tech-scale, 1)); line-height: 1.45; white-space: pre-wrap; word-wrap: break-word;
           background: none; border: none; border-left: 3px solid var(--page-quote-rule); border-radius: 0;
           padding: 0.1em 0 0.1em 0.9em; margin: 0 0 1.1em; color: var(--page-strong); }
         pre.mf-prompt.mf-queued { color: var(--page-quote); border-left-style: dashed; }
-        details.mf-steps { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.8rem * var(--tech-scale, 1));
+        details.mf-steps { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
           color: var(--page-quote); margin: 0 0 1em; }
         details.mf-steps summary { cursor: default; list-style: none; }
         details.mf-steps summary::-webkit-details-marker { display: none; }
@@ -435,9 +437,19 @@ enum MarkdownPage {
         details.mf-steps[open] summary::before { transform: rotate(90deg); }
         details.mf-steps[open] { padding-bottom: 0.4em; border-bottom: 1px solid var(--page-rule); }
         details.mf-steps p, details.mf-steps ul { margin: 0.5em 0 0.5em 1em; }
-        p.mf-asked { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.86rem * var(--tech-scale, 1));
+        p.mf-asked { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.86rem * var(--tech-scale, 1));
           color: var(--page-strong); border-left: 3px solid var(--page-quote-rule); padding-left: 0.9em; margin: 0 0 1.1em; }
-        .mf-standing, .mf-earlier { font-family: var(--tech), -apple-system, sans-serif; font-size: calc(0.8rem * var(--tech-scale, 1));
+        p.mf-event { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
+          color: var(--page-quote); margin: 0 0 1em; }
+        .mf-aside { color: var(--page-quote); }
+        .mf-aside > :first-child { margin-top: 0; }
+        .mf-dots { display: inline-flex; gap: 3px; margin-right: 0.55em; vertical-align: 0.12em; }
+        .mf-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.35;
+          animation: mf-dot 1.2s infinite linear; }
+        .mf-dots i:nth-child(2) { animation-delay: 0.2s; } .mf-dots i:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes mf-dot { 0% { opacity: 0.35; } 17% { opacity: 1; } 45%, 100% { opacity: 0.35; } }
+        @media (prefers-reduced-motion: reduce) { .mf-dots i { animation: none; opacity: 0.7; } }
+        .mf-standing, .mf-earlier { font-family: var(--tech), -apple-system, sans-serif; font-weight: var(--tech-weight, 400); font-size: calc(0.8rem * var(--tech-scale, 1));
           color: var(--page-quote); }
         table { border-collapse: collapse; display: block; overflow-x: auto; }
         th, td { border: 1px solid var(--page-rule); padding: 6px 12px; } th { font-weight: 600; background: var(--page-table-head); }

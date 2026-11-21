@@ -26,6 +26,12 @@ struct Shown: Equatable {
     /// Pinned (§2.6): in its project, if it's in one, else in the space —
     /// a pin on its bar's icon, saying where.
     var pinnedIn: String?
+    /// An agent at work: what it's doing now ("Running swift build"),
+    /// said on its bar after the working dots instead of its title where
+    /// its tile can't show it — down to its bar, or its conversation's
+    /// end scrolled out of sight (`doingHidden`).
+    var doing: String?
+    var doingHidden = false
 
     var id: PlacementID { placement.id }
     var lens: Lens { placement.lens }

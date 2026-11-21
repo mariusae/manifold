@@ -133,7 +133,7 @@ extension Block {
             s.code = term.turns?.isEmpty ?? true
             if let turn = term.turns?.last {
                 // An agent: what it was asked, and what it said or is doing.
-                s.lines = [Self.oneLine(ThreadText.askShown(turn.prompt) ?? turn.prompt)]
+                s.lines = [Self.oneLine(AgentConversation.notification(turn.prompt) ?? ThreadText.askShown(turn.prompt) ?? turn.prompt)]
                 if let m = statusRecord?.msg, !m.isEmpty { s.lines.append(Self.oneLine(m)) } else if let m = turn.message { s.lines.append(Self.oneLine(m)) }
                 if let files = turn.files, !files.isEmpty { s.lines.append("\(files.count) file\(files.count == 1 ? "" : "s") changed") }
                 s.note = turn.ended == nil ? "working" : BlockSummary.ago(turn.ended, now: now)
@@ -267,7 +267,7 @@ extension Block {
             return s
         case let .command(n):
             if let turn = terminal?.turns?.first(where: { $0.id == n }) {
-                var s = BlockSummary(title: Self.oneLine(turn.prompt, max: 80), place: displayTitle)
+                var s = BlockSummary(title: Self.oneLine(AgentConversation.promptTitle(turn.prompt), max: 80), place: displayTitle)
                 if let m = turn.message { s.lines = [Self.oneLine(m)] }
                 if let files = turn.files, !files.isEmpty { s.lines.append("\(files.count) file\(files.count == 1 ? "" : "s") changed") }
                 s.note = turn.ended == nil ? "working" : BlockSummary.ago(turn.ended, now: now)

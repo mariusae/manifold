@@ -2539,6 +2539,12 @@ final class Server {
             endTurn()
             finishTurns(block, message: message, transcript: transcript)
             status(.done, msg: line(message))
+        case let .doing(_, what):
+            // What it says it's doing now: its status's message, said
+            // wherever it is (its sidebar row, its conversation's end, a
+            // bar down to itself) — once, not again for the same words.
+            let current = b.status?[rootStatusID]
+            if current?.state != .working || current?.msg != what { status(.working, msg: what) }
         case let .todos(_, items):
             keepTodos(block, items)
             let current = b.status?[rootStatusID]
@@ -2635,7 +2641,8 @@ final class Server {
     /// the files it changed and its diff.
     private func writeTurn(_ block: BlockID, agent: BlockID, turn id: Int) {
         guard let a = node.block(agent), let t = a.terminal?.turns?.first(where: { $0.id == id }) else { return }
-        let firstLine = t.prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? "Turn"
+        let title = AgentConversation.promptTitle(t.prompt)
+        let firstLine = title.isEmpty ? "Turn" : title
         if ensure(block, kind: .output, title: "Turn: " + String(firstLine.prefix(80)), cwd: a.terminal?.cwd) {
             append(.link(Link(from: agent, to: block, kind: .opened, at: clock.now(), context: "turn \(id)")), to: .links(host))
         }
