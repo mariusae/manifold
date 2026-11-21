@@ -428,6 +428,9 @@ enum MarkdownPage {
            face, as typed; what it did on the way folded to a line; what it
            said in the editing face — talk, as a thread's comments are; the
            reading face is a document's. */
+        /* On the tile's own ground, as its composer and the outline's lane
+           beside it are: not the page's, a slab of another grey between them. */
+        html:has(.mf-conversation) { background: transparent; }
         main:has(.mf-conversation) {
           font-family: var(--talk), -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
           font-size: var(--talk-size, 14px); font-weight: var(--talk-weight, 400); line-height: var(--talk-leading, 1.45);

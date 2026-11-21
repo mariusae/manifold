@@ -38,6 +38,10 @@ enum UIType {
     static let hudField = NSFont.systemFont(ofSize: 15)
     static let field = NSFont.systemFont(ofSize: 13)
     static let body = NSFont.systemFont(ofSize: 12)
+    /// A body's words set apart: a name in a line of results, a heading in a list.
+    static let bodyStrong = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    /// A row's words a step firmer (a label among rows, a bar's word).
+    static let rowMedium = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let detail = NSFont.systemFont(ofSize: 11)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .medium)
     /// A section's small header, everywhere one names a group of rows

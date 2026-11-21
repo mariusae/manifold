@@ -670,7 +670,7 @@ final class DropPalette: NSView {
                 NSBezierPath(roundedRect: r.insetBy(dx: 2, dy: 2), xRadius: Radius.control, yRadius: Radius.control).fill()
             }
             let ink = on ? NSColor.white : Theme.text
-            if let symbol = Theme.symbol(labels[i].symbol, size: 14, weight: .regular, color: on ? .white : Theme.secondaryText) {
+            if let symbol = Theme.symbol(labels[i].symbol, size: 13, weight: .regular, color: on ? .white : Theme.secondaryText) {
                 symbol.draw(in: NSRect(x: r.minX + 12, y: r.midY - symbol.size.height / 2, width: symbol.size.width, height: symbol.size.height))
             }
             let title = NSAttributedString(string: labels[i].title + (i == 0 ? "" : ""), attributes: [.font: UIType.title, .foregroundColor: ink])
@@ -812,7 +812,7 @@ final class DropPalette: NSView {
     static func icon(_ t: DragThing) -> NSImage? {
         if let f = t.file { return PathInserter.icon(for: f.path, isFolder: f.isDirectory) }
         let symbol = t.commit != nil ? "smallcircle.filled.circle" : t.block.flatMap { Drags.symbol?($0) } ?? (t.folder != nil ? "folder" : t.url != nil ? "globe" : "text.alignleft")
-        return Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText)
+        return Theme.symbol(symbol, size: 13, weight: .medium, color: Theme.secondaryText)
     }
 
     /// A thing's pill (nil: "and `more` more"), drawn as `appearance` has

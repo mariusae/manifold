@@ -111,7 +111,7 @@ final class SidebarView: NSView {
         card.addSubview(pinButton)
         backButton.target = self
         backButton.action = #selector(backClicked)
-        pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
+        pushedTitle.font = UIType.heading
         pushedTitle.textColor = Theme.text
         pushedTitle.lineBreakMode = .byTruncatingTail
         for v in [backButton, pushedTitle, pushedSubtitle, spaceHost] { v.isHidden = true; card.addSubview(v) }
@@ -182,7 +182,7 @@ final class SidebarView: NSView {
             if organization == .desk {
                 // A space's name and its host, the same size, apart: the
                 // name strong, the host quiet.
-                pushedTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+                pushedTitle.font = UIType.title
                 if pushedTitle.stringValue.isEmpty {
                     // Named by its project, whose row says it: the host alone, if anything.
                     pushedTitle.frame = .zero
@@ -194,7 +194,7 @@ final class SidebarView: NSView {
                     top -= showsHost ? 48 : 28
                 }
             } else {
-                pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
+                pushedTitle.font = UIType.heading
                 pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
                 pushedSubtitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 2, width: max(0, right - left), height: 14)
                 top -= Self.pushedHeight + 6
@@ -558,9 +558,9 @@ final class SidebarTab: ClickView {
         super.init(frame: .zero)
         icon.image = Theme.symbol(organization.symbol, size: 13, weight: .medium)
         badge.wantsLayer = true
-        badge.layer?.cornerRadius = 6
+        badge.layer?.cornerRadius = Radius.control
         badge.drawsBackground = false
-        badge.themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.14).cgColor }
+        badge.themed { $0.layer?.backgroundColor = Theme.washLine.cgColor }
         for v in [icon, badge] { addSubview(v) }
         updateTip()
         update()
@@ -617,7 +617,7 @@ final class SpaceHostLine: NSView {
         super.init(frame: frame)
         icon.image = Theme.symbol(Theme.hostSymbol(remote: false), size: 11, weight: .regular)
         icon.contentTintColor = Theme.washSecondaryText
-        label.font = .systemFont(ofSize: 13, weight: .regular)
+        label.font = UIType.row
         label.textColor = Theme.washSecondaryText
         label.lineBreakMode = .byTruncatingTail
         for v in [icon, label, sparkline] as [NSView] { addSubview(v) }

@@ -12,7 +12,7 @@ import ManifoldCore
 final class InspectorPanel: NSPanel {
     let list = InspectorList()
     private let icon = NSImageView()
-    private let name = NSTextField.label(font: .systemFont(ofSize: 13, weight: .semibold), cut: .byTruncatingMiddle)
+    private let name = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
     private let what = NSTextField.label(font: UIType.detail, color: Theme.secondaryText)
     private let tags = NSTextField.label(font: UIType.detail)
     private let tagIcon = NSImageView()
@@ -42,7 +42,7 @@ final class InspectorPanel: NSPanel {
         content.wantsLayer = true
         content.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         icon.imageScaling = .scaleProportionallyDown
-        tagIcon.image = Theme.symbol("tag", size: 10, weight: .medium, color: Theme.secondaryText)
+        tagIcon.image = Theme.symbol("tag", size: 11, weight: .medium, color: Theme.secondaryText)
         for v in [icon, name, what, tags, tagIcon, rule] { header.addSubview(v) }
         content.addSubview(header)
         content.addSubview(list)
@@ -310,7 +310,7 @@ private final class InspectorHeading: ClickView {
             chevron.draw(in: chevron.centered(in: NSRect(x: 8, y: 6, width: 12, height: 12)), from: .zero, operation: .sourceOver,
                          fraction: 1, respectFlipped: true, hints: nil)
         }
-        let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]
+        let a: [NSAttributedString.Key: Any] = [.font: UIType.bodyStrong, .foregroundColor: Theme.text]
         (title as NSString).draw(at: NSPoint(x: 24, y: 4), withAttributes: a)
         if !open {
             let n = NSAttributedString(string: "\(count)", attributes: [.font: UIType.detail, .foregroundColor: Theme.tertiaryText])
@@ -372,7 +372,7 @@ private final class InspectorRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if hovering, acts {
             Flat.hovered.setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4).fill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: Radius.inline, yRadius: Radius.inline).fill()
         }
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingMiddle
@@ -558,15 +558,15 @@ private final class InspectorEditRow: NSView, NSTextFieldDelegate {
         // The fields' ground: faint under the pointer, plain while edited.
         if hovering || holds {
             Flat.hovered.setFill()
-            NSBezierPath(roundedRect: nameField.frame.insetBy(dx: -3, dy: 0), xRadius: 3, yRadius: 3).fill()
-            NSBezierPath(roundedRect: valueField.frame.insetBy(dx: -3, dy: 0), xRadius: 3, yRadius: 3).fill()
+            NSBezierPath(roundedRect: nameField.frame.insetBy(dx: -3, dy: 0), xRadius: Radius.inline, yRadius: Radius.inline).fill()
+            NSBezierPath(roundedRect: valueField.frame.insetBy(dx: -3, dy: 0), xRadius: Radius.inline, yRadius: Radius.inline).fill()
         }
         let para = NSMutableParagraphStyle()
         para.alignment = .right
         let a: [NSAttributedString.Key: Any] = [.font: UIType.detail, .foregroundColor: hovering ? Theme.text : Theme.secondaryText, .paragraphStyle: para]
         let r = choiceRect
         (choice as NSString).draw(in: NSRect(x: r.minX, y: 2, width: r.width - 13, height: 15), withAttributes: a)
-        if let chevron = Theme.symbol("chevron.up.chevron.down", size: 8, weight: .medium, color: Theme.secondaryText) {
+        if let chevron = Theme.symbol("chevron.up.chevron.down", size: 9, weight: .medium, color: Theme.secondaryText) {
             chevron.draw(in: chevron.centered(in: NSRect(x: r.maxX - 11, y: 2, width: 10, height: 14)), from: .zero, operation: .sourceOver,
                          fraction: 1, respectFlipped: true, hints: nil)
         }

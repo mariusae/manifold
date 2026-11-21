@@ -23,7 +23,7 @@ final class FolderReadme: NSView {
     /// The bar as `collapsed` has it (set in init too, where didSet isn't called).
     private func apply() {
         do {
-            chevron.image = Theme.symbol(collapsed ? "chevron.right" : "chevron.down", size: 10, weight: .semibold)
+            chevron.image = Theme.symbol(collapsed ? "chevron.right" : "chevron.down", size: 11, weight: .semibold)
             page?.isHidden = collapsed
             bar.resizes = !collapsed
             window?.invalidateCursorRects(for: bar)
@@ -37,7 +37,7 @@ final class FolderReadme: NSView {
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         chevron.contentTintColor = Theme.secondaryText
-        icon.image = Theme.symbol("doc.text", size: 12, weight: .regular)
+        icon.image = Theme.symbol("doc.text", size: 13, weight: .regular)
         icon.contentTintColor = Theme.secondaryText
         for v in [chevron, icon, title] { bar.addSubview(v) }
         addSubview(bar)

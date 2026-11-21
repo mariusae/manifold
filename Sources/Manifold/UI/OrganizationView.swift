@@ -1419,7 +1419,7 @@ final class OrgRowView: NSTableCellView {
     private let badge: NSImageView = {
         let v = NSImageView()
         v.wantsLayer = true
-        v.layer?.cornerRadius = 5
+        v.layer?.cornerRadius = Radius.inline
         v.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         v.isHidden = true
         return v
@@ -1450,7 +1450,7 @@ final class OrgRowView: NSTableCellView {
             symbol = ""
         } else if node.image == nil, node.symbol != symbol {
             symbol = node.symbol
-            icon.image = Theme.symbol(node.symbol, size: 12)
+            icon.image = Theme.symbol(node.symbol, size: 13)
         } else if let image = node.image {
             icon.image = image
         }
@@ -1587,7 +1587,7 @@ final class OrgRowView: NSTableCellView {
             icon.image = image
         } else if node.symbol != symbol {
             symbol = node.symbol
-            icon.image = Theme.symbol(node.symbol, size: 12)
+            icon.image = Theme.symbol(node.symbol, size: 13)
         }
         name.stringValue = node.title
         switch node.style {
@@ -1621,7 +1621,7 @@ final class OrgRowView: NSTableCellView {
         detail.isHidden = node.detail.isEmpty
         if (node.detailSymbol ?? "") != detailSymbol {
             detailSymbol = node.detailSymbol ?? ""
-            detailIcon.image = detailSymbol.isEmpty ? nil : Theme.symbol(detailSymbol, size: 10)
+            detailIcon.image = detailSymbol.isEmpty ? nil : Theme.symbol(detailSymbol, size: 11)
         }
         detailIcon.isHidden = detailSymbol.isEmpty
         // Faded by age only where nothing else says it: not a row dimmed
@@ -1841,7 +1841,7 @@ final class ColumnMapView: NSView {
         for i in 0..<n {
             let r = NSRect(x: x, y: 0, width: w, height: bounds.height)
             (i == map.index ? Theme.washSecondaryText : Theme.tertiaryText.withAlphaComponent(0.4)).setFill()
-            NSBezierPath(roundedRect: r, xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: r, xRadius: Radius.hair, yRadius: Radius.hair).fill()
             x += w + gap
         }
     }

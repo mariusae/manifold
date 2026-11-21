@@ -11,7 +11,7 @@ final class ThreadOverlayView: PopoverView {
     let chat = ThreadChatView()
     private let close = IconButton.close(tip: "Close (⎋)")
     private let popOut = IconButton("arrow.up.left.and.arrow.down.right", size: 10, tip: "Open as a Tile")
-    private let titleLabel = NSTextField.label(font: .systemFont(ofSize: 13, weight: .semibold), cut: .byTruncatingMiddle)
+    private let titleLabel = NSTextField.label(font: UIType.title, cut: .byTruncatingMiddle)
     var onClose: (() -> Void)?
     var onPopOut: (() -> Void)?
     /// The place, and its threads, stepped through.

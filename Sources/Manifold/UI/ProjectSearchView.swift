@@ -271,7 +271,7 @@ final class ProjectSearchView: NSView, NSTableViewDataSource, NSTableViewDelegat
             let a = NSMutableAttributedString(string: path, attributes: [.font: UIType.body, .foregroundColor: Theme.text])
             for i in FileFinder.positions(query?.text ?? "", path) ?? [] where i < path.count {
                 let r = NSRange(path.index(path.startIndex, offsetBy: i)..<path.index(path.startIndex, offsetBy: i + 1), in: path)
-                a.addAttribute(.font, value: NSFont.systemFont(ofSize: 12, weight: .bold), range: r)
+                a.addAttribute(.font, value: UIType.bodyStrong, range: r)
             }
             cell.set(a.truncatingHead(), nil)
         case let .found(.hit(h)):

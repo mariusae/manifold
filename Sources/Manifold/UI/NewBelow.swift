@@ -20,7 +20,7 @@ final class NewBelowButton: NSView {
     var showsWhenAway: Bool
     /// What came below while away, said beside the arrow; nil, nothing new.
     private(set) var news: String?
-    private let label = NSTextField.label(font: .systemFont(ofSize: 11, weight: .semibold), color: Tints.accentText)
+    private let label = NSTextField.label(font: UIType.section, color: Tints.accentText)
     private let arrow = NSImageView()
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
     private var area: NSRect = .zero

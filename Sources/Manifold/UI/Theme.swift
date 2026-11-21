@@ -28,6 +28,13 @@ enum Theme {
         return NSColor(srgbRed: mix(q.redComponent, t.redComponent), green: mix(q.greenComponent, t.greenComponent),
                        blue: mix(q.blueComponent, t.blueComponent), alpha: mix(q.alphaComponent, t.alphaComponent))
     }
+    /// The text's ink thinned to a wash, three strengths for everything
+    /// drawn in it (a ground behind a chip, a hairline, a row's band): the
+    /// faintest a ground on a ground, then a chosen or pressed ground, then
+    /// a line — where there were twenty strengths, a few points apart.
+    static var washFaint: NSColor { text.withAlphaComponent(0.05) }
+    static var washGround: NSColor { text.withAlphaComponent(0.08) }
+    static var washLine: NSColor { text.withAlphaComponent(0.14) }
     /// Quieter still: a hint, a note at a row's end.
     static let tertiaryText = NSColor.themed { $0.text.tertiary }
     static let hover = NSColor.themed { $0.chrome.hover }

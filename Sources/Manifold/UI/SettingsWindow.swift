@@ -383,12 +383,12 @@ final class ColorThemePicker: NSView {
             let y = side.minY + 18 + CGFloat(k) * 14
             if k == 2 {
                 accent.withAlphaComponent(dark ? 0.30 : 0.16).setFill()
-                NSBezierPath(roundedRect: NSRect(x: side.minX + 3, y: y - 3.5, width: side.width - 6, height: 12), xRadius: 3, yRadius: 3).fill()
+                NSBezierPath(roundedRect: NSRect(x: side.minX + 3, y: y - 3.5, width: side.width - 6, height: 12), xRadius: Radius.inline, yRadius: Radius.inline).fill()
             }
             c(p.text.secondary).setFill()
-            NSBezierPath(roundedRect: NSRect(x: side.minX + 7, y: y, width: 5, height: 5), xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: NSRect(x: side.minX + 7, y: y, width: 5, height: 5), xRadius: Radius.hair, yRadius: Radius.hair).fill()
             c(k == 2 ? p.text.primary : p.text.secondary).withAlphaComponent(0.85).setFill()
-            NSBezierPath(roundedRect: NSRect(x: side.minX + 15, y: y + 1, width: [26, 20, 30, 22, 18, 27, 24][k], height: 3), xRadius: 1.5, yRadius: 1.5).fill()
+            NSBezierPath(roundedRect: NSRect(x: side.minX + 15, y: y + 1, width: [26, 20, 30, 22, 18, 27, 24][k], height: 3), xRadius: Radius.hair, yRadius: Radius.hair).fill()
             if let state {
                 c(state).setFill()
                 NSBezierPath(ovalIn: NSRect(x: side.maxX - 10, y: y + 0.5, width: 4, height: 4)).fill()
@@ -408,7 +408,7 @@ final class ColorThemePicker: NSView {
         }
         /// A tile: its bar, its body; its frame in the accent if focused.
         func tile(_ t: NSRect, title: String, body: NSColor, focused: Bool) -> NSRect {
-            let shape = NSBezierPath(roundedRect: t, xRadius: 4, yRadius: 4)
+            let shape = NSBezierPath(roundedRect: t, xRadius: Radius.inline, yRadius: Radius.inline)
             NSGraphicsContext.saveGraphicsState()
             shape.addClip()
             body.setFill()

@@ -76,8 +76,8 @@ final class SpaceSwitcherView: PopoverView {
             let r = cardRect(i)
             let lit = i == chosen
             // The card: a band of its colour under it when chosen.
-            let body = NSBezierPath(roundedRect: r, xRadius: 12, yRadius: 12)
-            (lit ? c.color.withAlphaComponent(0.22) : Theme.text.withAlphaComponent(0.04)).setFill()
+            let body = NSBezierPath(roundedRect: r, xRadius: Radius.surface, yRadius: Radius.surface)
+            (lit ? c.color.withAlphaComponent(0.22) : Theme.washFaint).setFill()
             body.fill()
             if lit {
                 body.lineWidth = 2
@@ -128,7 +128,7 @@ final class SpaceSwitcherView: PopoverView {
                 a.draw(at: NSPoint(x: right - z.width, y: row.midY - z.height / 2))
                 right -= z.width + 6
             }
-            if let image = Theme.symbol(w.symbol, size: 10, weight: .regular, color: Theme.secondaryText) {
+            if let image = Theme.symbol(w.symbol, size: 11, weight: .regular, color: Theme.secondaryText) {
                 let z = image.size
                 image.draw(in: NSRect(x: row.minX, y: row.midY - z.height / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -143,8 +143,8 @@ final class SpaceSwitcherView: PopoverView {
 
     private func drawMap(_ c: Card, in map: NSRect) {
         guard !c.tiles.isEmpty else {
-            Theme.text.withAlphaComponent(0.04).setFill()
-            NSBezierPath(roundedRect: map, xRadius: 6, yRadius: 6).fill()
+            Theme.washFaint.setFill()
+            NSBezierPath(roundedRect: map, xRadius: Radius.control, yRadius: Radius.control).fill()
             NSAttributedString(string: "Empty", attributes: [.font: UIType.footnote, .foregroundColor: Theme.tertiaryText])
                 .draw(at: NSPoint(x: map.midX - 14, y: map.midY - 7))
             return
@@ -153,7 +153,7 @@ final class SpaceSwitcherView: PopoverView {
             let f = NSRect(x: map.minX + t.frame.minX * map.width, y: map.minY + t.frame.minY * map.height,
                            width: t.frame.width * map.width, height: t.frame.height * map.height).insetBy(dx: 1.5, dy: 1.5)
             guard f.width > 4, f.height > 3 else { continue }
-            let path = NSBezierPath(roundedRect: f, xRadius: 4, yRadius: 4)
+            let path = NSBezierPath(roundedRect: f, xRadius: Radius.inline, yRadius: Radius.inline)
             Theme.panel.setFill()
             path.fill()
             NSGraphicsContext.saveGraphicsState()
@@ -166,7 +166,7 @@ final class SpaceSwitcherView: PopoverView {
                 let drawn = NSRect(x: body.minX, y: body.minY, width: s.width * k, height: s.height * k)
                 p.draw(in: drawn, from: .zero, operation: .sourceOver, fraction: 0.95, respectFlipped: true, hints: nil)
             }
-            Theme.text.withAlphaComponent(0.05).setFill()
+            Theme.washFaint.setFill()
             NSRect(x: f.minX, y: f.minY, width: f.width, height: bar).fill()
             if f.width > 22, let image = Theme.symbol(t.symbol, size: 7, weight: .semibold, color: Theme.secondaryText) {
                 let z = image.size
@@ -177,7 +177,7 @@ final class SpaceSwitcherView: PopoverView {
                         .draw(with: NSRect(x: f.minX + 14, y: f.minY + 1, width: f.width - 18, height: 10), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
                 }
             }
-            if t.picture == nil, f.height > 30, let image = Theme.symbol(t.symbol, size: 14, weight: .regular, color: Theme.tertiaryText) {
+            if t.picture == nil, f.height > 30, let image = Theme.symbol(t.symbol, size: 13, weight: .regular, color: Theme.tertiaryText) {
                 let z = image.size
                 image.draw(in: NSRect(x: f.midX - z.width / 2, y: f.minY + bar + (f.height - bar - z.height) / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

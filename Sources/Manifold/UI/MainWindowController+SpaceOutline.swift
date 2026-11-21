@@ -686,7 +686,7 @@ extension MainWindowController {
         let box = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 76))
         func label(_ text: String, y: CGFloat, small: Bool = false) {
             let l = NSTextField(wrappingLabelWithString: text)
-            l.font = small ? UIType.footnote : .systemFont(ofSize: 13, weight: .medium)
+            l.font = small ? UIType.footnote : UIType.rowMedium
             l.textColor = small ? .secondaryLabelColor : .labelColor
             let h = l.sizeThatFits(NSSize(width: w, height: 200)).height
             l.frame = NSRect(x: 0, y: y, width: w, height: h)

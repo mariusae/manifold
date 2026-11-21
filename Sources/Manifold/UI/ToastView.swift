@@ -46,7 +46,7 @@ final class ToastView: NSView {
     /// One line, its action beside its words: the same at the window's
     /// foot as in the sidebar's.
     static let height = Flat.buttonHeight + 8
-    private static let font = NSFont.systemFont(ofSize: 12)
+    private static let font = UIType.body
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -69,7 +69,7 @@ final class ToastView: NSView {
         track.addSublayer(bar)
         // Under its words and its action.
         layer?.insertSublayer(track, at: 0)
-        themed { $0.bar.backgroundColor = Theme.text.withAlphaComponent(0.1).cgColor }
+        themed { $0.bar.backgroundColor = Theme.washGround.cgColor }
         isHidden = true
     }
 

@@ -236,8 +236,8 @@ private final class SymbolCell: NSCollectionViewItem {
         override func mouseExited(with event: NSEvent) { hovering = false }
         override func draw(_ dirtyRect: NSRect) {
             guard lit || hovering else { return }
-            (lit ? Theme.accent.withAlphaComponent(0.25) : Theme.text.withAlphaComponent(0.08)).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 7, yRadius: 7).fill()
+            (lit ? Theme.accent.withAlphaComponent(0.25) : Theme.washGround).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: Radius.control, yRadius: Radius.control).fill()
         }
     }
 }

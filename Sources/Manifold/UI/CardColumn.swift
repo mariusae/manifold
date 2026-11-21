@@ -149,7 +149,7 @@ final class SummaryCard: NSView {
         NSGraphicsContext.restoreGraphicsState()
         if chosen {
             // Chosen: a grey band and a darker edge, not the accent's.
-            Theme.text.withAlphaComponent(0.05).setFill()
+            Theme.washFaint.setFill()
             path.fill()
             let ring = NSBezierPath(roundedRect: card.insetBy(dx: 0.75, dy: 0.75), xRadius: Radius.surface - 0.5, yRadius: Radius.surface - 0.5)
             ring.lineWidth = 1.5
@@ -172,7 +172,7 @@ final class SummaryCard: NSView {
             NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).addClip()
             thumb.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             NSGraphicsContext.restoreGraphicsState()
-            Theme.text.withAlphaComponent(0.12).setStroke()
+            Theme.washLine.setStroke()
             let border = NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control)
             border.lineWidth = 0.5
             border.stroke()

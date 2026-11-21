@@ -228,7 +228,7 @@ final class OutlineNoteView: NSView, PaneContent {
             v.image = image
             v.imageScaling = .scaleProportionallyUpOrDown
             v.wantsLayer = true
-            v.layer?.cornerRadius = 4
+            v.layer?.cornerRadius = Radius.inline
             v.layer?.masksToBounds = true
             v.toolTip = p.alt.isEmpty ? p.address : p.alt
             stack.addSubview(v)

@@ -61,7 +61,7 @@ final class HistoryView: NSView {
         scroll.drawsBackground = false
         scroll.automaticallyAdjustsContentInsets = false
         scroll.wantsLayer = true
-        scroll.layer?.cornerRadius = 8
+        scroll.layer?.cornerRadius = Radius.surface
         for v in [slider, when, scroll, open, compare, restore, close] { panel.addSubview(v) }
     }
 
@@ -171,7 +171,7 @@ final class ArrangementDiagram: NSView {
         let wash = Palette.current.chrome.historyWash
         let stops = [wash.from.color(dark: dark), wash.to.color(dark: dark)]
         NSGraphicsContext.current?.saveGraphicsState()
-        NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).addClip()
+        NSBezierPath(roundedRect: bounds, xRadius: Radius.surface, yRadius: Radius.surface).addClip()
         NSGradient(starting: stops[0], ending: stops[1])?.draw(in: bounds, angle: -35)
         NSGraphicsContext.current?.restoreGraphicsState()
         let n = state.columns.count
@@ -195,7 +195,7 @@ final class ArrangementDiagram: NSView {
     }
 
     private func drawColumn(_ c: Int, in rect: NSRect) {
-        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let font = UIType.caption
         let column = state.columns[c]
         guard !column.isEmpty else { return }
         let gap: CGFloat = 4
@@ -227,7 +227,7 @@ final class ArrangementDiagram: NSView {
             tinted.draw(in: NSRect(x: r.minX + 8, y: r.maxY - 20, width: 14, height: 13))
         }
         let s = NSAttributedString(string: titleOf(p.block), attributes: [
-            .font: focused ? NSFont.systemFont(ofSize: 11, weight: .semibold) : font, .foregroundColor: Theme.text])
+            .font: focused ? UIType.section : font, .foregroundColor: Theme.text])
         s.draw(in: NSRect(x: r.minX + 26, y: r.maxY - 22, width: r.width - 34, height: 16))
     }
 }

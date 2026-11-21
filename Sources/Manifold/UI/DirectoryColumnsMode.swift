@@ -561,8 +561,8 @@ final class ColumnCell: NSTableCellView {
         nameWidth = ceil((n.name as NSString).size(withAttributes: [.font: UIType.row]).width) + 2
         let fade: CGFloat = n.isMuted ? 0.5 : 1
         let g = n.glyph
-        icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
-        chevron.image = n.isDirectory ? Theme.symbol("chevron.right", size: 10, weight: .semibold)?.tinted(Theme.tertiaryText) : nil
+        icon.image = Theme.symbol(g.symbol, size: 13, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
+        chevron.image = n.isDirectory ? Theme.symbol("chevron.right", size: 11, weight: .semibold)?.tinted(Theme.tertiaryText) : nil
         let p = NSMutableParagraphStyle()
         p.lineBreakMode = .byTruncatingMiddle
         let text = NSMutableAttributedString(string: n.name, attributes: [

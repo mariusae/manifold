@@ -2,6 +2,8 @@ import AppKit
 import ManifoldCore
 
 protocol NotebookViewDelegate: AnyObject {
+    /// Its bar's words or buttons changed (running, stoppable).
+    func notebookBarChanged(_ view: NotebookView)
     func notebook(_ view: NotebookView, edit: NotebookEdit)
     func notebook(_ view: NotebookView, run cells: [String])
     func notebookInterrupt(_ view: NotebookView)
@@ -73,7 +75,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
         registerDrops()
         status.lineBreakMode = .byTruncatingMiddle
-        shellIcon.image = Theme.symbol(Marks.terminal, size: 12)
+        shellIcon.image = Theme.symbol(Marks.terminal, size: 13)
         shellIcon.contentTintColor = Theme.secondaryText
         for v in [glyph, shellIcon, status] as [NSView] { header.addSubview(v) }
         runs.actions = [
@@ -201,13 +203,35 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         status.attributedStringValue = NSAttributedString(string: doing ?? "", attributes: [.font: UIType.detail, .foregroundColor: Theme.secondaryText])
         let stoppable = nb?.running != nil || !(nb?.queued.isEmpty ?? true)
         runs.set(2, enabled: stoppable, tint: stoppable ? Theme.statusError : nil)
+        // On its tile's bar: what it's doing after its place, its buttons
+        // among the bar's (a strip of its own under the bar said them).
+        let detail = doing.map { name == "No shell" ? "No shell — " + $0 : $0 }
+        if detail != barWords || stoppable != barStoppable {
+            barWords = detail
+            barStoppable = stoppable
+            delegate?.notebookBarChanged(self)
+        }
     }
+
+    private var barWords: String?
+    private var barStoppable = false
+    var barDetail: String? { barWords }
+    var barButtons: [BarButton] {
+        [BarButton(symbol: "play.fill", tooltip: "Run Cell (⌘↩)", enabled: true, action: { [weak self] in self?.runFocused() }),
+         BarButton(symbol: "forward.end.fill", tooltip: "Run All Cells", enabled: true, action: { [weak self] in self?.runAll() }),
+         BarButton(symbol: "stop.fill", tooltip: "Interrupt (⌘.) — again to stop it for good", enabled: barStoppable, action: { [weak self] in self?.interrupt() }),
+         BarButton(symbol: "plus", tooltip: "New Cell Below", enabled: true, action: { [weak self] in self?.addCell() }),
+         BarButton(symbol: "arrow.clockwise", tooltip: "Restart Shell", enabled: true, action: { [weak self] in self?.restart() })]
+    }
+
 
     // MARK: Layout
 
     override func layout() {
         super.layout()
         let w = bounds.width, h = bounds.height
+        // Its header is its bar's now (`barDetail`, `barButtons`): kept out of sight.
+        header.isHidden = true
         header.frame = NSRect(x: 0, y: h - Self.headerHeight, width: w, height: Self.headerHeight)
         let mid = Self.headerHeight / 2
         glyph.frame = NSRect(x: 14, y: mid - 8, width: 16, height: 16)
@@ -217,7 +241,7 @@ final class NotebookView: NSView, PaneContent, KeepsViewState {
         runs.frame = NSRect(x: tools.frame.minX - 8 - rn.width, y: mid - rn.height / 2, width: rn.width, height: rn.height)
         status.frame = NSRect(x: 12, y: mid - 8, width: max(0, runs.frame.minX - 22), height: 17)
         reveal.track(header.frame)
-        scroll.frame = NSRect(x: 0, y: 0, width: w, height: max(0, h - Self.headerHeight))
+        scroll.frame = NSRect(x: 0, y: 0, width: w, height: h)
         layoutCells()
     }
 
@@ -593,7 +617,7 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
         self.font = font
         super.init(frame: .zero)
         box.wantsLayer = true
-        box.layer?.cornerRadius = 8
+        box.layer?.cornerRadius = Radius.surface
         box.layer?.cornerCurve = .continuous
         addSubview(box)
         bar.wantsLayer = true
@@ -1145,7 +1169,7 @@ final class ActionCapsule: NSView {
     private func index(at p: NSPoint) -> Int? { actions.indices.first { rect($0).contains(p) } }
 
     override func draw(_ dirtyRect: NSRect) {
-        Theme.text.withAlphaComponent(0.06).setFill()
+        Theme.washFaint.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         for (i, a) in actions.enumerated() {
             let r = rect(i)
@@ -1153,7 +1177,7 @@ final class ActionCapsule: NSView {
                 (i == pressed ? Theme.selection : Theme.hover).setFill()
                 NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
             }
-            guard let image = Theme.symbol(a.symbol, size: 12, weight: .medium) else { continue }
+            guard let image = Theme.symbol(a.symbol, size: 13, weight: .medium) else { continue }
             let ink = a.enabled ? (a.tint ?? Theme.text.withAlphaComponent(0.78)) : Theme.secondaryText.withAlphaComponent(0.35)
             image.tinted(ink).draw(in: NSRect(x: r.midX - image.size.width / 2, y: r.midY - image.size.height / 2,
                                               width: image.size.width, height: image.size.height))

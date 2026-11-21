@@ -467,7 +467,7 @@ final class TreeCell: NSTableCellView {
             icon.image = nil
         } else {
             let g = n.glyph
-            icon.image = Theme.symbol(g.symbol, size: 12, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
+            icon.image = Theme.symbol(g.symbol, size: 13, weight: .medium)?.tinted(g.color.withAlphaComponent(fade))
         }
         let text = NSMutableAttributedString(string: n.name, attributes: [
             // Muted (ignored, hidden): the tertiary grey, which still reads.

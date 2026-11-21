@@ -29,7 +29,7 @@ final class FolderPicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
 
     private let panel = Panel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
     private let ground = NSVisualEffectView()
-    private let crumbs = NSTextField.label(font: .systemFont(ofSize: 11), color: Theme.secondaryText, cut: .byTruncatingHead)
+    private let crumbs = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, cut: .byTruncatingHead)
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
@@ -83,7 +83,7 @@ final class FolderPicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         ground.state = .active
         ground.blendingMode = .behindWindow
         ground.wantsLayer = true
-        ground.layer?.cornerRadius = 10
+        ground.layer?.cornerRadius = Radius.surface
         ground.layer?.cornerCurve = .continuous
         ground.layer?.masksToBounds = true
         ground.layer?.borderWidth = 0.5
@@ -93,7 +93,7 @@ final class FolderPicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13)
+        field.font = UIType.row
         field.placeholderString = "A name — ← up, → into"
         field.delegate = self
         field.cell?.usesSingleLineMode = true
@@ -287,8 +287,8 @@ final class FolderPicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         let r = rows[row]
         let cell = NSTableCellView()
         let image = NSImageView()
-        image.image = Theme.symbol(r.isFolder ? "folder" : "doc", size: 12, weight: .regular, color: Theme.secondaryText)
-        let label = NSTextField.label(font: .systemFont(ofSize: 13), color: Theme.text, cut: .byTruncatingMiddle)
+        image.image = Theme.symbol(r.isFolder ? "folder" : "doc", size: 13, weight: .regular, color: Theme.secondaryText)
+        let label = NSTextField.label(font: UIType.row, color: Theme.text, cut: .byTruncatingMiddle)
         label.stringValue = r.name.map { $0 + (r.isFolder ? "/" : "") } ?? "./  (this folder)"
         if r.name == nil { label.textColor = Theme.secondaryText }
         let more = NSImageView()

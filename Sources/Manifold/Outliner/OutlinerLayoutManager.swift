@@ -104,7 +104,7 @@ final class OutlinerLayoutManager: NSLayoutManager {
                 let left = max(CGFloat(row.depth - (prose ? 1 : 0)) * theme.step - 3, 0)
                 rect.origin.x = left
                 rect.size.width = container.size.width - left
-                NSBezierPath(roundedRect: rect.offsetBy(dx: origin.x, dy: origin.y), xRadius: 3, yRadius: 3).fill()
+                NSBezierPath(roundedRect: rect.offsetBy(dx: origin.x, dy: origin.y), xRadius: Radius.inline, yRadius: Radius.inline).fill()
             }
         }
         // What a find found: a highlighter's yellow behind each, the one gone to brighter.
@@ -113,13 +113,13 @@ final class OutlinerLayoutManager: NSLayoutManager {
             let current = range == foundAt
             enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container) { rect, _ in
                 NSColor.systemYellow.withAlphaComponent(current ? 0.75 : 0.32).setFill()
-                NSBezierPath(roundedRect: rect.insetBy(dx: -1.5, dy: 0).offsetBy(dx: origin.x, dy: origin.y), xRadius: 3, yRadius: 3).fill()
+                NSBezierPath(roundedRect: rect.insetBy(dx: -1.5, dy: 0).offsetBy(dx: origin.x, dy: origin.y), xRadius: Radius.inline, yRadius: Radius.inline).fill()
             }
         }
         if let dropLine {
             theme.accent.setFill()
             let line = CGRect(x: dropLine.x + origin.x, y: dropLine.y + origin.y - 1, width: max(container.size.width - dropLine.x, 20), height: 2)
-            NSBezierPath(roundedRect: line, xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: line, xRadius: Radius.hair, yRadius: Radius.hair).fill()
             NSBezierPath(ovalIn: CGRect(x: line.minX - 3, y: line.midY - 3, width: 6, height: 6)).fill()
         }
         for (index, line) in lines.enumerated() where line.isFolded && line.start <= NSMaxRange(characters) && line.end >= characters.location {
@@ -277,7 +277,7 @@ final class OutlinerLayoutManager: NSLayoutManager {
             // A quote: a thin rule at its left, and nothing behind it.
             theme.faint.setFill()
             let drawn = CGRect(x: bar.minX + 1, y: bar.minY, width: 2, height: max(bar.height, 2)).offsetBy(dx: origin.x, dy: origin.y)
-            NSBezierPath(roundedRect: drawn, xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: drawn, xRadius: Radius.hair, yRadius: Radius.hair).fill()
         }
     }
 

@@ -885,7 +885,7 @@ final class TextView: NSView, NSTextInputClient {
         func flush() {
             if let a = x0, let c = color, x1 > a {
                 c.setFill()
-                NSBezierPath(roundedRect: NSRect(x: textLeft + a - 2, y: rowTop + 1, width: x1 - a + 4, height: lineHeight - 2), xRadius: 4, yRadius: 4).fill()
+                NSBezierPath(roundedRect: NSRect(x: textLeft + a - 2, y: rowTop + 1, width: x1 - a + 4, height: lineHeight - 2), xRadius: Radius.inline, yRadius: Radius.inline).fill()
             }
             x0 = nil
             color = nil
@@ -1131,7 +1131,7 @@ final class TextView: NSView, NSTextInputClient {
             let rowTop = lineTop + CGFloat(l.rows.count - 1) * lineHeight
             let chip = NSRect(x: textLeft + w + 8, y: rowTop + 2, width: size.width + 12, height: lineHeight - 4)
             Theme.hover.setFill()
-            NSBezierPath(roundedRect: chip, xRadius: 4, yRadius: 4).fill()
+            NSBezierPath(roundedRect: chip, xRadius: Radius.inline, yRadius: Radius.inline).fill()
             label.draw(at: NSPoint(x: chip.minX + 6, y: rowTop + (lineHeight - size.height) / 2))
             foldChips[n] = (chip, i)
         }
@@ -1144,7 +1144,7 @@ final class TextView: NSView, NSTextInputClient {
             // In its lane (see `gutterWidth`), touching no other mark.
             let mark = NSRect(x: textLeft - 20, y: (lineTop + lineHeight / 2 - 3.5).rounded(), width: 7, height: 7)
             Theme.accent.setStroke()
-            let path = NSBezierPath(roundedRect: mark, xRadius: 2, yRadius: 2)
+            let path = NSBezierPath(roundedRect: mark, xRadius: Radius.hair, yRadius: Radius.hair)
             path.lineWidth = 1.2
             path.stroke()
         }
@@ -1571,7 +1571,7 @@ final class TextView: NSView, NSTextInputClient {
     private func fillBands(_ ranges: [TextRange], _ color: NSColor, within shown: TextRange, from first: Int, to last: Int) {
         color.setFill()
         for h in ranges where h.end >= shown.start && h.start <= shown.end {
-            rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.06), xRadius: 3, yRadius: 3).fill() }
+            rows(of: h, from: first, to: last) { r in NSBezierPath(roundedRect: r.insetBy(dx: -1, dy: lineHeight * 0.06), xRadius: Radius.inline, yRadius: Radius.inline).fill() }
         }
     }
 

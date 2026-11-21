@@ -9,7 +9,6 @@ extension MainWindowController: GridDelegate {
     /// A tile as a summary card: its block's summary, and what only the
     /// window has — a terminal's last lines on its screen, a picture of a
     /// page or a PDF as it was last seen.
-    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent? { cardContent(for: block) }
 
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent? {
         guard let p = arrangement?.placement(placement) else { return nil }

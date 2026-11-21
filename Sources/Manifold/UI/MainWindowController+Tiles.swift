@@ -6,6 +6,8 @@ import UniformTypeIdentifiers
 import PDFKit
 
 extension MainWindowController: NotebookViewDelegate {
+    func notebookBarChanged(_ view: NotebookView) { content.barChanged(view.placement) }
+
     func notebook(_ view: NotebookView, edit: NotebookEdit) {
         hosts.client(of: view.block)?.propose(.editNotebook(block: view.block, edit: edit))
     }
@@ -53,6 +55,8 @@ extension MainWindowController: NotebookViewDelegate {
 }
 
 extension MainWindowController: MediaViewDelegate {
+    func mediaViewBarChanged(_ view: MediaView) { content.barChanged(view.placement) }
+
     func mediaView(_ view: MediaView, needsBytes progress: @escaping (Int64, Int64?) -> Void, done: @escaping (Data?) -> Void) {
         guard let client = hosts.client(of: view.block) else { return done(nil) }
         client.readBytes(view.block, progress: progress, done: done)
@@ -78,6 +82,7 @@ extension MainWindowController: ProcessViewDelegate {
 }
 
 extension MainWindowController: GitViewDelegate {
+    func gitViewBarChanged(_ view: GitView) { content.barChanged(view.placement) }
     /// What an agent changed (§7.5): its repository's working tree now
     /// against the tree as it started, every file it touched, new ones
     /// too — a diff block of its own, linked from the agent.
@@ -218,6 +223,7 @@ extension MainWindowController: GitViewDelegate {
         guard let client = hosts.client(of: view.block) else { return nil }
         let id = client.diffBlock(subject)
         let d = DiffView(placement: view.placement, block: id, theme: hosts.state.appearance.theme)
+        d.inPane = true
         d.delegate = self
         d.source = { [weak self] in self?.hosts.block(id) }
         return d
@@ -225,6 +231,8 @@ extension MainWindowController: GitViewDelegate {
 }
 
 extension MainWindowController: DiffViewDelegate {
+    func diffViewBarChanged(_ view: DiffView) { content.barChanged(view.placement) }
+
     func diffView(_ view: DiffView, open path: String, line: Int) {
         open(path: path, line: line, column: nil, on: view.block.host, from: view.placement, context: "\(path.lastPathComponent):\(line)")
     }

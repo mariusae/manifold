@@ -51,7 +51,7 @@ enum ThreadMark {
             ink = s.open ? Theme.accent : Theme.tertiaryText
         }
         let symbol = s.open || s.unseen ? "text.bubble.fill" : "checkmark.bubble"
-        if let image = Theme.symbol(symbol, size: 8.5, weight: .semibold, color: ink) {
+        if let image = Theme.symbol(symbol, size: 9, weight: .semibold, color: ink) {
             let ir = NSRect(x: r.minX + 6, y: r.midY - 4.5, width: 10, height: 9)
             image.draw(in: ir, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }

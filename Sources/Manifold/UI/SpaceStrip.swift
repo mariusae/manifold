@@ -422,7 +422,7 @@ final class SpaceStripView: NSView {
         if frames.indices.contains(plus) {
             // The +: quiet, outlined, filled a little under the pointer.
             let r = rect(plus)
-            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+            let path = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
             if hovered == plus {
                 Flat.ground(.hover).setFill()
                 path.fill()
@@ -441,7 +441,7 @@ final class SpaceStripView: NSView {
         for run in hostRuns() {
             let line = NSRect(x: run.rect.minX + 2, y: run.rect.maxY + Self.underlineDrop, width: run.rect.width - 4, height: Self.underlineWidth)
             (hostColors[run.host].map { Self.lineColor($0, dark: dark) } ?? Theme.secondaryText).setFill()
-            NSBezierPath(roundedRect: line, xRadius: 1, yRadius: 1).fill()
+            NSBezierPath(roundedRect: line, xRadius: Radius.hair, yRadius: Radius.hair).fill()
         }
         // A host still being reached: a capsule, its ring turning in it.
         for (j, _) in pending.enumerated() where pills.indices.contains(j) {
@@ -449,15 +449,15 @@ final class SpaceStripView: NSView {
             let capsule = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: r.height / 2, yRadius: r.height / 2)
             Theme.text.withAlphaComponent(hoveredPill == j ? 0.1 : 0.05).setFill()
             capsule.fill()
-            Theme.text.withAlphaComponent(0.12).setStroke()
+            Theme.washLine.setStroke()
             capsule.lineWidth = 1
             capsule.stroke()
         }
         for (i, c) in chips.enumerated() where frames.indices.contains(i) {
             if let m = reordering, m.id == c.id {
                 // Where it will go: a hollow its size.
-                let hollow = NSBezierPath(roundedRect: rect(i).insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
-                Theme.text.withAlphaComponent(0.06).setFill()
+                let hollow = NSBezierPath(roundedRect: rect(i).insetBy(dx: 0.5, dy: 0.5), xRadius: Radius.control, yRadius: Radius.control)
+                Theme.washFaint.setFill()
                 hollow.fill()
                 continue
             }
@@ -473,7 +473,7 @@ final class SpaceStripView: NSView {
             shadow.shadowOffset = NSSize(width: 0, height: -2)
             shadow.set()
             Theme.panel.setFill()
-            NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+            NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
             NSGraphicsContext.restoreGraphicsState()
             drawSquare(i, chips[i], in: r)
         }
@@ -487,13 +487,13 @@ final class SpaceStripView: NSView {
         SpaceSquare.fill(r, color: c.color, alpha: lit ? 0.6 : c.current ? 0.32 : hovered == i || dropTarget == i ? 0.26 : 0.18)
         if dropTarget == i {
             // Something held over it, to go there.
-            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: 8, yRadius: 8)
+            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2.5, dy: -2.5), xRadius: Radius.surface, yRadius: Radius.surface)
             ring.lineWidth = 2
             Theme.accent.setStroke()
             ring.stroke()
         }
         if c.current {
-            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: 8, yRadius: 8)
+            let ring = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -2), xRadius: Radius.surface, yRadius: Radius.surface)
             ring.lineWidth = 1.5
             // In the text's ink, not the space's colour: a light one's (yellow,
             // mint) ring was lost against its own ground and the wash.
@@ -508,7 +508,7 @@ final class SpaceStripView: NSView {
             let z = t.size()
             let b = NSRect(x: r.maxX - 9, y: r.maxY - 9, width: max(13, z.width + 6), height: 13)
             Theme.text.withAlphaComponent(0.85).setFill()
-            NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
+            NSBezierPath(roundedRect: b, xRadius: Radius.control, yRadius: Radius.control).fill()
             t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
         }
         // What most wants you there, at its top right: a filled dot, as the
@@ -1371,7 +1371,7 @@ final class HostPickerView: PopoverView {
             let cz = count.size()
             count.draw(at: NSPoint(x: r.maxX - 10 - cz.width, y: r.midY - cz.height / 2))
             var x = dot.maxX + 9
-            if row.here, let image = Theme.symbol("checkmark", size: 10, weight: .semibold, color: lit ? Flat.onBand() : Theme.accent) {
+            if row.here, let image = Theme.symbol("checkmark", size: 11, weight: .semibold, color: lit ? Flat.onBand() : Theme.accent) {
                 let z = image.size
                 image.draw(in: NSRect(x: x, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

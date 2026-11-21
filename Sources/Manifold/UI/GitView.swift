@@ -4,6 +4,8 @@ import ManifoldCore
 protocol GitViewDelegate: AnyObject {
     /// Open a diff beside the git block.
     func gitView(_ view: GitView, openDiff subject: DiffSubject)
+    /// Its bar's buttons or words changed (counts, syncing, refreshing).
+    func gitViewBarChanged(_ view: GitView)
     /// Open a file beside it.
     func gitView(_ view: GitView, open path: String)
     /// The repository read again on its host; `done` once it has been.
@@ -29,15 +31,26 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     weak var delegate: GitViewDelegate?
     var source: () -> Block? = { nil }
 
-    private let branchLabel = NSTextField(labelWithString: "")
-    /// Read again, at the strip's end; a spinner in its place till it has been.
-    private let refresh = IconButton("arrow.clockwise", weight: .medium, tip: "Refresh: the repository read again")
-    private let refreshing = NSProgressIndicator()
-    /// The branch pulled from its upstream, pushed to it.
-    private let pull = FlatButton("Pull", symbol: "arrow.down", font: UIType.detail)
-    private let push = FlatButton("Push", symbol: "arrow.up", font: UIType.detail)
-    /// Pulling or pushing, till it's done.
+    /// On its tile's bar, not a strip of its own under it (§7): pull, push
+    /// and refresh among the bar's buttons; how far ahead or behind, and the
+    /// index, after its place — the branch is the bar's title already.
+    private var ahead = 0, behind = 0
+    /// Pulling or pushing, till it's done; reading again, till it has.
     private var syncing = false
+    private var refreshing = false
+    private var aheadBehind: String { [ahead > 0 ? "↑\(ahead)" : nil, behind > 0 ? "↓\(behind)" : nil].compactMap { $0 }.joined(separator: " ") }
+    var barDetail: String? {
+        let words = [aheadBehind, indexWords].filter { !$0.isEmpty }.joined(separator: "  ·  ")
+        return words.isEmpty ? nil : words
+    }
+    var barButtons: [BarButton] {
+        [BarButton(symbol: "arrow.down", tooltip: behind > 0 ? "Pull \(behind): the branch brought up to its upstream (fast-forward only)" : "Pull: the branch brought up to its upstream (fast-forward only)",
+                   enabled: !syncing, action: { [weak self] in self?.pullClicked() }),
+         BarButton(symbol: "arrow.up", tooltip: ahead > 0 ? "Push \(ahead): the branch's commits sent to its upstream" : "Push: the branch's commits sent to its upstream",
+                   enabled: !syncing, action: { [weak self] in self?.pushClicked() }),
+         BarButton(symbol: "arrow.clockwise", tooltip: refreshing ? "Reading it again…" : "Refresh: the repository read again",
+                   enabled: !refreshing, action: { [weak self] in self?.refreshClicked() })]
+    }
     private let scroll = ClippingScrollView()
     private let table = FlatTable(column: "row", rowHeight: TileMetrics.nameRow)
 
@@ -82,22 +95,6 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         super.init(frame: .zero)
         wantsLayer = true
         themed { $0.layer?.backgroundColor = Theme.windowBackground.cgColor }
-        branchLabel.font = UIType.label
-        branchLabel.textColor = Theme.text
-        branchLabel.alignment = .right
-        branchLabel.lineBreakMode = .byTruncatingTail
-        refresh.target = self
-        refresh.action = #selector(refreshClicked)
-        pull.target = self
-        pull.action = #selector(pullClicked)
-        pull.toolTip = "Pull: the branch brought up to its upstream (fast-forward only)"
-        push.target = self
-        push.action = #selector(pushClicked)
-        push.toolTip = "Push: the branch's commits sent to its upstream"
-        refreshing.style = .spinning
-        refreshing.controlSize = .small
-        refreshing.isDisplayedWhenStopped = false
-        for v in [branchLabel, refresh, refreshing, pull, push] { addSubview(v) }
 
         table.dataSource = self
         table.setDraggingSourceOperationMask([.copy, .link, .generic], forLocal: false)
@@ -191,17 +188,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     override func layout() {
         super.layout()
         let w = bounds.width
-        let strip = TileMetrics.strip, mid = bounds.height - strip / 2
-        // Where it is is the bar's; here the branch, and refresh at the end.
-        branchLabel.alignment = .left
-        refresh.frame = NSRect(x: w - 12 - 20, y: mid - 10, width: 20, height: 20)
-        refreshing.frame = refresh.frame.insetBy(dx: 2, dy: 2)
-        // Pull and push, always there, left of refresh.
-        let pw = push.intrinsicContentSize.width, lw = pull.intrinsicContentSize.width, bh = push.intrinsicContentSize.height
-        push.frame = NSRect(x: refresh.frame.minX - 6 - pw, y: (mid - bh / 2).rounded(), width: pw, height: bh)
-        pull.frame = NSRect(x: push.frame.minX - 4 - lw, y: (mid - bh / 2).rounded(), width: lw, height: bh)
-        branchLabel.frame = NSRect(x: 12, y: mid - 8, width: max(0, pull.frame.minX - 8 - 12), height: 16)
-        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height - strip)
+        split.frame = NSRect(x: 0, y: 0, width: w, height: bounds.height)
         // The pane only once there's a diff in it (a row chosen): till then
         // the list has the tile, not over an empty half.
         let tall = split.frame.height >= Self.paneFrom && pane != nil
@@ -256,15 +243,11 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         guard let b = source(), let g = b.git else { return }
         root = b.path ?? ""
         vcs = g.vcs ?? .git
-        // A project's (§2.6): its folder in the repository, its changes and commits alone.
-        var branch = g.branch ?? ""
-        if g.ahead > 0 { branch += " ↑\(g.ahead)" }
-        if g.behind > 0 { branch += " ↓\(g.behind)" }
-        // What there is to do, said on the buttons: how many each way.
-        pull.title = g.behind > 0 ? "Pull \(g.behind)" : "Pull"
-        push.title = g.ahead > 0 ? "Push \(g.ahead)" : "Push"
-        needsLayout = true
-        branchLabel.stringValue = branch + (indexWords.isEmpty ? "" : "   " + indexWords)
+        // How far ahead and behind, on its bar.
+        if (ahead, behind) != (g.ahead, g.behind) {
+            (ahead, behind) = (g.ahead, g.behind)
+            delegate?.gitViewBarChanged(self)
+        }
         guard g.refreshedAt != refreshedAt else { return }
         refreshedAt = g.refreshedAt
         // The project's index, as it stands, beside the branch.
@@ -279,7 +262,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             }
             if words != self.indexWords {
                 self.indexWords = words
-                self.branchLabel.stringValue = branch + (words.isEmpty ? "" : "   " + words)
+                self.delegate?.gitViewBarChanged(self)
             }
         })
         refill(refreshed: true)
@@ -326,27 +309,25 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
         refill()
     }
 
-    @objc private func pullClicked() { sync(push: false) }
-    @objc private func pushClicked() { sync(push: true) }
+    private func pullClicked() { sync(push: false) }
+    private func pushClicked() { sync(push: true) }
 
     /// Pulled or pushed, on the repository's host: the buttons off, said
     /// busy, till it's done (the tile refreshed then by the host).
     private func sync(push: Bool) {
         guard !syncing else { return }
         syncing = true
-        pull.isEnabled = false
-        self.push.isEnabled = false
+        delegate?.gitViewBarChanged(self)
         note.set(.busy(push ? "Pushing…" : "Pulling…"))
         delegate?.gitView(self, sync: push) { [weak self] _ in
             guard let self else { return }
             self.syncing = false
-            self.pull.isEnabled = true
-            self.push.isEnabled = true
+            self.delegate?.gitViewBarChanged(self)
             self.note.set(.idle)
         }
     }
 
-    var debugSync: String { "pull \(pull.title) push \(push.title)\(syncing ? " syncing" : "")" }
+    var debugSync: String { "pull \(behind) push \(ahead)\(syncing ? " syncing" : "")" }
 
     /// Debugging: Pull or Push clicked.
     func debugClick(push: Bool) -> String {
@@ -359,21 +340,21 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
     @objc func refreshRepository(_ sender: Any?) { refreshClicked() }
 
     @objc func refreshClicked() {
-        guard !refresh.isHidden else { return }
-        refresh.isHidden = true
-        refreshing.startAnimation(nil)
+        guard !refreshing else { return }
+        refreshing = true
+        delegate?.gitViewBarChanged(self)
         let started = Date()
         delegate?.gitViewRefresh(self) { [weak self] in
             let left = max(0, 0.4 - Date().timeIntervalSince(started))
             DispatchQueue.main.asyncAfter(deadline: .now() + left) {
                 guard let self else { return }
-                self.refreshing.stopAnimation(nil)
-                self.refresh.isHidden = false
+                self.refreshing = false
+                self.delegate?.gitViewBarChanged(self)
             }
         }
     }
 
-    var debugRefreshing: Bool { refresh.isHidden }
+    var debugRefreshing: Bool { refreshing }
 
     /// Double-clicked, its row; ⏎, each row chosen.
     @objc private func rowChosen() {
@@ -525,7 +506,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             case .allChanges: return "\(mark)\(i) all changes"
             }
         }
-        lines.append("branch " + branchLabel.stringValue)
+        lines.append("bar " + (barDetail ?? ""))
         lines.append("pane " + (paneBox.isHidden ? "hidden" : pane.map { "\($0.block) \(Int(paneBox.frame.height)) high" } ?? "empty"))
         return lines.joined(separator: "\n")
     }
@@ -609,7 +590,7 @@ final class GitView: NSView, PaneContent, KeepsViewState, NSTableViewDataSource,
             ])
             return c
         }()
-        cell.imageView?.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 8, weight: .bold, color: Theme.secondaryText)
+        cell.imageView?.image = Theme.symbol(folded ? "chevron.right" : "chevron.down", size: 9, weight: .bold, color: Theme.secondaryText)
         cell.textField?.attributedStringValue = NSMutableAttributedString(string: title, attributes: [.font: UIType.section, .foregroundColor: Theme.secondaryText]).truncatingTail()
         cell.setAccessibilityLabel(title + (folded ? ", folded" : ""))
         return cell

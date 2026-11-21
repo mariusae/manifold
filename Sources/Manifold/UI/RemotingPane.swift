@@ -75,7 +75,7 @@ final class RemotingPane: NSViewController, NSTableViewDataSource, NSTableViewDe
             empty.widthAnchor.constraint(lessThanOrEqualTo: scroll.widthAnchor, constant: -40),
         ])
 
-        let add = IconButton(symbol: "plus", size: 12, weight: .medium, target: self, action: #selector(addRow))
+        let add = IconButton(symbol: "plus", size: 13, weight: .medium, target: self, action: #selector(addRow))
         remove.target = self
         remove.action = #selector(removeRow)
         let attach = FlatButton("Attach to Host…", target: self, action: #selector(attachClicked))

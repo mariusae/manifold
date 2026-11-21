@@ -587,7 +587,7 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
         case let .file(path, count):
             var shown = path
             if let root = query?.root, shown.hasPrefix(root + "/") { shown = String(shown.dropFirst(root.count + 1)) }
-            let s = NSMutableAttributedString(string: shown, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text])
+            let s = NSMutableAttributedString(string: shown, attributes: [.font: UIType.bodyStrong, .foregroundColor: Theme.text])
             s.append(NSAttributedString(string: "  \(count)", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))
             f.attributedStringValue = s.truncatingTail()
         case let .hit(h):
@@ -602,10 +602,10 @@ final class SearchView: NSView, PaneContent, KeepsViewState, NSTableViewDataSour
             if let c = h.context { s.append(NSAttributedString(string: "  " + c, attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText])) }
             f.attributedStringValue = s.truncatingTail()
         case let .section(words):
-            f.attributedStringValue = NSAttributedString(string: words, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.secondaryText])
+            f.attributedStringValue = NSAttributedString(string: words, attributes: [.font: UIType.bodyStrong, .foregroundColor: Theme.secondaryText])
         case let .symbol(h):
             let s = NSMutableAttributedString(string: h.kind.isEmpty ? "" : h.kind + "  ", attributes: [.font: NSFont.systemMono(ofSize: 10.5, weight: .medium), .foregroundColor: Theme.secondaryText])
-            s.append(NSAttributedString(string: h.qualified, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.text]))
+            s.append(NSAttributedString(string: h.qualified, attributes: [.font: UIType.bodyStrong, .foregroundColor: Theme.text]))
             var at = h.path
             if let root = query?.root, at.hasPrefix(root + "/") { at = String(at.dropFirst(root.count + 1)) }
             s.append(NSAttributedString(string: "  \(at):\(h.line + 1)  \(h.source == .index ? "index" : "server")", attributes: [.font: UIType.footnote, .foregroundColor: Theme.secondaryText]))

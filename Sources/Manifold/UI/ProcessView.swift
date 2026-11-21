@@ -857,6 +857,6 @@ final class MeterCell: NSTableCellView {
         let r = bounds.insetBy(dx: 3, dy: 3)
         let w = max(2, r.width * CGFloat(min(f, 1)))
         MachineInk.one.withAlphaComponent(0.22).setFill()
-        NSBezierPath(roundedRect: NSRect(x: r.maxX - w, y: r.minY, width: w, height: r.height), xRadius: 3, yRadius: 3).fill()
+        NSBezierPath(roundedRect: NSRect(x: r.maxX - w, y: r.minY, width: w, height: r.height), xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }
 }

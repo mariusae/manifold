@@ -241,3 +241,18 @@ extension Block {
         return m
     }
 }
+
+extension AgentTurn {
+    /// What a turn said, as plain lines — its answer (what it said after
+    /// its last tool), from its transcript's parts where they've been read,
+    /// else its last message — Markdown's marks gone: the one reading of
+    /// it for every place that shows a turn in a few lines (a tick's card
+    /// on the conversation's scroll bar, an agent's card).
+    public func saidLines(_ parts: [TurnTranscript.Part]?) -> [String] {
+        var said = AgentConversation.split(parts ?? []).said.joined(separator: "\n")
+        if said.isEmpty { said = message ?? "" }
+        return said.split(whereSeparator: \.isNewline)
+            .map { InlineMarkdown.plain(InlineMarkdown.flattened(String($0))) }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+}

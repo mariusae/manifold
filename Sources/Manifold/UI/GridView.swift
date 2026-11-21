@@ -9,8 +9,6 @@ protocol GridDelegate: AnyObject {
     func gridKeep(_ picture: NSImage, of block: BlockID)
     /// A tile as its summary card shows it.
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
-    /// A linked block's summary card, under the bar's links.
-    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent?
     /// A tile gone to by a click on its summary (it's too short for its
     /// content): focused, and grown to show some.
     func gridArrive(_ placement: PlacementID)
@@ -279,6 +277,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
                 pill.viewButtons = tile.view.barButtons
+                pill.viewDetail = tile.view.barDetail
                 pill.onViewButton = { [weak view = tile.view, weak self] i in
                     guard let view, i < view.barButtons.count else { return }
                     view.barButtons[i].action()
@@ -363,7 +362,6 @@ final class GridView: NSView, NSDraggingSource {
                     badges.removeValue(forKey: id)
                     badgeRects.removeValue(forKey: id)
                     pill.linkWanted = 0
-                    pill.fanEdge = nil
                     pill.onChromeShown = nil
                 } else {
                     let badge = badges[id] ?? {
@@ -391,12 +389,6 @@ final class GridView: NSView, NSDraggingSource {
                     pill.onLinkRoom = { [weak self, weak badge, weak pill] in
                         guard let self, let badge, let pill, !pill.isHidden, let r = self.badgeRects[id] else { return }
                         self.placeBadge(badge, of: id, in: r)
-                    }
-                    badge.summary = { [weak self] block in self?.delegate?.gridLinkSummary(block) }
-                    // Fanned out, the title fades out before the first face.
-                    badge.onFanEdge = { [weak pill, weak badge] edge in
-                        guard let pill, let badge else { return }
-                        pill.fanEdge = edge.map { badge.convert(NSPoint(x: $0, y: 0), to: pill).x }
                     }
                     badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
@@ -528,18 +520,14 @@ final class GridView: NSView, NSDraggingSource {
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
         guard let b = badges[placement] else { return "no badge" }
-        b.debugFan(false)
         b.layoutSubtreeIfNeeded()
         let folded = b.debugSheets
         if arg == "fold" { return "folded, sheets \(folded)" + (b.debugCapsuleCenter.map { " at \(Int($0.x)) \(Int($0.y))" } ?? "") }
         if arg == "geometry" { return b.debugGeometry }
-        b.debugFan(true)
-        b.layoutSubtreeIfNeeded()
         let words = arg.split(separator: " ")
         if words.first == "break", let n = words.dropFirst().first.flatMap({ Int($0) }) {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
         }
-        if words.first == "preview", let n = words.dropFirst().first.flatMap({ Int($0) }) { return b.debugPreview(n) }
         // "badge click n": the nth face clicked, as the pointer does — a
         // press and a release posted at its middle, hit-tested by the window.
         if words.first == "click", let n = words.dropFirst().first.flatMap({ Int($0) }), let window, let p = b.debugChipCenter(n) {
@@ -552,9 +540,7 @@ final class GridView: NSView, NSDraggingSource {
             }
             return "clicked at \(Int(p.x)) \(Int(p.y)), over \(hit.map { String(describing: type(of: $0)) } ?? "nothing")"
         }
-        if arg == "fanned" { return "badge \(NSStringFromRect(b.frame)): " + b.debugGeometry + " · bar's fan edge \(pills[placement]?.fanEdge.map { "\(Int($0))" } ?? "none")" }
-        if words.first == "scrub", let f = words.dropFirst().first.flatMap({ Double($0) }) { return b.debugScrub(CGFloat(f)) }
-        return b.debugTitles.joined(separator: " | ") + " (sheets \(folded) folded)"
+        return b.debugTitles.joined(separator: " | ") + " (sheets \(folded))"
     }
 
     /// Debugging: the line under column `c`'s `r`th shown tile dragged
@@ -1750,6 +1736,7 @@ final class GridView: NSView, NSDraggingSource {
     func barChanged(_ id: PlacementID) {
         guard let view = tile(id)?.view else { return }
         pills[id]?.viewButtons = view.barButtons
+        pills[id]?.viewDetail = view.barDetail
     }
 
     /// A tile's own sidebar shown or put away: its bar's button says so.
@@ -2157,7 +2144,7 @@ final class HostPill: NSView {
         layer?.cornerRadius = Radius.capsule(Self.height)
         layer?.cornerCurve = .continuous
         // A quiet grey capsule, as the chips are (not the accent's).
-        themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.07).cgColor }
+        themed { $0.layer?.backgroundColor = Theme.washGround.cgColor }
         icon.image = Theme.symbol("server.rack", size: 9, weight: .semibold)
         icon.contentTintColor = Theme.secondaryText
         addSubview(icon)
@@ -2213,7 +2200,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         v.image = Theme.symbol("doc.fill", size: 7, weight: .bold)
         v.contentTintColor = Theme.secondaryText
         v.wantsLayer = true
-        v.layer?.cornerRadius = 5.5
+        v.layer?.cornerRadius = Radius.control
         v.themed { $0.layer?.backgroundColor = Theme.panel.cgColor }
         v.isHidden = true
         v.toolTip = "Editing: closing the editor brings the terminal back"
@@ -2249,37 +2236,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var onLinkRoom: (() -> Void)?
     /// What `onLinkRoom` was last told: the buttons' width and the links' room.
     private var linkRoomSaid: (CGFloat, CGFloat) = (0, 0)
-    /// Where the links fanned out over the bar begin (in the bar): the
-    /// title and the place show up to there, fading out before it; nil,
-    /// all of them.
-    var fanEdge: CGFloat? { didSet { if fanEdge != oldValue { fadeForFan() } } }
-
-    /// The title, the place and the host's chip, masked to fade out before
-    /// the fan — only where the fan is over them.
-    private func fadeForFan() {
-        let fade: CGFloat = 22
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(Motion.base)
-        for v in [name, subtitle, hostPill] as [NSView] {
-            v.wantsLayer = true
-            guard let layer = v.layer else { continue }
-            guard let edge = fanEdge.map({ $0 - 6 - v.frame.minX }), edge < v.bounds.width, !v.isHidden else {
-                layer.mask = nil
-                continue
-            }
-            let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
-            mask.startPoint = CGPoint(x: 0, y: 0.5)
-            mask.endPoint = CGPoint(x: 1, y: 0.5)
-            mask.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor, NSColor.clear.cgColor]
-            let w = max(v.bounds.width, 1)
-            let end = max(0, min(1, edge / w)), start = max(0, min(1, (edge - fade) / w))
-            mask.locations = [0, NSNumber(value: Double(start)), NSNumber(value: Double(end)), 1]
-            mask.frame = v.bounds
-            layer.mask = mask
-        }
-        CATransaction.commit()
-    }
-
     /// The links' pill shrunk: the arrow and the symbol; the arrow alone.
     static let linkCompact: CGFloat = 50
     static let linkMinimal: CGFloat = 30
@@ -2289,6 +2245,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     var collapsed = false {
         didSet {
             guard collapsed != oldValue else { return }
+            window?.invalidateCursorRects(for: self)
             if let shown = lastShown { updateSubtitle(shown) }
             glass.layer?.maskedCorners = collapsed
                 ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
@@ -2327,11 +2284,19 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// The view's own buttons (a page's back, forward and reload), before
     /// the bar's: as they look, the first to go when the bar is narrow.
+    /// The view's own words after the place (`PaneContent.barDetail`).
+    var viewDetail: String? {
+        didSet {
+            guard viewDetail != oldValue else { return }
+            projectKey = nil
+            if let shown = lastShown { updateSubtitle(shown) }
+        }
+    }
     var viewButtons: [BarButton] = [] {
         didSet {
             guard viewButtons != oldValue else { return }
             while ownButtons.count < viewButtons.count {
-                let b = IconButton(symbol: "circle", size: 10, weight: .medium, target: self, action: #selector(ownButtonClicked(_:)))
+                let b = IconButton(symbol: "circle", size: 11, weight: .medium, target: self, action: #selector(ownButtonClicked(_:)))
                 addSubview(b)
                 ownButtons.append(b)
             }
@@ -2793,7 +2758,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         if collapsed, let s = shown.block?.summary() {
             // The note, but not what its glyph says already (running, working).
             let note = s.note.flatMap { ["running", "working", "searching"].contains($0) ? nil : $0 }
-            let parts = s.lines.prefix(2).enumerated().map { ($0.element, s.formatted.contains($0.offset)) } + [note].compactMap { $0 }.map { ($0, false) }
+            var parts = s.lines.prefix(2).enumerated().map { ($0.element, s.formatted.contains($0.offset)) } + [note].compactMap { $0 }.map { ($0, false) }
+            // A terminal with no name of its own: where it is first, as its
+            // bar says it open (its place), then its last command.
+            if placeIsName, shown.block?.kind == .terminal, let place = s.place, !place.isEmpty {
+                // A long one by its last folder, so the command keeps its room.
+                let short = place.abbreviatingHome
+                parts.insert((short.count > 24 ? "…/" + (short as NSString).lastPathComponent : short, false), at: 0)
+            }
             if parts.contains(where: \.1), let font = subtitle.font, let color = subtitle.textColor {
                 // An agent's answer, as it set it.
                 let line = NSMutableAttributedString()
@@ -2820,10 +2792,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // the path in it.
         if let proj = shown.project, let full = shown.block?.place {
             // Made again only when what it says, or the light it's drawn in, changes.
-            let key = "\(proj)|\(full)|\(effectiveAppearance.isDark)|\(Palette.current.id)"
+            let key = "\(proj)|\(full)|\(effectiveAppearance.isDark)|\(Palette.current.id)|\(viewDetail ?? "")"
             if key != projectKey {
                 let line = Self.projectPlace(proj, place: full)
-                subtitle.attributedStringValue = line.text
+                let text = NSMutableAttributedString(attributedString: line.text)
+                if let d = viewDetail, !d.isEmpty {
+                    text.append(NSAttributedString(string: "  ·  " + d, attributes: [.font: UIType.detail, .foregroundColor: Theme.barInk]))
+                }
+                subtitle.attributedStringValue = text
                 projectWidth = line.chipWidth
                 projectKey = key
                 needsLayout = true
@@ -2839,8 +2815,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // type another.
         let tail = String(shown.title.drop(while: { $0 == "…" }))
         let said = place == shown.title || place == shown.path?.abbreviatingHome || (!tail.isEmpty && place.hasSuffix(tail))
-        let where_ = said && shown.block?.web == nil ? "" : place
-        if subtitle.stringValue != where_ { subtitle.stringValue = where_; needsLayout = true }
+        var where_ = said && shown.block?.web == nil ? "" : place
+        if let d = viewDetail, !d.isEmpty { where_ = where_.isEmpty ? d : where_ + "  ·  " + d }
+        if subtitle.stringValue != where_ || subtitleFormatted { subtitle.stringValue = where_; subtitleFormatted = false; needsLayout = true }
     }
 
     private func showRest(_ shown: Shown, focused: Bool) {
@@ -2861,6 +2838,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
             self.focused = focused
             updateColors()
             showButtons(animated: true)
+            // What a click does changed (grow, or focus): the pointer says so.
+            window?.invalidateCursorRects(for: self)
         }
         needsLayout = true
     }
@@ -3061,7 +3040,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let baseline = name.frame.minY + name.lastBaselineOffsetFromBottom
         subtitle.frame = NSRect(x: sx, y: ((h - sh) / 2).rounded() - 0.5, width: max(0, right - sx), height: sh)
         subtitle.frame.origin.y = ((baseline - subtitle.lastBaselineOffsetFromBottom) * 2).rounded() / 2
-        if fanEdge != nil { fadeForFan() }
         if isEditing {
             // Over the address, where it was; over the name when the
             // address would have too little room.
@@ -3098,7 +3076,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Debugging: where the place to edit is, and the field and name while editing (window coordinates).
     var debugEdit: String {
         func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
-        let cursors = cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\($0.1 == .pointingHand ? "hand" : $0.1 == .iBeam ? "beam" : "open")" }.joined(separator: ",")
+        func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : c == .resizeUpDown ? "grow" : c == .closedHand ? "held" : "open" }
+        let cursors = (cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\(word($0.1))" } + ["bar:\(word(barCursor))"]).joined(separator: ",")
         return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
     }
 
@@ -3250,6 +3229,18 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// drags what the tile stands for (and clicked, its menu); the
     /// pointing hand over maximize and close, and over a project's name
     /// in the place, which goes to it; the I-beam over an address to edit.
+    /// What a click on the bar does, said by the pointer over it: grows
+    /// the tile (it's focused, or down to its bar) — the up-and-down
+    /// arrows; else focuses it — the pointing hand. Held a moment, the bar
+    /// is taken to drag: the closed hand, and letting go doesn't grow it.
+    private var barCursor: NSCursor {
+        if held { return .closedHand }
+        return focused || collapsed ? .resizeUpDown : .pointingHand
+    }
+    /// The button held on the bar long enough to be a drag, not a click.
+    private var held = false
+    private var holding: DispatchWorkItem?
+
     private var cursorSpots: [(NSRect, NSCursor)] {
         var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
@@ -3267,11 +3258,11 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let spots = cursorSpots
         var x: CGFloat = 0
         for (r, cursor) in spots {
-            if r.minX > x { addCursorRect(NSRect(x: x, y: 0, width: r.minX - x, height: bounds.height), cursor: .openHand) }
+            if r.minX > x { addCursorRect(NSRect(x: x, y: 0, width: r.minX - x, height: bounds.height), cursor: barCursor) }
             addCursorRect(r.intersection(bounds), cursor: cursor)
             x = max(x, r.maxX)
         }
-        if x < bounds.width { addCursorRect(NSRect(x: x, y: 0, width: bounds.width - x, height: bounds.height), cursor: .openHand) }
+        if x < bounds.width { addCursorRect(NSRect(x: x, y: 0, width: bounds.width - x, height: bounds.height), cursor: barCursor) }
     }
 
     // Set here, by where the pointer is, not passed on: a bar at the
@@ -3279,7 +3270,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     // back to the bar, round until the stack ran out.
     override func cursorUpdate(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        (cursorSpots.first { $0.0.contains(p) }?.1 ?? .openHand).set()
+        if held { return NSCursor.closedHand.set() }
+        (cursorSpots.first { $0.0.contains(p) }?.1 ?? barCursor).set()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -3291,6 +3283,27 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         downAt = event.locationInWindow
         downOnIcon = iconSpot.contains(convert(event.locationInWindow, from: nil))
+        // Held a moment without moving: taken, to drag — the closed hand,
+        // and no click when it's let go (only a click grows a tile).
+        holding?.cancel()
+        held = false
+        guard !downOnIcon else { return }
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, self.downAt != nil else { return }
+            self.held = true
+            NSCursor.closedHand.set()
+        }
+        holding = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: w)
+    }
+
+    private func letGo() {
+        holding?.cancel()
+        holding = nil
+        if held {
+            held = false
+            window?.invalidateCursorRects(for: self)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -3302,13 +3315,16 @@ final class TilePill: NSView, NSTextFieldDelegate {
         let p = event.locationInWindow
         guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
         downAt = nil
+        letGo()
         // Taken: the handle goes back in; what's dragged is the pill.
         setHandle(false)
         onDragStart?(event, downOnIcon)
     }
 
     override func mouseUp(with event: NSEvent) {
-        if downAt != nil {
+        let wasHeld = held
+        letGo()
+        if downAt != nil, !wasHeld {
             let p = convert(event.locationInWindow, from: nil)
             // Clicks in a row are clicks each (two quick ones grow twice);
             // the corner maximizes.
@@ -3742,7 +3758,7 @@ final class DropOverlayView: NSView {
 enum BlockDragImage {
     static func make(for pane: Shown?) -> NSImage {
         let title = pane?.title ?? "Block"
-        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let font = UIType.rowMedium
         let textWidth = ceil((title as NSString).size(withAttributes: [.font: font]).width)
         let size = NSSize(width: min(max(textWidth + 52, 140), 320), height: 34)
         return NSImage(size: size, flipped: false) { rect in
@@ -3835,7 +3851,7 @@ final class AgentNamePill: NSControl {
     /// Only its initial, in a disc: on a bar with no room for more.
     var compact = false { didSet { if compact != oldValue { refresh() } } }
     private(set) var out = false
-    static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    static let font = UIType.section
     static let height: CGFloat = 16
     private static let pad: CGFloat = 7
     private static let markSide: CGFloat = 10

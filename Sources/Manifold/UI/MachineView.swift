@@ -235,7 +235,7 @@ final class MachinePanels: NSView {
         var x = p.x
         if let color {
             color.setFill()
-            NSBezierPath(roundedRect: NSRect(x: x, y: p.y + 4, width: 7, height: 7), xRadius: 2, yRadius: 2).fill()
+            NSBezierPath(roundedRect: NSRect(x: x, y: p.y + 4, width: 7, height: 7), xRadius: Radius.hair, yRadius: Radius.hair).fill()
             x += 11
         }
         let a = NSAttributedString(string: words, attributes: [.font: NSFont.systemDigits(ofSize: 10.5, weight: .regular), .foregroundColor: Theme.secondaryText])
@@ -477,7 +477,7 @@ final class MachinePanels: NSView {
         for p in s.processes.prefix(Int((r.maxY - y) / 15)) {
             say(MachineWords.memory(p.memory), NSPoint(x: r.maxX, y: y), font: font, right: true)
             say(MachineWords.cpu(p.cpu) + (p.cpu >= 0.05 ? "%" : ""), NSPoint(x: r.maxX - 64, y: y), font: font, color: Theme.text, right: true)
-            say(p.name, NSPoint(x: r.minX, y: y), font: .systemFont(ofSize: 11), color: Theme.text, width: max(0, r.width - 64 - 44))
+            say(p.name, NSPoint(x: r.minX, y: y), font: UIType.detail, color: Theme.text, width: max(0, r.width - 64 - 44))
             y += 15
         }
     }
@@ -488,7 +488,7 @@ final class MachinePanels: NSView {
         guard let h = hover else { return }
         if let c = cells.first(where: { $0.rect.insetBy(dx: -1, dy: -1).contains(h) }), let s = sample, c.core < s.cores.count {
             NSColor.labelColor.withAlphaComponent(0.6).setStroke()
-            let ring = NSBezierPath(roundedRect: c.rect.insetBy(dx: -1, dy: -1), xRadius: 3, yRadius: 3)
+            let ring = NSBezierPath(roundedRect: c.rect.insetBy(dx: -1, dy: -1), xRadius: Radius.inline, yRadius: Radius.inline)
             ring.lineWidth = 1
             ring.stroke()
             tip(["core \(c.core) · \(MachineWords.percent(s.cores[c.core]))"], over: c.rect)

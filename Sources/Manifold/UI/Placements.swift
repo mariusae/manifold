@@ -110,8 +110,13 @@ protocol PaneContent: NSView {
     /// The view's own verbs for its pill's menu (a page's back, forward
     /// and address), before the tile's.
     var pillItems: [NSMenuItem] { get }
-    /// The view's own buttons on its bar (a page's back, forward, reload).
+    /// The view's own buttons on its bar (a page's back, forward, reload;
+    /// a git block's pull and push), shown with the bar's controls.
     var barButtons: [BarButton] { get }
+    /// A few words of its own after the bar's place ("+12 −3", "3 of 40",
+    /// "1024 × 768"): what a strip of its own under the bar said — one
+    /// bar, not a bar and a header.
+    var barDetail: String? { get }
     /// What the pill edits in place when clicked (§3.1): a page's
     /// address. The pill widens to show it; ⏎ commits, ⎋ leaves it.
     var pillEdit: PillEdit? { get }
@@ -243,6 +248,7 @@ extension PaneContent {
     func maniSelection() async -> ManiSelected? { nil }
     func maniText(_ options: ManiReadOptions) async -> String? { nil }
     var barButtons: [BarButton] { [] }
+    var barDetail: String? { nil }
     var caretRectInWindow: NSRect? { nil }
     var pillItems: [NSMenuItem] { [] }
     var pillEdit: PillEdit? { nil }

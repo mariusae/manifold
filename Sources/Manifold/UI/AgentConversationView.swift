@@ -189,10 +189,7 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     private func turnPreview(_ i: Int) -> [String] {
         let turns = shownTurns
         guard turns.indices.contains(i) else { return [] }
-        let t = turns[i]
-        var said = AgentConversation.split(contents[t.id]).said.joined(separator: "\n")
-        if said.isEmpty { said = t.message ?? "" }
-        return said.split(whereSeparator: \.isNewline).map { Block.plainWords(String($0)) }.filter { !$0.isEmpty }.prefix(4).map { $0 }
+        return Array(turns[i].saidLines(contents[turns[i].id]).prefix(4))
     }
 
     /// Its page's: where it's scrolled, whether its outline shows — kept with the tile.

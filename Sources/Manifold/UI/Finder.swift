@@ -1188,7 +1188,7 @@ final class FileCell: NSTableCellView {
     private var symbolName = ""
     private static var images: [String: NSImage] = [:]
     // As a summary card sets them, a file's row and a block's alike.
-    private static let titleFont = NSFont.systemFont(ofSize: 13)
+    private static let titleFont = UIType.row
     private static let detailFont = UIType.detail
 
     /// A symbol's image, made once.
@@ -1349,10 +1349,10 @@ final class ExcerptCell: NSTableCellView {
     func show(_ item: FinderItem, excerpt text: String) {
         symbol.image = FileCell.image(item.symbol)
         title.attributedStringValue = Self.marking(item.title, item.marked, font: UIType.title,
-                                                   bold: .systemFont(ofSize: 13, weight: .bold), color: Theme.text)
+                                                   bold: UIType.title, color: Theme.text)
         detail.stringValue = item.detail
         excerpt.attributedStringValue = Self.marking(text, item.marked, font: UIType.body,
-                                                     bold: .systemFont(ofSize: 12, weight: .semibold), color: Theme.secondaryText)
+                                                     bold: UIType.bodyStrong, color: Theme.secondaryText)
         note.stringValue = item.note
         needsLayout = true
     }

@@ -2,6 +2,8 @@ import AppKit
 import ManifoldCore
 
 protocol DiffViewDelegate: AnyObject {
+    /// How much changed, as its bar says it, changed.
+    func diffViewBarChanged(_ view: DiffView)
     /// Open the new side's file at a line, beside the diff.
     func diffView(_ view: DiffView, open path: String, line: Int)
     func diffViewReload(_ view: DiffView)
@@ -33,6 +35,11 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
     }
 
     private let note = NSTextField.label(font: UIType.detail, color: Theme.secondaryText, align: .right)
+    /// Shown in a git block's pane (no bar of its own): how much changed in
+    /// a strip at its top; a tile, on its bar (`barDetail`), no strip.
+    var inPane = false { didSet { needsLayout = true } }
+    private var headStrip: CGFloat { inPane ? Self.strip : 0 }
+    var barDetail: String? { inPane || note.stringValue.isEmpty ? nil : note.stringValue }
     /// While its host compares (and sends what it found): said in the
     /// middle, a moment on — with how much has come, from another host.
     private let waiting = BusyNote()
@@ -168,14 +175,16 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
 
     override func layout() {
         super.layout()
-        // What's compared is the bar's; here only how much changed, at the right.
-        note.frame = NSRect(x: 12, y: bounds.height - Self.strip + ((Self.strip - 16) / 2).rounded(), width: bounds.width - 24, height: 16)
+        // What's compared, and how much changed, are the bar's; in a pane
+        // (no bar), how much changed at the right of a strip.
+        note.isHidden = !inPane
+        note.frame = NSRect(x: 12, y: bounds.height - headStrip + ((headStrip - 16) / 2).rounded(), width: bounds.width - 24, height: 16)
         var left: CGFloat = 0
         if let sidebar, !sidebar.isHidden {
             left = TileSidebar.width(in: bounds.width)
-            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - Self.strip)
+            sidebar.frame = NSRect(x: 0, y: 0, width: left, height: bounds.height - headStrip)
         }
-        var top = bounds.height - Self.strip
+        var top = bounds.height - headStrip
         if let commitHeader {
             let h = commitHeader.height(width: bounds.width - left, limit: (top * 0.45).rounded())
             commitHeader.frame = NSRect(x: left, y: top - h, width: bounds.width - left, height: h)
@@ -251,6 +260,7 @@ final class DiffView: NSView, PaneContent, KeepsViewState {
             let added = rows.filter { $0.kind == .added }.count, removed = rows.filter { $0.kind == .removed }.count
             note.stringValue = added + removed == 0 ? "No difference" : "+\(added) −\(removed)"
         }
+        if !inPane { delegate?.diffViewBarChanged(self) }
         // Files folded: their heading alone.
         if !collapsed.isEmpty {
             var kept: [DiffRow] = [], skipping = false
@@ -877,7 +887,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
             let item = NSDraggingItem(pasteboardWriter: w)
             let label = NSAttributedString(string: selectedText?.components(separatedBy: "\n").first ?? "", attributes: [.font: font, .foregroundColor: Theme.text])
             let image = NSImage(size: NSSize(width: min(320, label.size().width + 12), height: rowHeight), flipped: false) { r in
-                Theme.panel.setFill(); NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4).fill()
+                Theme.panel.setFill(); NSBezierPath(roundedRect: r, xRadius: Radius.inline, yRadius: Radius.inline).fill()
                 label.draw(at: NSPoint(x: 6, y: 3))
                 return true
             }
@@ -955,7 +965,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
             let x0 = NSAttributedString(string: s.substring(to: r.location), attributes: attrs).size().width
             let w = NSAttributedString(string: s.substring(with: r), attributes: attrs).size().width
             let box = NSRect(x: origin.x + x0 - 1.5, y: origin.y + (font.pointSize * 1.2 - h) / 2, width: w + 3, height: h)
-            let path = NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3)
+            let path = NSBezierPath(roundedRect: box, xRadius: Radius.inline, yRadius: Radius.inline)
             (current ? Self.currentBackground : Self.foundBackground).setFill()
             path.fill()
             path.lineWidth = current ? 2 : 1

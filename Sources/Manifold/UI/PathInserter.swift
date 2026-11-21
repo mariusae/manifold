@@ -88,7 +88,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
     /// for however much came.
     private let again = Debouncer()
     /// At the field's right: what's being looked through, or that nothing matched.
-    private let status = NSTextField.label(font: .systemFont(ofSize: 11), color: Theme.tertiaryText, align: .right)
+    private let status = NSTextField.label(font: UIType.detail, color: Theme.tertiaryText, align: .right)
     private let spinner = NSProgressIndicator()
 
     private static let width: CGFloat = 320
@@ -125,7 +125,7 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         ground.state = .active
         ground.blendingMode = .behindWindow
         ground.wantsLayer = true
-        ground.layer?.cornerRadius = 10
+        ground.layer?.cornerRadius = Radius.surface
         ground.layer?.cornerCurve = .continuous
         ground.layer?.masksToBounds = true
         ground.layer?.borderWidth = 0.5
@@ -154,17 +154,17 @@ final class PathInserter: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
         // The field at the foot, on a lighter ground, the folder as its placeholder.
         let well = NSView()
         well.wantsLayer = true
-        well.layer?.cornerRadius = 7
+        well.layer?.cornerRadius = Radius.control
         well.themed { v in v.layer?.backgroundColor = NSColor.themed { $0.chrome.well }.cgColor }
         well.identifier = .init("well")
         ground.addSubview(well)
-        glass.image = Theme.symbol("magnifyingglass", size: 12, weight: .medium)
+        glass.image = Theme.symbol("magnifyingglass", size: 13, weight: .medium)
         glass.contentTintColor = Theme.secondaryText
         ground.addSubview(glass)
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13)
+        field.font = UIType.row
         field.delegate = self
         field.cell?.usesSingleLineMode = true
         field.cell?.lineBreakMode = .byTruncatingHead
@@ -586,7 +586,7 @@ private final class PathCell: NSTableCellView {
         identifier = Self.identifier
         label.lineBreakMode = .byTruncatingHead
         label.maximumNumberOfLines = 1
-        clock.image = Theme.symbol("clock.arrow.circlepath", size: 12, weight: .regular)
+        clock.image = Theme.symbol("clock.arrow.circlepath", size: 13, weight: .regular)
         clock.setAccessibilityLabel("Recent")
         for v in [icon, label, clock] { addSubview(v) }
     }
@@ -610,7 +610,7 @@ private final class PathCell: NSTableCellView {
         let chosen = backgroundStyle == .emphasized
         let text = chosen ? NSColor.white : Theme.text
         let dim = chosen ? NSColor.white.withAlphaComponent(0.75) : Theme.secondaryText
-        let s = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: text])
+        let s = NSMutableAttributedString(string: title, attributes: [.font: UIType.row, .foregroundColor: text])
         if let slash = title.dropLast().lastIndex(of: "/"), !title.hasPrefix("~") || title.filter({ $0 == "/" }).count > 1 {
             let n = title.distance(from: title.startIndex, to: title.index(after: slash))
             s.addAttribute(.foregroundColor, value: dim, range: NSRange(location: 0, length: (String(title.prefix(n)) as NSString).length))
@@ -634,7 +634,7 @@ private final class MenuRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         Theme.accent.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0.5), xRadius: 5, yRadius: 5).fill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0.5), xRadius: Radius.inline, yRadius: Radius.inline).fill()
     }
     // Chosen, its cell's text is white (`.emphasized`), whatever has the keyboard.
     override var isEmphasized: Bool { get { true } set {} }

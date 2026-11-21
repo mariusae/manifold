@@ -12,7 +12,7 @@ enum Flat {
     static let fieldHeight: CGFloat = 28
     static let buttonHeight: CGFloat = 24
     /// A control's edge, and its fill.
-    static var line: NSColor { Theme.text.withAlphaComponent(0.14) }
+    static var line: NSColor { Theme.washLine }
     static var fill: NSColor { Theme.text.withAlphaComponent(0.025) }
     /// A band: chosen (stronger with the keyboard), under the pointer, pressed.
     /// Chosen in a list, as `chosenRow` says it: a grey a step off what
@@ -30,10 +30,10 @@ enum Flat {
     /// hover and pressed shades under the pointer, a firmer grey when on.
     static func ground(_ s: Stand) -> NSColor {
         switch s {
-        case .rest: Theme.text.withAlphaComponent(0.06)
+        case .rest: Theme.washFaint
         case .hover: hovered
         case .pressed: pressed
-        case .on: Theme.text.withAlphaComponent(0.15)
+        case .on: Theme.washLine
         }
     }
 
@@ -60,7 +60,7 @@ enum Flat {
     /// in every menu alike: the tint, its words on it in `onBand`.
     static func menuBand(_ r: NSRect) {
         Theme.accent.setFill()
-        NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
+        NSBezierPath(roundedRect: r, xRadius: Radius.control, yRadius: Radius.control).fill()
     }
 
     /// Words on a menu's chosen row (`dim`: what's beside its name).
@@ -207,7 +207,7 @@ final class FlatFieldBox: NSView {
         field.cell?.wraps = false
         field.focused = { [weak self] in self?.needsDisplay = true }
         clear.isBordered = false
-        clear.image = Theme.symbol("xmark", size: 10, weight: .semibold)
+        clear.image = Theme.symbol("xmark", size: 11, weight: .semibold)
         clear.contentTintColor = Theme.secondaryText
         clear.toolTip = "Clear"
         clear.target = self
@@ -579,7 +579,7 @@ final class FlatSegments: NSView, NSViewToolTipOwner {
                 let s = a.size()
                 a.draw(at: NSPoint(x: (r.midX - s.width / 2).rounded(), y: (r.midY - s.height / 2).rounded()))
             case .symbol(let name):
-                guard let image = Theme.symbol(name, size: 12, weight: .regular)?.tinted(ink) else { continue }
+                guard let image = Theme.symbol(name, size: 13, weight: .regular)?.tinted(ink) else { continue }
                 image.draw(in: NSRect(x: (r.midX - image.size.width / 2).rounded(), y: (r.midY - image.size.height / 2).rounded(),
                                       width: image.size.width, height: image.size.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -600,7 +600,7 @@ final class FlatSliderCell: NSSliderCell {
         let knob = knobRect(flipped: flipped)
         let inset = max(0, (knob.width - Self.knob) / 2)
         let bar = NSRect(x: rect.minX + inset, y: rect.midY - 1.5, width: rect.width - 2 * inset, height: 3)
-        Theme.text.withAlphaComponent(0.12).setFill()
+        Theme.washLine.setFill()
         NSBezierPath(roundedRect: bar, xRadius: Radius.hair, yRadius: Radius.hair).fill()
         Theme.accent.setFill()
         NSBezierPath(roundedRect: NSRect(x: bar.minX, y: bar.minY, width: max(0, knob.midX - bar.minX), height: bar.height), xRadius: Radius.hair, yRadius: Radius.hair).fill()

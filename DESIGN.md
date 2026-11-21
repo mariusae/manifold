@@ -503,7 +503,10 @@ focused or not (over the edge, it covered the bar's top and the middle
 moved a point). A view's own controls
 follow the same rule: a folder's Project Home, tree and columns show
 while the pointer's on its tile. The bar is the
-tile's handle to drag; clicked, it focuses its tile — only that (choosing
+tile's handle to drag — the pointer over it saying what a click does
+(the up-and-down arrows where a click grows the tile, the pointing hand
+where it focuses it), and the button held a moment, the closed hand: it's
+taken to drag, and let go, nothing (only a click grows) — clicked, it focuses its tile — only that (choosing
 a tile doesn't move its column), unless the tile's down to its bar or
 not much more, when it grows a step to show what's in it, as a sidebar
 row clicked does; clicked again, focused, it grows the tile a step
@@ -2291,6 +2294,15 @@ is a new one. The search lens shows a project search's symbols and
 files above its hits, previewed as hits are.
 
 ### 7.5 Image, PDF, diff, git, search, process, agent
+
+A lens says what it has to on its tile's bar, not in a strip of its own
+under it (`PaneContent.barDetail`, `barButtons`): a git block's ahead and
+behind and its index after its place, pull, push and refresh among the
+bar's buttons (its branch is the bar's title); a diff's "+12 −3" (a strip
+still in a git block's pane, which has no bar); an image's size; a
+notebook's what it's running, its run, run all, interrupt, new cell and
+restart. A PDF keeps its strip, its page to type in. One bar, not a bar
+and a header.
 
 Each its kind's natural view: PDFKit and an image view (zoom, pages); a
 PDF with Preview's controls (the page of how many, back and forward, the

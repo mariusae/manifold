@@ -35,7 +35,7 @@ final class SearchPreviewView: NSView {
     var open: (String, Int) -> Void = { _, _ in }
     var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
 
-    private let title = NSTextField.label(font: .systemFont(ofSize: 11, weight: .medium), color: Theme.secondaryText, cut: .byTruncatingHead)
+    private let title = NSTextField.label(font: UIType.caption, color: Theme.secondaryText, cut: .byTruncatingHead)
     private let scroll = ClippingScrollView()
     /// The file's text: a view made afresh for each file, on the text
     /// system laid out for it off the main thread.
@@ -361,7 +361,7 @@ final class PreviewTextView: NSTextView {
         var r = lm.boundingRect(forGlyphRange: g, in: tc)
         r.origin.x += textContainerInset.width
         r.origin.y += textContainerInset.height
-        let path = NSBezierPath(roundedRect: r.insetBy(dx: -1.5, dy: -0.5), xRadius: 3, yRadius: 3)
+        let path = NSBezierPath(roundedRect: r.insetBy(dx: -1.5, dy: -0.5), xRadius: Radius.inline, yRadius: Radius.inline)
         path.lineWidth = 1.5
         SearchPreviewView.currentRing.setStroke()
         path.stroke()

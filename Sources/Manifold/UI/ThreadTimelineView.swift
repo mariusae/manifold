@@ -646,7 +646,7 @@ final class LinkLabel: ClickView {
     /// A heading's: semibold, in full ink.
     var strong = false {
         didSet {
-            label.font = strong ? .systemFont(ofSize: 11, weight: .semibold) : UIType.caption
+            label.font = strong ? UIType.section : UIType.caption
             label.textColor = strong ? Theme.text : Theme.secondaryText
         }
     }
@@ -658,7 +658,7 @@ final class LinkLabel: ClickView {
         onClick = action
         firesOnDown = true
         label.stringValue = words
-        image.image = Theme.symbol(symbol, size: 10, weight: .semibold)
+        image.image = Theme.symbol(symbol, size: 11, weight: .semibold)
         let s = NSStackView(views: [image, label])
         s.spacing = 4
         s.translatesAutoresizingMaskIntoConstraints = false
@@ -690,13 +690,13 @@ final class MenuTitleButton: ClickView {
     override func draw(_ dirtyRect: NSRect) {
         if hovering || open {
             Flat.ground(open ? .pressed : .hover).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+            NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
         }
         let ink = hovering || open ? Theme.text : Theme.secondaryText
         let s = NSAttributedString(string: title, attributes: [.font: font, .foregroundColor: ink])
         let z = s.size()
         s.draw(at: NSPoint(x: 6, y: ((bounds.height - z.height) / 2).rounded()))
-        if let image = Theme.symbol("chevron.down", size: 8, weight: .semibold, color: ink) {
+        if let image = Theme.symbol("chevron.down", size: 9, weight: .semibold, color: ink) {
             let iz = image.size
             image.draw(in: NSRect(x: 6 + ceil(z.width) + 4, y: ((bounds.height - iz.height) / 2).rounded(), width: iz.width, height: iz.height))
         }

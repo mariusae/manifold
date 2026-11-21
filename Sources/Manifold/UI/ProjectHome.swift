@@ -270,7 +270,7 @@ final class ProjectSidebar: NSView {
             wantsLayer = true
             layer?.borderColor = Theme.accent.cgColor
             layer?.borderWidth = dropping ? 2 : 0
-            layer?.cornerRadius = 6
+            layer?.cornerRadius = Radius.control
             pinNote.say("Pin in Project “\(shown?.project.name ?? "")”")
             pinNote.isHidden = !dropping
             needsLayout = true
@@ -710,7 +710,7 @@ final class HomeRow: NSView, NSDraggingSource {
             }
             x += 16
         }
-        if let symbol, let image = Theme.symbol(symbol, size: 12, weight: .medium, color: Theme.secondaryText) {
+        if let symbol, let image = Theme.symbol(symbol, size: 13, weight: .medium, color: Theme.secondaryText) {
             image.draw(in: image.centered(in: NSRect(x: x, y: 4, width: 16, height: 16)), from: .zero, operation: .sourceOver, fraction: 1,
                        respectFlipped: true, hints: nil)
             x += 22
@@ -746,7 +746,7 @@ private final class LanguageBar: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let track = NSRect(x: 14, y: 6, width: bounds.width - 28, height: 6)
         NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(roundedRect: track, xRadius: 3, yRadius: 3).addClip()
+        NSBezierPath(roundedRect: track, xRadius: Radius.inline, yRadius: Radius.inline).addClip()
         var x = track.minX
         for s in shares {
             let w = (track.width * CGFloat(s.share)).rounded()

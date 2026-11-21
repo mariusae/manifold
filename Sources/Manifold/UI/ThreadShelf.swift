@@ -102,7 +102,7 @@ final class ThreadShelfView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard dropping else { return }
         Theme.accent.withAlphaComponent(0.12).setFill()
-        let r = NSBezierPath(roundedRect: bounds.insetBy(dx: -3, dy: -2), xRadius: 6, yRadius: 6)
+        let r = NSBezierPath(roundedRect: bounds.insetBy(dx: -3, dy: -2), xRadius: Radius.control, yRadius: Radius.control)
         r.fill()
         Theme.accent.setStroke()
         r.lineWidth = 1

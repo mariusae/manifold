@@ -265,7 +265,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
                 let l = NSTextField(labelWithString: "")
                 let text = NSMutableAttributedString()
                 let a = NSTextAttachment()
-                a.image = Theme.symbol("lock.fill", size: 10, weight: .semibold)
+                a.image = Theme.symbol("lock.fill", size: 11, weight: .semibold)
                 text.append(NSAttributedString(attachment: a))
                 text.append(NSAttributedString(string: " Secure Input", attributes: [.font: UIType.caption]))
                 l.attributedStringValue = text

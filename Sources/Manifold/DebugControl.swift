@@ -1390,7 +1390,7 @@ enum DebugControl {
             // pills would show, a block's own name standing as BLOCKNAME.
             let line = NSMutableAttributedString(string: arg)
             let tv = TextView(frame: .zero)
-            MarkdownStyle.apply(to: line, base: .systemFont(ofSize: 13), code: .systemMono(ofSize: 12, weight: .regular),
+            MarkdownStyle.apply(to: line, base: UIType.row, code: .systemMono(ofSize: 12, weight: .regular),
                                 palette: tv.markdownPalette, reveal: false, look: { _ in PillLook(title: "BLOCKNAME", symbol: "doc", status: nil) })
             var titles: [String] = []
             line.enumerateAttribute(MarkdownStyle.pill, in: NSRange(location: 0, length: line.length)) { v, _, _ in

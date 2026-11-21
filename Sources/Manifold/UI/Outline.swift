@@ -486,7 +486,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         detail.stringValue = r.detail
         detail.isHidden = r.detail.isEmpty
         icon.isHidden = r.symbol == nil
-        icon.image = r.symbol.flatMap { Theme.symbol($0, size: 12, weight: .regular) }
+        icon.image = r.symbol.flatMap { Theme.symbol($0, size: 13, weight: .regular) }
         icon.contentTintColor = Theme.secondaryText
         more.isHidden = !hovering || r.menu == nil
         needsLayout = true
@@ -528,7 +528,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         let color: NSColor = row.failed ? Theme.statusError : row.running ? Theme.accent
             : row.current ? Theme.text : Theme.secondaryText.withAlphaComponent(0.5)
         color.setFill()
-        NSBezierPath(roundedRect: NSRect(x: 10 + indent, y: (bounds.height - 2) / 2, width: length, height: 2), xRadius: 1, yRadius: 1).fill()
+        NSBezierPath(roundedRect: NSRect(x: 10 + indent, y: (bounds.height - 2) / 2, width: length, height: 2), xRadius: Radius.hair, yRadius: Radius.hair).fill()
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

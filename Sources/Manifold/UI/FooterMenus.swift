@@ -59,7 +59,7 @@ final class FooterButton: ClickView {
     override func draw(_ dirtyRect: NSRect) {
         if hovering || open {
             Flat.ground(open ? .pressed : .hover).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+            NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
         }
         var x: CGFloat = title == nil ? (bounds.width - 16) / 2 : 8
         if let image = Theme.symbol(symbol, size: title == nil ? 11 : 12, weight: title == nil ? .semibold : .regular, color: Theme.secondaryText) {

@@ -284,7 +284,7 @@ extension MainWindowController: DirectoryViewDelegate {
         if id.host != host.host { detail += " · on \(hosts.label(of: id.host))" }
         var lines: [String] = []
         let last = turn.map { "Last asked \(ago($0.began)): \(asked($0.prompt))" }
-        let said = turn?.message.map { "Said: " + Block.oneLine($0, max: 200) }
+        let said = turn.flatMap { $0.saidLines(nil).first }.map { "Said: " + Block.oneLine($0, max: 200) }
         if !Self.agentRuns(b) {
             lines.append("Asleep — asked, or shown, it starts again where it left off.")
             lines += [last, said].compactMap { $0 }

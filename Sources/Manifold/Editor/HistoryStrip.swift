@@ -108,7 +108,7 @@ final class HistoryStrip: NSView {
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
         guard !revisions.isEmpty else { return }
         let t = track, mid = (bounds.height / 2).rounded()
-        Theme.text.withAlphaComponent(0.18).setFill()
+        Theme.washLine.setFill()
         NSRect(x: t.minX, y: mid - 0.5, width: t.width, height: 1).fill()
         // A tick for each commit; now's, taller.
         for s in 0...revisions.count {

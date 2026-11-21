@@ -252,7 +252,7 @@ final class IssueCommentView: NSView, OnTheLine, NSDraggingSource {
 
         override func draw(_ dirtyRect: NSRect) {
             let r = bounds.insetBy(dx: 1.5, dy: 1.5)
-            let shape = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
+            let shape = NSBezierPath(roundedRect: r, xRadius: Radius.surface, yRadius: Radius.surface)
             Theme.panel.setFill()
             shape.fill()
             (ringed ? EdgeColor.accentStrong : EdgeColor.hairline).setStroke()

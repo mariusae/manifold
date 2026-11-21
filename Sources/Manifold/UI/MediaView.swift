@@ -8,6 +8,8 @@ protocol MediaViewDelegate: AnyObject {
     func mediaView(_ view: MediaView, needsBytes progress: @escaping (Int64, Int64?) -> Void, done: @escaping (Data?) -> Void)
     /// What its host is called, if it's another than this Mac.
     func mediaViewHostName(_ view: MediaView) -> String?
+    /// An image's words on its bar (its size) changed.
+    func mediaViewBarChanged(_ view: MediaView)
 }
 
 /// The image and PDF lenses (DESIGN.md §7.5): the file as its host has
@@ -175,9 +177,14 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
         }
     }
 
+    /// An image's size, on its bar (no strip under it for that alone); a
+    /// PDF's strip stays, its page to type in.
+    var barDetail: String? { pdfView == nil && !note.stringValue.isEmpty ? note.stringValue : nil }
+
     override func layout() {
         super.layout()
-        var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - Self.barHeight)
+        // A PDF's strip at its top (its page, its zoom); an image the whole tile.
+        var content = NSRect(x: 0, y: 0, width: bounds.width, height: bounds.height - (pdfView != nil ? Self.barHeight : 0))
         if pdfView != nil {
             layoutControls()
             if !sidebarRestored {
@@ -191,8 +198,8 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
                 content.size.width -= w
             }
         } else {
-            // Its path is the bar's: here only what it is (its size), at the right.
-            note.frame = NSRect(x: 12, y: bounds.height - 24, width: bounds.width - 24, height: 16)
+            // Its path and its size are the bar's.
+            note.frame = .zero
         }
         pdfView?.frame = content
         strip?.place(content)
@@ -211,6 +218,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     private func load() {
         guard let b = source(), b.path != nil else { return }
         note.stringValue = loaded ? note.stringValue : "Reading…"
+        delegate?.mediaViewBarChanged(self)
         var arrived = false
         var said: (Int64, Int64?) = (0, nil)
         let from = delegate?.mediaViewHostName(self)
@@ -239,6 +247,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
             self.comingBar.stopAnimation(nil)
             guard let data else {
                 self.note.stringValue = "Couldn't read it"
+                self.delegate?.mediaViewBarChanged(self)
                 return
             }
             self.loaded = true
@@ -253,12 +262,14 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
                 let size = image.representations.first.map { NSSize(width: $0.pixelsWide, height: $0.pixelsHigh) } ?? image.size
                 self.imageView.frame = NSRect(origin: .zero, size: size.width > 0 ? size : image.size)
                 self.note.stringValue = "\(Int(size.width)) × \(Int(size.height))"
+                self.delegate?.mediaViewBarChanged(self)
                 self.fitted = false
                 self.needsLayout = true
                 self.layoutSubtreeIfNeeded()
                 self.restoreState()
             } else {
                 self.note.stringValue = "Not an image"
+                self.delegate?.mediaViewBarChanged(self)
             }
         }
     }

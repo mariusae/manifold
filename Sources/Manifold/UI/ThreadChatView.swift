@@ -204,7 +204,7 @@ final class ThreadChatView: NSView {
         contextView.maximumNumberOfLines = 8
         contextView.lineBreakMode = .byTruncatingTail
         contextView.wantsLayer = true
-        contextView.layer?.cornerRadius = 4
+        contextView.layer?.cornerRadius = Radius.inline
         agentMark.isHidden = true
         agentMark.translatesAutoresizingMaskIntoConstraints = false
         agentMark.widthAnchor.constraint(equalToConstant: 14).isActive = true
@@ -338,7 +338,7 @@ final class ThreadChatView: NSView {
             MainActor.unchecked { self?.placeNewBelow() }
         }
         themed { v in
-            v.contextView.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
+            v.contextView.layer?.backgroundColor = Theme.washFaint.cgColor
         }
     }
 
@@ -463,7 +463,9 @@ final class ThreadChatView: NSView {
         // Each as wide as the list now, laid out once at its width.
         list.arrangedSubviews.forEach(pinWidth)
         if t == nil {
-            placeholder.stringValue = "Comment…"
+            // As the timeline says it: what writing here does, one way of
+            // saying it in every composer (Start a thread, Reply, Ask, Wake).
+            placeholder.stringValue = "Start a thread…"
         } else {
             placeholder.stringValue = t?.resolved == true ? "Reply to reopen…" : "Reply…"
         }
@@ -1229,7 +1231,7 @@ final class Avatar: NSView {
             circle.addClip()
             picture.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
             NSGraphicsContext.restoreGraphicsState()
-            Theme.text.withAlphaComponent(0.12).setStroke()
+            Theme.washLine.setStroke()
             circle.lineWidth = 0.5
             circle.stroke()
             return
@@ -1243,9 +1245,9 @@ final class Avatar: NSView {
             initial.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2), withAttributes: a)
             return
         }
-        Theme.text.withAlphaComponent(0.07).setFill()
+        Theme.washGround.setFill()
         circle.fill()
-        Theme.text.withAlphaComponent(0.16).setStroke()
+        Theme.washLine.setStroke()
         circle.lineWidth = 0.5
         circle.stroke()
         guard let icon else { return }
@@ -2040,7 +2042,7 @@ final class CodeGroundLayoutManager: NSLayoutManager {
             // At the line's start, from the margin, not cut off by it.
             let left = max(frag.minX, letters.minX - 1.5)
             let box = NSRect(x: left, y: top, width: letters.maxX + 1.5 - left, height: max(0, bottom - top))
-            NSBezierPath(roundedRect: box, xRadius: 3, yRadius: 3).fill()
+            NSBezierPath(roundedRect: box, xRadius: Radius.inline, yRadius: Radius.inline).fill()
         }
     }
 }

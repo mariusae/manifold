@@ -89,7 +89,7 @@ final class DropBadge: NSView {
         NSColor.white.setStroke()
         circle.lineWidth = 1.5
         circle.stroke()
-        if let image = Theme.symbol(symbol, size: 10, weight: .bold, color: .white) {
+        if let image = Theme.symbol(symbol, size: 11, weight: .bold, color: .white) {
             let s = image.size
             image.draw(in: NSRect(x: c.x - s.width / 2, y: c.y - s.height / 2, width: s.width, height: s.height))
         }

@@ -115,8 +115,8 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
         search.isBordered = false
         search.drawsBackground = false
         search.wantsLayer = true
-        search.layer?.cornerRadius = 11
-        search.themed { $0.layer?.backgroundColor = Theme.text.withAlphaComponent(0.06).cgColor }
+        search.layer?.cornerRadius = Radius.surface
+        search.themed { $0.layer?.backgroundColor = Theme.washFaint.cgColor }
         search.delegate = self
         search.sendsSearchStringImmediately = true
         addSubview(search)

@@ -166,11 +166,11 @@ final class SendButton: ClickView {
 
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 1, dy: 1)
-        let fill = isEnabled ? (pressed ? Theme.accent.blended(withFraction: 0.2, of: .black) ?? Theme.accent : Theme.accent) : Theme.text.withAlphaComponent(0.12)
+        let fill = isEnabled ? (pressed ? Theme.accent.blended(withFraction: 0.2, of: .black) ?? Theme.accent : Theme.accent) : Theme.washLine
         fill.setFill()
         NSBezierPath(ovalIn: r).fill()
         let ink: NSColor = isEnabled ? .white : Theme.tertiaryText
-        if let image = Theme.symbol("arrow.up", size: 12, weight: .bold, color: ink) {
+        if let image = Theme.symbol("arrow.up", size: 13, weight: .bold, color: ink) {
             image.draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
     }
@@ -195,10 +195,10 @@ final class ChipView: NSView {
         block = chip.block
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 10
+        layer?.cornerRadius = Radius.surface
         layer?.cornerCurve = .continuous
         square.wantsLayer = true
-        square.layer?.cornerRadius = 7
+        square.layer?.cornerRadius = Radius.control
         square.layer?.cornerCurve = .continuous
         icon.image = chip.image ?? Theme.symbol(chip.symbol, size: 13, weight: .regular)
         icon.imageScaling = .scaleProportionallyDown
@@ -211,7 +211,7 @@ final class ChipView: NSView {
         remove.contentTintColor = Theme.secondaryText
         remove.onClick = { [weak self] in self?.onRemove?() }
         themed { v in
-            v.layer?.backgroundColor = Theme.text.withAlphaComponent(0.05).cgColor
+            v.layer?.backgroundColor = Theme.washFaint.cgColor
             v.square.layer?.backgroundColor = Theme.panel.blended(withFraction: 0.6, of: .textBackgroundColor)?.cgColor
             v.square.layer?.borderColor = Flat.line.cgColor
             v.square.layer?.borderWidth = 0.5

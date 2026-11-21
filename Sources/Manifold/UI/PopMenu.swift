@@ -58,7 +58,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
 
     private let glass = NSImageView()
     private let field = NSTextField()
-    private let hintLabel = NSTextField.label(font: .systemFont(ofSize: 12, weight: .medium), color: Theme.tertiaryText)
+    private let hintLabel = NSTextField.label(font: UIType.label, color: Theme.tertiaryText)
     private let clear = IconButton.clear()
     private let filterButton = IconButton("line.3.horizontal.decrease", size: 12, weight: .medium, tip: "Filters")
     private var chipButtons: [ChipButton] = []
@@ -163,7 +163,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         if !filterButton.isHidden {
             filterButton.frame = NSRect(x: right - 26, y: sy + (Self.searchHeight - 26) / 2, width: 26, height: 26)
             filterButton.wantsLayer = true
-            filterButton.layer?.cornerRadius = 7
+            filterButton.layer?.cornerRadius = Radius.control
             right -= 30
         }
         hintLabel.sizeToFit()
@@ -235,7 +235,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
 final class ChipButton: ClickView {
     var isOn = false { didSet { needsDisplay = true } }
     var title: String { didSet { needsDisplay = true } }
-    static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    static let font = UIType.label
     static let height: CGFloat = 24
 
     init(_ title: String) {
@@ -384,7 +384,7 @@ final class PopMenuList: NSView {
                 let iconRect = NSRect(x: 16, y: r.minY + (Self.row - 16) / 2, width: 16, height: 16)
                 if let image = item.image {
                     image.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-                } else if let image = Theme.symbol(item.symbol, size: 12.5, weight: .regular, color: lit ? Flat.onBand() : Theme.secondaryText) {
+                } else if let image = Theme.symbol(item.symbol, size: 13, weight: .regular, color: lit ? Flat.onBand() : Theme.secondaryText) {
                     image.draw(centeredAt: NSPoint(x: iconRect.midX, y: iconRect.midY))
                 }
                 var right = w - 16
@@ -395,7 +395,7 @@ final class PopMenuList: NSView {
                     s.draw(centeredAt: NSPoint(x: box.midX, y: box.midY))
                     right = box.minX - 6
                 }
-                if item.chevron, let c = Theme.symbol("chevron.right", size: 10, weight: .semibold, color: lit ? Flat.onBand(dim: true) : Theme.tertiaryText) {
+                if item.chevron, let c = Theme.symbol("chevron.right", size: 11, weight: .semibold, color: lit ? Flat.onBand(dim: true) : Theme.tertiaryText) {
                     let z = c.size
                     c.draw(in: NSRect(x: right - z.width, y: r.minY + (Self.row - z.height) / 2, width: z.width, height: z.height),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
@@ -413,7 +413,7 @@ final class PopMenuList: NSView {
                     right -= z.width + 8
                 }
                 let x = iconRect.maxX + 10
-                NSAttributedString(string: item.title, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: ink])
+                NSAttributedString(string: item.title, attributes: [.font: UIType.row, .foregroundColor: ink])
                     .draw(with: NSRect(x: x, y: r.minY + (Self.row - 17) / 2 + 0.5, width: max(0, right - x), height: 17),
                           options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
                 if !item.subtitle.isEmpty {

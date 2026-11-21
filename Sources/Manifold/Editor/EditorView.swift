@@ -1330,7 +1330,7 @@ final class EditorBanner: NSView {
 extension EditorView: Printable {
     /// The text as it is, in the code font (a note's too: its Markdown).
     func printOperation() -> NSPrintOperation? {
-        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: isMarkdownOutline ? .systemFont(ofSize: 11) : TextPrint.codeFont)
+        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: isMarkdownOutline ? UIType.detail : TextPrint.codeFont)
     }
 }
 

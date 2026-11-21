@@ -753,7 +753,7 @@ private final class StripCard {
         body.lineBreakMode = code ? .byTruncatingTail : .byWordWrapping
         body.maximumNumberOfLines = code ? 5 : 6
         body.cell?.truncatesLastVisibleLine = true
-        body.font = code ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular) : NSFont.systemFont(ofSize: 13)
+        body.font = code ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular) : UIType.row
         body.textColor = Theme.secondaryText
         body.isHidden = lines.isEmpty
         let inner = Self.width - 24

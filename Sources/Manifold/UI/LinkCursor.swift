@@ -28,7 +28,7 @@ enum LinkCursor {
             NSBezierPath(ovalIn: r.insetBy(dx: -1, dy: -1)).fill()
             NSColor(white: 0.18, alpha: 1).setFill()
             NSBezierPath(ovalIn: r).fill()
-            if let s = Theme.symbol(symbol, size: 8, weight: .bold, color: .white) {
+            if let s = Theme.symbol(symbol, size: 9, weight: .bold, color: .white) {
                 let z = s.size
                 s.draw(in: NSRect(x: r.midX - z.width / 2, y: r.midY - z.height / 2, width: z.width, height: z.height),
                        from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)

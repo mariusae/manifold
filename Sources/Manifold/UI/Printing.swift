@@ -22,7 +22,7 @@ enum TextPrint {
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
         view.isEditable = false
         view.drawsBackground = false
-        let body = NSMutableAttributedString(string: title + "\n\n", attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.black])
+        let body = NSMutableAttributedString(string: title + "\n\n", attributes: [.font: UIType.title, .foregroundColor: NSColor.black])
         body.append(NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.black]))
         view.textStorage?.setAttributedString(body)
         view.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)

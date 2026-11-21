@@ -13,7 +13,7 @@ import ManifoldCore
     static var whyMissing: ((BlockID) -> String?)?
 
     private static var shared: ReferenceTip?
-    private let label = NSTextField.label(font: .systemFont(ofSize: 12))
+    private let label = NSTextField.label(font: UIType.body)
     /// The view whose link it's for, while hovered: gone from under the
     /// pointer, it goes.
     private weak var owner: NSView?
