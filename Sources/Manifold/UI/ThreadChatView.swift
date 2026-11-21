@@ -504,7 +504,11 @@ final class ThreadChatView: NSView {
         watchSeen()
     }
 
-    private func placeNewBelow() { newBelow.place(over: scroll.frame, away: !isScrolledToEnd) }
+    private func placeNewBelow() {
+        // An agent in it at work: its dots on the pill, as a conversation's.
+        newBelow.working = !model.working.isEmpty
+        newBelow.place(over: scroll.frame, away: !isScrolledToEnd)
+    }
 
     private var isScrolledToEnd: Bool {
         let clip = scroll.contentView

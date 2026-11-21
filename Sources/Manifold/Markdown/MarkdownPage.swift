@@ -70,6 +70,7 @@ enum MarkdownPage {
           });
           window.manifoldPendingDiagrams = window.manifoldDiagrams();
           window.scrollTo(0, toTop ? 0 : y);
+          requestAnimationFrame(function () { if (window.manifoldTellEnd) window.manifoldTellEnd(); });
         };
         // Mermaid's diagrams (```mermaid, or a block that starts with a
         // diagram's kind, as `flowchart LR`) drawn in place of their code by
@@ -265,6 +266,13 @@ enum MarkdownPage {
           window.manifoldWatching = true;
           function post(m) { try { window.webkit.messageHandlers.manifoldState.postMessage(m); } catch (e) {} }
           var t1, t2, live = false, resizing = false, lastW = window.innerWidth;
+          // Whether it's at its end (scrolled up from it, a pill offers the
+          // way back): said when that changes — as it scrolls, as it grows.
+          var lastEnd = null;
+          window.manifoldTellEnd = function () {
+            var end = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 24;
+            if (end !== lastEnd) { lastEnd = end; post({ end: end }); }
+          };
           // Wider or narrower (the tile's sidebar going or coming, the
           // window resized): the line at its top kept there as the text
           // rewraps — and a place just gone to, before the width changed,
@@ -281,7 +289,7 @@ enum MarkdownPage {
           window.addEventListener('scroll', function () {
             // Where it is, every frame while it moves — for the scrubber to
             // follow live — and, once it has stopped, for keeping.
-            if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); if (!resizing) window.manifoldAnchor = manifoldTopLine(); }); }
+            if (!live) { live = true; requestAnimationFrame(function () { live = false; post({ scrolling: window.scrollY }); window.manifoldTellEnd(); if (!resizing) window.manifoldAnchor = manifoldTopLine(); }); }
             clearTimeout(t1); t1 = setTimeout(function () { post({ scroll: window.scrollY }); }, 250);
           });
           // The pointer onto a block's link, or off it: one to a block

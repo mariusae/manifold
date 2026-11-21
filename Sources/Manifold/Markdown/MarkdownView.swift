@@ -32,6 +32,13 @@ private final class PreviewWebView: WKWebView {
 /// on the same block, or the file saved by another program), keeping the
 /// scroll position.
 final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
+    /// At its end, or scrolled up from it (the page says, as it changes).
+    var onAtEnd: ((Bool) -> Void)?
+    /// To its end, smoothly.
+    func scrollToEnd() {
+        web.evaluateJavaScript("window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'smooth'})")
+    }
+
     let placement: PlacementID
     let keeper = ViewStateKeeper()
     /// The page was (re)loaded: its scroll and selection go back after
@@ -173,6 +180,7 @@ final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDeleg
             guard let self else { return }
             ReferenceTip.hover(target, in: self)
         }
+        handler.onAtEnd = { [weak self] end in self?.onAtEnd?(end) }
         handler.onState = { [weak self] values in
             self?.keeper.note(values)
             if values["scroll"] != nil { self?.scheduleOutline() }
@@ -742,6 +750,8 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
     var onScrolling: ((Double) -> Void)?
     /// The pointer onto a block's link (its address) or off it (nil).
     var onHover: ((String?) -> Void)?
+    /// At its end, or scrolled up from it: as it changes.
+    var onAtEnd: ((Bool) -> Void)?
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let dict = message.body as? [String: Any] else { return }
@@ -751,6 +761,7 @@ final class StateMessages: NSObject, WKScriptMessageHandler {
             return
         }
         if let h = dict["hover"] as? String { onHover?(h.isEmpty ? nil : h); return }
+        if let e = dict["end"] as? Bool { onAtEnd?(e); return }
         var values: [String: String] = [:]
         if let y = dict["scrolling"] as? Double { onScrolling?(y); return }
         if let y = dict["scroll"] as? Double { values["scroll"] = "\(Int(y.rounded()))" }

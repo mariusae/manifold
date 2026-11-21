@@ -1,16 +1,18 @@
 import AppKit
 
-/// To the end, at the foot of a scrolled area. Two things it says:
+/// To the end, at the foot of a scrolled area (as Claude's apps have it):
+/// a round button, the same in every view that keeps a reader's place —
+/// an agent's conversation, a thread's, the timeline, an editor.
 ///
-/// - the view's scrolled away from its end (where a thread's newest comment
-///   is): a round button, an arrow down, to go back there — shown whenever
-///   it's away, if `showsWhenAway` (a thread's views; not an editor's, where
-///   reading the top of a file is the usual, not being away);
-/// - something new came below while it was away — added by something else
-///   (an agent's comment, an agent's `mani write`, a file grown on disk): the
-///   same button grown into a pill, the arrow and what it is ("New
-///   comments"), in the accent. The view isn't moved for it; what you were
-///   reading stays where it was.
+/// - the view scrolled away from its end: shown, if `showsWhenAway` (a
+///   thread's views, a conversation; not an editor's, where reading the
+///   top of a file is the usual) — a down arrow;
+/// - the agent at work meanwhile (`working`): its working dots in it, a
+///   down caret under the pointer;
+/// - something new came below while it was away (an agent's comment, a
+///   turn, a file grown on disk): a dot at its shoulder, in the accent —
+///   shown then even where it isn't when only away. The view isn't moved
+///   for it; what you were reading stays where it was.
 ///
 /// Clicked, the view's scrolled to its end; once it's there, by the button
 /// or anyhow, gone, and what was new with it.
@@ -18,34 +20,42 @@ final class NewBelowButton: NSView {
     var onClick: (() -> Void)?
     /// Shown whenever the view's away from its end, not only for news.
     var showsWhenAway: Bool
-    /// What came below while away, said beside the arrow; nil, nothing new.
+    /// What came below while away (said in its tooltip); nil, nothing new.
     private(set) var news: String?
-    private let label = NSTextField.label(font: UIType.section, color: Tints.accentText)
+    /// The agent at work: its dots, not the arrow (the arrow under the pointer).
+    var working = false { didSet { if working != oldValue { refresh() } } }
     private let arrow = NSImageView()
-    private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+    private let dots = StatusGlyph()
+    private let dot = NSView()
+    private var hovering = false { didSet { if hovering != oldValue { refresh() } } }
     private var area: NSRect = .zero
     private var away = false
 
-    static let height: CGFloat = 30
+    static let height: CGFloat = 32
 
     init(showsWhenAway: Bool = false) {
         self.showsWhenAway = showsWhenAway
         super.init(frame: NSRect(x: 0, y: 0, width: Self.height, height: Self.height))
         wantsLayer = true
+        layer?.cornerRadius = Self.height / 2
+        layer?.borderWidth = 0.5
+        layer?.masksToBounds = false
         shadow = {
             let s = NSShadow()
-            s.shadowColor = NSColor.black.withAlphaComponent(0.22)
-            s.shadowBlurRadius = 8
+            s.shadowColor = NSColor.black.withAlphaComponent(0.18)
+            s.shadowBlurRadius = 6
             s.shadowOffset = NSSize(width: 0, height: -1)
             return s
         }()
-        arrow.image = Theme.symbol("arrow.down", size: 13, weight: .semibold)
         arrow.setAccessibilityLabel("To the end")
         arrow.imageScaling = .scaleNone
-        for v in [arrow, label] as [NSView] { addSubview(v) }
+        dots.look = .working(progress: nil)
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 3.5
+        for v in [arrow, dots, dot] as [NSView] { addSubview(v) }
         isHidden = true
         toolTip = "Scroll to the end"
-        themed { v in v.needsDisplay = true; v.tint() }
+        themed { v in v.tint() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -60,7 +70,7 @@ final class NewBelowButton: NSView {
         refresh()
     }
 
-    /// Something new came below, said (`words`) while the view's away.
+    /// Something new came below, said (`words`, in its tooltip) while the view's away.
     func announce(_ words: String) {
         news = words
         refresh()
@@ -76,43 +86,34 @@ final class NewBelowButton: NSView {
         let shown = away && (news != nil || showsWhenAway)
         isHidden = !shown
         guard shown else { return }
-        label.stringValue = news ?? ""
-        label.isHidden = news == nil
-        label.sizeToFit()
-        let w = news == nil ? Self.height : ceil(label.frame.width) + 12 + 14 + 6 + 14
-        let y = superview?.isFlipped == true ? area.maxY - 12 - Self.height : area.minY + 12
-        frame = NSRect(x: (area.midX - w / 2).rounded(), y: y, width: w, height: Self.height)
+        let s = Self.height
+        let y = superview?.isFlipped == true ? area.maxY - 10 - s : area.minY + 10
+        frame = NSRect(x: (area.midX - s / 2).rounded(), y: y, width: s, height: s)
+        // At work, not under the pointer: its dots; else the way down — a
+        // caret over the dots, an arrow at rest.
+        let showDots = working && !hovering
+        dots.isHidden = !showDots
+        arrow.isHidden = showDots
+        arrow.image = Theme.symbol(working ? "chevron.down" : "arrow.down", size: 13, weight: .semibold)
+        dot.isHidden = news == nil
+        toolTip = news.map { "Scroll to what's new: \($0.lowercased())" } ?? "Scroll to the end"
         tint()
-        toolTip = news == nil ? "Scroll to the end" : "Scroll to what's new"
         needsLayout = true
-        needsDisplay = true
     }
 
     private func tint() {
-        arrow.contentTintColor = news == nil ? Theme.text.withAlphaComponent(0.8) : Tints.accentText
-        label.textColor = Tints.accentText
+        layer?.backgroundColor = (hovering ? Theme.panel.blended(withFraction: 0.06, of: Theme.text) ?? Theme.panel : Theme.panel).cgColor
+        layer?.borderColor = Theme.washLine.cgColor
+        arrow.contentTintColor = Theme.text.withAlphaComponent(0.8)
+        dot.layer?.backgroundColor = Theme.accent.cgColor
     }
 
     override func layout() {
         super.layout()
-        if news == nil {
-            arrow.frame = bounds
-        } else {
-            arrow.frame = NSRect(x: 12, y: 0, width: 14, height: bounds.height)
-            label.frame.origin = NSPoint(x: arrow.frame.maxX + 6, y: ((bounds.height - label.frame.height) / 2).rounded())
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let capsule = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        let panel = Theme.panel.withAlphaComponent(1)
-        let ground = (panel.blended(withFraction: hovering ? 0.14 : 0.07, of: Theme.text) ?? panel).withAlphaComponent(0.94)
-        ground.setFill()
-        capsule.fill()
-        (news == nil ? EdgeColor.hairline : Tints.accentText.withAlphaComponent(0.45)).setStroke()
-        capsule.lineWidth = 1
-        capsule.stroke()
+        arrow.frame = bounds
+        let g = StatusGlyph.size
+        dots.frame = NSRect(x: (bounds.width - g) / 2, y: (bounds.height - g) / 2, width: g, height: g)
+        dot.frame = NSRect(x: bounds.maxX - 8, y: isFlipped ? 1 : bounds.maxY - 8, width: 7, height: 7)
     }
 
     override func updateTrackingAreas() {
@@ -120,8 +121,8 @@ final class NewBelowButton: NSView {
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect], owner: self))
         super.updateTrackingAreas()
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true; NSCursor.pointingHand.set() }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { hovering = true; tint(); NSCursor.pointingHand.set() }
+    override func mouseExited(with event: NSEvent) { hovering = false; tint() }
     // The pointing hand over it — set again as the pointer moves, after the
     // move's been handled, since the text it sits over (a comment's, an
     // editor's) sets its I-beam as the pointer moves, too.

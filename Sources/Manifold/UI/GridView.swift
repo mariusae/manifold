@@ -325,8 +325,10 @@ final class GridView: NSView, NSDraggingSource {
                     let wasFocused = self.focused == id
                     self.delegate?.gridFocus(id)
                     if mods.contains(.option) || mods.contains(.shift) { self.delegate?.gridSqueeze(id); return }
+                    // Grown either way (a step, or shown from its bar): the
+                    // pointer follows the bar to where it was clicked.
+                    self.pendingWarp = (id, NSEvent.mouseLocation, pill?.frame ?? self.barTargets[id] ?? .zero, Date())
                     guard wasFocused else { self.delegate?.gridReveal(id); return }
-                    self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
                 }
                 pill.onPathClick = { [weak self] in
@@ -519,6 +521,21 @@ final class GridView: NSView, NSDraggingSource {
         needsLayout = true
         layoutSubtreeIfNeeded()
         return "re-added"
+    }
+
+    /// Debugging: a tile's bar clicked as the pointer does — a press and a
+    /// release posted on its title, hit-tested by the window.
+    func debugClickBar(_ placement: PlacementID) -> String {
+        guard let pill = pills[placement], let window else { return "no bar" }
+        let r = pill.convert(pill.bounds, to: nil)
+        let p = NSPoint(x: r.minX + min(120, r.width / 2), y: r.midY)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+                NSApp.postEvent(e, atStart: false)
+            }
+        }
+        return "clicked at \(Int(p.x)) \(Int(p.y))"
     }
 
     func debugBadge(_ placement: PlacementID, _ arg: String) -> String {
@@ -2111,16 +2128,29 @@ final class GridView: NSView, NSDraggingSource {
     /// A bar clicked to grow its tile: the pointer goes where it was on
     /// the bar once the grow has moved the bar (§3.1), so a click again
     /// grows again. Given up after a moment if nothing moved.
-    private var pendingWarp: (id: PlacementID, at: NSPoint, from: NSRect, since: Date)?
+    /// `pointer`: where it was (on the screen) when the bar was clicked;
+    /// `from`: where the bar was then, as it showed.
+    private var pendingWarp: (id: PlacementID, pointer: NSPoint, from: NSRect, since: Date)?
 
+    /// The pointer moved by as much as the bar moved (not to the bar's new
+    /// place by where it was clicked in it: a collapsed bar's frame and an
+    /// open one's differ by a hair, and that was taken for a move) — only
+    /// if it moved a few points, and only if the pointer's still where the
+    /// click left it (moved on since, it's left alone).
     private func warpIfGrown() {
         guard let w = pendingWarp else { return }
         guard let bar = barTargets[w.id], let window else { pendingWarp = nil; return }
-        if bar != w.from {
+        let was = window.convertToScreen(convert(w.from, to: nil)), now = window.convertToScreen(convert(bar, to: nil))
+        let dx = now.minX - was.minX, dy = now.maxY - was.maxY
+        if abs(dx) > 2 || abs(dy) > 2 {
             pendingWarp = nil
-            let p = convert(NSPoint(x: bar.minX + w.at.x, y: bar.minY + w.at.y), to: nil)
-            Pointer.warp(to: window.convertPoint(toScreen: p))
-        } else if Date().timeIntervalSince(w.since) > 1 {
+            let here = NSEvent.mouseLocation
+            guard hypot(here.x - w.pointer.x, here.y - w.pointer.y) < 6 else { return }
+            Pointer.warp(to: NSPoint(x: w.pointer.x + dx, y: w.pointer.y + dy))
+        } else if Date().timeIntervalSince(w.since) > 2.5 {
+            // Nothing moved in a while (a grow down keeps the bar where it
+            // is; a host slow to answer): let go, so a later layout's
+            // move isn't taken for this click's.
             pendingWarp = nil
         }
     }

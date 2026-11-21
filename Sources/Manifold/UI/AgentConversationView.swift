@@ -45,6 +45,11 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     private var document = ""
     private var version = 0
     private var poll: Timer?
+    /// Scrolled up from its end: the way back, its working dots while it works.
+    private let endPill = NewBelowButton(showsWhenAway: true)
+    private var atEnd = true
+    /// What the conversation held when last shown (turns, and how much of the last).
+    private var contentKey = ""
 
     init(placement: PlacementID, block: BlockID, page: MarkdownView) {
         self.placement = placement
@@ -59,6 +64,13 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         page.ownOutline = { [weak self] in self?.turnEntries() ?? [] }
         page.ownPreview = { [weak self] i in self?.turnPreview(i) ?? [] }
         addSubview(page)
+        addSubview(endPill, positioned: .above, relativeTo: page)
+        page.onAtEnd = { [weak self] end in
+            guard let self else { return }
+            self.atEnd = end
+            self.endPill.place(over: self.page.frame, away: !end)
+        }
+        endPill.onClick = { [weak self] in self?.page.scrollToEnd() }
         composer.font = Self.inputFont
         composer.isRichText = true
         composer.importsGraphics = false
@@ -140,7 +152,14 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
             : (b.terminal?.turns?.isEmpty ?? true) ? "Ask \(name)…" : "Reply to \(name)…"
         box.leading = standing == .working ? [stopButton] : []
         tellEnd(working: standing == .working)
+        endPill.working = standing == .working
         guard md != document else { return }
+        // Something new below (a turn, or more of one — not the working
+        // line's words changing), while it's scrolled up: said on the pill.
+        let turns = b.terminal?.turns ?? []
+        let grown = "\(turns.count)|\(turns.last.flatMap { contents[$0.id]?.count } ?? 0)|\(turns.last?.message?.count ?? 0)|\(queued().count)"
+        if !atEnd, !document.isEmpty, grown != contentKey { endPill.announce("More below") }
+        contentKey = grown
         document = md
         version &+= 1
         page.textChanged()
@@ -227,6 +246,7 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         let bh = min(box.wantedHeight, max(56, bounds.height / 2))
         box.frame = NSRect(x: pad, y: pad, width: w, height: bh)
         page.frame = NSRect(x: 0, y: box.frame.maxY + 8, width: bounds.width, height: max(0, bounds.height - box.frame.maxY - 8))
+        endPill.place(over: page.frame, away: !atEnd)
     }
 
     // MARK: As a tile's content

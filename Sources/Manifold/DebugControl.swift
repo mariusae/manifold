@@ -559,6 +559,10 @@ enum DebugControl {
             let a = arg.split(separator: " ").map(String.init)
             if a.first == "golink", a.count > 1 { return wc.debugFollowLink(toPlacementEndingIn: a[1], modifiers: a.dropFirst(2).first == "over" ? .option : a.dropFirst(2).first == "beside" ? .command : []) }
             if a.first == "focus", a.count > 1, !wc.debugFocus(placementEndingIn: a[1]) { return "no \(a[1])" }
+            // "dock barclick <placement suffix>": that tile's bar clicked, as the pointer does.
+            if a.first == "barclick", a.count > 1, let p = wc.arrangement?.placements.first(where: { $0.id.hasSuffix(a[1]) }) {
+                return wc.content.debugClickBar(p.id)
+            }
             return wc.debugDock(arg)
         case "type":
             // "type <text>": into the focused editor.
