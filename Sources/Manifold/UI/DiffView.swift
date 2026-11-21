@@ -1469,9 +1469,12 @@ final class CommitHeaderView: NSView {
         // paragraph's first line) alone, cut short.
         var message = h.message.trimmingCharacters(in: .newlines)
         if folded { message = message.components(separatedBy: "\n").first ?? message }
+        // Lines 1.4 times its size apart, as prose set close (a multiple of
+        // the font's own height, 1.3, was 1.56 of its size: loose).
+        let natural = body.ascender - body.descender + body.leading
         let shown = NSMutableAttributedString(attributedString: MarkdownText.attributed(
             message, font: body, code: code, color: Theme.text, strong: Theme.text,
-            lineHeight: 1.3, tracking: theme.technicalTracking(body)))
+            lineHeight: natural > 0 ? 1.4 * body.pointSize / natural : 1.15, tracking: theme.technicalTracking(body)))
         if folded {
             let p = NSMutableParagraphStyle()
             p.lineBreakMode = .byTruncatingTail

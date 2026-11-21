@@ -1,9 +1,9 @@
 import AppKit
 import ManifoldCore
 
-/// Docking seen (§3.1): a tile docked shrinks into its row in the sidebar,
-/// and one undocked grows back out of it; a tile closed goes in a puff
-/// (the grid's), one moved to another space fades as it goes.
+/// Docking seen (§3.1): a tile docked goes as a closed one does, drifting
+/// toward its row in the sidebar as it fades, and one undocked comes back
+/// the same way; a tile deleted fades, one moved to another space fades as it goes.
 extension MainWindowController {
     // MARK: Flying
 
@@ -123,9 +123,8 @@ extension MainWindowController {
         return onDesk ? .moved : .closed
     }
 
-    /// After: each flown, as the Dock's genie — a tile drawn down into its
-    /// row in the sidebar, or poured back out of it — the tile itself
-    /// showing once it's there.
+    /// After: each gone toward its row in the sidebar, or come back from
+    /// it — the tile itself showing once it's there.
     func flyDock(_ f: DockFlights?) {
         guard let f, let host = root.layer, let a = arrangement, let space = selected else { return }
         content.layoutSubtreeIfNeeded()
@@ -133,7 +132,8 @@ extension MainWindowController {
         let scale = root.backingScale
         let d = Genie.duration
         let rows = sidebar.organizationView
-        let tint = Theme.accent.cgColor
+        // Not marked in the accent going (a tile's going isn't a status).
+        let tint: CGColor? = nil
         // The sidebar's edge: a tile's row built up as much of it as is past.
         let edge = root.convert(sidebar.bounds, from: sidebar).maxX
         // Into its row: a gap opening for the row as the tile pours into
@@ -147,7 +147,6 @@ extension MainWindowController {
         for (id, bar) in f.bars {
             if let row = rows.row(of: id, in: space, in: root) {
                 Genie.fly(bar, to: row, rowPicture: rows.picture(of: id, in: root)?.image, tint: tint, in: host, over: d, scale: scale)
-                rows.markLanding(id, tint: tint, arriving: true, over: d)
                 rows.wipe(id, in: true, after: d * 0.6, over: d * 0.4)
             } else {
                 Genie.fly(bar, to: edgeSpot(bar.whole), tint: tint, in: host, over: d, scale: scale)
@@ -155,9 +154,7 @@ extension MainWindowController {
         }
         for (id, tile) in f.down {
             if let row = rows.row(of: id, in: space, in: root) {
-                let arrival = Genie.run(tile, target: Self.slotEnd(row), restoring: false, in: host, scale: scale, tint: tint, boundary: edge)
-                rows.markLanding(id, tint: tint, arriving: true, over: d)
-                if let arrival, arrival.count > 1 { rows.build(id, progress: arrival, over: d) }
+                Genie.run(tile, target: Self.slotEnd(row), restoring: false, in: host, scale: scale, tint: tint, boundary: edge)
             } else {
                 Genie.run(tile, target: edgeSpot(tile.whole), restoring: false, in: host, scale: scale, tint: tint)
             }
@@ -179,18 +176,13 @@ extension MainWindowController {
                                             scale: scale, tint: tint, boundary: inSidebar ? edge : nil)
                     guard arrival != nil else { continue }
                     landing += content.tileViews(of: b)
-                    if inSidebar, let arrival, arrival.count > 1 {
-                        rows.markLanding(id, tint: tint, arriving: false, over: d)
-                        rows.build(id, progress: arrival, over: d)
-                        closing = true
-                    }
+                    if inSidebar { closing = true }
                 } else if let bar = bars[id] {
                     let bar = bar.converted(from: content, to: root)
                     let picture = inSidebar ? rows.picture(of: id, in: root)?.image : nil
                     Genie.fly(bar, to: inSidebar ? from : edgeSpot(bar.whole), out: true, rowPicture: picture, tint: tint, in: host, over: d, scale: scale)
                     if let v = content.bar(of: id) { landing.append(v) }
                     if inSidebar {
-                        rows.markLanding(id, tint: tint, arriving: false, over: d)
                         rows.wipe(id, in: false, after: 0, over: d * 0.4)
                         closing = true
                     }

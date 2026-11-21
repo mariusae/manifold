@@ -21,9 +21,6 @@ final class ChatBox: NSView {
         static func == (a: Chip, b: Chip) -> Bool { a.symbol == b.symbol && a.image === b.image && a.title == b.title && a.detail == b.detail && a.mention == b.mention }
     }
 
-    /// A card for a block referred to in what's written (the window's).
-    static var chipFor: ((String) -> Chip?)?
-
     let composer: ComposerTextView
     private let scroll = NSScrollView()
     let placeholder = NSTextField(labelWithString: "")
@@ -39,25 +36,13 @@ final class ChatBox: NSView {
     }
     /// What it's about (a new thread's place), first.
     var chips: [Chip] = [] { didSet { if chips != oldValue { rebuildCards() } } }
-    /// Then a card for each block referred to in what's written, as Dia's.
-    private var mentionChips: [Chip] = []
-
-    /// The references' cards made again from what's written.
-    func updateMentions() {
-        let made = composer.mentionedBlocks.compactMap { id -> Chip? in
-            guard var c = Self.chipFor?(id) else { return nil }
-            c.mention = id
-            c.block = BlockID(string: id)
-            return c
-        }
-        guard made != mentionChips else { return }
-        mentionChips = made
-        rebuildCards()
-    }
+    /// A block referred to in what's written is its pill there: not a
+    /// card above it as well (the box grew a row for what showed already).
+    func updateMentions() {}
 
     private func rebuildCards() {
         chipViews.forEach { $0.removeFromSuperview() }
-        chipViews = (chips + mentionChips).map { c in
+        chipViews = chips.map { c in
             let v = ChipView(c)
             if let id = c.mention { v.onRemove = { [weak self] in self?.composer.removeMention(id) } }
             return v

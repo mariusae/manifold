@@ -35,7 +35,7 @@ final class SearchPreviewView: NSView {
     var open: (String, Int) -> Void = { _, _ in }
     var font: NSFont = .systemMono(ofSize: 12, weight: .regular) { didSet { if font != oldValue { shownKey = nil; show(hit, query: query, root: root) } } }
 
-    private let title = NSTextField.label(font: .systemFont(ofSize: 11.5, weight: .medium), color: Theme.secondaryText, cut: .byTruncatingHead)
+    private let title = NSTextField.label(font: .systemFont(ofSize: 11, weight: .medium), color: Theme.secondaryText, cut: .byTruncatingHead)
     private let scroll = ClippingScrollView()
     /// The file's text: a view made afresh for each file, on the text
     /// system laid out for it off the main thread.

@@ -16,30 +16,28 @@ struct SummaryCardContent {
     /// as its tile's bar has it.
     var agent: AgentTag? = nil
 
+    /// The agent's pill, as its bar draws it (`AgentNamePill`): its
+    /// maker's mark and its name on its colour — one design wherever it's shown.
     struct AgentTag: Equatable {
         var name: String
         var color: NSColor
         var ink: NSColor
+        var mark: NSImage?
 
         init?(_ block: Block?) {
             guard let block, let color = AgentLook.color(of: block) else { return nil }
             name = AgentLook.name(of: block)
             self.color = color
             ink = AgentLook.ink(on: block)
+            mark = Theme.symbol(Theme.symbolName(for: block), size: 9, weight: .semibold, color: ink)
         }
 
-        static let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        var width: CGFloat { ceil((name as NSString).size(withAttributes: [.font: Self.font]).width) + 14 }
+        static func == (a: AgentTag, b: AgentTag) -> Bool { a.name == b.name && a.color == b.color && a.ink == b.ink }
 
-        /// The pill, its name in the middle (by its capitals), in `r` (flipped).
-        func draw(in r: NSRect) {
-            color.setFill()
-            NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
-            let attrs: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: ink]
-            let w = (name as NSString).size(withAttributes: attrs).width
-            let f = Self.font
-            (name as NSString).draw(at: NSPoint(x: (r.midX - w / 2).rounded(), y: (r.midY + f.capHeight / 2 - f.ascender).rounded()), withAttributes: attrs)
-        }
+        var width: CGFloat { AgentNamePill.width(name: name, mark: mark != nil) }
+
+        /// The pill in `r` (flipped).
+        func draw(in r: NSRect) { AgentNamePill.draw(name: name, color: color, ink: ink, mark: mark, in: r, flipped: true) }
     }
 
     /// Whether a card drawn from `other` would look different from this
@@ -194,7 +192,8 @@ final class SummaryCard: NSView {
         }
         if let age = content.age, let r = head.age { AgeBadge.draw(age, in: r) }
         if let note = head.noteText, let at = head.note {
-            // The status shown by its glyph, the note is only when, in grey.
+            // The status shown by its glyph, the note is only when, in grey
+            // (without one, the note's colour is all that says how it went).
             let ink = content.mark?.glyph != nil ? Theme.secondaryText : toneColor(s.tone)
             NSAttributedString(string: note, attributes: [.font: UIType.detail, .foregroundColor: ink]).draw(at: at)
         }
@@ -273,7 +272,9 @@ final class SummaryCard: NSView {
         let card = inTile ? bounds : bounds.insetBy(dx: 1, dy: 1)
         let head = headline(card: card, right: titleRoomRight)
         glyph.look = content.mark?.glyph
-        glyph.isHidden = head.glyph == nil
+        // In its tile, the bar says the status: not again over the card's
+        // note (a sleeping agent's moon was drawn over its time).
+        glyph.isHidden = inTile || head.glyph == nil
         glyph.frame = head.glyph ?? .zero
     }
 
@@ -283,8 +284,10 @@ final class SummaryCard: NSView {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
         var noteWidth: CGFloat = 0
-        if note, let n = s.note {
-            let a = NSAttributedString(string: n, attributes: [.font: UIType.detail, .foregroundColor: toneColor(s.tone)])
+        // The note in grey, and not what the status's glyph says already:
+        // colour is the glyph's (one status rule), the note only when.
+        if note, let n = s.note, !["running", "working", "searching"].contains(n) {
+            let a = NSAttributedString(string: n, attributes: [.font: UIType.detail, .foregroundColor: Theme.secondaryText])
             noteWidth = a.size().width + 10
             a.draw(at: NSPoint(x: right - a.size().width, y: top + 1))
         }

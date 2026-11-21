@@ -4,7 +4,7 @@ import ManifoldCore
 /// An agent's conversation (§3.8) — its "default thread", the other side of
 /// its tile from its terminal (⌘↩): every turn, what you asked in the
 /// technical face, what it did on the way folded to a line, what it said
-/// rendered in the reading face as a preview is — the latest last, kept in
+/// rendered in the editing face as a preview renders — the latest last, kept in
 /// view as it grows — and under it a composer, in the technical face too,
 /// whose ↩ types what's written into the agent as its next prompt (when
 /// it's free: waiting meanwhile, said at the end of the conversation).
@@ -26,6 +26,9 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
     var queued: () -> [String] = { [] }
     /// Whether it's running: an agent at its prompt, not a shell it left.
     var runs: (Block) -> Bool = { _ in true }
+    /// Whether what's sent reaches it asleep — woken in its project — or
+    /// it must be started in its terminal: said so before you write.
+    var wakes: (Block) -> Bool = { _ in true }
     var onSend: ((String) -> Void)?
     var onStop: (() -> Void)?
     /// Whether the end of the page, where what it's doing is said, is out
@@ -132,7 +135,9 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         let standing: AgentConversation.Standing = !runs(b) ? .asleep : b.statusState == .blocked ? .needsYou : b.statusState == .working ? .working : .idle
         let md = AgentConversation.markdown(turns: b.terminal?.turns ?? [], contents: contents, standing: standing, queued: queued(), doing: b.agentDoing)
         let name = AgentLook.name(of: b)
-        box.placeholder.stringValue = standing == .asleep ? "Wake \(name) with a prompt…" : (b.terminal?.turns?.isEmpty ?? true) ? "Ask \(name)…" : "Reply to \(name)…"
+        box.placeholder.stringValue = standing == .asleep
+            ? (wakes(b) ? "Wake \(name) with a prompt…" : "\(name) is asleep — start it in its terminal (⌘↩)")
+            : (b.terminal?.turns?.isEmpty ?? true) ? "Ask \(name)…" : "Reply to \(name)…"
         box.leading = standing == .working ? [stopButton] : []
         tellEnd(working: standing == .working)
         guard md != document else { return }

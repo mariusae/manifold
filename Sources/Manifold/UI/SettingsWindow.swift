@@ -47,7 +47,9 @@ final class SettingsWindow: NSWindowController {
     /// Typography's tab put in or taken out, as advanced typography is on.
     private func showTypographyTab() {
         guard let item = typographyItem else { return }
-        let on = source.appearance().advancedTypography
+        // Always: Custom is one of the Fonts, its roles set in the pane
+        // (it took a checkbox here and another there to reach it).
+        let on = true
         let shown = tabs.tabViewItems.contains(item)
         if on, !shown { tabs.insertTabViewItem(item, at: 1) }
         if !on, shown { tabs.removeTabViewItem(item) }
@@ -233,11 +235,9 @@ final class AppearancePane: SettingsPane {
     private var showEditor: ((EditorFont) -> Void)?
     private var showIcons: ((IconSet) -> Void)?
     private var showContrast: ((ContrastCorrection) -> Void)?
-    private let tints = TintPicker()
     private let colorThemes = ColorThemePicker()
     private lazy var colorCarousel = ThemeCarousel(colorThemes)
     private let themes = FontThemeList()
-    private let advanced = Flat.checkbox("Enable advanced typography")
 
     init(_ source: SettingsSource) { super.init(source, title: "Appearance") }
     required init?(coder: NSCoder) { fatalError() }
@@ -250,14 +250,9 @@ final class AppearancePane: SettingsPane {
         row("Appearance", scheme)
         colorThemes.onPick = { [weak self] p in self?.source.change { (a: inout Appearance) in a.colorTheme = p.id } }
         row("Theme", colorCarousel, note: "Every colour, light and dark.")
-        tints.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.tint = t } }
-        row("Accent", tints, note: "The focus ring, the caret, selections.")
         gap()
         themes.onPick = { [weak self] t in self?.source.change { (a: inout Appearance) in a.theme = t } }
         row("Fonts", themes, top: true)
-        advanced.target = self
-        advanced.action = #selector(toggleAdvanced)
-        row("", advanced, note: "A Typography pane and a Custom theme.")
         let (editor, e) = segments(["Editing Font", "Monospaced"], [EditorFont.proportional, .monospaced]) { [weak self] v in
             self?.source.change { (a: inout Appearance) in a.editorFont = v }
         }
@@ -267,13 +262,15 @@ final class AppearancePane: SettingsPane {
             self?.source.change { (a: inout Appearance) in a.icons = v }
         }
         showIcons = i
-        row("Icons", icons, note: "Pierre's, drawn for files, diffs and threads, or the system's.")
+        _ = icons
         gap()
-        let (contrast, c) = segments(["Off", "Typical Vision", "Typical and Deuteranopia"], [ContrastCorrection.off, .typical, .deuteranopia]) { [weak self] v in
-            self?.source.change { (a: inout Appearance) in a.contrastCorrection = v }
-        }
-        showContrast = c
-        row("Contrast", contrast, note: "Programs' colours lifted to WCAG AA.")
+        // One switch: lifted for every eye (typical vision and deuteranopia
+        // both), or not at all — a third way between was a choice to explain.
+        let contrast = Flat.checkbox("Lift programs' colours to WCAG AA")
+        contrast.target = self
+        contrast.action = #selector(toggleContrast(_:))
+        showContrast = { [weak contrast] v in contrast?.state = v == .off ? .off : .on }
+        row("Contrast", contrast, note: "For typical vision and for deuteranopia alike.")
     }
 
     override func refresh() {
@@ -281,141 +278,23 @@ final class AppearancePane: SettingsPane {
         showScheme?(a.colorScheme)
         colorThemes.chosen = Palette.named(a.colorTheme).id
         colorCarousel.reveal(colorThemes.chosenRect)
-        tints.tint = a.tint
-        themes.advanced = a.advancedTypography
+        themes.advanced = true
         themes.theme = a.theme
-        advanced.state = a.advancedTypography ? .on : .off
         showEditor?(a.editorFont)
         showIcons?(a.icons)
         showContrast?(a.contrastCorrection)
     }
 
-    /// Advanced typography on (Typography's pane, Custom offered) or off —
-    /// leaving Custom, if it was set in it, for Apple.
-    @objc private func toggleAdvanced() {
-        let on = advanced.state == .on
-        source.change { (a: inout Appearance) in
-            a.advancedTypography = on
-            if !on, a.theme == .custom { a.theme = .apple }
-        }
+    @objc private func toggleContrast(_ sender: NSButton) {
+        let on = sender.state == .on
+        source.change { (a: inout Appearance) in a.contrastCorrection = on ? .deuteranopia : .off }
     }
 
-    /// For DebugControl: advanced typography turned on or off, as a click would.
-    func debugSetAdvanced(_ on: Bool) {
-        advanced.state = on ? .on : .off
-        toggleAdvanced()
-    }
-
-    /// For DebugControl: a tint picked, as a click on its swatch.
-    func debugPickTint(_ t: Tint) { tints.debugPick(t) }
+    /// For DebugControl: kept for its callers — Typography is always there now.
+    func debugSetAdvanced(_ on: Bool) {}
 
     /// For DebugControl: a colour theme picked, as a click on its card.
     func debugPickColorTheme(_ id: String) { colorThemes.debugPick(id) }
-}
-
-/// The tints, as swatches: the one chosen ringed, its name beside them.
-final class TintPicker: NSView {
-    var tint: Tint = .blue { didSet { needsDisplay = true; name.stringValue = tint.title; needsLayout = true } }
-    var onPick: ((Tint) -> Void)?
-    private let name = NSTextField.label(color: Theme.secondaryText)
-    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
-    private static let side: CGFloat = 20, spacing: CGFloat = 10
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        addSubview(name)
-        for (i, t) in Tint.allCases.enumerated() { addToolTip(rect(i), owner: t.title as NSString, userData: nil) }
-    }
-
-    required init?(coder: NSCoder) { fatalError() }
-
-    private var swatchesWidth: CGFloat { CGFloat(Tint.allCases.count) * (Self.side + Self.spacing) - Self.spacing }
-    override var intrinsicContentSize: NSSize { NSSize(width: swatchesWidth + 12 + 80, height: Self.side + 6) }
-
-    private func rect(_ i: Int) -> NSRect {
-        NSRect(x: 3 + CGFloat(i) * (Self.side + Self.spacing), y: 3, width: Self.side, height: Self.side)
-    }
-
-    override func layout() {
-        super.layout()
-        name.sizeToFit()
-        name.frame.origin = NSPoint(x: swatchesWidth + 14, y: (bounds.height - name.frame.height) / 2)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        for (i, t) in Tint.allCases.enumerated() {
-            let r = rect(i)
-            if t == .system {
-                // System: the system's own colours round it, as macOS draws
-                // its Multicolor — not a second blue beside Blue.
-                let colors: [NSColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemBlue, .systemPurple, .systemPink]
-                let c = NSPoint(x: r.midX, y: r.midY)
-                for (k, color) in colors.enumerated() {
-                    let wedge = NSBezierPath()
-                    wedge.move(to: c)
-                    wedge.appendArc(withCenter: c, radius: r.width / 2, startAngle: CGFloat(k) * 360 / CGFloat(colors.count) + 90,
-                                    endAngle: CGFloat(k + 1) * 360 / CGFloat(colors.count) + 90)
-                    wedge.close()
-                    color.setFill()
-                    wedge.fill()
-                }
-            } else if t == .theme {
-                // Theme: its accent on its paper, halved across.
-                Theme.windowBackground.setFill()
-                NSBezierPath(ovalIn: r).fill()
-                NSGraphicsContext.saveGraphicsState()
-                NSBezierPath(ovalIn: r).addClip()
-                let half = NSBezierPath()
-                half.move(to: NSPoint(x: r.minX, y: r.minY))
-                half.line(to: NSPoint(x: r.maxX, y: r.minY))
-                half.line(to: NSPoint(x: r.maxX, y: r.maxY))
-                half.close()
-                t.accent.setFill()
-                half.fill()
-                NSGraphicsContext.restoreGraphicsState()
-                EdgeColor.hairline.setStroke()
-                NSBezierPath(ovalIn: r.insetBy(dx: 0.25, dy: 0.25)).stroke()
-            } else {
-                t.accent.setFill()
-                NSBezierPath(ovalIn: r).fill()
-            }
-            if t == tint || hovered == i {
-                let ring = NSBezierPath(ovalIn: r.insetBy(dx: -2.5, dy: -2.5))
-                ring.lineWidth = 1.5
-                (t == tint ? Theme.text : Theme.secondaryText.withAlphaComponent(0.5)).setStroke()
-                ring.stroke()
-            }
-            // System: half the swatch its blend of the others, as macOS draws it.
-            if t == .system {
-                NSColor.white.withAlphaComponent(0.85).setFill()
-                NSBezierPath(ovalIn: r.insetBy(dx: 6.5, dy: 6.5)).fill()
-            }
-        }
-    }
-
-    private func index(at p: NSPoint) -> Int? {
-        Tint.allCases.indices.first { rect($0).insetBy(dx: -4, dy: -4).contains(p) }
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
-    }
-
-    override func mouseMoved(with event: NSEvent) { hovered = index(at: convert(event.locationInWindow, from: nil)) }
-    override func mouseExited(with event: NSEvent) { hovered = nil }
-    override func resetCursorRects() { for i in Tint.allCases.indices { addCursorRect(rect(i), cursor: .pointingHand) } }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let i = index(at: convert(event.locationInWindow, from: nil)) else { return }
-        let t = Tint.allCases[i]
-        tint = t
-        onPick?(t)
-    }
-
-    /// For DebugControl: a tint picked, as a click would.
-    func debugPick(_ t: Tint) { tint = t; onPick?(t) }
 }
 
 /// The colour themes, each a small Manifold window in its own colours as
@@ -534,8 +413,8 @@ final class ColorThemePicker: NSView {
             shape.addClip()
             body.setFill()
             t.fill()
-            // Its bar as the theme has it (Spectrum's focused one clay).
-            c((focused ? p.chrome.barFocused : nil) ?? p.chrome.bar ?? p.chrome.panel).setFill()
+            // Its bar as the theme has it, focused or not: the frame says focus.
+            c(p.chrome.bar ?? p.chrome.panel).setFill()
             NSRect(x: t.minX, y: t.minY, width: t.width, height: 12).fill()
             c(p.chrome.divider).setFill()
             NSRect(x: t.minX, y: t.minY + 12, width: t.width, height: 0.5).fill()
@@ -659,7 +538,7 @@ final class FontThemeList: NSView {
         for (i, t) in themes.enumerated() {
             let r = rect(i)
             if t == chosen || hovered == i {
-                (t == chosen ? Theme.selection : Theme.hover).setFill()
+                (t == chosen ? Flat.chosen() : Theme.hover).setFill()
                 Flat.rowBand(r.insetBy(dx: -6, dy: 0)).fill()
             }
             let name = NSAttributedString(string: t.title, attributes: [.font: t.font(.proportional, size: 13), .foregroundColor: Theme.text])

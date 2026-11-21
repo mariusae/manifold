@@ -14,6 +14,8 @@ extension MainWindowController {
     /// to its bar); nil takes the ring away. Whether it was.
     @discardableResult
     func spotlightTile(_ placement: PlacementID?) -> Bool {
+        Self.spotlightPending?.cancel()
+        Self.spotlightPending = nil
         Self.spotlightRing?.removeFromSuperlayer()
         Self.spotlightRing = nil
         guard let placement, let a = arrangement, let p = a.placement(placement), a.locate(placement) != nil,
@@ -32,16 +34,19 @@ extension MainWindowController {
         ring.borderWidth = 2.5
         root.effectiveAppearance.performAsCurrentDrawingAppearance {
             ring.borderColor = color.cgColor
-            ring.shadowColor = color.cgColor
         }
-        ring.shadowOpacity = 0.6
-        ring.shadowRadius = 8
-        ring.shadowOffset = .zero
         ring.zPosition = 1000
-        host.addSublayer(ring)
-        Self.spotlightRing = ring
+        // After the pointer has rested a moment, as a card waits (running
+        // down the sidebar flashed rings across the grid); a plain ring.
+        let show = DispatchWorkItem {
+            host.addSublayer(ring)
+            Self.spotlightRing = ring
+        }
+        Self.spotlightPending = show
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: show)
         return true
     }
 
     nonisolated(unsafe) static var spotlightRing: CALayer?
+    nonisolated(unsafe) static var spotlightPending: DispatchWorkItem?
 }

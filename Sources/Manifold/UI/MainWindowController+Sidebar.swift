@@ -252,10 +252,19 @@ extension MainWindowController: OrganizationViewDelegate {
     }
 
     func organizationMenu(for node: OrgNode) -> NSMenu? {
+        // A tile's row in the space shown: its tile's own menu, the one its
+        // bar has — one menu for one tile, wherever it's asked for.
+        if node.style == .row, !node.docked, let arr = node.arrangement, arr == selected, let p = node.placement,
+           let menu = gridPillMenu(for: p) {
+            return menu
+        }
         let menu = organizationRowMenu(for: node) ?? NSMenu()
-        // Whatever the row: everything done or new seen at once.
-        if !menu.items.isEmpty { menu.addItem(.separator()) }
-        menu.addItem(ClosureMenuItem("Mark All Seen", symbol: "checkmark.circle") { [weak self] in self?.markAllSeen(nil) })
+        // A heading's (a host's, a space's): everything done or new seen at
+        // once — not on every block's row, which is about that block.
+        if node.block == nil || node.space != nil {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(ClosureMenuItem("Mark All Seen", symbol: "checkmark.circle") { [weak self] in self?.markAllSeen(nil) })
+        }
         return menu
     }
 
@@ -306,7 +315,9 @@ extension MainWindowController: OrganizationViewDelegate {
             })
             return menu
         }
-        if let arr = node.space {
+        // A space's own row — not the Docked label, which stands for the
+        // space only as where a tile flies to before its row is made.
+        if let arr = node.space, !node.id.hasSuffix("/docked") {
             menu.addItem(ClosureMenuItem("Rename Space…", symbol: "pencil") { [weak self] in self?.renameSpace(arr) })
             menu.addItem(ClosureMenuItem("Show in Inspector", symbol: "info.circle") { [weak self] in self?.inspect(.space(arr), open: true) })
             menu.addItem(.separator())
@@ -353,8 +364,6 @@ extension MainWindowController: OrganizationViewDelegate {
             menu.addItem(.separator())
         }
         menu.addItem(neighborhoodItem(id))
-        menu.addItem(.separator())
-        menu.addItem(hostSubmenu(id.host))
         return menu
     }
 

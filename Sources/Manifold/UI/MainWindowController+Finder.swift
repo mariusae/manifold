@@ -400,7 +400,7 @@ extension MainWindowController {
             case .terminal:
                 secondary = (block.terminal?.cwd ?? "") + " " + programs.joined(separator: " ")
                 detail = "Terminal in \(block.terminal?.cwd?.abbreviatingHome ?? "~")" + (agent.map { " · " + $0.name } ?? (programs.isEmpty ? "" : " · " + programs.prefix(3).joined(separator: ", ")))
-                note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "dormant" : (block.terminal?.busy == true ? "running" : "")
+                note = block.terminal?.dormantSince != nil && block.terminal?.pid == nil ? "asleep" : (block.terminal?.busy == true ? "running" : "")
             case .directory:
                 secondary = block.path ?? ""
                 detail = "Folder"

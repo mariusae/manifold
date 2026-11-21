@@ -196,7 +196,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.stack = sidebar.toasts
         toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
         toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
-        ChatBox.chipFor = { [weak self] id in self?.mentionChip(id) }
         watchCommandKey()
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
@@ -1025,6 +1024,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let c = AgentConversationView(placement: p.id, block: agent, page: markdownView(p, path: ""))
         c.source = { [weak self] in self?.hosts.block(agent) }
         c.runs = { Self.agentRuns($0) }
+        c.wakes = { [weak self] in self?.askable($0) ?? false }
         c.fetch = { [weak self] turns, done in
             guard let client = self?.hosts.client(of: agent) else { return done(nil) }
             client.turnContent(agent, turns: turns, done: done)
@@ -1033,7 +1033,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         c.onSend = { [weak self] text in
             guard let self, let b = self.hosts.block(agent) else { return }
             guard self.askable(b) else {
-                return self.toast.show("\(AgentLook.name(of: b)) isn't running — start it in its terminal", action: "Terminal", for: 6) { [weak self] in
+                return self.toast.show("\(AgentLook.name(of: b)) is asleep — start it in its terminal", action: "Terminal", for: 6) { [weak self] in
                     self?.toggleConversation(p.id)
                 }
             }
@@ -1041,7 +1041,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         // Esc, as its terminal takes it: an agent at work stops.
         c.onStop = { [weak self] in self?.hosts.propose(.input(block: agent, text: "\u{1b}")) }
-        c.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
+        c.composer.mentionSource = { [weak self] in self?.mentionSource(asks: false) ?? { _ in [] } }
         c.onEndHidden = { [weak self] hidden in self?.conversationEnd(p.id, hidden: hidden) }
         return c
     }
@@ -1517,12 +1517,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The focused block, while the window is key, is attended to: what
     /// it had done, or failed at, is read — whether you came to it done
-    /// or it finished while you were looking. The Dock badge counts the
-    /// blocks waiting on you, or done.
+    /// or it finished while you were looking. The Dock badge counts what
+    /// can't go on without you — blocked, or failed and not read — not
+    /// every turn that finished (it climbed with each; its dot says it).
     private func attend() {
         attendFocused()
         // Threads with something not seen (§3.12) wait on you too.
-        let waiting = hosts.blocks.filter { $0.statusRecord?.wantsAttention ?? false }.count + hosts.unseenThreads.count
+        let waiting = hosts.blocks.filter { b in
+            guard let r = b.statusRecord else { return false }
+            return r.state == .blocked || (r.state == .error && r.read != true)
+        }.count + hosts.unseenThreads.count
         let badge = waiting == 0 ? "" : "\(waiting)"
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
@@ -1650,6 +1654,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     /// The sidebar wasn't made again while it was put away.
     var organizationStale = false
+    /// What needed you when the space's list was last made (`refreshNeedsYou`).
+    var lastNeedsYou: [NeedsYouItem] = []
 
     func showSidebar(animated: Bool) {
         guard !sidebarShown else { return }
@@ -2034,14 +2040,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         appendToSelected(a.growing(f, whole: NSApp.currentEvent?.modifierFlags.contains(.shift) == true))
     }
 
-    @objc func fillColumn(_ sender: Any?) {
-        guard let f = arrangement?.focused else { return }
-        fill(f, keepingBars: false)
-    }
-
     /// The focused tile all its column but the others' bars (as its bar
-    /// ⌥-clicked): they stay in the grid, not docked.
-    @objc func fillColumnKeepingBars(_ sender: Any?) {
+    /// ⌥-clicked): they stay in the grid, not docked — one fill (another
+    /// docked the others; Maximize takes the whole space).
+    @objc func fillColumn(_ sender: Any?) {
         guard let f = arrangement?.focused else { return }
         gridSqueeze(f)
     }

@@ -112,18 +112,19 @@ extension MainWindowController: GridDelegate {
 
     func gridShrinkToSummary(_ placement: PlacementID) { toggleSummary(placement) }
 
-    /// ⇧⌘M: the focused tile down to its summary, or back.
+    /// ⇧⌘M: the focused tile down to its bar — the one capsule — or back.
     @objc func shrinkToSummary(_ sender: Any?) {
         guard let f = arrangement?.focused else { return NSSound.beep() }
         toggleSummary(f)
     }
 
-    /// The content height a tile is given in summary: three of its lines.
-    private static let summaryPoints: CGFloat = 60
+    /// The content height a tile minimized is given: none — its bar alone,
+    /// its summary in it (a card's three lines was a fourth size to be).
+    private static let summaryPoints: CGFloat = 0
 
-    /// A tile down to its summary — its height given to the biggest other
-    /// in its column — or, already there, back to the height it had (or,
-    /// not shrunk here, grown a little, as going to it does).
+    /// A tile down to its bar — its height given to the biggest other in
+    /// its column — or, already there, back to the height it had (or, not
+    /// shrunk here, grown a little, as going to it does).
     private func toggleSummary(_ placement: PlacementID) {
         guard let a = arrangement, a.full == nil, let body = contentHeight(of: placement, in: a) else { return NSSound.beep() }
         if ColumnMetrics.isSummary(body) {
@@ -297,8 +298,11 @@ extension MainWindowController: GridDelegate {
         appendToSelected(a.growing(placement))
     }
 
-    /// A pill ⌥-clicked: its tile fills the column, the others docked.
-    func gridFill(_ placement: PlacementID) { fill(placement, keepingBars: false) }
+    func gridReveal(_ placement: PlacementID) {
+        guard let a = arrangement else { return }
+        let events = showingSome([], in: a, placement: placement, bump: true)
+        if !events.isEmpty { appendToSelected(events) }
+    }
 
     /// A column as it was before a tile filled it — its tiles' shares, and
     /// those the filling docked — and as the filling left it, to tell it's
@@ -580,10 +584,10 @@ extension MainWindowController: GridDelegate {
             // Maximized, the column behind it: closed with it.
             menu.addItem(ClosureMenuItem("Close Column", symbol: "rectangle.stack.badge.minus") { [weak self] in self?.gridCloseColumn(placement) })
         }
-        menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.gridFill(placement) })
+        menu.addItem(ClosureMenuItem("Fill the Column", symbol: "rectangle.expand.vertical") { [weak self] in self?.gridSqueeze(placement) })
         if !maximized, contentHeight(of: placement, in: a) != nil {
             let summarized = isSummarized(placement)
-            menu.addItem(ClosureMenuItem(summarized ? "Show Content" : "Shrink to Summary", symbol: summarized ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
+            menu.addItem(ClosureMenuItem(summarized ? "Show Content" : "Minimize to Its Bar", symbol: summarized ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
                                          key: "M") { [weak self] in self?.toggleSummary(placement) })
         }
         if let t = hosts.block(block)?.text, t.isDirty {
@@ -657,16 +661,18 @@ extension MainWindowController: GridDelegate {
         if let outline = outlinerItem(block, tile: placement) { menu.addItem(outline) }
         menu.addItem(.separator())
         for item in copyItems(for: block) { menu.addItem(item) }
+        // (Not its host's own things — Reset Server, Delete Session: the
+        // host's line's menu has them, not every tile's.)
         menu.addItem(.separator())
-        menu.addItem(hostSubmenu(block.host))
         menu.addItem(ClosureMenuItem("Close Tile", symbol: "xmark", key: "w") { [weak self] in self?.closeTile(placement, in: id) })
         if hosts.block(block)?.kind == .text {
-            let saveClose = ClosureMenuItem("Save and Close", symbol: "square.and.arrow.down", key: "w") { [weak self] in self?.saveAndClose(tile: placement) }
-            saveClose.keyEquivalentModifierMask = [.command, .option]
+            // The main menu's keys, said as they are there (⇧⌘S, ⌘D).
+            let saveClose = ClosureMenuItem("Save and Close", symbol: "square.and.arrow.down", key: "s") { [weak self] in self?.saveAndClose(tile: placement) }
+            saveClose.keyEquivalentModifierMask = [.command, .shift]
             menu.addItem(saveClose)
         }
-        let delete = ClosureMenuItem("Delete Block", symbol: "trash", key: "w") { [weak self] in self?.deleteBlock(block) }
-        delete.keyEquivalentModifierMask = [.command, .shift]
+        let delete = ClosureMenuItem("Delete Block", symbol: "trash", key: "d") { [weak self] in self?.deleteBlock(block) }
+        delete.keyEquivalentModifierMask = [.command]
         menu.addItem(delete)
         return menu
     }

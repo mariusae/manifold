@@ -503,25 +503,27 @@ focused or not (over the edge, it covered the bar's top and the middle
 moved a point). A view's own controls
 follow the same rule: a folder's Project Home, tree and columns show
 while the pointer's on its tile. The bar is the
-tile's handle to drag, grows the tile a step when clicked (⌥-click
-fills its column, docking the others under it — ⌥ is "over", below —
-Tile ▸ Fill the Column, ⌃⌥⌘=; ⇧-click fills all of it but the
-others' bars, which stay in the grid, each down to its bar — Tile ▸
-Fill the Column, Keeping Bars, ⌃⇧⌘=; after either, a click on its bar
+tile's handle to drag; clicked, it focuses its tile — only that (choosing
+a tile doesn't move its column), unless the tile's down to its bar or
+not much more, when it grows a step to show what's in it, as a sidebar
+row clicked does; clicked again, focused, it grows the tile a step
+(⌥- or ⇧-click fills all its column but the others' bars, which stay
+in the grid, each down to its bar — Tile ▸ Fill the Column, ⌃⌥⌘=: one
+fill, where there were two, the other docking the others); after it, a click on its bar
 puts the column back as it was, those docked back where they were and
 every share as it was — as acme's — if nothing's changed it since;
 ⌃-click or the symbol opens its menu), and as a tile narrows
 gives things up in order, so the symbol and some of the title always
 show: the place goes first, then maximize, then the links, and the
-status's word becomes a dot; close and the status stay, and last the
-title is cut.
+word beside the status (Editing) goes — not a dot, which would read as
+a status; close and the status stay, and last the title is cut.
 
 A tile **shrinks along one ladder**, by the room it has, not by a state:
 its content; then, under a few lines' room, its **summary card** (the
 block in a few lines, §3.5, shaped as the tile, joined to its bar); then
 its bar alone, rounded all round — no further: a divider dragged on
 past it pushes the next tile, and the next, each made as short as it
-goes, none eaten (columns the same, each as narrow as it goes). Shrink to Summary (⇧⌘M) only sets a height on that
+goes, none eaten (columns the same, each as narrow as it goes). Minimize to Its Bar (⇧⌘M) only sets a height on that
 ladder, and every step comes back by resizing; Maximize stands apart.
 The content runs beneath the bar, never under it, with room between
 tiles and the window's wash — a few pools of colour placed afresh each
@@ -692,12 +694,12 @@ at the stamp.
 destination:
 
 1. **A tile's links**, on its bar: each linked block's face, a chevron
-   in it for the direction (› to, ‹ from), stacked most recent first; the
-   pointer fans them out along the bar (the title fading out before the
-   first), and resting on one shows its summary card beneath — one card
-   at a time, so many links cost no room. More than fit, the last is a
-   stack of the rest, scrubbed through by the pointer across the title.
-   Clicked by the one rule; and the **neighborhood map** (⇧⌥⌘M) as the one big view of the
+   in it for the direction (› to, ‹ from), stacked most recent first,
+   folded always — clicked, a menu of the links (each followed by the
+   one rule, its keys held as it's chosen) and the map. (They fanned out
+   under the pointer, a card rising on each, the rest a stack scrubbed
+   through over the title: five ways of showing, all hidden till
+   hovered.) And the **neighborhood map** (⇧⌥⌘M) as the one big view of the
    focused block's surroundings, two steps out. (This was a Links
    organization in the sidebar, and before it the foot under every
    sheet.)
@@ -731,11 +733,12 @@ destination:
    and not yet collected comes last, marked *recent*: choosing it brings
    it back.
    **The openers have one ladder of reach**: the tile, the space, all
-   spaces. Each begins at its nearest — ⌘P (places) at the focused tile,
-   ⌘O (names) and ⇧⌘O (what blocks say) at the space shown — and its own
+   spaces. Each begins at the space shown — ⌘P (places), ⌘O (names) and
+   ⇧⌘O (what blocks say); a tile's own outline is ⇧⌘P's, filtered in its
+   sidebar — and its own
    key pressed again goes a step wider, from the widest back to the
    nearest, as JetBrains' Go to File takes in what's outside the project
-   pressed twice; ⌘P stops at the space. Where it looks is always shown,
+   pressed twice; ⌘P is the space's only. Where it looks is always shown,
    at the field's end: the reaches as words, the one it's at on the
    accent's pill (a click goes to another). The space's is its tiles
    (docked ones too), its pins, what was closed from it, its agents'
@@ -886,9 +889,8 @@ for when it's opened again. The pointer
 on a project's box makes it a chevron that folds it (and opens it
 again), kept so: folded, its agents' faces follow its name and its
 open threads are counted at its right. Then the rest of what's on screen,
-unheaded, as the grid has it, column by column — with more
-than one column, each column's rows under a little map of the columns,
-its own lit, so they read as that column — its rows
+unheaded, as the grid has it, column by column — a hairline between
+columns (a little map of the columns was a glyph to decode) — its rows
 not saying again what their bars say (done, failed, and when); then
 Docked, folded under how many, the latest first once opened (and kept
 open, across launches, as a project folded is kept folded). A tile's row
@@ -907,9 +909,10 @@ spaces are **the strip** along the top, under the window's buttons
 which space it is — a letter of its name, one no other space has (its
 first, else its words' initials, its other letters; two once single
 ones run out; the space made first keeps a letter two would have), or
-one or two letters chosen, or a symbol; its badge at its corner, what
-kind of space it is — one of a few simple shapes (an eye, a flag, a
-star), bare, the same on every space of the kind (all chosen from its
+one or two letters chosen, or a symbol; its corner is for what wants
+you there, the one status dot — it had a badge as well, an eye, a
+flag, a star, bolt or check, what kind of space it is (kept, not drawn;
+all else chosen from its
 menu or with `mani space`, kept on it as annotations, `space.color`,
 `space.mark`, `space.badge`; unchosen, a colour by its id); the one
 shown outlined; a dot at a corner for
@@ -1030,8 +1033,15 @@ something new to read, either way, not how many; `error`, a red dot. A
 failure read leaves a faint red dot (a notebook's cell); a done one,
 nothing. A thread: the dots while an agent in it is at work on what it
 was last asked. An agent asleep (not
-running) and an inactive terminal: a moon, the title dimmed. `idle`,
-and anything seen: nothing. A host's states (connecting, offline,
+running) and a terminal asleep: a moon, the title dimmed — said "asleep"
+everywhere (not "dormant", "inactive", "not running"), no word after
+its title. A text edited and changed on disk under the edits: needs
+you, as the glyph says it — its unsaved dot stays grey. A thread's
+exchange is the comment, then, while it works, one row: the agent's
+face and what it says it's doing — no "was asked to look" under the
+comment that asked. `idle`, and anything seen: nothing; nor a card's
+note in colour, its tile's bar saying the status (the card in a tile
+has no glyph of its own over its time). A host's states (connecting, offline,
 quiet, watching) are glyphs as well, and a notebook's cells their own,
 beside their run's time and exit status. A glyph shows exactly while
 the block is in the inbox (⌘J) or at work; say a thing once in a view:
@@ -1064,8 +1074,11 @@ monogram saying who: what it says it's doing, or asking, while it
 says — in grey, a status and not a name, and too long for its room
 running on into the working dots and fading out there, dimmer still,
 not cut short with "…" — else its task (its program's name for its
-window), else its name. The Dock badge counts the blocks blocked
-and done.
+window), else its name. The Dock badge counts what can't go on
+without you — blocked, failed and not read, threads with news — not
+every turn that finished (its dot says that). A notification, in front,
+is only for what needs you (an agent's by its name); done and failed go
+to the Mac only while Manifold's away, as a thread's news does.
 
 Read, as **attended to**: a tile focused while the window is key (and
 again as you click or type in it, so one that finished while it had the
@@ -1572,12 +1585,15 @@ wrote a comment changes it (an agent its own, `mani thread edit`). The composer 
 (`ChatBox`), the same wherever a comment is written: rounded, growing
 with what's written (then scrolling), a new thread's place as a card at
 its top — its icon (a page's own), its name, where it is — Resolve a
-quiet word at its foot, and a round send button. As Dia's: each block
-referred to (`@`) is a card in that row too, a × on it taking it out;
-in the words it's its icon and its name in grey, swept by a rainbow as
-it resolves (magic text), each letter settling as it passes; and `@`'s
-list is in parts under small grey headers (Agents, Ask, In this space,
-Files, Elsewhere), a line a row, the chosen on the accent.
+quiet word at its foot, and a round send button. A block referred to
+(`@`) is said once, in the words: its icon and its name in grey, swept
+by a rainbow as it resolves (magic text), each letter settling as it
+passes (it was a card in the row above as well, the box a row taller
+for what showed already); and `@`'s list is in parts under small grey
+headers (Agents, Ask, In this space, Files, Elsewhere), a line a row,
+the chosen on the accent — in an agent's own conversation, without Ask
+(what's written there goes to it: another agent named is a reference,
+not asked).
 
 **Where threads show.** One thread, several lenses (presentation is a
 projection, §2.5):
@@ -1997,9 +2013,8 @@ verbs are the menus'. It ranks as §3.5 says, and shows each result's
 state, host, and where it is. A block an agent works in answers to the
 agent's names (its command, its product name, from the block's command,
 its status hooks, or a command running in it) as surely as to its
-title. ⌘P is its sibling over the focused tile's outline, ⌘P again (or
-⇥) widening it to the space's. Each shows its reach at the field's end
-(§3.5).
+title. ⌘P is its sibling over the space's outlines (a tile's own,
+⇧⌘P's). Each shows its reach at the field's end (§3.5).
 
 ⌘P looks nothing over as it's typed: each space keeps an index of its
 tiles' outlines (`OutlineIndex`), every row's text cut into trigrams,
@@ -2135,7 +2150,11 @@ placed, so a server knows what's open after either side restarts.
 Markdown rendered by cmark-gfm into a web view, as now, on a `text` block.
 A table reads as text does, from the left and the top — its header over
 its column's left, a short cell at a long one's top, not WebKit's centre
-— unless a column's alignment says otherwise.
+— unless a column's alignment says otherwise. A list in an item hangs off
+its words as its items do off each other — a small step in, none out —
+and the next item after it comes a clear step on, its group ended (a
+loose list's paragraph gap had set a lead-in apart from what it leads).
+In a conversation a level steps in 1.4em, a tile's column being narrow.
 
 ### 7.3 Terminal
 
@@ -3192,10 +3211,13 @@ appearance has them — a sidebar with a row chosen in the accent and
 blocks' states, an editor's tile with its gutter, the caret's line lit,
 the caret, changes marked and a link's colour, and a terminal's tile,
 focused, a test run in its palette with a word selected and its cursor
-— each tile's bar and edge as the theme draws them, its name under it). A theme has its own accent
-(`Palette.accent`), which the **Theme** tint — the default — is: with it
-a terminal's caret and selection are its palette's own; any other tint
-is set over the theme's everywhere, Ghostty's caret and selection
+— each tile's bar and edge as the theme draws them, its name under it). The accent is the system's, always
+(the macOS one — a focus ring, a caret, what's chosen): one colour for
+one's own marks, the one every app uses; Settings had eight to choose
+from, and each a shade per theme to keep apart. A theme has its own accent
+(`Palette.accent`), which the **Theme** tint was: with it
+a terminal's caret and selection were its palette's own; any other tint
+was set over the theme's everywhere, Ghostty's caret and selection
 written after the palette's, each tint in the theme's own shade of it
 (`Palette.tints`, `Palette.calibratedTints`): the tint's hue, its chroma
 eased to the theme's (Terra's quietest), its lightness made to stand
@@ -3279,9 +3301,8 @@ on white) the accent, Claude Code's own terminal sixteen and its blue
 caret and selection; under it sky into lavender, clay and peach. What
 failed is a crimson (#A4273E, by night #FF93A1), not the app's danger
 red, which was a step from the clay — a focus ring read as a failure.
-Its focused tile's bar is a wash of clay (#F9E8DE, by night #40312C), as
-the ring round it is — its own colour on what's at work, which no other
-theme does.
+(Its focused tile's bar was a wash of clay; focus is said once, by the
+ring and the name's ink, in every theme.)
 
 **Graphite** — neutral, industrial, precise: a material rather than a
 decorative palette, for those who'd otherwise turn theming off
@@ -3427,7 +3448,7 @@ purpose — set down so a later audit reads them as choices, not slips.
   content, summary card, bar — by the room it has; there is no collapsed
   state to get stuck in, and every step comes back by resizing. Out of
   the way is docking (⌘M), one state, listed in the sidebar and a ⌃⇥
-  away. Shrink to Summary (⇧⌘M) only sets a height.
+  away. Minimize to Its Bar (⇧⌘M) only sets a height.
   Maximize stands apart, a layout of its own.
 - **Overview is the one view across spaces.** Agents is a filter of it
   (⌃⌘A), and past ten blocks it shows summaries rather than live tiles.
@@ -3450,11 +3471,11 @@ purpose — set down so a later audit reads them as choices, not slips.
   over what's in them; Open Folder… is
   ⌥⌘O, and file contents are Find in Files (⇧⌘F), after Xcode and VS
   Code. There's no ⌘T.
-- **⌘P is the outline, not Print.** Scoped to the focused tile, ⌘P again
-  (or ⇥) widens it to the space; ⇧⌘P filters the tile's own outline and doesn't forget
+- **⌘P is the outline, not Print.** The space's, always; ⇧⌘P filters the
+  tile's own outline (in its sidebar, else the panel) and doesn't forget
   its filter, and pressed again leaves it. Print stays in the File menu,
   keyless: rare in a tiling tool.
-- **⌘M is Dock,** the app's own minimize; ⇧⌘M, Shrink to Summary, is
+- **⌘M is Dock,** the app's own minimize; ⇧⌘M, Minimize to Its Bar (the tile down to its one capsule, its summary in it), is
   the step above it. Minimize stays in the Window menu, keyless.
 - **⌥⌘M is Comment** (§3.12), taking macOS's Minimize All; ⇧⌥⌘M the
   neighborhood map.
@@ -3527,33 +3548,19 @@ purpose — set down so a later audit reads them as choices, not slips.
   it fades, quickly (a fifth of a second: closing is done often), and
   drifting a few points toward its row in the sidebar if its block is
   pinned there (in the space, or in a project), so it's seen where it's
-  kept; one whose block is deleted goes in a puff — swelling a little as
-  it fades, a small cloud bursting where it was and drifting apart, as
-  the Dock's poof, which is what it means there: gone (each only fading,
-  with less motion); one moved to another space
+  kept; one whose block is deleted fades (its toast undoes it: no show of
+  its going — it went in a puff of cloud); one moved to another space
   shrinks to 86% and fades where it was, or goes into its space's
   square in the strip, dropped there; one docked goes into its row in
   the sidebar (the window's left edge, where the sidebar slides out
-  from, if it's put away), and back out of it undocked — each as the
-  Dock's genie (`Genie`): the tile's picture in strips a few points
-  wide across the way it goes, the funnel first bending into its near
-  end, then the strips pouring down it into the row's right end, the
-  nearest first, each as tall as the funnel where it is (about half a
-  second); the row's slot opens as it pours, the rows round it gliding
-  to make room (`OrganizationView.glide`), and what the row says is
-  wiped in from the right as the tile gets there — undocked, wiped out,
-  then the row glides back among those on screen as the tile pours out;
-  a tile down to its bar (⇧-clicked's others) has only its bar to pour,
-  so the bar flies to its row as wide as it is, then shrinks to the
-  row's size, becoming the row on the way (`Genie.fly`), and back out
-  the same way. Where it lands is marked: the tile takes on the accent
-  as it goes, and its row a band of it, coming up as the tile arrives;
-  what the row says is built up from the left in step with how much of
-  the tile has crossed into the sidebar (the genie says, at each step,
-  `Genie.Arrival`), each letter coming in the accent and settling to its
-  own colour as the edge moves on (ink settling: an accent copy of the
-  row seen in a band behind the edge), and taken away the same way as it
-  pours out — and the
+  from, if it's put away), and back out of it undocked — as one closed
+  goes, shrinking to 94% and drifting toward its row as it fades, and
+  the same backwards (`Genie`, no genie now: it was the Dock's funnel,
+  the tile poured down into its row in strips, marked in the accent,
+  its row's words inked in as it came — ceremony); the row's slot opens
+  as it goes, the rows round it gliding to make room
+  (`OrganizationView.glide`); a tile down to its bar flies to its row
+  and becomes it (`Genie.fly`), and back out the same way — and the
   tiles beside either have their edges slide (on the travel curve, most
   of the way in the first third of 0.24 s, the focus ring with them);
   one moved (keys, or dragged and dropped) is a card picked up and put
@@ -3566,7 +3573,8 @@ purpose — set down so a later audit reads them as choices, not slips.
   with its edges, the buttons riding the right one; what goes with it
   (a terminal's dots and scroll bar, its ticks, its links' badge, its
   shadow) is carried along, not ahead of it. One arrived at has
-  its focus ring swell (the one ring), one summarized crosses over to its card; a tile becoming its
+  its focus ring glow and swell a little (the one ring; with Reduce
+  motion, the glow alone), one summarized crosses over to its card; a tile becoming its
   card (⌃⇥, Overview) is one shape going from the one's place and size
   to the other's, what it shows scaled to its width from its top (cut,
   never stretched) and changing on the way — shrinking to some 60% of

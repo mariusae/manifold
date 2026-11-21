@@ -381,7 +381,11 @@ extension ComposerTextView {
 extension MainWindowController {
     /// What `@` offers, for what's typed after it: made once as the list
     /// opens (what ⌘O would find), ranked as each letter comes.
-    func mentionSource() -> (String) -> [MentionChoice] {
+    /// `asks`: whether an agent named asks it (a thread's comment) — in
+    /// an agent's own conversation it can't (what's written goes to that
+    /// agent), so there the words that ask aren't offered, and an agent
+    /// named is a reference, as any block is.
+    func mentionSource(asks: Bool = true) -> (String) -> [MentionChoice] {
         let (corpus, _) = finderCorpusForMentions()
         let space = selected
         let here = Set(space.flatMap { hosts.arrangement($0) }?.placements.map(\.block) ?? [])
@@ -400,7 +404,7 @@ extension MainWindowController {
                 let name = AgentLook.name(of: b)
                 guard let a = b.agent, matches([name, b.displayTitle, a.command, a.name]) else { continue }
                 listed.insert(b.id)
-                out.append(MentionChoice(symbol: "sparkle", title: name, detail: AgentLook.description(of: b) + (here.contains(b.id) ? " · here" : ""),
+                out.append(MentionChoice(symbol: "sparkle", title: name, detail: (asks ? AgentLook.description(of: b) : "a reference to it") + (here.contains(b.id) ? " · here" : ""),
                                          link: "[\(name.replacingOccurrences(of: "]", with: "\\]"))](\(Self.address(b.id)))",
                                          icon: AgentLook.face(of: b, size: 14) ?? AgentIcons.image(a.command, size: 14), category: "Agents", block: b.id))
             }
@@ -408,7 +412,7 @@ extension MainWindowController {
             // with nothing typed, only those at work and the one Settings
             // names; else those it starts.
             let usual = AgentCatalog.agent(inCommand: self.desk.settings.agentCommand)?.command
-            for a in AgentCatalog.known where out.count < 9 {
+            for a in AgentCatalog.known where asks && out.count < 9 {
                 let atWork = running.contains { $0.agent?.command == a.command }
                 guard q.isEmpty ? atWork || a.command == usual : a.command.hasPrefix(q) || a.name.lowercased().hasPrefix(q) else { continue }
                 out.append(MentionChoice(symbol: "sparkle", title: a.command,

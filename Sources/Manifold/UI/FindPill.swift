@@ -100,9 +100,9 @@ final class FindPill: CapsulePill {
     private let replaceField = NSTextField()
     private let previous = IconButton("chevron.up", size: 10, tip: "Previous (⇧↩, ⇧⌘G)")
     private let next = IconButton("chevron.down", size: 10, tip: "Next (↩, ⌘G)")
-    private let caseButton = FlatButton("Aa", toggles: true, font: .systemFont(ofSize: 10.5, weight: .medium))
-    private let replaceButton = FlatButton("Replace", font: .systemFont(ofSize: 10.5, weight: .medium))
-    private let replaceAllButton = FlatButton("All", font: .systemFont(ofSize: 10.5, weight: .medium))
+    private let caseButton = FlatButton("Aa", toggles: true, font: .systemFont(ofSize: 11, weight: .medium))
+    private let replaceButton = FlatButton("Replace", font: .systemFont(ofSize: 11, weight: .medium))
+    private let replaceAllButton = FlatButton("All", font: .systemFont(ofSize: 11, weight: .medium))
 
     var query: String {
         get { field.stringValue }

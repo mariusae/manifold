@@ -108,9 +108,6 @@ struct Palette {
         /// A tile's bar, where it isn't the panel's ground (Field's by day, a
         /// breath off its white pages).
         var bar: Shade? = nil
-        /// The focused tile's bar, where it isn't the others' (Spectrum's: a
-        /// wash of clay); nil, as the rest.
-        var barFocused: Shade? = nil
         /// A bar's details (the place after the name) and its buttons till
         /// the pointer's on it, where they aren't the secondary ink (Field's:
         /// muted, as Rex's).
@@ -254,12 +251,10 @@ struct Palette {
         /// band round each tile on a warm or tinted ground, so a theme's is
         /// a deeper shade of its own.
         var tileShadow: (color: NSColor, opacity: CGFloat) = (.black, 0.10)
-        /// A hairline round each tile, by day and night (Field's, as Rex
-        /// draws its panes); nil, the shadow alone, by day.
+        /// The hairline round each tile, by day and night, where it isn't
+        /// the cards' border (Field's, as Rex draws its panes): every theme
+        /// draws one.
         var tileEdge: Shade? = nil
-        /// How far the tile's shadow reaches, of the standard's: wider is
-        /// softer (Terra's, as light on paper).
-        var tileShadowSpread: CGFloat = 1
         /// A grain over it, by day and by night: how strong (0, none) — a
         /// material's, not a colour's (Terra's).
         var grain: (light: CGFloat, dark: CGFloat) = (0, 0)
@@ -752,7 +747,6 @@ extension Palette {
                 dark: .init(stops: [(0.09, 0.21, 0.18), (0.17, 0.15, 0.17), (0.07, 0.27, 0.175), (0.58, 0.10, 0.14)],
                             pool: (0.22, 0.21), tintPool: (0.35, 0.23)),
                 tileShadow: (Theme.hex(0x4A3B28), 0.08),
-                tileShadowSpread: 1.6,
                 grain: (0.05, 0.06)))
     }().legible(5.5).identities(least: 0.75)
 }
@@ -997,10 +991,9 @@ extension Palette {
                 pill: .wash(0.07, 0.1),
                 // Claude Code's blue into clay.
                 historyWash: (from: .hex(0xEBF4FD, 0x162B39), to: .hex(0xFAEBE6, 0x3F2C25)),
-                bar: .hex(0xF6F5F8, 0x312F34),
-                // The focused tile's bar a wash of clay, as the ring round
-                // it is: what's at work, in Claude's own colour.
-                barFocused: .hex(0xF9E8DE, 0x40312C)),
+                // (Its focused bar was a wash of clay: the ring says focus,
+                // and the name in full ink, without the bar saying it again.)
+                bar: .hex(0xF6F5F8, 0x312F34)),
             text: Text(
                 primary: .hex(0x0B0B0B, 0xEFEFEF),
                 body: .hex(0x0B0B0B, 0xEFEFEF),

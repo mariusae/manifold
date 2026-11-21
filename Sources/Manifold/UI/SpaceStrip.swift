@@ -33,7 +33,9 @@ enum SpaceSquare {
             Theme.symbol(name, size: max(7, (r.height * 0.46).rounded()), weight: r.height >= 24 ? .semibold : .bold, color: ink, pierre: false)?
                 .draw(centeredAt: NSPoint(x: r.midX, y: r.midY))
         }
-        if let badge { drawBadge(badge, on: r) }
+        // (Its badge — a bolt, a flag, an eye, a star — no longer drawn: a
+        // square's corner is for what wants you, its one status dot.)
+        _ = badge
     }
 
     /// A badge: its shape, bare — no disc, which took half its room, and
@@ -509,22 +511,15 @@ final class SpaceStripView: NSView {
             NSBezierPath(roundedRect: b, xRadius: 6.5, yRadius: 6.5).fill()
             t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
         }
-        // What most wants you there, at its top right: a dot; something
-        // at work there (wanting nothing of you yet), an open ring — not
-        // to be taken for something to attend to.
+        // What most wants you there, at its top right: a filled dot, as the
+        // one status rule has it; something only at work there, nothing —
+        // work is motion, and a square isn't the place for it.
         if let tone = Self.tone(c.status) {
             let d = NSRect(x: r.maxX - 5, y: r.minY - 2, width: 7, height: 7)
             Theme.panel.setFill()
             NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
-            if case .working = c.status {
-                let ring = NSBezierPath(ovalIn: d.insetBy(dx: 0.75, dy: 0.75))
-                ring.lineWidth = 1.5
-                tone.setStroke()
-                ring.stroke()
-            } else {
-                tone.setFill()
-                NSBezierPath(ovalIn: d).fill()
-            }
+            tone.setFill()
+            NSBezierPath(ovalIn: d).fill()
         }
     }
 
@@ -533,7 +528,6 @@ final class SpaceStripView: NSView {
         case .needsYou: Status.attention
         case .failed(read: false): Status.failed
         case .done(read: false): Status.done
-        case .working: Status.runningText
         default: nil
         }
     }
@@ -1089,33 +1083,6 @@ extension MainWindowController {
         markItem.setSymbol("textformat", size: 12)
         menu.addItem(markItem)
 
-        // Its badge: what kind of space it is — a shape.
-        let badges = NSMenu()
-        let chosenBadge = SpaceLook.badge(of: b)
-        let none = NSMenuItem(title: "None", action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
-        none.target = self
-        none.representedObject = (id, SpaceLook.badgeKey, "")
-        none.state = chosenBadge == nil ? .on : .off
-        badges.addItem(none)
-        badges.addItem(.separator())
-        for (name, sym) in SpaceLook.badges {
-            let item = NSMenuItem(title: name.capitalized, action: #selector(chooseSpaceLook(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = (id, SpaceLook.badgeKey, name)
-            // As it'll be drawn: Pierre's shape, where it has one and they're the set.
-            if Icons.pierre, let u = PierreIcons.badges[sym], let image = PierreIcons.image(u, size: 12) {
-                item.image = image
-                item.showImage()
-            } else {
-                item.setSymbol(sym, size: 12)
-            }
-            item.state = chosenBadge == name ? .on : .off
-            badges.addItem(item)
-        }
-        let badgeItem = NSMenuItem(title: "Badge", action: nil, keyEquivalent: "")
-        badgeItem.submenu = badges
-        badgeItem.setSymbol("star.square", size: 12)
-        menu.addItem(badgeItem)
         menu.addItem(.separator())
         let after = NSMenuItem(title: "New Space After “\(b.arrangement.map(title(of:)) ?? "This One")”", action: #selector(newSpaceAfterFromStrip(_:)), keyEquivalent: "")
         after.target = self
@@ -1238,7 +1205,7 @@ extension MainWindowController {
             NSApp.sendAction(action, to: item.target, from: item)
             return "chose \(item.title)"
         case "swipe": switchSpace(by: w.dropFirst().first == "back" ? -1 : 1)
-        case "needs": return sidebar.needsYou.debugRows
+        case "needs": return needsYouItems().map { "\($0.title) — \($0.need)" }.joined(separator: "\n")
         case "pretend":
             // "spaces pretend <i> <j>": as if the squares from i were one
             // remote host's, and from j another's (until the strip's shown
@@ -1296,7 +1263,6 @@ extension MainWindowController {
             guard let i = w.dropFirst().first.flatMap(Int.init), strip.chips.indices.contains(i), let f = arrangement?.focused else { return "no" }
             let square = root.convert(strip.convert(strip.squareRect(i), to: nil), from: nil)
             _ = dropOnSpace(.placement(f), space: strip.chips[i].id, copy: w.last == "copy", square: square)
-        case "needspick": if let i = w.dropFirst().first.flatMap(Int.init), sidebar.needsYou.items.indices.contains(i) { sidebar.needsYou.onPick?(sidebar.needsYou.items[i]) }
         case "color", "mark", "badge":
             // "spaces color|mark|badge <i> [value]": as the menu sets it (a mark's symbol as symbol:<name>).
             let key = w[0] == "color" ? SpaceLook.colorKey : w[0] == "mark" ? SpaceLook.markKey : SpaceLook.badgeKey
@@ -1307,142 +1273,24 @@ extension MainWindowController {
     }
 }
 
-/// What needs you, in every space (§3.6), at the sidebar's foot, always
-/// there whichever space is shown: a row each — its space's square, its
-/// symbol and name, what it needs in a pill — the space shown's too, as
-/// the strip has them, left to right, then as each grid has them. Clicked,
-/// gone to, in its space. Five at most, then how many more, clicked, all
-/// of them (and "Fewer" again); none, nothing there at all.
-final class NeedsYouView: NSView {
-    // Clickable: the pointing hand (not the window's arrow), as the rest are.
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
-    struct Item: Equatable {
-        var space: BlockID
-        var tile: PlacementID
-        var title: String
-        var symbol: String
-        var spaceMark: SpaceMark
-        var spaceBadge: String?
-        var spaceColor: NSColor
-        var need: String
-    }
-
-    static let headHeight: CGFloat = 22
-    static let rowHeight: CGFloat = 24
-    static let most = 5
-
-    var onPick: ((Item) -> Void)?
-    /// Its height changed (more shown, or fewer).
-    var onResize: (() -> Void)?
-    private(set) var items: [Item] = []
-    /// All of them shown, not the first five.
-    private var all = false
-    private var hovered: Int? { didSet { if hovered != oldValue { needsDisplay = true } } }
-
-    override var isFlipped: Bool { true }
-
-    func show(_ new: [Item]) {
-        guard new != items else { return }
-        items = new
-        if items.count <= Self.most { all = false }
-        hovered = nil
-        invalidateIntrinsicContentSize()
-        needsDisplay = true
-    }
-
-    /// Rows of items shown, and whether a row after them says more (or fewer).
-    private var shown: Int { all ? items.count : min(items.count, Self.most) }
-    private var hasMoreRow: Bool { items.count > Self.most }
-
-    var wantedHeight: CGFloat {
-        guard !items.isEmpty else { return 0 }
-        let rows = shown + (hasMoreRow ? 1 : 0)
-        return Self.headHeight + CGFloat(rows) * Self.rowHeight + 4
-    }
-
-    private func rowRect(_ i: Int) -> NSRect {
-        NSRect(x: 6, y: Self.headHeight + CGFloat(i) * Self.rowHeight, width: bounds.width - 12, height: Self.rowHeight)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard !items.isEmpty else { return }
-        // A hairline over it, apart from the space's rows.
-        Theme.divider.setFill()
-        NSRect(x: 12, y: 0, width: bounds.width - 24, height: 1).fill()
-        NSAttributedString(string: "Needs you", attributes: [.font: UIType.section, .foregroundColor: Status.attention])
-            .draw(at: NSPoint(x: SidebarView.margin + 2, y: 5))
-        if items.count > 1 {
-            let n = NSAttributedString(string: "\(items.count)", attributes: [.font: UIType.count, .foregroundColor: Theme.secondaryText])
-            n.draw(at: NSPoint(x: bounds.width - 18 - n.size().width, y: 6))
-        }
-        for (i, item) in items.prefix(shown).enumerated() {
-            let r = rowRect(i)
-            if hovered == i {
-                Flat.ground(.hover).setFill()
-                NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
-            }
-            // Its space's square, small.
-            let sq = NSRect(x: SidebarView.margin, y: r.midY - 8, width: 16, height: 16)
-            SpaceSquare.fill(sq, color: item.spaceColor, alpha: 0.28)
-            SpaceSquare.drawGlyph(in: sq, color: item.spaceColor, mark: item.spaceMark, badge: item.spaceBadge)
-            if let image = Theme.symbol(item.symbol, size: 11, weight: .regular, color: Theme.secondaryText) {
-                let z = image.size
-                image.draw(in: NSRect(x: sq.maxX + 8, y: (r.midY - z.height / 2).rounded(), width: z.width, height: z.height),
-                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            }
-            // Its glyph, as its row anywhere has it (why it needs you, its tooltip's).
-            let side = StatusGlyph.size
-            let pr = NSRect(x: r.maxX - 8 - side, y: (r.midY - side / 2).rounded(), width: side, height: side)
-            StatusGlyph.drawUpright(.needsYou, in: pr)
-            let x = sq.maxX + 28
-            NSAttributedString(string: item.title, attributes: [.font: UIType.row, .foregroundColor: Theme.text])
-                .draw(with: NSRect(x: x, y: r.midY - 8, width: max(0, pr.minX - 8 - x), height: 17), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-        }
-        if hasMoreRow {
-            let r = rowRect(shown)
-            NSAttributedString(string: all ? "Fewer" : "\(items.count - Self.most) more…", attributes: [.font: UIType.detail, .foregroundColor: hovered == shown ? Theme.text : Theme.secondaryText])
-                .draw(at: NSPoint(x: SidebarView.margin + 2, y: r.midY - 7))
-        }
-    }
-
-    private func index(at event: NSEvent) -> Int? {
-        let p = convert(event.locationInWindow, from: nil)
-        let n = shown + (hasMoreRow ? 1 : 0)
-        return (0..<n).first { rowRect($0).contains(p) }
-    }
-
-    override func updateTrackingAreas() {
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect], owner: self))
-        super.updateTrackingAreas()
-    }
-
-    override func mouseMoved(with event: NSEvent) { hovered = index(at: event) }
-    override func mouseExited(with event: NSEvent) { hovered = nil }
-    override func mouseDown(with event: NSEvent) {}
-    override func mouseUp(with event: NSEvent) {
-        guard let i = index(at: event) else { return }
-        if hasMoreRow, i == shown {
-            all.toggle()
-            hovered = nil
-            needsDisplay = true
-            onResize?()
-        } else {
-            onPick?(items[i])
-        }
-    }
-
-    var debugRows: String {
-        items.isEmpty ? "nothing needs you" : items.map { "\($0.spaceMark.words) \($0.title) [\($0.need)]" }.joined(separator: " | ")
-    }
+/// Something wanting you in a space (§3.7): its tile, as the space's
+/// list raises it to the top — named, with the space it's in.
+struct NeedsYouItem: Equatable {
+    var space: BlockID
+    var tile: PlacementID
+    var title: String
+    var symbol: String
+    var spaceMark: SpaceMark
+    var spaceBadge: String?
+    var spaceColor: NSColor
+    var need: String
 }
 
 extension MainWindowController {
     /// What needs you, in every space: as the strip has them, then as each
     /// grid has them (on screen, then docked).
-    func needsYouItems() -> [NeedsYouView.Item] {
-        var out: [NeedsYouView.Item] = []
+    func needsYouItems() -> [NeedsYouItem] {
+        var out: [NeedsYouItem] = []
         for chip in sidebar.spaces.chips {
             guard let a = hosts.arrangement(chip.id) else { continue }
             for p in a.columns.flatMap({ $0 }) + a.docked.reversed().map(\.placement) {
@@ -1456,15 +1304,12 @@ extension MainWindowController {
     }
 
     func refreshNeedsYou() {
-        let v = sidebar.needsYou
-        if v.onPick == nil {
-            v.onPick = { [weak self] item in self?.go(to: Settled(space: item.space, tile: item.tile)) }
-            v.onResize = { [weak self] in self?.sidebar.needsLayout = true }
+        // Raised to the top of the space's list: the list made again when they change.
+        let now = needsYouItems()
+        if now != lastNeedsYou {
+            lastNeedsYou = now
+            if organization == .desk { refreshOrganization() }
         }
-        // Shown at the top of the space's list: made again when they change.
-        let before = v.items
-        v.show(needsYouItems())
-        if v.items != before, organization == .desk { refreshOrganization() }
     }
 }
 

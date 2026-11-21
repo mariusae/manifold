@@ -47,7 +47,7 @@ final class MediaView: NSView, PaneContent, KeepsViewState {
     fileprivate let nextButton = IconButton("chevron.right", tip: "Next Page")
     fileprivate let pageBox = FlatFieldBox(symbol: nil, clears: false, fontSize: 11.5)
     fileprivate var pageField: FlatField { pageBox.field }
-    fileprivate let pageCount = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular), color: Theme.secondaryText)
+    fileprivate let pageCount = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText)
     fileprivate let zoomOutButton = IconButton("minus.magnifyingglass", size: 12, weight: .regular, tip: "Zoom Out (⌘−)")
     fileprivate let zoomInButton = IconButton("plus.magnifyingglass", size: 12, weight: .regular, tip: "Zoom In (⌘+)")
     fileprivate let zoomLabel = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .center)
@@ -323,7 +323,7 @@ extension MediaView: Searchable {
             b.target = self
             b.action = sel
         }
-        pageField.font = .monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
+        pageField.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         pageField.alignment = .center
         pageField.target = self
         pageField.action = #selector(pageEntered)

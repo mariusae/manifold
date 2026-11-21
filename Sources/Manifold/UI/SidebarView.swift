@@ -67,7 +67,6 @@ final class SidebarView: NSView {
     let spaces = SpaceStripView()
     /// What needs you, in every space: kept for its items (the space's
     /// list shows them at its top), not shown.
-    let needsYou = NeedsYouView()
     /// The hosts to make a space on, over the strip's +.
     let hostPicker = HostPickerView()
     /// Threads and the tiles' menu, always at the very bottom.
@@ -119,7 +118,7 @@ final class SidebarView: NSView {
 
         orgTab.onClick = { [weak self] in self?.popOrganizations() }
         card.addSubview(orgTab)
-        for v in [spaces, needsYou, transfers, toasts, footer] { card.addSubview(v) }
+        for v in [spaces, transfers, toasts, footer] { card.addSubview(v) }
         hostPicker.isHidden = true
         toasts.onChange = { [weak self] in self?.needsLayout = true }
         threadsFilter.target = self
@@ -184,9 +183,16 @@ final class SidebarView: NSView {
                 // A space's name and its host, the same size, apart: the
                 // name strong, the host quiet.
                 pushedTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-                pushedTitle.frame = NSRect(x: left, y: top - 20, width: max(0, right - left), height: 18)
-                spaceHost.frame = NSRect(x: left, y: top - 42, width: max(0, right - left), height: 18)
-                top -= showsHost ? 48 : 28
+                if pushedTitle.stringValue.isEmpty {
+                    // Named by its project, whose row says it: the host alone, if anything.
+                    pushedTitle.frame = .zero
+                    spaceHost.frame = NSRect(x: left, y: top - 20, width: max(0, right - left), height: 18)
+                    top -= showsHost ? 28 : 0
+                } else {
+                    pushedTitle.frame = NSRect(x: left, y: top - 20, width: max(0, right - left), height: 18)
+                    spaceHost.frame = NSRect(x: left, y: top - 42, width: max(0, right - left), height: 18)
+                    top -= showsHost ? 48 : 28
+                }
             } else {
                 pushedTitle.font = .systemFont(ofSize: 15, weight: .bold)
                 pushedTitle.frame = NSRect(x: left, y: top - Self.pushedHeight + 17, width: max(0, right - left), height: 18)
@@ -201,7 +207,6 @@ final class SidebarView: NSView {
         var bottom = fh
         // What needs you is at the top of the space's list now (§3.6):
         // its own section at the foot no longer shown.
-        needsYou.isHidden = true
         let th = transfers.wantedHeight
         transfers.frame = NSRect(x: 4, y: bottom, width: bounds.width - 8, height: th)
         // Their own place under the tree, a little apart from it.
@@ -317,7 +322,7 @@ final class SidebarView: NSView {
     /// The space shown (§3.6): its name over its tiles, and how many.
     func setSpace(title: String, host: String, standing: String?, pings: (() -> Sparkline.Pings)?, remote: Bool = false, showsHost: Bool = true) {
         guard organization == .desk else { return }
-        pushedTitle.stringValue = title
+        if pushedTitle.stringValue != title { pushedTitle.stringValue = title; needsLayout = true }
         spaceHost.show(host: host, standing: standing, pings: pings, remote: remote)
         if self.showsHost != showsHost { self.showsHost = showsHost; needsLayout = true }
     }
@@ -336,7 +341,8 @@ final class SidebarView: NSView {
     /// something not seen (the count on their tab).
     func setFoot(threads n: Int, open: Int, unseen: Int) {
         threadsUnseen = unseen
-        orgTab.count = unseen
+        // Said once, by the footer's Threads (its dot), not on this tab too.
+        orgTab.count = 0
         if organization == .threads {
             var words = [open == 1 ? "1 open" : "\(open) open"]
             if n > open { words.append("\(n - open) resolved") }

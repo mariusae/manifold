@@ -348,6 +348,13 @@ enum MarkdownPage {
         h4, h5, h6 { font-size: 1rem; }
         p, ul, ol, blockquote, pre, table, details { margin: var(--read-gap, 1rem) 0; }
         ul, ol { padding-left: 1.8em; } li + li { margin-top: 0.2em; }
+        /* A list in an item hangs off its words, as its items off each
+           other: a small step in (not a paragraph's gap, which set a
+           lead-in apart from what it leads), none out; out of it, to the
+           next item, a clear one — the group ended. */
+        li > :is(ul, ol) { margin: 0.25em 0 0; }
+        li > p:has(+ :is(ul, ol)) { margin-bottom: 0; }
+        li:has(> :is(ul, ol)) + li { margin-top: 0.5em; }
         li > input[type=checkbox] { margin: 0 0.45em 0 -1.35em; vertical-align: -1px; }
         ul:has(> li > input[type=checkbox]) { list-style: none; }
         ::-webkit-scrollbar { width: 0; height: 0; }
@@ -433,6 +440,8 @@ enum MarkdownPage {
         main:has(.mf-conversation) h1 { font-size: 1.55em; } main:has(.mf-conversation) h2 { font-size: 1.35em; }
         main:has(.mf-conversation) h3 { font-size: 1.2em; } main:has(.mf-conversation) h4 { font-size: 1.08em; }
         main:has(.mf-conversation) :is(h5, h6) { font-size: 1em; color: var(--page-quote); }
+        /* A level's step in a tile's narrow column: enough to clear the bullet. */
+        main:has(.mf-conversation) :is(ul, ol) { padding-left: 1.4em; }
         .mf-turn { margin: 0 0 2.4em; }
         /* Turns apart by room alone: what you asked, a bubble at the right, begins each. */
         .mf-turn + .mf-turn { padding-top: 0.8em; }

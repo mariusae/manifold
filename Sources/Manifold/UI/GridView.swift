@@ -44,8 +44,11 @@ protocol GridDelegate: AnyObject {
     /// place, that one docked under it.
     func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridGrow(_ placement: PlacementID)
-    func gridFill(_ placement: PlacementID)
-    /// A bar ⇧-clicked: its tile all the column but the others' bars.
+    /// An unfocused tile's bar clicked: focused, and grown a step only if
+    /// it's down to its bar or not much more — its content shown, as a
+    /// sidebar row clicked shows it.
+    func gridReveal(_ placement: PlacementID)
+    /// A bar ⌥- or ⇧-clicked: its tile all the column but the others' bars.
     func gridSqueeze(_ placement: PlacementID)
     /// ⌘-click: the block's path, folder by folder, each going there.
     /// The tile's path menu (its folder and those above), and the item
@@ -309,17 +312,18 @@ final class GridView: NSView, NSDraggingSource {
                         pill.beginEditing(edit)
                         return
                     }
-                    // The bar clicked grows the tile a step (acme's colgrow),
-                    // focused — clicked again, a step more; ⌥-clicked, it
-                    // fills its column, the others docked under it (⌥ is
-                    // "over", §3.11, as a link ⌥-clicked goes over a tile);
-                    // ⇧-clicked, all its column but the others' bars, they
-                    // staying (Maximize is the corner's). The pointer follows the bar to
-                    // where it was clicked, once the tile has grown and moved
-                    // it, so a click again grows again.
+                    // An unfocused tile's bar clicked: focused — not resized
+                    // (choosing a tile shouldn't move its column), unless it's
+                    // down to its bar or not much more: then grown a step,
+                    // to show what's in it. Its bar clicked again, focused,
+                    // grows it a step (acme's colgrow), the pointer following
+                    // the bar to where it was clicked, so a click again grows
+                    // again. ⌥- or ⇧-clicked, all its column but the others'
+                    // bars, they staying (Maximize is the corner's).
+                    let wasFocused = self.focused == id
                     self.delegate?.gridFocus(id)
-                    if mods.contains(.option) { self.delegate?.gridFill(id); return }
-                    if mods.contains(.shift) { self.delegate?.gridSqueeze(id); return }
+                    if mods.contains(.option) || mods.contains(.shift) { self.delegate?.gridSqueeze(id); return }
+                    guard wasFocused else { self.delegate?.gridReveal(id); return }
                     self.pendingWarp = (id, at, self.barTargets[id] ?? pill?.frame ?? .zero, Date())
                     self.delegate?.gridGrow(id)
                 }
@@ -369,7 +373,6 @@ final class GridView: NSView, NSDraggingSource {
                         return b
                     }()
                     badge.cards = tile.links
-                    badge.onFocusedBar = tile.shown.id == focused
                     pill.linkWanted = badge.capsuleWantedWidth
                     // The links' pill is the bar's: shown as its buttons are.
                     pill.onChromeShown = { [weak badge] shown, animate in
@@ -583,7 +586,7 @@ final class GridView: NSView, NSDraggingSource {
         }.joined(separator: "\n")
     }
 
-    /// Debugging: each tile's pill — hidden, dodging, alpha, frame, order.
+    /// Debugging: each tile's pill — hidden, alpha, frame, order.
     var debugPills: String {
         tiles.map { t in
             let p = pills[t.shown.id]
@@ -1086,66 +1089,12 @@ final class GridView: NSView, NSDraggingSource {
     /// How tiles have gone (debugging).
     static var departures = (putAway: 0, poof: 0, drift: CGVector.zero)
 
-    /// A tile whose block was deleted: gone in a puff — its picture
-    /// swelling a little as it fades, a small cloud bursting where it was
-    /// and drifting apart, as the Dock's poof (what's taken off it is
-    /// gone). With less motion, only faded.
+    /// A tile whose block was deleted: faded, as anything gone is (it was
+    /// a puff of cloud — a delete has its toast to undo it, not a show).
     func poof(_ v: PaneContent) {
-        guard !Motion.reduced, let ghosts = ghosts(of: v), let host = layer, let card = Ghost.union(ghosts.map(\.frame)) else { return fadeAway(v) }
-        ghosts.forEach(host.addSublayer)
         Self.departures.poof += 1
-        Ghost.burst(ghosts, scale: 1.05, over: Motion.spatial * 0.5, fading: Motion.appear, moving: Motion.appear, key: "poof")
-        Self.puff(in: host, over: card, appearance: effectiveAppearance)
+        fadeAway(v)
     }
-
-    /// The cloud: soft puffs born over the middle of `r` at once, swelling,
-    /// drifting out and fading.
-    static func puff(in host: CALayer, over r: NSRect, appearance: NSAppearance) {
-        let e = CAEmitterLayer()
-        e.frame = host.bounds
-        e.zPosition = 31
-        e.emitterPosition = CGPoint(x: r.midX, y: r.midY)
-        e.emitterShape = .rectangle
-        e.emitterMode = .volume
-        e.emitterSize = CGSize(width: min(r.width * 0.5, 260), height: min(r.height * 0.4, 120))
-        e.renderMode = .unordered
-        let side = min(max(min(r.width, r.height) * 0.22, 34), 90)
-        let cell = CAEmitterCell()
-        cell.contents = puffImage
-        var ink = NSColor.white.cgColor
-        appearance.performAsCurrentDrawingAppearance { ink = Theme.secondaryText.withAlphaComponent(0.55).cgColor }
-        cell.color = ink
-        cell.birthRate = 260
-        cell.lifetime = Float(0.36 * Motion.slowdown)
-        cell.lifetimeRange = Float(0.1 * Motion.slowdown)
-        cell.velocity = side * 2.4 / Motion.slowdown
-        cell.velocityRange = side * 1.5 / Motion.slowdown
-        cell.emissionRange = .pi * 2
-        cell.scale = side / 64 * 0.45
-        cell.scaleRange = side / 64 * 0.2
-        cell.scaleSpeed = side / 64 * 2.1 / Motion.slowdown
-        cell.alphaSpeed = Float(-2.8 / Motion.slowdown)
-        cell.spin = 0.6
-        cell.spinRange = 1.5
-        e.emitterCells = [cell]
-        e.beginTime = CACurrentMediaTime()
-        host.addSublayer(e)
-        // A burst: born for a moment only, gone once the last has faded.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04 * Motion.slowdown) { e.birthRate = 0 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7 * Motion.slowdown) { e.removeFromSuperlayer() }
-    }
-
-    /// A soft round puff, white, for tinting.
-    private static let puffImage: CGImage? = {
-        let n = 64
-        guard let ctx = CGContext(data: nil, width: n, height: n, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
-              let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [CGColor(gray: 1, alpha: 1), CGColor(gray: 1, alpha: 0.5), CGColor(gray: 1, alpha: 0)] as CFArray,
-                                 locations: [0, 0.45, 1]) else { return nil }
-        let c = CGPoint(x: n / 2, y: n / 2)
-        ctx.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: CGFloat(n) / 2, options: [])
-        return ctx.makeImage()
-    }()
 
     /// Pictures of a tile's body and bar, where they are, each on its
     /// ground, for it to be seen going.
@@ -1491,11 +1440,12 @@ final class GridView: NSView, NSDraggingSource {
     }
 
     /// A soft shadow under each card in the light, none in the dark
-    /// (where the cards are lighter than the wash already); and the theme's
-    /// hairline round it, if it has one, in both.
+    /// (where the cards are lighter than the wash already); and a hairline
+    /// round it in both, in every theme — one tile, themes giving only its
+    /// colours (some drew the hairline and some didn't, one a wider shadow).
     private func layoutShadows(_ bodies: [PlacementID: NSRect], gliding: Bool) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let edge = Palette.current.backdrop.tileEdge?.color(dark: dark)
+        let edge: NSColor? = (Palette.current.backdrop.tileEdge ?? Palette.current.chrome.cardBorder).color(dark: dark)
         let wanted = (dark && edge == nil) || full != nil ? [:] : bodies.filter { $0.value != .zero }
         for (id, l) in shadowLayers where wanted[id] == nil {
             l.removeFromSuperlayer()
@@ -1516,8 +1466,7 @@ final class GridView: NSView, NSDraggingSource {
             let shade = Palette.current.backdrop.tileShadow
             l.shadowColor = shade.color.cgColor
             l.shadowOpacity = dark ? 0 : Float(shade.opacity)
-            // As soft as the theme's light is (Terra's wider, as light on paper).
-            l.shadowRadius = Elevation.tile.radius * Palette.current.backdrop.tileShadowSpread
+            l.shadowRadius = Elevation.tile.radius
             // Its edge: stroked on the card's outline, the outer half seen.
             l.strokeColor = edge?.cgColor
             l.lineWidth = edge == nil ? 0 : 1
@@ -2192,7 +2141,7 @@ final class GridView: NSView, NSDraggingSource {
 /// same on every kind of block.
 final class HostPill: NSView {
     private let icon = NSImageView()
-    private let label = NSTextField.label(font: UIType.caption, color: Theme.secondaryText)
+    private let label = NSTextField.label(font: Pill.words, color: Theme.secondaryText)
     var host: String? {
         didSet {
             guard host != oldValue else { return }
@@ -2217,7 +2166,7 @@ final class HostPill: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    static let height: CGFloat = 18
+    static let height: CGFloat = Pill.height
     var wantedWidth: CGFloat { 7 + 12 + 3 + min(120, ceil(label.intrinsicContentSize.width) + 4) + 7 }
 
     override func layout() {
@@ -2354,6 +2303,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var focused = false
     private var maximized = false
     private let subtitle = NSTextField.label(font: UIType.detail, color: Theme.barInk, cut: .byTruncatingMiddle)
+    /// The place stands for the name (the tile has none of its own): shown always.
+    private var placeIsName = false
     /// Whether the subtitle is an agent's answer set as it said it (so a
     /// plain one, the same words, is set again).
     private var subtitleFormatted = false
@@ -2780,8 +2731,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // where you give it one), as a space's does.
         if agentColor == nil, let b = shown.block, Self.kindSaysIt.contains(b.kind),
            base.trimmingCharacters(in: .whitespaces) == b.kind.defaultTitle { base = "" }
-        let after = base.isEmpty && shown.isDormant ? nil : shown.isDormant ? "(dormant)" : shown.exitedWords.map { "(\($0))" }
+        // Asleep: its moon says so (not a word after its name as well).
+        let after = shown.isDormant ? nil : shown.exitedWords.map { "(\($0))" }
         var title = [base, after].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "  ")
+        // No name of its own (a terminal that only says it's one): its place
+        // shown always, not only under the pointer — else, unfocused, an
+        // icon alone, every such terminal alike.
+        let placeNames = title.isEmpty && agentColor == nil
+        if placeIsName != placeNames { placeIsName = placeNames; showButtons(animated: false) }
         // An agent at work whose tile can't show what it's doing (down to
         // its bar, its conversation's end out of sight): that, after the
         // dots, instead of its title (its tooltip still).
@@ -2796,7 +2753,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
             isStale = stale
             if shown.isDirty {
                 let s = NSMutableAttributedString(string: title + " •", attributes: [.font: name.font!, .foregroundColor: name.textColor!])
-                s.addAttribute(.foregroundColor, value: stale ? StatusGlyph.amber : Theme.secondaryText, range: NSRange(location: title.count + 1, length: 1))
+                // Grey: changed on disk too, its glyph says so (needs you).
+                s.addAttribute(.foregroundColor, value: Theme.secondaryText, range: NSRange(location: title.count + 1, length: 1))
                 name.attributedStringValue = s
             } else {
                 name.stringValue = title
@@ -2833,7 +2791,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// it ended, a note's first line), its content being out of sight.
     private func updateSubtitle(_ shown: Shown) {
         if collapsed, let s = shown.block?.summary() {
-            let parts = s.lines.prefix(2).enumerated().map { ($0.element, s.formatted.contains($0.offset)) } + [s.note].compactMap { $0 }.map { ($0, false) }
+            // The note, but not what its glyph says already (running, working).
+            let note = s.note.flatMap { ["running", "working", "searching"].contains($0) ? nil : $0 }
+            let parts = s.lines.prefix(2).enumerated().map { ($0.element, s.formatted.contains($0.offset)) } + [note].compactMap { $0 }.map { ($0, false) }
             if parts.contains(where: \.1), let font = subtitle.font, let color = subtitle.textColor {
                 // An agent's answer, as it set it.
                 let line = NSMutableAttributedString()
@@ -2907,15 +2867,15 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// Under the pointer in a fan: the one a click would take, marked
     /// with the accent around it.
-    var hovered = false { didSet { if hovered != oldValue { updateColors() } } }
 
     /// The buttons' ink: quiet (`Theme.barInk`) till the pointer's on the bar.
     private var buttonInk: NSColor { pointerIn ? Theme.secondaryText : Theme.barInk }
 
-    /// The bar's ground: lit when its tile's focused, where the theme says so.
+    /// The bar's ground, focused or not: the ring and the name's ink say
+    /// focus (one way, not four).
     private func paintGlass() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.backgroundColor = (focused ? Theme.tileBarFocused : Theme.tileBar).cgColor
+            glass.layer?.backgroundColor = Theme.tileBar.cgColor
         }
     }
 
@@ -2929,12 +2889,9 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     private func updateColors() {
         paintGlass()
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            glass.layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : EdgeColor.subtle).cgColor
-        }
-        glass.layer?.borderWidth = hovered ? 1 : 0
-        name.textColor = focused || hovered ? Theme.text : Theme.secondaryText
-        icon.contentTintColor = focused || hovered ? Theme.text : Theme.secondaryText
+        glass.layer?.borderWidth = 0
+        name.textColor = focused ? Theme.text : Theme.secondaryText
+        icon.contentTintColor = focused ? Theme.text : Theme.secondaryText
     }
 
     /// Between what's on a bar, one to the next: the icon's ink and the
@@ -2947,10 +2904,6 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// Kinds whose default title only says what their symbol does.
     static let kindSaysIt: Set<BlockKind> = [.terminal, .notebook, .process, .git, .smartlog, .search, .diff, .web, .output, .ui, .thread]
-
-    /// Kept for the grid's asking: the bar is above the content, never
-    /// over the text cursor, so it never gets out of the way.
-    var dodging = false
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard !isHidden else { return nil }
@@ -3009,22 +2962,19 @@ final class TilePill: NSView, NSTextFieldDelegate {
             if !statusPill.isHidden { used += statusPill.wanted.width + 8 }
             return bounds.width - used
         }
-        // The view's own buttons go first of all: what the tile is matters more.
-        if spare() < nameNeed, showOwn { showOwn = false }
-        if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkCompact + 14) }
-        if spare() < nameNeed, linkWanted > 0 { linkRoom = min(linkRoom, Self.linkMinimal + 14) }
-        if spare() < nameNeed, showSidebar { showSidebar = false }
-        // The status's word gives way to a dot in its color before the
-        // name gives way to it.
+        // Narrowing, in three steps, so a bar is one of three things, not
+        // one of nine (§3.1): first every button but close goes, together —
+        // the view's own, the sidebar's, maximize — and the word beside the
+        // status (Editing); then the links go, whole (no in-between widths);
+        // then the host, the agent's pill to its initial, and the name is cut.
         statusPill.compact = false
-        if spare() < nameNeed, !statusPill.isHidden { statusPill.compact = true }
-        if spare() < nameNeed, showCorner { showCorner = false }
-        // Narrower still, the pill goes altogether: the symbol and a bit of
-        // the name say what the tile is; the links are a hover away in the
-        // sidebar.
+        if spare() < nameNeed {
+            showOwn = false
+            showSidebar = false
+            showCorner = false
+            if !statusPill.isHidden { statusPill.compact = true }
+        }
         if spare() < nameNeed, linkRoom > 0 { linkRoom = 0 }
-        // Last of all, the host's pill: what's on another host says so
-        // while there's any room to.
         if spare() < nameNeed, showHost { showHost = false }
         // Narrower still, an agent's pill to its initial in a disc, as the
         // sidebar has it: still its handle, still its colour.
@@ -3234,13 +3184,10 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// The pointer on the bar: its buttons shown; else only its icon,
     /// name and status. Their room is kept, so nothing moves as they come.
     var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true); inkButtons() } } }
-    /// Every bar's controls shown, not only the focused tile's and the
-    /// one under the pointer.
-    static var buttonsAlways = false
     /// Its controls shown (§3.1): the pointer on it, or its tile focused —
     /// the bar a quiet name and status otherwise. Their room is kept, so
     /// nothing moves as they come and go.
-    var chromeShown: Bool { pointerIn || focused || Self.buttonsAlways }
+    var chromeShown: Bool { pointerIn || focused }
     /// The controls laid over the bar by the grid (the links' pill), shown
     /// and hidden with its own: whether shown, and whether to fade.
     var onChromeShown: ((Bool, Bool) -> Void)?
@@ -3268,7 +3215,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         }
         // The place too, but a page's address (what's clicked to type
         // another) and a bar standing for its tile (its summary).
-        let place: CGFloat = shown || collapsed || lastShown?.block?.web != nil ? 1 : 0
+        let place: CGFloat = shown || collapsed || placeIsName || lastShown?.block?.web != nil ? 1 : 0
         let all = [close, corner, sidebarButton] + ownButtons
         let animate = animated && !Motion.reduced
         onChromeShown?(shown, animate)
@@ -3740,15 +3687,15 @@ final class FocusRingView: NSView {
         ring.add(g, forKey: "glide")
     }
 
-    /// Arrived at: the ring itself swells and glows, and settles back.
+    /// Arrived at: the ring glows and settles back, swelling a little —
+    /// enough to find, not to startle; with Reduce motion, the glow alone.
     func pulse() {
         let width = CAKeyframeAnimation(keyPath: "lineWidth")
-        width.values = [2, 5, 2]
+        width.values = [2, 3.5, 2]
         let glow = CAKeyframeAnimation(keyPath: "shadowOpacity")
-        glow.values = [0, 0.9, 0]
+        glow.values = [0, 0.55, 0]
         let g = CAAnimationGroup()
-        // Swelling isn't travel: kept with Reduce motion, as fades are.
-        g.animations = [width, glow]
+        g.animations = Motion.reduced ? [glow] : [width, glow]
         for case let k as CAKeyframeAnimation in g.animations ?? [] {
             k.keyTimes = [0, 0.3, 1]
             k.timingFunctions = [Motion.appear, Motion.settle]
@@ -3920,6 +3867,27 @@ final class AgentNamePill: NSControl {
 
     private var shownName: String { compact ? String(name.prefix(1)) : name }
     private var attributes: [NSAttributedString.Key: Any] { [.font: Self.font, .foregroundColor: ink] }
+
+    /// The pill as a picture, at rest (a card's, a row's drawn by hand):
+    /// the same capsule, mark and name as the bar's, one design.
+    static func width(name: String, mark: Bool) -> CGFloat {
+        ceil((name as NSString).size(withAttributes: [.font: font]).width) + pad * 2 + (mark ? markSide + 4 : 0)
+    }
+
+    static func draw(name: String, color: NSColor, ink: NSColor, mark: NSImage?, in r: NSRect, flipped: Bool) {
+        color.setFill()
+        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink]
+        let w = ceil((name as NSString).size(withAttributes: attrs).width)
+        // Its capitals' middle on the pill's.
+        let y = flipped ? (r.midY + font.capHeight / 2 - font.ascender).rounded() : (r.midY - font.capHeight / 2 + font.descender).rounded()
+        (name as NSString).draw(at: NSPoint(x: r.maxX - pad - w, y: y), withAttributes: attrs)
+        if let mark {
+            mark.draw(in: NSRect(x: r.minX + pad - 1, y: r.midY - markSide / 2, width: markSide, height: markSide),
+                      from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+    }
+
     private var nameSize: NSSize { (shownName as NSString).size(withAttributes: attributes) }
     /// Its maker's mark, then its name, and the room either side; compact,
     /// its initial in a disc.

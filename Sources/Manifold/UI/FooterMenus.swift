@@ -30,8 +30,10 @@ final class SidebarFooter: NSView {
     }
 }
 
-/// A button of the footer: a symbol, maybe a word, maybe a count; a band
-/// under the pointer, and while its menu's open.
+/// A button of the footer: a symbol, maybe a word, and a dot in the accent
+/// when something in it is new (`count` above none — how many is its
+/// menu's to say: a grey count means only what's folded under a row); a
+/// band under the pointer, and while its menu's open.
 final class FooterButton: ClickView {
     var open = false { didSet { needsDisplay = true } }
     var count: Int = 0 { didSet { if count != oldValue { needsDisplay = true } } }
@@ -50,7 +52,7 @@ final class FooterButton: ClickView {
     var wantedWidth: CGFloat {
         var w: CGFloat = 8 + 16
         if let title { w += 6 + ceil((title as NSString).size(withAttributes: [.font: font]).width) }
-        if count > 0 { w += 6 + Pill.size("\(count)").width }
+        if count > 0 { w += 4 + 6 }
         return w + 10
     }
 
@@ -72,8 +74,8 @@ final class FooterButton: ClickView {
             x += z.width + 6
         }
         if count > 0 {
-            let r = NSRect(x: x, y: (bounds.height - Pill.height) / 2, width: Pill.size("\(count)").width, height: Pill.height)
-            Pill.draw("\(count)", in: r)
+            Theme.accent.setFill()
+            NSBezierPath(ovalIn: NSRect(x: x - 2, y: (bounds.height - 6) / 2, width: 6, height: 6)).fill()
         }
     }
 }
@@ -186,7 +188,7 @@ extension MainWindowController {
                                 title: th?.title ?? "Thread", subtitle: sub.filter { !$0.isEmpty }.joined(separator: " · "),
                                 status: hosts.look(ofThread: t), dimmed: th?.resolved == true,
                                 run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) },
-                                // ↖↘ on its row (⌥↩): a tile of its own, not the overlay.
+                                // ↖↘ on its row (⌘↩): a tile of its own, not the overlay.
                                 accessory: PopMenu.Accessory(symbol: "arrow.up.left.and.arrow.down.right", tip: "Open as a Tile") { [weak self] in
                                     self?.popOutThread(t.id)
                                 })

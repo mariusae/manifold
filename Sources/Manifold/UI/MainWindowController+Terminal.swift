@@ -128,10 +128,10 @@ extension MainWindowController: TerminalViewDelegate {
 
     /// The menu of an agent's turn: shown, its changes, undone.
     func turnItems(_ turn: AgentTurn, of agent: BlockID, beside placement: PlacementID?) -> [NSMenuItem] {
+        // (A turn as a tile of its own was one more way to read it: the
+        // conversation shows it, scrolled to it.)
         var items: [NSMenuItem] = [ClosureMenuItem("Show in Conversation", symbol: "text.bubble") { [weak self] in
             self?.showInConversation(turn.id, of: agent, from: placement)
-        }, ClosureMenuItem("Turn as a Tile", symbol: "doc.richtext") { [weak self] in
-            self?.showTurn(turn.id, of: agent, place: .besideOrHere(placement))
         }]
         if turn.before != nil {
             items.append(ClosureMenuItem("Changes in This Turn", symbol: "plusminus") { [weak self] in self?.showTurnChanges(turn, of: agent, beside: placement) })

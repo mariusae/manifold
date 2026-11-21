@@ -24,7 +24,7 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         var keepsOpen = false
         var run: () -> Void
         /// A second thing to do with it (a thread made a tile): a symbol at
-        /// the right of its row under the pointer, clicked; ⌥↩ chosen.
+        /// the right of its row under the pointer, clicked; ⌘↩ chosen.
         var accessory: Accessory? = nil
     }
 
@@ -195,8 +195,9 @@ final class PopMenu: PopoverView, NSTextFieldDelegate {
         case #selector(NSResponder.moveUp(_:)): list.move(-1); scrollToChosen(); return true
         case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
             guard let item = list.chosenItem else { return true }
-            // ⌥↩: its second thing (a thread made a tile), if it has one.
-            if NSApp.currentEvent?.modifierFlags.contains(.option) == true, let a = item.accessory {
+            // ⌘↩: its second thing (a thread made a tile, beside), if it has
+            // one — as ⌘↩ is beside in ⌘O (⌥↩ still, as it was).
+            if let mods = NSApp.currentEvent?.modifierFlags, mods.contains(.command) || mods.contains(.option), let a = item.accessory {
                 onClose?()
                 a.run()
                 return true

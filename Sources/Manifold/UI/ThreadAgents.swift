@@ -281,7 +281,7 @@ extension MainWindowController {
             let runs = Self.agentRuns(b)
             return ThreadShelfView.Item(address: Self.address(id), title: AgentLook.name(of: b), image: AgentLook.face(of: b, size: 15),
                                         symbol: "sparkle", agent: id, isLead: i == 0 && parts.count > 1 && !asksAll(t),
-                                        detail: runs ? AgentLook.description(of: b) : "not running: a comment asks another of its kind, or starts one", quiet: !runs)
+                                        detail: runs ? AgentLook.description(of: b) : "asleep: a comment asks another of its kind, or starts one", quiet: !runs)
         }
         for address in shelfReferences(of: t) {
             var symbol = "doc"

@@ -147,7 +147,7 @@ final class ThreadTimelineView: NSView {
         empty.alignment = .center
         clearReply.target = self
         clearReply.action = #selector(unchoose)
-        composer.font = UIType.body
+        composer.font = AgentConversationView.inputFont
         composer.isRichText = true
         composer.importsGraphics = false
         composer.allowsUndo = true
@@ -646,7 +646,7 @@ final class LinkLabel: ClickView {
     /// A heading's: semibold, in full ink.
     var strong = false {
         didSet {
-            label.font = strong ? .systemFont(ofSize: 11.5, weight: .semibold) : UIType.caption
+            label.font = strong ? .systemFont(ofSize: 11, weight: .semibold) : UIType.caption
             label.textColor = strong ? Theme.text : Theme.secondaryText
         }
     }

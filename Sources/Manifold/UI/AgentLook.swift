@@ -2,23 +2,26 @@ import AppKit
 import ManifoldCore
 
 /// How an agent looks wherever it's shown (`AgentIdentity`): its colour —
-/// Paul Tol's bright palette, less its grey, chosen to stay apart for every
-/// common kind of colour blindness, a little lighter on a dark ground — and
+/// Paul Tol's colour-blind-safe hues (his bright palette's blue, cyan and
+/// purple; his muted teal and indigo; his light pink), none of them a
+/// status's green, amber or red, so an agent is never read as one — a
+/// little lighter on a dark ground — and
 /// its name's initial, on that colour, as its face. Never the colour
 /// alone: its name is always beside it.
 enum AgentLook {
-    /// Blue, cyan, green, yellow, red, purple (light; dark).
+    /// Blue, cyan, teal, indigo, pink, purple (light; dark) — in the slots
+    /// green, yellow and red had, so an agent keeps its slot.
     static let palette: [NSColor] = [
         dynamic(0x4477AA, 0x6A9BD8),
         dynamic(0x66CCEE, 0x66CCEE),
-        dynamic(0x228833, 0x44AA55),
-        dynamic(0xCCBB44, 0xDDCC55),
-        dynamic(0xEE6677, 0xEE7788),
+        dynamic(0x44AA99, 0x55BBAA),
+        dynamic(0x332288, 0x7766DD),
+        dynamic(0xFFAABB, 0xEE99AA),
         dynamic(0xAA3377, 0xCC5599),
     ]
 
     /// The colour names, for a tooltip or a menu.
-    static let colorNames = ["blue", "cyan", "green", "yellow", "red", "purple"]
+    static let colorNames = ["blue", "cyan", "teal", "indigo", "pink", "purple"]
 
     private static func dynamic(_ light: Int, _ dark: Int) -> NSColor {
         func rgb(_ v: Int) -> NSColor {
@@ -34,10 +37,10 @@ enum AgentLook {
         return palette[slot]
     }
 
-    /// Ink that reads on an agent's colour: white, but dark on the light ones (cyan, yellow).
+    /// Ink that reads on an agent's colour: white, but dark on the light ones (cyan, teal, pink).
     static func ink(on block: Block?) -> NSColor {
         guard let block, let slot = AgentIdentity.color(of: block) else { return .white }
-        return slot == 1 || slot == 3 ? NSColor(white: 0.12, alpha: 1) : .white
+        return slot == 1 || slot == 2 || slot == 4 ? NSColor(white: 0.12, alpha: 1) : .white
     }
 
     /// Its name (`AgentIdentity`), else its title.
@@ -84,7 +87,7 @@ enum AgentLook {
         case .working: parts.append("working")
         case .blocked: parts.append("waiting on you")
         case .error: parts.append("stopped with an error")
-        case .idle, .done: parts.append(b.terminal?.dormantSince != nil ? "dormant" : "idle")
+        case .idle, .done: parts.append(b.terminal?.dormantSince != nil ? "asleep" : "idle")
         }
         return parts.joined(separator: " · ")
     }

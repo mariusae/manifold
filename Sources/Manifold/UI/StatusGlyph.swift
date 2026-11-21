@@ -69,7 +69,7 @@ final class StatusGlyph: NSView {
     /// Debugging: how many have settled.
     static var settled = 0
     /// Just finished — running, then done or failed (not a glyph made
-    /// afresh as done): it lands, a little larger, then its size, as a
+    /// afresh as done): it lands a little larger and eases to its size, as a
     /// thing put down settles (it only fades in, with Reduce motion).
     private func settle() {
         Self.settled += 1
@@ -85,13 +85,14 @@ final class StatusGlyph: NSView {
         }
         let c = CGPoint(x: bounds.midX, y: bounds.midY)
         var big = CATransform3DMakeTranslation(c.x, c.y, 0)
-        big = CATransform3DScale(big, 1.45, 1.45, 1)
+        big = CATransform3DScale(big, 1.2, 1.2, 1)
         big = CATransform3DTranslate(big, -c.x, -c.y, 0)
         let a = CABasicAnimation(keyPath: "transform")
         a.fromValue = big
         a.toValue = CATransform3DIdentity
-        a.duration = Motion.spatial * 1.5
-        a.timingFunction = Motion.settle
+        a.duration = Motion.spatial
+        // Eased down, not past its size and back: settled, not sprung.
+        a.timingFunction = Motion.travel
         l.add(a, forKey: "settle")
     }
 
@@ -120,6 +121,10 @@ final class StatusGlyph: NSView {
             }
         }
         if let t = block.terminal, t.dormantSince != nil, t.pid == nil { return .inactive }
+        // Edited, and the file changed on disk under the edits: which to
+        // keep is yours to say — needs you, as the glyph says it (not a
+        // second amber dot after the name).
+        if block.text?.stale == true { return .needsYou }
         return nil
     }
 
@@ -142,7 +147,7 @@ final class StatusGlyph: NSView {
         case .unseen: words = ["Something new"]
         case .done(let read): words = [read ? "Done" : "Done, not read yet"]
         case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
-        case .inactive: words = ["Inactive: the shell ended while idle"]
+        case .inactive: words = ["Asleep: its shell ended while idle"]
         case .connecting: words = ["Connecting to its host"]
         case .offline: words = ["Its host can't be reached: as last seen"]
         case .quiet: words = ["Its host has been quiet a while"]
@@ -152,7 +157,7 @@ final class StatusGlyph: NSView {
             case .permission?: words = ["Needs you: permission"]
             case .question?: words = ["Needs you: a question"]
             case .auth?: words = ["Needs you: a sign-in"]
-            case nil: words = ["Needs you"]
+            case nil: words = [block.text?.stale == true ? "Needs you: the file changed on disk under your edits — the menu says which to keep" : "Needs you"]
             }
         }
         if let app = r?.app { words[0] += " · " + app }

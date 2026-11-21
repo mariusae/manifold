@@ -561,12 +561,15 @@ extension MainWindowController {
                 return
             }
         }
-        // No sidebar: ⌘P, on this tile's outline.
+        // No sidebar: the panel, on this tile's outline (⌘P is the space's).
         focus(placement)
-        goToTile(nil)
+        guard let view = views[placement], let outline = view.outline, !outline.items.isEmpty else { return NSSound.beep() }
+        finder.showOutline(Finder.OutlineScope(provider: { [weak self] query in self?.tileOutlineItems(placement, view, outline, query) ?? [] },
+                                               start: outline.current, placeholder: "Go to in this tile…", hint: "This tile", reach: .tile),
+                           over: window)
     }
 
-    /// A tile's outline as rows for ⌘P: nested as it is while all of it
+    /// A tile's outline as rows for the panel (⇧⌘P, no sidebar): nested as it is while all of it
     /// shows; found (by the space's index), flat.
     private func tileOutlineItems(_ placement: PlacementID, _ view: PaneContent, _ outline: Outline, _ query: String) -> [FinderItem] {
         guard let index = syncOutlineIndex() else { return [] }
@@ -613,12 +616,11 @@ extension MainWindowController {
 
     /// ⌘P: the workspace as a hierarchy, as Prism's Move to Heading is —
     /// its tiles by column, and the items of their outlines, set in under
-    /// their tile; those whose words have every word of the query. The
-    /// focused tile's own outline first, if it has one (⇥ widens it).
+    /// their tile; those whose words have every word of the query. Always
+    /// the space's, from the start: a tile's own outline is ⇧⌘P's, filtered
+    /// in its sidebar (⌘P offered both, a second way to the same list).
     /// ↩ goes to a tile, or to a place in it.
     @objc func goToTile(_ sender: Any?) {
-        // Open already (the tile's or the space's): the other.
-        if finder.opener == .outline, finder.widens { return finder.widen() }
         guard let a = arrangement, !a.isEmpty else { return NSSound.beep() }
         // It begins where you are: the focused tile, and in a text, the
         // heading the caret is under, or the one at the top of a preview.
@@ -629,20 +631,13 @@ extension MainWindowController {
             let pb = c.node.blocks.first { $0.kind == .process }?.id ?? BlockID(host: c.host)
             hosts.propose(.processes(block: pb))
         }
-        // The focused tile's own outline first, if it has one; ⇥ widens it
-        // to the whole space's (and back).
-        let tile: Finder.OutlineScope? = a.focused.flatMap { f in self.views[f].map { (f, $0) } }.flatMap { f, view in
-            guard let outline = view.outline, !outline.items.isEmpty else { return nil }
-            return Finder.OutlineScope(provider: { query in self.tileOutlineItems(f, view, outline, query) }, start: outline.current,
-                                       placeholder: "Go to in this tile…", hint: "This tile", reach: .tile)
-        }
         // Each query looked up in the space's index (kept as outlines
         // change), not the outlines gone through again.
         let space = Finder.OutlineScope(provider: { [weak self] query in
             guard let self, let a = self.arrangement else { return [] }
             return self.spaceOutlineRows(a, query: query)
         }, start: spaceOutlineStart(a), placeholder: "Go to…", hint: "The space", reach: .space)
-        if let tile { finder.showOutline(tile, wider: space, over: window) } else { finder.showOutline(space, over: window) }
+        finder.showOutline(space, over: window)
     }
 
     /// What runs in each terminal (the process trees under the shells,

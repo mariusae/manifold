@@ -195,7 +195,7 @@ final class ArrangementDiagram: NSView {
     }
 
     private func drawColumn(_ c: Int, in rect: NSRect) {
-        let font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
         let column = state.columns[c]
         guard !column.isEmpty else { return }
         let gap: CGFloat = 4
@@ -227,7 +227,7 @@ final class ArrangementDiagram: NSView {
             tinted.draw(in: NSRect(x: r.minX + 8, y: r.maxY - 20, width: 14, height: 13))
         }
         let s = NSAttributedString(string: titleOf(p.block), attributes: [
-            .font: focused ? NSFont.systemFont(ofSize: 11.5, weight: .semibold) : font, .foregroundColor: Theme.text])
+            .font: focused ? NSFont.systemFont(ofSize: 11, weight: .semibold) : font, .foregroundColor: Theme.text])
         s.draw(in: NSRect(x: r.minX + 26, y: r.maxY - 22, width: r.width - 34, height: 16))
     }
 }

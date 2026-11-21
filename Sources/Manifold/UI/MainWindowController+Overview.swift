@@ -335,7 +335,7 @@ enum StatusGroup: Int, CaseIterable {
         case .done: "Done"
         case .failed: "Failed"
         case .working: "Working"
-        case .inactive: "Inactive"
+        case .inactive: "Asleep"
         }
     }
 }

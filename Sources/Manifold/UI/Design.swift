@@ -38,7 +38,7 @@ enum UIType {
     static let hudField = NSFont.systemFont(ofSize: 15)
     static let field = NSFont.systemFont(ofSize: 13)
     static let body = NSFont.systemFont(ofSize: 12)
-    static let detail = NSFont.systemFont(ofSize: 11.5)
+    static let detail = NSFont.systemFont(ofSize: 11)
     static let caption = NSFont.systemFont(ofSize: 11, weight: .medium)
     /// A section's small header, everywhere one names a group of rows
     /// (Dia's: small, semibold, in grey).
@@ -47,7 +47,7 @@ enum UIType {
     static let label = NSFont.systemFont(ofSize: 12, weight: .medium)
     /// A note under a table or a pane, a footer's words.
     static let footnote = NSFont.systemFont(ofSize: 11)
-    static let count = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+    static let count = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
     /// A number on a badge at a corner (a tab's count, a key's number).
     static let badge = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .bold)
     /// A block's symbol beside its title, as a row or a card sets it.
@@ -218,8 +218,12 @@ enum LinkCapsule {
 /// A pill: a count, an age — a few figures on a grey capsule, one look
 /// wherever it's drawn (a sidebar row's count, a card's age).
 enum Pill {
+    /// Every capsule on a bar this tall — an agent's name, the host's,
+    /// a word beside the status, an age — one height.
     static let height: CGFloat = 16
     static let font = UIType.count
+    /// A capsule's words (a host's name, Editing): one face for them all.
+    static let words = NSFont.systemFont(ofSize: 11, weight: .medium)
     static let ground = NSColor.themed { $0.chrome.pill }
 
     static func size(_ text: String) -> NSSize {

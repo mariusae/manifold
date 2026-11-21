@@ -10,7 +10,6 @@ import ManifoldSyntax
 /// sample as it changes. Changing anything here sets Manifold in it.
 final class TypographyPane: SettingsPane {
     private var role: FontRole = .editing
-    private let use = Flat.checkbox("Set Manifold in custom typography")
     private let start = NSPopUpButton(frame: .zero, pullsDown: true)
     private var showRole: ((FontRole) -> Void)?
     private let family = NSPopUpButton()
@@ -43,12 +42,11 @@ final class TypographyPane: SettingsPane {
     required init?(coder: NSCoder) { fatalError() }
 
     override func build() {
-        use.target = self
-        use.action = #selector(toggleUse)
-        row("Fonts", use, note: "The Custom font theme. Each role scales the sizes set in it everywhere it's used.")
+        // Editing anything here sets Manifold in the Custom fonts (one of
+        // Appearance's Fonts): no switch of its own to turn first.
         start.addItem(withTitle: "Start From")
         start.menu?.delegate = self
-        row("", start)
+        row("Fonts", start, note: "The Custom fonts: changing anything here sets Manifold in them. Each role scales the sizes set in it everywhere it's used.")
         gap()
         let (roles, show) = segments(FontRole.allCases.map(\.title), FontRole.allCases) { [weak self] r in
             guard let self else { return }
@@ -141,7 +139,6 @@ final class TypographyPane: SettingsPane {
 
     override func refresh() {
         let a = source.appearance()
-        use.state = a.theme == .custom ? .on : .off
         showRole?(role)
         // Not over what's being edited (an edit waiting to be kept).
         // Technical's face is editing's: shown as it's set.
@@ -336,12 +333,6 @@ final class TypographyPane: SettingsPane {
             a.theme = .custom
         }
         refresh()
-    }
-
-    @objc private func toggleUse() {
-        flush()
-        let on = use.state == .on
-        source.change { (a: inout Appearance) in a.theme = on ? .custom : .apple }
     }
 
     @objc private func pickFamily() {

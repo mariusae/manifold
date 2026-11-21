@@ -948,7 +948,10 @@ final class EditorView: NSView, PaneContent, TextViewDocument, TextViewDelegate,
         textView.showsStructure = font == .monospaced && textView.syntaxLanguage != nil
         updatePinned()
         // Code (a file of a language the table has) shows its caret's symbol's uses.
-        textView.showsSymbolUses = CodeLanguage.forPath(path)?.kind == .language
+        // Not on its own a moment after the caret stops (a band coming and
+        // going under every name the caret rested on): Highlight Uses pins
+        // a symbol's when you ask.
+        textView.showsSymbolUses = false
         // Notes about its places in the technical font beside code, else the text's.
         textView.noteFont = font == .monospaced ? doc : nil
         textView.markdownHeadings = path.isEmpty || Lens.isMarkdown(path)
@@ -1327,7 +1330,7 @@ final class EditorBanner: NSView {
 extension EditorView: Printable {
     /// The text as it is, in the code font (a note's too: its Markdown).
     func printOperation() -> NSPrintOperation? {
-        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: isMarkdownOutline ? .systemFont(ofSize: 10.5) : TextPrint.codeFont)
+        TextPrint.operation(textView.text.string, title: path.isEmpty ? "Note" : path.abbreviatingHome, font: isMarkdownOutline ? .systemFont(ofSize: 11) : TextPrint.codeFont)
     }
 }
 

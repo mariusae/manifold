@@ -483,11 +483,11 @@ extension MainWindowController {
                     let took = BlockSummary.took(from: c.at, to: c.ended).map { " · " + $0 } ?? ""
                     own.append(row("\(c.text) · \(how)\(took) · \(Age.ago(c.ended ?? c.at))", "last command", c.status == 0 ? "checkmark" : "xmark"))
                 }
-                if let after = t.dormantAfter { more.append(row("\(after) h", "dormant after", "moon.zzz")) }
+                if let after = t.dormantAfter { more.append(row("\(after) h", "asleep after", "moon.zzz")) }
                 if t.snapshot != nil { more.append(row("Kept, for its changes", "start's tree", "camera")) }
                 more.append(row("\(t.commands?.count ?? 0)", "commands run", "list.bullet"))
                 if let turns = t.turns, !turns.isEmpty { more.append(row("\(turns.count)", "turns", "bubble.left.and.bubble.right")) }
-                if let d = t.dormantSince { own.append(row(Age.ago(d), "dormant since", "moon")) }
+                if let d = t.dormantSince { own.append(row(Age.ago(d), "asleep since", "moon")) }
             }
         case .web:
             if let w = b.web {
@@ -823,10 +823,10 @@ extension MainWindowController {
                 n.badge = "doc.fill"
                 n.trailing = nil
             }
-            // The pointer on it: close it (⌘W's), or delete its block.
-            let pid = p.id, block = p.block
+            // The pointer on it: close it (⌘W's) — deleting its block is
+            // ⌘D's, or its menu's, not a bin a slip away from ×.
+            let pid = p.id
             n.accessories = [
-                .init(symbol: "trash", tip: "Delete", run: { [weak self] in self?.deleteBlock(block) }),
                 .init(symbol: "xmark", tip: "Close Tile", run: { [weak self] in self?.closeTile(pid, in: id) }),
             ]
             return n
@@ -947,21 +947,16 @@ extension MainWindowController {
             if !top.isEmpty { out.append(rule("projects")) }
             out += projects
         }
-        // On screen, the rest, column by column: each column's rows under a
-        // little map of the columns, its own lit (with more than one).
-        let many = a.columns.count > 1
+        // On screen, the rest, column by column, a plain hairline between
+        // columns (a little map of the columns was a glyph to decode, where
+        // the hover ring ties a row to its tile).
         var grid: [OrgNode] = []
         for (c, column) in a.columns.enumerated() {
             let rows = column.filter { !pinned.contains($0.block) && !urgent.contains($0.id) && !projectTiles.contains($0.id) }
                 .compactMap { tile($0, docked: false, column: c) }
             guard !rows.isEmpty else { continue }
-            if many {
-                let r = rule("col/\(c)")
-                r.columnMap = (c, a.columns.count)
-                r.tooltip = "Column \(c + 1) of \(a.columns.count)"
-                grid.append(r)
-            } else if !out.isEmpty {
-                grid.append(rule("screen"))
+            if !grid.isEmpty || !out.isEmpty {
+                grid.append(rule("col/\(c)"))
             }
             grid += rows
         }

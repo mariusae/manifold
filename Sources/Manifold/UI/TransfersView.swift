@@ -110,7 +110,7 @@ final class TransferRowView: ClickView {
         close.target = self
         close.action = #selector(closeClicked)
         icon.image = Theme.symbol(item.symbol, size: 11, weight: .semibold)
-        detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+        detail.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         detail.textColor = Theme.secondaryText
         detail.lineBreakMode = .byTruncatingTail
         for v in [icon, title, detail, close] { addSubview(v) }

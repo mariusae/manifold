@@ -164,9 +164,10 @@ extension MainWindowController: ThreadChatDelegate {
             }
         }
         m.icon = { [weak self] id in
-            guard let a = self?.hosts.block(id)?.agent else { return nil }
-            return AgentIcons.image(a.command, size: 12)
+            guard let b = self?.hosts.block(id), let a = b.agent else { return nil }
+            return AgentLook.face(of: b, size: 12) ?? AgentIcons.image(a.command, size: 12)
         }
+        m.doing = { [weak self] in self?.hosts.block($0)?.agentDoing }
         // The agent's thread, and who Ask would make it.
         m.askName = askingAgent?.name ?? "Claude"
         if let kind = thread.flatMap({ asksAgent(of: $0) }) {
@@ -473,22 +474,7 @@ extension MainWindowController: ThreadChatDelegate {
     }
 
     /// A chat kept up to date from now on.
-    /// A block referred to in a comment, as a card: its icon (a page's
-    /// own), its name, and where it is.
-    func mentionChip(_ id: String) -> ChatBox.Chip? {
-        guard let bid = BlockID(string: id), let b = hosts.block(bid) else { return nil }
-        var whereIs = ""
-        if let url = b.web?.url.flatMap({ URL(string: $0) }), let host = url.host { whereIs = host }
-        else if let path = b.path { whereIs = Self.tilde((path as NSString).deletingLastPathComponent) }
-        else if let a = b.agent { whereIs = a.name }
-        else if let cwd = b.terminal?.cwd { whereIs = Self.tilde(cwd) }
-        else { whereIs = b.isNote ? "Note" : b.kind.defaultTitle }
-        return ChatBox.Chip(symbol: Theme.symbolName(for: b), image: b.agent.flatMap { AgentIcons.image($0.command, size: 16) } ?? b.web.flatMap { Favicons.image(forPage: $0.url) },
-                            title: Self.linkTitle(b), detail: whereIs)
-    }
-
     func watch(_ chat: ThreadChatView) {
-        if ChatBox.chipFor == nil { ChatBox.chipFor = { [weak self] id in self?.mentionChip(id) } }
         chat.delegate = self
         chat.composer.mentionSource = { [weak self] in self?.mentionSource() ?? { _ in [] } }
         if !threadUI.chats.contains(where: { $0.value === chat }) { threadUI.chats.append(Weak(chat)) }
@@ -1037,8 +1023,8 @@ extension MainWindowController: ThreadTimelineDelegate {
         }
         m.unseen = threads.reduce(0) { $0 + hosts.unseen($1).count }
         m.icon = { [weak self] id in
-            guard let a = self?.hosts.block(id)?.agent else { return nil }
-            return AgentIcons.image(a.command, size: 12)
+            guard let b = self?.hosts.block(id), let a = b.agent else { return nil }
+            return AgentLook.face(of: b, size: 12) ?? AgentIcons.image(a.command, size: 12)
         }
         return m
     }

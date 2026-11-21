@@ -66,8 +66,10 @@ struct ThreadChatModel {
     var seenMark: Stamp?
     /// Agents in it at work right now.
     var working: Set<BlockID> = []
-    /// An agent's mark, by its block.
+    /// An agent's face, by its block: the same wherever one agent is meant.
     var icon: (BlockID) -> NSImage? = { _ in nil }
+    /// What an agent at work says it's doing (`Block.agentDoing`).
+    var doing: (BlockID) -> String? = { _ in nil }
     /// Its place's symbol and words, as a pill says them.
     var placeTitle: String = ""
     /// Shown in a tile, or in the overlay: no "open as tile" button.
@@ -286,7 +288,9 @@ final class ThreadChatView: NSView {
         list.translatesAutoresizingMaskIntoConstraints = false
         list.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
 
-        composer.font = UIType.body
+        // What you write, wherever it's written to an agent or a thread: the
+        // technical face, as an agent's conversation's composer has it.
+        composer.font = AgentConversationView.inputFont
         composer.isRichText = true
         composer.importsGraphics = false
         composer.allowsUndo = true
@@ -394,7 +398,7 @@ final class ThreadChatView: NSView {
         agentMark.isHidden = m.asks == nil
         agentMark.toolTip = m.asks.map { "\($0)'s thread: your comments here ask it" }
         // Written in a tile at the size its comments are read at.
-        let face = m.inTile ? Self.tileFont : UIType.body
+        let face = AgentConversationView.inputFont
         if composer.font != face { composer.font = face }
         if let context = place?.context, !context.isEmpty {
             contextView.isHidden = false
@@ -421,6 +425,14 @@ final class ThreadChatView: NSView {
                 ruled = true
                 previous = nil
             }
+            // Asked by the comment just above: that comment says so (its
+            // working row follows while it works) — not a row of its own.
+            if case .asked = e.kind, previous?.comment != nil {
+                var j = i + 1
+                while j < entries.count, case .asked = entries[j].kind { j += 1 }
+                i = j
+                continue
+            }
             // Agents asked again and again, nothing between: one row — who,
             // each once, and how many times if it's one asked more than once.
             if case let .asked(agent, _) = e.kind {
@@ -444,7 +456,9 @@ final class ThreadChatView: NSView {
         }
         for agent in m.working {
             let name = t?.agents.first { $0.block == agent }?.name ?? "The agent"
-            list.addArrangedSubview(event(name, "is working on it…", symbol: "ellipsis", icon: m.icon(agent), working: true))
+            // What it says it's doing, the same words as everywhere (its
+            // dots say it's at it; no "…" after them as well).
+            list.addArrangedSubview(event(name, m.doing(agent) ?? "is working on it", symbol: "ellipsis", icon: m.icon(agent), working: true))
         }
         // Each as wide as the list now, laid out once at its width.
         list.arrangedSubviews.forEach(pinWidth)

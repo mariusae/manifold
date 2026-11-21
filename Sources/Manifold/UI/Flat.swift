@@ -15,7 +15,9 @@ enum Flat {
     static var line: NSColor { Theme.text.withAlphaComponent(0.14) }
     static var fill: NSColor { Theme.text.withAlphaComponent(0.025) }
     /// A band: chosen (stronger with the keyboard), under the pointer, pressed.
-    static func chosen(emphasized: Bool = true) -> NSColor { emphasized ? Theme.selection : Theme.selectionInactive }
+    /// Chosen in a list, as `chosenRow` says it: a grey a step off what
+    /// it's on — not a band of the tint (one way of saying chosen, in lists).
+    static func chosen(emphasized: Bool = true) -> NSColor { Theme.text.withAlphaComponent(emphasized ? 0.09 : 0.06) }
     static var hovered: NSColor { Theme.hover }
     /// Pressed: the hover's grey, deeper — not the tint, which is for
     /// what's chosen (a grey button pressed doesn't flash blue).

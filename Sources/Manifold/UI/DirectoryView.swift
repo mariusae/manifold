@@ -1385,7 +1385,7 @@ final class DirectoryView: NSView, PaneContent, KeepsViewState, NSTextFieldDeleg
     }
 
     private func showViewButtons(animated: Bool) {
-        let a: CGFloat = pointerIn || TilePill.buttonsAlways ? 1 : 0
+        let a: CGFloat = pointerIn ? 1 : 0
         guard animated, !Motion.reduced else { for v in [homeButton, modes] as [NSView] { v.alphaValue = a }; return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = Motion.fast

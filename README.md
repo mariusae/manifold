@@ -778,8 +778,8 @@ around it, and comes back with its history.
   a long read, with headings and bold brighter (97%) to do emphasis's
   work. Code spans are marked by their face alone; only fenced code
   blocks sit on a tint.
-  **Settings ▸ Appearance ▸ Enable advanced typography** adds a
-  **Typography** pane and a fourth theme, **Custom**, set there a role
+  Settings has a **Typography** pane, and Appearance's Fonts a fourth
+  theme, **Custom** (anything changed in the pane sets it), set there a role
   at a time: any installed family (the monospaced role's list leads with
   those of fixed pitch; New York too) and its face (by weight), the
   size, the line height, letter spacing (thousandths of an em), and

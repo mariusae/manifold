@@ -269,7 +269,7 @@ final class IssueEventView: NSView, OnTheLine {
     private let badge = Badge()
     private let label: NSTextField
     private let inTile: Bool
-    /// At work (an agent on it, now): the working glyph's rays going round
+    /// At work (an agent on it, now): the working glyph's dots, in turn,
     /// on the line, in the halo's place — the conversation's typing
     /// indicator, as every working thing is said (§3.7).
     private var spinner: StatusGlyph?

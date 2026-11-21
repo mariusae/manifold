@@ -309,7 +309,7 @@ final class GraphCanvas: NSView, NSDraggingSource {
                 var words = e.label
                 if let c = e.context, !c.isEmpty { words += " · " + c }
                 if let at = e.at { words += " · " + Age.ago(at) }
-                let text = NSAttributedString(string: String(words.prefix(60)), attributes: [.font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: Theme.text])
+                let text = NSAttributedString(string: String(words.prefix(60)), attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.text])
                 let size = text.size()
                 let mid = NSPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
                 let box = NSRect(x: mid.x - size.width / 2 - 4, y: mid.y - size.height / 2 - 1, width: size.width + 8, height: size.height + 2)
@@ -345,7 +345,7 @@ final class GraphCanvas: NSView, NSDraggingSource {
                 .font: NSFont.systemFont(ofSize: isCenter ? 13 : 12, weight: isCenter ? .semibold : .medium), .foregroundColor: Theme.text, .paragraphStyle: truncating])
             let extra = model.more[n.id].map { " +\($0)" } ?? ""
             let h = ceil(text.size().height)
-            let moreText = NSAttributedString(string: extra, attributes: [.font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: Theme.secondaryText])
+            let moreText = NSAttributedString(string: extra, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText])
             let moreWidth = extra.isEmpty ? 0 : ceil(moreText.size().width) + 4
             text.draw(with: NSRect(x: r.minX + 30, y: r.midY - h / 2, width: r.width - 38 - moreWidth, height: h), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             if !extra.isEmpty { moreText.draw(at: NSPoint(x: r.maxX - 8 - moreWidth + 4, y: r.midY - h / 2 + 1)) }
@@ -358,7 +358,7 @@ final class GraphCanvas: NSView, NSDraggingSource {
             let swatch = NSRect(x: x, y: bounds.maxY - 14, width: 14, height: 3)
             Self.color(e.kind).setFill()
             swatch.fill()
-            let t = NSAttributedString(string: e.label, attributes: [.font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: Theme.secondaryText])
+            let t = NSAttributedString(string: e.label, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.secondaryText])
             t.draw(at: NSPoint(x: x + 18, y: bounds.maxY - 20))
             x += 18 + ceil(t.size().width) + 16
         }

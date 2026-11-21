@@ -1,9 +1,10 @@
 import Foundation
 
 /// An agent's conversation (§3.8), its "default thread": each turn — what
-/// you asked, in the technical face, as typed; what it did on the way,
-/// folded to a line ("read 6 files · edited 2 · ran 3 commands"); what it
-/// said, rendered as a page is, in the reading face — the latest last.
+/// you asked, in the technical face, as typed, in a bubble at the right;
+/// what it did on the way, folded to a line ("read 6 files · edited 2 ·
+/// ran 3 commands"); what it said, rendered as a page is, in the editing
+/// face — the latest last.
 /// Made as Markdown with a little HTML, for the page a preview shows.
 public enum AgentConversation {
     /// How it stands at its end, said after the last turn.

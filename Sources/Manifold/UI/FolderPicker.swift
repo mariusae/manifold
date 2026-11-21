@@ -29,7 +29,7 @@ final class FolderPicker: NSObject, NSTextFieldDelegate, NSTableViewDataSource, 
 
     private let panel = Panel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
     private let ground = NSVisualEffectView()
-    private let crumbs = NSTextField.label(font: .systemFont(ofSize: 11.5), color: Theme.secondaryText, cut: .byTruncatingHead)
+    private let crumbs = NSTextField.label(font: .systemFont(ofSize: 11), color: Theme.secondaryText, cut: .byTruncatingHead)
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = NSScrollView()

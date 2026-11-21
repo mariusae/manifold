@@ -119,7 +119,9 @@ extension Block {
     /// The block in a few lines, as of `now`.
     public func summary(now: Date = Date()) -> BlockSummary {
         var s = BlockSummary(title: displayTitle, place: place)
-        if let r = statusRecord, r.state != .idle {
+        // Done or failed, and read: nothing to say (one status rule), so
+        // not in colour either.
+        if let r = statusRecord, r.state != .idle, !((r.state == .done || r.state == .error) && r.read == true) {
             s.tone = r.state == .error ? .failed : r.state == .blocked ? .attention : r.state == .working ? .running : .done
             if let p = r.progress { s.progress = Double(p) / 100 }
         }
@@ -164,7 +166,7 @@ extension Block {
                 }
                 if let earlier = term.commands?.dropLast().last { s.lines.append("$ " + Self.oneLine(earlier.text)) }
             } else {
-                s.lines = [term.dormantSince != nil ? "dormant" : "no commands yet"]
+                s.lines = [term.dormantSince != nil ? "asleep" : "no commands yet"]
                 s.code = false
             }
             s.place = term.cwd

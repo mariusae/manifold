@@ -53,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let scheme = hosts.state.appearance.colorScheme.appearance
         if NSApp.appearance?.name != scheme?.name { NSApp.appearance = scheme }
         Palette.apply(Palette.named(hosts.state.appearance.colorTheme))
-        Tints.apply(hosts.state.appearance.tint)
+        // The system's accent, always: one colour for one's own marks, the
+        // one every other app uses (a choice of eight was eight more to keep apart).
+        Tints.apply(.system)
         GhosttyRuntime.shared.apply(hosts.state.appearance, dark: NSApp.effectiveAppearance.isDark)
         if windowController == nil {
             let wc = MainWindowController(hosts: hosts)
@@ -617,8 +619,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tile.addItem(.separator())
         item(tile, "Grow", #selector(MainWindowController.growTile(_:)), "=", [.command, .control])
         item(tile, "Fill the Column", #selector(MainWindowController.fillColumn(_:)), "=", [.command, .control, .option])
-        item(tile, "Fill the Column, Keeping Bars", #selector(MainWindowController.fillColumnKeepingBars(_:)), "=", [.command, .control, .shift])
-        item(tile, "Shrink to Summary", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
+        item(tile, "Minimize to Its Bar", #selector(MainWindowController.shrinkToSummary(_:)), "m", [.command, .shift])
         item(tile, "Dock", #selector(MainWindowController.dockTile(_:)), "m")
         // ⌥⇧⌘ and an arrow: the tile a step that way.
         let moveMenu = NSMenu(title: "Move")

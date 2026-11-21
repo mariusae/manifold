@@ -658,11 +658,13 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         // A label among a space's rows (no rows of its own): room above it.
         case .section: return n.hasChildren ? 24 : 34
         case .row: return Self.fullHeight(n, flat: flat)
-        case .divider: return n.columnMap == nil ? 9 : 16
+        case .divider: return 9
         }
     }
 
-    static func fullHeight(_ n: OrgNode, flat: Bool) -> CGFloat { flat && !n.detail.isEmpty ? 40 : 26 }
+    /// Every row one line: a remark ("Exited 1", "in Docs") after the name,
+    /// in grey, not a second line (two heights in one list).
+    static func fullHeight(_ n: OrgNode, flat: Bool) -> CGFloat { 26 }
 
     // MARK: Slots (a tile docked into its row, or out of it)
 
@@ -853,31 +855,6 @@ final class OrganizationView: NSView, NSOutlineViewDataSource, NSOutlineViewDele
         l.frame = v.bounds
         l.zPosition = 10
         return l
-    }
-
-    /// Where a tile's row is landing, marked: a band of the tint behind it,
-    /// coming up as the tile does (`rising`, of `d`), held, then gone after
-    /// it's there — or, going, lit at once and fading as the tile leaves.
-    func markLanding(_ p: PlacementID, tint: CGColor, arriving: Bool, over d: Double) {
-        guard let i = rowIndex(of: p), let v = outline.rowView(atRow: i, makeIfNecessary: true) else { return }
-        v.wantsLayer = true
-        guard let layer = v.layer else { return }
-        let band = CALayer()
-        band.backgroundColor = tint
-        band.cornerRadius = 6
-        band.cornerCurve = .continuous
-        band.frame = v.bounds.insetBy(dx: 4, dy: 1)
-        band.opacity = 0
-        band.zPosition = -1
-        layer.insertSublayer(band, at: 0)
-        let o = CAKeyframeAnimation(keyPath: "opacity")
-        o.values = arriving ? [0, 0.22, 0.22, 0] : [0.22, 0.22, 0]
-        o.keyTimes = arriving ? [0, 0.5, 0.75, 1] : [0, 0.2, 1]
-        o.duration = arriving ? d * 1.6 : d * 0.6
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { band.removeFromSuperlayer() }
-        band.add(o, forKey: "landing")
-        CATransaction.commit()
     }
 
     /// A picture of a tile's row as it shows, and where it is in `view`.
@@ -1630,7 +1607,7 @@ final class OrgRowView: NSTableCellView {
         // Edited and unsaved: the bar's dot after the name.
         if node.dirty, let font = name.font, let color = name.textColor {
             let s = NSMutableAttributedString(string: node.title + " •", attributes: [.font: font, .foregroundColor: color])
-            s.addAttribute(.foregroundColor, value: node.stale ? StatusGlyph.amber : Theme.washSecondaryText,
+            s.addAttribute(.foregroundColor, value: Theme.washSecondaryText,
                            range: NSRange(location: (node.title as NSString).length + 1, length: 1))
             name.attributedStringValue = s
         }
@@ -1647,7 +1624,11 @@ final class OrgRowView: NSTableCellView {
             detailIcon.image = detailSymbol.isEmpty ? nil : Theme.symbol(detailSymbol, size: 10)
         }
         detailIcon.isHidden = detailSymbol.isEmpty
-        alphaValue = 1 - 0.45 * (node.age ?? 0)
+        // Faded by age only where nothing else says it: not a row dimmed
+        // already (asleep, docked, saying), nor one whose age is printed —
+        // one dimming at a time, so an old, asleep row doesn't all but go.
+        let dimmedOtherwise = node.dimmed || node.docked || node.saying || node.trailing != nil
+        alphaValue = dimmedOtherwise ? 1 : 1 - 0.45 * (node.age ?? 0)
         tipOwner.text = node.liveTooltip
         // A block's row has its card (the title, and more) for a tooltip.
         toolTip = node.liveTooltip != nil || node.block != nil ? nil : node.detail.isEmpty ? node.title : node.title + " — " + node.detail
@@ -1728,9 +1709,9 @@ final class OrgRowView: NSTableCellView {
                 right -= Sparkline.width + 8
             }
         }
-        if let node, flat, node.style == .row, !detail.isHidden {
-            // Two lines: the name with the status at its right, then what
-            // the status says beneath, aligned with the name.
+        if let node, flat, node.style == .row, !detail.isHidden, h >= 36 {
+            // Two lines (a row given the room): the name with the status at
+            // its right, then what the status says beneath, aligned with the name.
             let ix: CGFloat = node.inset
             icon.frame = NSRect(x: 2 + ix, y: h - 20 + 1, width: 16, height: 14)
             var right = bounds.width - 4

@@ -21,9 +21,8 @@ class PopoverView: NSView {
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = false
         shadow = NSShadow()
-        layer?.shadowOpacity = 0.28
-        layer?.shadowRadius = 20
-        layer?.shadowOffset = NSSize(width: 0, height: -8)
+        // A floating panel's, as every one is (it was the heaviest in the app).
+        if let l = layer { Elevation.float.apply(to: l) }
         ground.material = .popover
         ground.blendingMode = .withinWindow
         ground.state = .active

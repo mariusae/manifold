@@ -99,8 +99,13 @@ extension MainWindowController {
             case .connected: standing = c.watching ? "watching" : nil
             }
         }
+        // Named for a project of its own (as most are): that project's row
+        // under it says the name — not said twice, a heading over itself.
+        var title = title(of: a)
+        let projects = Set(a.placements.compactMap { (project(pinning: $0.block) ?? project(of: $0.block))?.name.lowercased() })
+        if projects.contains(title.lowercased()) { title = "" }
         // Its host said only where there's more than one to tell apart.
-        sidebar.setSpace(title: title(of: a), host: hosts.label(of: id.host), standing: standing,
+        sidebar.setSpace(title: title, host: hosts.label(of: id.host), standing: standing,
                          pings: c?.isRemote == true ? { [weak c] in c?.pings ?? [] } : nil, remote: c?.isRemote == true,
                          showsHost: hosts.ordered.count > 1 || c?.isRemote == true)
         if sidebar.spaceHost.onHover == nil {

@@ -14,8 +14,8 @@ public enum AgentIdentity {
     /// The annotation that holds its name.
     public static let nameKey = "agent.name"
 
-    /// How many colours there are (the app has them: Paul Tol's bright
-    /// palette, less its grey).
+    /// How many colours there are (the app has them: Paul Tol's
+    /// colour-blind-safe hues, none a status's).
     public static let colors = 6
 
     /// Names given, short and unlike one another — a plant's or a bird's —

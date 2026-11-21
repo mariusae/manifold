@@ -7,7 +7,7 @@ struct FinderItem {
     var symbol: String
     var title: String
     var detail: String
-    /// A word on the right: "edited", "dormant", "named", or where it is.
+    /// A word on the right: "edited", "asleep", "named", or where it is.
     var note: String
     /// How long since it was seen, for a pill at the right: none for one
     /// seen just now.

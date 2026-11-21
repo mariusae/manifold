@@ -62,7 +62,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             if let r = b.statusRecord {
                 let new = seenStatus[b.id].map { $0 != r.at } ?? true
                 seenStatus[b.id] = r.at
-                if seeded, new, r.wantsAttention, Self.speaks(b.kind), !inSight(b.id), speaksHere(b.id) { post(status: r, of: b) }
+                // In front, only what needs you: done and failed are said
+                // by the window itself (its rows, its strip), as a thread's
+                // news is — to the Mac only while Manifold's away.
+                if seeded, new, r.wantsAttention, Self.speaks(b.kind), !inSight(b.id), speaksHere(b.id),
+                   r.state == .blocked || inBackground() { post(status: r, of: b) }
             }
             // The shell's commands, not an agent's turns (marks on the
             // scrubber too): a turn ending is said by the agent's status.
@@ -72,7 +76,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 seenCommand[b.id] = last.id
                 // One whose shell went first didn't finish: not said as if it had.
                 if seeded, let before, last.id != before, !last.abandoned, let ended = last.ended, ended.wall - last.at.wall >= Self.longCommand,
-                   !inSight(b.id), speaksHere(b.id) {
+                   !inSight(b.id), speaksHere(b.id), inBackground() {
                     post(command: last, of: b, took: ended.wall - last.at.wall)
                 }
             }
@@ -81,10 +85,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     private func post(status r: StatusRecord, of b: Block) {
         let title: String, sound: Sound
+        // An agent by its name (§3.12), not its task's title.
+        let who = b.agent != nil ? AgentLook.name(of: b) : b.displayTitle
         switch r.state {
-        case .blocked: (title, sound) = ("\(b.displayTitle) needs you", .needsYou)
-        case .error: (title, sound) = ("\(b.displayTitle) failed", .failed)
-        default: (title, sound) = ("\(b.displayTitle) is done", .done)
+        case .blocked: (title, sound) = ("\(who) needs you", .needsYou)
+        case .error: (title, sound) = ("\(who) failed", .failed)
+        default: (title, sound) = ("\(who) is done", .done)
         }
         post(id: "status-\(b.id)", title: title, body: r.msg ?? r.title ?? r.app ?? "", sound: sound, block: b.id, command: nil)
     }
@@ -167,7 +173,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: UNUserNotificationCenterDelegate
 
-    /// In front, a block out of sight still says so, as a banner.
+    /// In front, what's said (a block out of sight needing you) shows as a banner.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
         done([.banner, .sound, .list])

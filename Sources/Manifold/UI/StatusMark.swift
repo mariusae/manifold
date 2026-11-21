@@ -29,29 +29,22 @@ struct StatusMark: Equatable {
     }
 }
 
-/// A status in a word, in a capsule (`StatusMark`): amber for what
-/// needs you, red for failed, grey for done; a percent alone, no capsule.
+/// A word in grey in a capsule beside a status (`StatusMark`): what a
+/// tile is doing that isn't a status — Editing (an $EDITOR's tile). Status
+/// itself is the glyph's alone (one status rule): no word for done,
+/// failed or what's needed, and no colour.
 enum StatusPill {
     enum Kind: Equatable {
-        case needs(String)
-        case done
-        case failed
-        case progress(Int)
-        /// A word in grey, not a state that wants anything (Editing).
         case note(String)
 
         var text: String {
             switch self {
             case .note(let w): w
-            case .needs(let w): w
-            case .done: "Done"
-            case .failed: "Failed"
-            case .progress(let p): "\(p)%"
             }
         }
     }
 
-    /// What a blocked program needs, in a word.
+    /// What a blocked program needs, in a word (a tooltip, a list's line).
     static func words(_ kind: BlockedKind?) -> String {
         switch kind {
         case .permission?: "Permission"
@@ -61,71 +54,34 @@ enum StatusPill {
         }
     }
 
-    static let height: CGFloat = 16
-    static let font = NSFont.systemFont(ofSize: 10.5, weight: .medium)
-    static let figures = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-
-    private static func ink(_ kind: Kind) -> NSColor {
-        switch kind {
-        case .needs: Status.attention
-        case .failed: Status.failed
-        case .done, .progress, .note: Theme.secondaryText
-        }
-    }
-
-    private static func ground(_ kind: Kind) -> NSColor? {
-        switch kind {
-        case .needs: Status.attention.withAlphaComponent(0.16)
-        case .failed: Status.failed.withAlphaComponent(0.14)
-        case .done, .note: Pill.ground
-        case .progress: nil
-        }
-    }
+    static let height: CGFloat = Pill.height
+    static let font = Pill.words
 
     private static func attributed(_ kind: Kind) -> NSAttributedString {
-        let f = if case .progress = kind { figures } else { font }
-        return NSAttributedString(string: kind.text, attributes: [.font: f, .foregroundColor: ink(kind)])
-    }
-
-    /// Short of room: a dot in its color for the word (a percent stays).
-    static func compactSize(_ kind: Kind) -> NSSize {
-        if case .progress = kind { return size(kind) }
-        return NSSize(width: 8, height: height)
-    }
-
-    static func drawCompact(_ kind: Kind, in r: NSRect) {
-        if case .progress = kind { return draw(kind, in: r) }
-        ink(kind).setFill()
-        NSBezierPath(ovalIn: NSRect(x: r.midX - 3.5, y: r.midY - 3.5, width: 7, height: 7)).fill()
+        NSAttributedString(string: kind.text, attributes: [.font: font, .foregroundColor: Theme.secondaryText])
     }
 
     static func size(_ kind: Kind) -> NSSize {
-        let w = ceil(attributed(kind).size().width)
-        if case .progress = kind { return NSSize(width: w + 2, height: height) }
-        return NSSize(width: w + 12, height: height)
+        NSSize(width: ceil(attributed(kind).size().width) + 12, height: height)
     }
 
     static func draw(_ kind: Kind, in r: NSRect) {
-        if let g = ground(kind) {
-            g.setFill()
-            NSBezierPath(roundedRect: r, xRadius: Radius.capsule(r.height), yRadius: Radius.capsule(r.height)).fill()
-        }
+        Pill.ground.setFill()
+        NSBezierPath(roundedRect: r, xRadius: Radius.capsule(r.height), yRadius: Radius.capsule(r.height)).fill()
         let s = attributed(kind)
-        let f = s.attribute(.font, at: 0, effectiveRange: nil) as? NSFont ?? font
         let w = s.size().width
         // By the letters' cap height, so they sit in the middle.
-        let baseline = r.minY + (r.height - f.capHeight) / 2
-        let x = if case .progress = kind { r.maxX - w - 1 } else { (r.midX - w / 2).rounded() }
-        s.draw(at: NSPoint(x: x, y: baseline + f.descender))
+        let baseline = r.minY + (r.height - font.capHeight) / 2
+        s.draw(at: NSPoint(x: (r.midX - w / 2).rounded(), y: baseline + font.descender))
     }
 }
 
 /// A `StatusPill` as a view, for a row laid out by views.
 final class StatusPillView: NSView {
     var kind: StatusPill.Kind? { didSet { if kind != oldValue { needsDisplay = true; isHidden = kind == nil } } }
-    /// Short of room: a dot for the word.
+    /// Short of room: the word gone (not a dot, which would read as a status).
     var compact = false { didSet { if compact != oldValue { needsDisplay = true } } }
-    var wanted: NSSize { kind.map { compact ? StatusPill.compactSize($0) : StatusPill.size($0) } ?? .zero }
+    var wanted: NSSize { compact ? .zero : kind.map { StatusPill.size($0) } ?? .zero }
     override var isFlipped: Bool { true }
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -133,7 +89,7 @@ final class StatusPillView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
     override func draw(_ dirtyRect: NSRect) {
-        guard let kind else { return }
-        if compact { StatusPill.drawCompact(kind, in: bounds) } else { StatusPill.draw(kind, in: bounds) }
+        guard let kind, !compact else { return }
+        StatusPill.draw(kind, in: bounds)
     }
 }

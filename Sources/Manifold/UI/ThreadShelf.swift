@@ -172,7 +172,7 @@ final class ThreadShelfView: NSView {
 
         init(_ item: Item) {
             self.item = item
-            label = NSTextField.label((item.isLead ? "★ " : "") + item.title, font: .systemFont(ofSize: 11.5, weight: item.agent != nil ? .semibold : .regular),
+            label = NSTextField.label((item.isLead ? "★ " : "") + item.title, font: .systemFont(ofSize: 11, weight: item.agent != nil ? .semibold : .regular),
                                       color: Theme.text)
             super.init(frame: .zero)
             label.lineBreakMode = .byTruncatingTail

@@ -2760,23 +2760,9 @@ final class TextView: NSView, NSTextInputClient {
     /// What ⌘-clicked selected words go to: a name, from the file's folder.
     var selectionTarget: ((String) -> String?)?
 
-    /// The bar beside the definition the caret's in (drawn when it spans
-    /// lines), as it's taken hold of — a little wider than it's drawn —
-    /// and the definition.
-    private var scopeBar: (rect: NSRect, range: TextRange)? {
-        guard showsLineNumbers, let d = caretDefinition else { return nil }
-        let y0 = top(ofLine: d.first), y1 = bottom(ofLine: d.last)
-        return (NSRect(x: textLeft - 8, y: y0 + 2, width: 7, height: y1 - y0 - 4), d.range)
-    }
-
-    /// The innermost definition the caret's in, if it spans lines: its
-    /// first and last lines, and its text.
-    private var caretDefinition: (first: Int, last: Int, range: TextRange)? {
-        let head = primarySelection.head
-        guard let d = structure.declarations.last(where: { $0.range.start <= head && head <= $0.range.end }) else { return nil }
-        let a = text.line(at: d.range.start), b = text.line(at: max(d.range.end - 1, d.range.start))
-        return b > a ? (a, b, d.range) : nil
-    }
+    /// The bar beside the definition the caret's in, to take hold of it
+    /// by: gone with the bar (the pinned definitions say where you are).
+    private var scopeBar: (rect: NSRect, range: TextRange)? { nil }
 
     /// The definition the bar's beside, dragged out: a reference to it
     /// (as its name selected and dragged would be), shown as its first line.
@@ -3488,12 +3474,8 @@ extension TextView {
             if r.inBlank, !hiddenLines.contains(r.line - 1) { y = (top(ofLine: r.line - 1) + y) / 2 }
             NSRect(x: x, y: (y - px / 2).rounded(.down), width: max(bounds.width - Self.insets.right - x, 0), height: px).fill()
         }
-        // The innermost definition the caret's in, if it spans lines.
-        if let d = caretDefinition, d.last >= first, d.first <= last {
-            let y0 = top(ofLine: d.first), y1 = bottom(ofLine: d.last)
-            textColor.withAlphaComponent(0.2).setFill()
-            NSRect(x: textLeft - 5, y: y0 + 2, width: 2, height: y1 - y0 - 4).fill()
-        }
+        // (A bar beside the definition the caret's in was drawn here: the
+        // pinned definitions over the text say where you are already.)
     }
 
     var rowHeight: CGFloat { lineHeight }

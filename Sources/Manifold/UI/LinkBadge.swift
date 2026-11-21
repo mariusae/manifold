@@ -126,12 +126,8 @@ final class LinkBadge: NSView {
 
     // MARK: Faces
 
-    /// On the focused tile's bar: its faces in that bar's ground, not
-    /// another's (each as the bar it sits on, the theme's).
-    var onFocusedBar = false {
-        didSet { if onFocusedBar != oldValue { for c in chips + [stackFront] + stackBack { c.ground = barGround } } }
-    }
-    private var barGround: NSColor { onFocusedBar ? Theme.tileBarFocused : Theme.tileBar }
+    /// Its faces in the bar's ground (every bar's the same, focused or not).
+    private var barGround: NSColor { Theme.tileBar }
 
     private func rebuild() {
         hidePreview()
@@ -140,7 +136,11 @@ final class LinkBadge: NSView {
             let c = Chip()
             c.ground = barGround
             dress(c, card)
-            c.onClick = { [weak self] mods in self?.open(card.block, mods) }
+            // Clicked: the links, as a menu — each followed by the one rule
+            // (its keys held as it's chosen), and the map. (They fanned out
+            // under the pointer, scrubbed through, a card rising on each:
+            // five ways of showing, every one of them hidden till hovered.)
+            c.onClick = { [weak self, weak c] _ in if let self, let c { self.showLinks(from: c) } }
             c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
             c.onDragStart = { [weak self, weak c] event in if let self, let c { self.drag(card.block, from: c, event) } }
             return c
@@ -242,31 +242,25 @@ final class LinkBadge: NSView {
         super.updateTrackingAreas()
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        let live = chips.filter { !$0.isHidden }
-        if !fanned, live.contains(where: { $0.frame.insetBy(dx: -3, dy: -4).contains(p) }) { fanned = true; layoutSubtreeIfNeeded() }
-        guard fanned else { return }
-        // Off the faces, the gaps between them and the scrubbing: folded again.
-        var span = (chips.filter { !$0.isHidden } + (overflow ? [stackFront] : [])).reduce(NSRect.null) { $0.union($1.frame) }
-        if overflow { span = span.union(scrubRect) }
-        if !span.insetBy(dx: -6, dy: -8).contains(p) { fanned = false; return }
-        if overflow, p.x <= stackFront.frame.maxX {
-            // Scrubbing: from the stack leftward, further back.
-            let rest = cards.count - singles
-            let t = (stackFront.frame.maxX - p.x) / max(1, stackFront.frame.maxX - scrubRect.minX)
-            let k = min(rest - 1, max(0, Int(t * CGFloat(rest))))
-            if k != scrubbed { scrubbed = k; dress(stackFront, cards[singles + k]) }
-            for c in chips { c.hovered = false }
-            stackFront.hovered = true
-            hover(singles + k, at: p.x)
-            return
+    /// Its links, in a menu under the face clicked: the most recent first,
+    /// each going there (⌘ beside, ⌥ over, as held when it's chosen); then
+    /// the neighbourhood map.
+    private func showLinks(from chip: NSView) {
+        let menu = NSMenu()
+        for card in cards {
+            let item = ClosureMenuItem((card.outbound ? "→ " : "← ") + card.title, symbol: card.symbol) { [weak self] in
+                self?.open(card.block, NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .shift]) ?? [])
+            }
+            item.toolTip = card.breakable ? (card.outbound ? "Links to it" : "Linked from it") : (card.outbound ? "Shows it" : "Shown in it")
+            menu.addItem(item)
         }
-        stackFront.hovered = false
-        let under = chips.firstIndex { !$0.isHidden && $0.frame.insetBy(dx: -2, dy: -4).contains(p) }
-        for (i, c) in chips.enumerated() { c.hovered = i == under }
-        if let under { hover(under, at: chips[under].frame.midX) }
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
+        menu.popUp(positioning: nil, at: NSPoint(x: chip.frame.minX, y: chip.frame.minY - 4), in: self)
     }
+
+    // Folded always: nothing comes under the pointer (no fan, no card).
+    override func mouseMoved(with event: NSEvent) {}
 
     override func mouseExited(with event: NSEvent) {
         fanned = false

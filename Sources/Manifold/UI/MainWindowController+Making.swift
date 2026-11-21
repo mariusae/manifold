@@ -578,7 +578,7 @@ extension MainWindowController {
                 return false
             }
             item.title = isSummarized(f) ? "Show Content" : "Shrink to Summary"
-        case #selector(growTile(_:)), #selector(fillColumn(_:)), #selector(fillColumnKeepingBars(_:)):
+        case #selector(growTile(_:)), #selector(fillColumn(_:)):
             return arrangement?.focused != nil
         case #selector(saveAndClose(_:)):
             return focusedShown.map { $0.block?.kind == .text } ?? false
