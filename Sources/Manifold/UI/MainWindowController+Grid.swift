@@ -289,12 +289,23 @@ extension MainWindowController: GridDelegate {
         afterClosing(reachedBefore: before)
     }
 
-    /// A pill clicked: its tile grows a step, as acme's does.
+    /// A pill clicked: its tile grows a step, as acme's does — maximized,
+    /// the window as it was instead.
     func gridGrow(_ placement: PlacementID) {
         guard let a = arrangement else { return }
+        if a.full == placement { return appendToSelected([.full(nil)]) }
         // Just filled (⌘- or ⌥-clicked): clicked, its column as it was (acme's).
         if unfill(placement) { return }
         appendToSelected(a.growing(placement))
+    }
+
+    func gridClickRestores(_ placement: PlacementID) -> Bool {
+        guard let a = arrangement else { return false }
+        if a.full == placement { return true }
+        guard let f = columnFill, f.tile == placement, f.space == selected, let (c, _) = a.locate(placement) else { return false }
+        return a.columns[c].map(\.id) == f.after
+            && f.after.allSatisfy({ abs(a.height(of: $0) - (f.afterHeights[$0] ?? -1)) < 1e-6 })
+            && f.docked.allSatisfy(a.isDocked)
     }
 
     func gridReveal(_ placement: PlacementID) {

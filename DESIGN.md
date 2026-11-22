@@ -503,10 +503,16 @@ focused or not (over the edge, it covered the bar's top and the middle
 moved a point). A view's own controls
 follow the same rule: a folder's Project Home, tree and columns show
 while the pointer's on its tile. The bar is the
-tile's handle to drag — the pointer over it saying what a click does
-(the up-and-down arrows where a click grows the tile, the pointing hand
-where it focuses it), and the button held a moment, the closed hand: it's
-taken to drag, and let go, nothing (only a click grows) — clicked, it focuses its tile — only that (choosing
+tile's handle to drag — the pointer over it saying what a click will do,
+with the keys held as they are (it changes as they're pressed): grown, double
+chevrons the way it'll grow (down, up, both); focused, the pointing hand;
+put back as it was (a column just filled, a tile maximized), chevrons in to
+a line; ⇧ or ⌥, the column filled, arrows out to two lines; ⌃, the menu's
+pointer; ⌘, the path menu's (the arrow, a folder at its foot); nothing, the
+plain arrow; the icon, the pointing hand (its menu) — and the button held a
+moment, the closed hand: it's taken to drag, and let go, nothing (only a
+click grows). A maximized tile's bar clicked puts the window back as it
+was. Clicked, it focuses its tile — only that (choosing
 a tile doesn't move its column), unless the tile's down to its bar or
 not much more, when it grows a step to show what's in it, as a sidebar
 row clicked does; clicked again, focused, it grows the tile a step

@@ -71,6 +71,12 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
             self.endPill.place(over: self.page.frame, away: !end)
         }
         endPill.onClick = { [weak self] in self?.page.scrollToEnd() }
+        // Dropped anywhere on it, into what's written to the agent, as the
+        // agent takes things (a reference first) — not linked to the tile.
+        composer.dropsFor = .agent
+        registerForDraggedTypes(Dragged.types)
+        page.dropsElsewhere = (forms: { [weak self] d in self?.composer.dropForms(d, at: .zero) ?? [] },
+                               put: { [weak self] d, form in self?.composer.dropPut(d, as: form, at: nil) })
         composer.font = Self.inputFont
         composer.isRichText = true
         composer.importsGraphics = false
@@ -253,4 +259,16 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
 
     var pillItems: [NSMenuItem] { page.pillItems }
     func maniText(_ options: ManiReadOptions) async -> String? { document }
+}
+
+/// Dropped on it anywhere — its page, the room round its composer — into
+/// what's written to the agent, as its composer takes it (a reference first).
+extension AgentConversationView: DropTaking {
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { Dropping.updated(self, sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
+
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] { composer.dropForms(d, at: .zero) }
+    func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) { composer.dropPut(d, as: form, at: nil) }
 }

@@ -32,6 +32,11 @@ private final class PreviewWebView: WKWebView {
 /// on the same block, or the file saved by another program), keeping the
 /// scroll position.
 final class MarkdownView: NSView, PageHosting, KeepsViewState, WKNavigationDelegate {
+    /// What's dropped on the page taken by something else, its forms and
+    /// where it goes (an agent's conversation: its composer, as the agent
+    /// takes things — references first — not the page's, not the grid's).
+    var dropsElsewhere: (forms: (Dragged) -> [DropForm], put: (Dragged, DropForm) -> Void)?
+
     /// At its end, or scrolled up from it (the page says, as it changes).
     var onAtEnd: ((Bool) -> Void)?
     /// To its end, smoothly.
@@ -782,9 +787,14 @@ extension MarkdownView: DropTaking {
     override func draggingExited(_ sender: NSDraggingInfo?) { Dropping.exited(self, sender) }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { Dropping.perform(self, sender) }
 
-    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] { takesDrops ? Dropping.noteForms(d) : [] }
+    func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
+        if let forms = dropsElsewhere?.forms { return forms(d) }
+        return takesDrops ? Dropping.noteForms(d) : []
+    }
 
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
+        // Its drops another's to take (an agent's conversation: its composer).
+        if let put = dropsElsewhere?.put { return put(d, form) }
         var named: [BlockID] = []
         Dropping.noteText(d, as: form, keep: { [weak self] data, kind in
             guard let self else { return }

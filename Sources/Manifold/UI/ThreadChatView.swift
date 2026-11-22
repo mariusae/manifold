@@ -1437,6 +1437,9 @@ final class CommentText: NSView, NSTextViewDelegate {
 /// The composer: ↩ sends, ⇧↩ (or ⌥↩) a new line; things dropped on it put
 /// in as their links.
 final class ComposerTextView: NSTextView {
+    /// What it's written to, for what's dropped in it: a thread's comment
+    /// (as a note takes things), or an agent's prompt (as an agent does).
+    var dropsFor: Dropping.Target = .note
     var onSend: (() -> Void)?
     /// Made the first responder: clicked in, tabbed to, its tile focused.
     var onFocus: (() -> Void)?
@@ -1627,9 +1630,17 @@ final class ComposerTextView: NSTextView {
 
 extension ComposerTextView: DropTaking {
     /// As a note takes things, less pictures shown inline (a comment
-    /// keeps none).
+    /// keeps none) — or, writing to an agent, as an agent takes them:
+    /// a reference first.
     func dropForms(_ d: Dragged, at p: NSPoint) -> [DropForm] {
-        Dropping.noteForms(d).filter { $0 != .inline }
+        var forms = Dropping.forms(d, for: dropsFor).filter { $0 != .inline }
+        // To an agent in words: a file a reference first (its pill), not its
+        // path typed out (as its terminal takes one) — the path a step on.
+        if dropsFor == .agent, forms.first == .path, let i = forms.firstIndex(of: .reference) {
+            forms.remove(at: i)
+            forms.insert(.reference, at: 0)
+        }
+        return forms
     }
 
     func dropTrack(_ d: Dragged, at p: NSPoint) {

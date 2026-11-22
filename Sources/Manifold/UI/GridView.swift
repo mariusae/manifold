@@ -42,6 +42,10 @@ protocol GridDelegate: AnyObject {
     /// place, that one docked under it.
     func gridCover(_ placement: PlacementID, over target: PlacementID)
     func gridGrow(_ placement: PlacementID)
+    /// Whether a click on a tile's bar puts things back as they were — its
+    /// column after a fill, the window after it was maximized — rather than
+    /// growing it: for the pointer to say so.
+    func gridClickRestores(_ placement: PlacementID) -> Bool
     /// An unfocused tile's bar clicked: focused, and grown a step only if
     /// it's down to its bar or not much more — its content shown, as a
     /// sidebar row clicked shows it.
@@ -276,6 +280,7 @@ final class GridView: NSView, NSDraggingSource {
                 let id = tile.shown.id
                 pill.show(tile.shown, focused: tile.shown.id == focused, maximized: tile.shown.id == full)
                 pill.growEdges = ArrangementState.growthEdges(shares, at: row)
+                pill.restores = self.delegate?.gridClickRestores(tile.shown.id) ?? false
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
@@ -822,6 +827,7 @@ final class GridView: NSView, NSDraggingSource {
                 }
                 if let pill = pills[tile.shown.id] {
                     pill.collapsed = collapsed
+                    pill.nearBar = collapsed || summarized
                     let bar = Self.bar(of: r)
                     barTargets[tile.shown.id] = bar
                     settle(pill, bar, was: was.map { Self.bar(of: Self.card(of: $0)) })
@@ -3109,7 +3115,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// Debugging: where the place to edit is, and the field and name while editing (window coordinates).
     var debugEdit: String {
         func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
-        func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : GrowCursor.word(c).map { "grow" + $0 } ?? (c == .closedHand ? "held" : "open") }
+        func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : GrowCursor.word(c).map { "grow" + $0 } ?? (c == .closedHand ? "held" : c === GrowCursor.fill ? "fill" : c === GrowCursor.restore ? "restore" : c === GrowCursor.pathMenu ? "path" : c == .contextualMenu ? "menu" : c == .arrow ? "arrow" : "open") }
         let cursors = (cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\(word($0.1))" } + ["bar:\(word(barCursor))"]).joined(separator: ",")
         return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
     }
@@ -3195,7 +3201,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     /// The pointer on the bar: its buttons shown; else only its icon,
     /// name and status. Their room is kept, so nothing moves as they come.
-    var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true); inkButtons() } } }
+    var pointerIn = false { didSet { if pointerIn != oldValue { showButtons(animated: true); inkButtons(); watchKeys(pointerIn) } } }
     /// Its controls shown (§3.1): the pointer on it, or its tile focused —
     /// the bar a quiet name and status otherwise. Their room is kept, so
     /// nothing moves as they come and go.
@@ -3266,10 +3272,42 @@ final class TilePill: NSView, NSTextFieldDelegate {
     /// the tile (it's focused, or down to its bar) — the up-and-down
     /// arrows; else focuses it — the pointing hand. Held a moment, the bar
     /// is taken to drag: the closed hand, and letting go doesn't grow it.
+    /// What a click on the bar will do, said by the pointer over it, with
+    /// the keys held as they are now (they're watched while it's over the
+    /// bar): ⌃ the tile's menu; ⌘ the path menu; ⇧ or ⌥ the column filled;
+    /// else put back (a column just filled, a tile maximized), grown (the
+    /// way it'll grow), focused, or nothing. Held a moment, the closed hand.
     private var barCursor: NSCursor {
         if held { return .closedHand }
-        guard focused || collapsed, let e = growEdges else { return .pointingHand }
-        return GrowCursor.cursor(down: e.down, up: e.up)
+        let keys = NSEvent.modifierFlags
+        if keys.contains(.control) { return .contextualMenu }
+        if keys.contains(.command), !keys.contains(.option) { return GrowCursor.pathMenu }
+        if keys.contains(.shift) || keys.contains(.option) { return growEdges == nil && !restores ? .arrow : GrowCursor.fill }
+        if restores { return GrowCursor.restore }
+        if (focused || nearBar), let e = growEdges { return GrowCursor.cursor(down: e.down, up: e.up) }
+        return focused ? .arrow : .pointingHand
+    }
+    /// A click puts things back (`gridClickRestores`).
+    var restores = false { didSet { if restores != oldValue { window?.invalidateCursorRects(for: self) } } }
+    /// Down to its bar or its summary: a click (unfocused) grows it to show it.
+    var nearBar = false { didSet { if nearBar != oldValue { window?.invalidateCursorRects(for: self) } } }
+    /// While the pointer's on the bar: keys pressed or let go change what a
+    /// click does, and the pointer with it.
+    private var keyWatch: Any?
+    private func watchKeys(_ on: Bool) {
+        if on, keyWatch == nil {
+            keyWatch = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] e in
+                if let self, let window = self.window {
+                    let p = self.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+                    if self.bounds.contains(p) { (self.cursorSpots.first { $0.0.contains(p) }?.1 ?? self.barCursor).set() }
+                    window.invalidateCursorRects(for: self)
+                }
+                return e
+            }
+        } else if !on, let w = keyWatch {
+            NSEvent.removeMonitor(w)
+            keyWatch = nil
+        }
     }
     /// Which way a click grows its tile (`ArrangementState.growthEdges`):
     /// its bottom edge down, its top edge up; nil, it can't.
@@ -3284,7 +3322,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var holding: DispatchWorkItem?
 
     private var cursorSpots: [(NSRect, NSCursor)] {
-        var spots: [(NSRect, NSCursor)] = [(iconSpot, .openHand)]
+        // The icon: clicked, the tile's menu (dragged, what it stands for).
+        var spots: [(NSRect, NSCursor)] = [(iconSpot, .pointingHand)]
         for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         let project = projectRect
         if let r = project { spots.append((r, .pointingHand)) }
@@ -4065,6 +4104,64 @@ enum GrowCursor {
 
     static func cursor(down d: Bool, up u: Bool) -> NSCursor { d && u ? both : d ? down : up }
 
+    /// ⇧ or ⌥: the column filled — arrows out to its top and its foot.
+    static let fill: NSCursor = drawn { p, m in
+        p.move(to: NSPoint(x: m - 5, y: 1.5)); p.line(to: NSPoint(x: m + 5, y: 1.5))
+        p.move(to: NSPoint(x: m - 5, y: 18.5)); p.line(to: NSPoint(x: m + 5, y: 18.5))
+        chevron(p, m, tip: 4.5, down: false); chevron(p, m, tip: 15.5, down: true)
+        p.move(to: NSPoint(x: m, y: 4.5)); p.line(to: NSPoint(x: m, y: 15.5))
+    }
+    /// Put back as it was (a filled column, a maximized tile): chevrons in, to a line.
+    static let restore: NSCursor = drawn { p, m in
+        chevron(p, m, tip: 7.5, down: true); chevron(p, m, tip: 12.5, down: false)
+        p.move(to: NSPoint(x: m - 6, y: 10)); p.line(to: NSPoint(x: m + 6, y: 10))
+    }
+    /// ⌘: the path menu — the arrow, a folder at its foot (as the
+    /// contextual menu's pointer has its menu).
+    static let pathMenu: NSCursor = {
+        let arrow = NSCursor.arrow
+        let base = arrow.image
+        let size = NSSize(width: max(base.size.width, 26), height: max(base.size.height, 26))
+        let image = NSImage(size: size, flipped: true) { _ in
+            base.draw(in: NSRect(origin: .zero, size: base.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            let badge = NSRect(x: size.width - 15, y: size.height - 13, width: 14, height: 12)
+            if let folder = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold).applying(.init(paletteColors: [.black]))) {
+                let halo = NSBezierPath(roundedRect: badge.insetBy(dx: -1, dy: -1), xRadius: 3, yRadius: 3)
+                NSColor.white.setFill(); halo.fill()
+                folder.draw(in: badge.insetBy(dx: 1, dy: 1.5))
+            }
+            return true
+        }
+        return NSCursor(image: image, hotSpot: arrow.hotSpot)
+    }()
+
+    private static func chevron(_ p: NSBezierPath, _ mid: CGFloat, tip y: CGFloat, down: Bool) {
+        let base = down ? y - 3 : y + 3
+        p.move(to: NSPoint(x: mid - 4.5, y: base))
+        p.line(to: NSPoint(x: mid, y: y))
+        p.line(to: NSPoint(x: mid + 4.5, y: base))
+    }
+
+    /// A glyph drawn as the grow cursors are: black on a white halo.
+    private static func drawn(_ shape: @escaping (NSBezierPath, CGFloat) -> Void) -> NSCursor {
+        let side: CGFloat = 20
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
+            let path = NSBezierPath()
+            shape(path, side / 2)
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            NSColor.white.setStroke()
+            path.lineWidth = 4.2
+            path.stroke()
+            NSColor.black.setStroke()
+            path.lineWidth = 1.8
+            path.stroke()
+            return true
+        }
+        return NSCursor(image: image, hotSpot: NSPoint(x: side / 2, y: side / 2))
+    }
+
     /// Debugging: which one, if it's one.
     static func word(_ c: NSCursor) -> String? { c === down ? "Down" : c === up ? "Up" : c === both ? "Both" : nil }
 
@@ -4081,8 +4178,9 @@ enum GrowCursor {
                 path.line(to: NSPoint(x: mid + w, y: base))
             }
             if down && up {
-                chevron(tip: 2.5, pointsDown: false); chevron(tip: 6.5, pointsDown: false)
-                chevron(tip: 13.5, pointsDown: true); chevron(tip: 17.5, pointsDown: true)
+                // Apart, the pairs: close, they read as a diamond.
+                chevron(tip: 1.5, pointsDown: false); chevron(tip: 5.5, pointsDown: false)
+                chevron(tip: 14.5, pointsDown: true); chevron(tip: 18.5, pointsDown: true)
             } else if down {
                 chevron(tip: 9.5, pointsDown: true); chevron(tip: 14.5, pointsDown: true)
             } else {
