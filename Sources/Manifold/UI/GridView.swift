@@ -9,6 +9,8 @@ protocol GridDelegate: AnyObject {
     func gridKeep(_ picture: NSImage, of block: BlockID)
     /// A tile as its summary card shows it.
     func gridSummary(_ placement: PlacementID) -> SummaryCardContent?
+    /// A linked block's summary card, in its links' menu.
+    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent?
     /// A tile gone to by a click on its summary (it's too short for its
     /// content): focused, and grown to show some.
     func gridArrive(_ placement: PlacementID)
@@ -400,6 +402,7 @@ final class GridView: NSView, NSDraggingSource {
                         guard let self, let badge, let pill, !pill.isHidden, let r = self.badgeRects[id] else { return }
                         self.placeBadge(badge, of: id, in: r)
                     }
+                    badge.summary = { [weak self] block in self?.delegate?.gridLinkSummary(block) }
                     badge.onOpen = { [weak self] block, mods in self?.delegate?.gridOpenLink(block, from: id, modifiers: mods) }
                     badge.onBreak = { [weak self] link in self?.delegate?.gridBreakLink(link) }
                     badge.onMap = { [weak self] in self?.delegate?.gridShowMap(for: id) }
@@ -549,6 +552,18 @@ final class GridView: NSView, NSDraggingSource {
         let folded = b.debugSheets
         if arg == "fold" { return "folded, sheets \(folded)" + (b.debugCapsuleCenter.map { " at \(Int($0.x)) \(Int($0.y))" } ?? "") }
         if arg == "geometry" { return b.debugGeometry }
+        // "badge menu <path> [lit n]": the links menu's cards, drawn to a file.
+        if arg.hasPrefix("menu ") {
+            let w = arg.dropFirst(5).split(separator: " ")
+            return b.debugMenuImage(String(w[0]), lit: w.count > 2 ? Int(w[2]) : nil)
+        }
+        // "badge cursor <path>": ⌘'s pointer over a bar (the path menu's), drawn to a file.
+        if arg.hasPrefix("cursor ") {
+            let image = GrowCursor.pathMenu.image
+            guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return "no image" }
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: String(arg.dropFirst(7))))
+            return "wrote \(Int(image.size.width))×\(Int(image.size.height)), hot spot \(GrowCursor.pathMenu.hotSpot)"
+        }
         let words = arg.split(separator: " ")
         if words.first == "break", let n = words.dropFirst().first.flatMap({ Int($0) }) {
             return b.debugBreak(n) ? "broke \(n)" : "no such link"
@@ -2763,7 +2778,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             } else {
                 name.stringValue = title
             }
-            name.toolTip = shown.isDirty ? (stale ? "Edited, and the file changed on disk — the menu says which to keep" : "Edited — ⌘S saves") : nil
+            name.toolTip = shown.isDirty ? (stale ? "Unsaved edits, and the file changed on disk too — choose Reload or Keep Mine from the tile's menu (its icon)" : "Unsaved edits — ⌘S saves") : nil
         }
         lastShown = shown
         updateSubtitle(shown)
@@ -3117,7 +3132,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         func w(_ r: NSRect) -> String { NSStringFromRect(convert(r, to: nil)) }
         func word(_ c: NSCursor) -> String { c == .pointingHand ? "hand" : c == .iBeam ? "beam" : GrowCursor.word(c).map { "grow" + $0 } ?? (c == .closedHand ? "held" : c === GrowCursor.fill ? "fill" : c === GrowCursor.restore ? "restore" : c === GrowCursor.pathMenu ? "path" : c == .contextualMenu ? "menu" : c == .arrow ? "arrow" : "open") }
         let cursors = (cursorSpots.map { "\(Int($0.0.minX))-\(Int($0.0.maxX)):\(word($0.1))" } + ["bar:\(word(barCursor))"]).joined(separator: ",")
-        return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
+        return "project=\(projectRect.map(w) ?? "-") cursors=\(cursors) place=\(placeRect.map(w) ?? "-") editing=\(isEditing)" + (glyph.isHidden ? "" : " tip=\(glyph.toolTip ?? "none")") + (isEditing ? " editor=\(w(editor.frame)) name=\(name.isHidden ? "hidden" : w(name.frame)) text=\(editor.stringValue)" : "")
     }
 
     /// Whether a point (the pill's coordinates) is on the place to edit.
@@ -4116,24 +4131,23 @@ enum GrowCursor {
         chevron(p, m, tip: 7.5, down: true); chevron(p, m, tip: 12.5, down: false)
         p.move(to: NSPoint(x: m - 6, y: 10)); p.line(to: NSPoint(x: m + 6, y: 10))
     }
-    /// ⌘: the path menu — the arrow, a folder at its foot (as the
-    /// contextual menu's pointer has its menu).
+    /// ⌘: the path menu — the arrow with a folder at its foot, in the
+    /// badge a drop shows (`DropBadge`: the accent, ringed in white).
     static let pathMenu: NSCursor = {
         let arrow = NSCursor.arrow
-        let base = arrow.image
-        let size = NSSize(width: max(base.size.width, 26), height: max(base.size.height, 26))
-        let image = NSImage(size: size, flipped: true) { _ in
-            base.draw(in: NSRect(origin: .zero, size: base.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            let badge = NSRect(x: size.width - 15, y: size.height - 13, width: 14, height: 12)
-            if let folder = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold).applying(.init(paletteColors: [.black]))) {
-                let halo = NSBezierPath(roundedRect: badge.insetBy(dx: -1, dy: -1), xRadius: 3, yRadius: 3)
-                NSColor.white.setFill(); halo.fill()
-                folder.draw(in: badge.insetBy(dx: 1, dy: 1.5))
-            }
+        let base = arrow.image, hot = arrow.hotSpot
+        let b = DropBadge.size
+        // Where a drop's badge sits by the pointer (`DropBadge.show`): below
+        // its arrow, to the right — measured from the hot spot, top down.
+        let centre = NSPoint(x: hot.x + 8 + b / 2, y: hot.y + 10 + b / 2)
+        let size = NSSize(width: max(base.size.width, centre.x + b / 2 + 3), height: max(base.size.height, centre.y + b / 2 + 4))
+        // Not flipped: drawn as the drop badge draws itself.
+        let image = NSImage(size: size, flipped: false) { _ in
+            base.draw(in: NSRect(x: 0, y: size.height - base.size.height, width: base.size.width, height: base.size.height))
+            DropBadge.draw("folder", at: NSPoint(x: centre.x, y: size.height - centre.y))
             return true
         }
-        return NSCursor(image: image, hotSpot: arrow.hotSpot)
+        return NSCursor(image: image, hotSpot: hot)
     }()
 
     private static func chevron(_ p: NSBezierPath, _ mid: CGFloat, tip y: CGFloat, down: Bool) {

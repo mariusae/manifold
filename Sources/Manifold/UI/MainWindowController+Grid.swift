@@ -31,6 +31,7 @@ extension MainWindowController: GridDelegate {
         }
         var c = SummaryCardContent(id: "", symbol: Theme.symbolName(for: b), summary: s, thumbnail: thumbnail)
         c.mark = StatusMark(of: b)
+        c.statusTip = StatusGlyph.tooltip(b)
         c.agent = .init(b)
         return c
     }
@@ -307,6 +308,8 @@ extension MainWindowController: GridDelegate {
             && f.after.allSatisfy({ abs(a.height(of: $0) - (f.afterHeights[$0] ?? -1)) < 1e-6 })
             && f.docked.allSatisfy(a.isDocked)
     }
+
+    func gridLinkSummary(_ block: BlockID) -> SummaryCardContent? { cardContent(for: block) }
 
     func gridReveal(_ placement: PlacementID) {
         guard let a = arrangement else { return }

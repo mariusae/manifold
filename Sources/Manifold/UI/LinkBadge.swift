@@ -31,6 +31,8 @@ final class LinkBadge: NSView {
     var onBreak: ((String) -> Void)?
     /// The neighborhood map, the big view of the links.
     var onMap: (() -> Void)?
+    /// A linked block's summary card, for its links' menu.
+    var summary: ((BlockID) -> SummaryCardContent?)?
     var cards: [LinkCard] = [] {
         didSet {
             guard cards != oldValue else { return }
@@ -45,6 +47,8 @@ final class LinkBadge: NSView {
     }
 
     static let capsuleHeight: CGFloat = 22
+    /// The links' menu's cards: one width, whatever they say.
+    static let menuCardWidth: CGFloat = 360
     static let chip: CGFloat = 22
     /// How far each one behind peeks out past the one before.
     static let peek: CGFloat = 4
@@ -124,17 +128,52 @@ final class LinkBadge: NSView {
     /// each going there (⌘ beside, ⌥ over, as held when it's chosen); then
     /// the neighbourhood map.
     private func showLinks(from chip: NSView) {
+        linksMenu().popUp(positioning: nil, at: NSPoint(x: chip.frame.minX, y: chip.frame.minY - 4), in: self)
+    }
+
+    private func linksMenu() -> NSMenu {
         let menu = NSMenu()
+        // Each a card — what it is, where, what it says — all one width.
         for card in cards {
-            let item = ClosureMenuItem((card.outbound ? "→ " : "← ") + card.title, symbol: card.symbol) { [weak self] in
-                self?.onOpen?(card.block, NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .shift]) ?? [])
+            let go = { [weak self] in
+                self?.onOpen?(card.block, NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .shift]) ?? []) ?? ()
             }
+            let item = ClosureMenuItem((card.outbound ? "→ " : "← ") + card.title, symbol: card.symbol, go)
+            var content = summary?(card.block) ?? SummaryCardContent(id: "", symbol: card.symbol, summary: BlockSummary(title: card.title))
+            content.summary.title = (card.outbound ? "→ " : "← ") + content.summary.title
+            item.view = LinkCardItem(content, width: Self.menuCardWidth, pick: go)
             item.toolTip = card.breakable ? (card.outbound ? "Links to it" : "Linked from it") : (card.outbound ? "Shows it" : "Shown in it")
             menu.addItem(item)
         }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Show the Neighborhood Map", symbol: "point.3.connected.trianglepath.dotted") { [weak self] in self?.onMap?() })
-        menu.popUp(positioning: nil, at: NSPoint(x: chip.frame.minX, y: chip.frame.minY - 4), in: self)
+        return menu
+    }
+
+    /// Debugging: the links menu's cards drawn one under another, the
+    /// `lit`th as the highlight has it, to `path`.
+    func debugMenuImage(_ path: String, lit: Int?) -> String {
+        let views = linksMenu().items.compactMap(\.view)
+        guard let w = views.map(\.frame.width).max() else { return "no cards" }
+        let h = views.map(\.frame.height).reduce(0, +)
+        let image = NSImage(size: NSSize(width: w, height: h))
+        image.lockFocus()
+        NSColor.windowBackgroundColor.setFill()
+        NSRect(x: 0, y: 0, width: w, height: h).fill()
+        var y = h
+        for (i, v) in views.enumerated() {
+            y -= v.frame.height
+            (v as? LinkCardItem)?.debugLit = i == lit
+            v.layoutSubtreeIfNeeded()
+            if let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                v.cacheDisplay(in: v.bounds, to: rep)
+                rep.draw(in: NSRect(x: 0, y: y, width: v.frame.width, height: v.frame.height))
+            }
+        }
+        image.unlockFocus()
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return "no image" }
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        return "wrote \(views.count) cards, \(Int(w))×\(Int(h)), to \(path)"
     }
 
     /// A face's menu: the one rule's three ways, the link broken, the map.
@@ -307,4 +346,39 @@ extension LinkBadge: NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) { DragCursor.began() }
     func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) { DragCursor.moved() }
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) { DragCursor.ended() }
+}
+
+/// A link in its tile's links menu: its block's summary card, at the menu's
+/// one width — lit as the menu's chosen row is, chosen by a click or ↩.
+private final class LinkCardItem: NSView {
+    private let card: SummaryCard
+    private let pick: () -> Void
+    private static let inset: CGFloat = 5
+
+    init(_ content: SummaryCardContent, width: CGFloat, pick: @escaping () -> Void) {
+        card = SummaryCard(content)
+        self.pick = pick
+        let h = SummaryCard.height(for: content)
+        super.init(frame: NSRect(x: 0, y: 0, width: width + Self.inset * 2, height: h + 4))
+        card.frame = NSRect(x: Self.inset, y: 2, width: width, height: h)
+        addSubview(card)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// Debugging: lit or not whatever the menu says.
+    var debugLit: Bool?
+
+    // Lit as the menu's highlight moves (the menu draws an item's view again
+    // then) — before anything's drawn, so the card's drawn as it is.
+    override func viewWillDraw() {
+        let lit = debugLit ?? enclosingMenuItem?.isHighlighted ?? false
+        if card.chosen != lit { card.chosen = lit }
+        super.viewWillDraw()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        enclosingMenuItem?.menu?.cancelTracking()
+        pick()
+    }
 }

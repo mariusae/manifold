@@ -1572,7 +1572,7 @@ final class OrgRowView: NSTableCellView {
         glyph.block = node.block
         glyph.look = mark.glyph
         glyph.isHidden = mark.glyph == nil
-        glyph.toolTip = node.liveTooltip == nil ? node.tooltip : nil
+        glyph.toolTip = node.liveTooltip == nil ? node.tooltip ?? mark.glyph.map(StatusGlyph.words) : nil
         pill.kind = node.style == .section ? nil : node.pill
         badge.image = node.badge.flatMap { Theme.symbol($0, size: 6.5, weight: .bold, color: Theme.washSecondaryText) }
         badge.isHidden = node.badge == nil

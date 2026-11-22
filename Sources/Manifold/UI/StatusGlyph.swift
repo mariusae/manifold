@@ -41,6 +41,8 @@ final class StatusGlyph: NSView {
     var look: Look? {
         didSet {
             if look != oldValue { needsDisplay = true }
+            // What it means, unless it's been told more.
+            if toolTip == nil || toolTip == oldValue.map(Self.words) { toolTip = look.map(Self.words) }
             updateTurning()
             settleIfJustFinished()
         }
@@ -138,26 +140,38 @@ final class StatusGlyph: NSView {
         }
     }
 
+    /// What a look means, said on its own — the tooltip of a glyph that
+    /// isn't told more (its block's, `tooltip(_:)`, says more).
+    static func words(_ look: Look) -> String {
+        switch look {
+        case .working(let p): p.map { "Working, \($0)% done" } ?? "Working"
+        case .unseen: "Something new since you last looked"
+        case .needsYou: "Needs you: waiting on an answer from you"
+        case .done(let read): read ? "Done" : "Done, and not looked at since"
+        case .failed(let read): read ? "Failed" : "Failed, and not looked at since"
+        case .inactive: "Asleep: its shell ended after a while idle; a new one starts when it's shown"
+        case .connecting: "Connecting to its host"
+        case .offline: "Its host can't be reached: what's shown is as last seen"
+        case .quiet: "Its host hasn't answered for a while"
+        case .watching: "Another Manifold took over its host: this one only watches"
+        }
+    }
+
+    /// What a block's glyph means for it: what it's waiting on, from what,
+    /// and what to do — its status report's title and message after.
     static func tooltip(_ block: Block?) -> String? {
         guard let block, let look = look(of: block) else { return nil }
         let r = block.statusRecord
-        var words: [String]
-        switch look {
-        case .working(let p): words = [p.map { "Working, \($0)%" } ?? "Working"]
-        case .unseen: words = ["Something new"]
-        case .done(let read): words = [read ? "Done" : "Done, not read yet"]
-        case .failed(let read): words = [read ? "Failed" : "Failed, not read yet"]
-        case .inactive: words = ["Asleep: its shell ended while idle"]
-        case .connecting: words = ["Connecting to its host"]
-        case .offline: words = ["Its host can't be reached: as last seen"]
-        case .quiet: words = ["Its host has been quiet a while"]
-        case .watching: words = ["Another Manifold took over its host: watching"]
-        case .needsYou:
+        var words = [Self.words(look)]
+        if case .needsYou = look {
             switch r?.kind {
-            case .permission?: words = ["Needs you: permission"]
-            case .question?: words = ["Needs you: a question"]
-            case .auth?: words = ["Needs you: a sign-in"]
-            case nil: words = [block.text?.stale == true ? "Needs you: the file changed on disk under your edits — the menu says which to keep" : "Needs you"]
+            case .permission?: words = ["Needs you: asking permission"]
+            case .question?: words = ["Needs you: asking a question"]
+            case .auth?: words = ["Needs you: asking you to sign in"]
+            case nil where block.text?.stale == true:
+                words = ["Needs you: the file changed on disk while you had unsaved edits",
+                         "Choose Reload or Keep Mine from the tile's menu (its icon)"]
+            case nil: break
             }
         }
         if let app = r?.app { words[0] += " · " + app }

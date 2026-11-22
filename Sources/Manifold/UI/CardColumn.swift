@@ -12,6 +12,8 @@ struct SummaryCardContent {
     var age: String? = nil
     /// Its status (`StatusMark`): a glyph at the title's right.
     var mark: StatusMark? = nil
+    /// What the status means for it (`StatusGlyph.tooltip`), under the pointer.
+    var statusTip: String? = nil
     /// An agent's name, in a pill of its colour before its title (§3.12),
     /// as its tile's bar has it.
     var agent: AgentTag? = nil
@@ -272,6 +274,7 @@ final class SummaryCard: NSView {
         let card = inTile ? bounds : bounds.insetBy(dx: 1, dy: 1)
         let head = headline(card: card, right: titleRoomRight)
         glyph.look = content.mark?.glyph
+        if let tip = content.statusTip { glyph.toolTip = tip }
         // In its tile, the bar says the status: not again over the card's
         // note (a sleeping agent's moon was drawn over its time).
         glyph.isHidden = inTile || head.glyph == nil
