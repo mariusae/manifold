@@ -101,11 +101,16 @@ final class NewBelowButton: NSView {
         needsLayout = true
     }
 
+    // In its own appearance, always: called on hover and as it's shown,
+    // outside the theme's hook, the colours would otherwise be resolved in
+    // whatever appearance was current then — dark, over a light page.
     private func tint() {
-        layer?.backgroundColor = (hovering ? Theme.panel.blended(withFraction: 0.06, of: Theme.text) ?? Theme.panel : Theme.panel).cgColor
-        layer?.borderColor = Theme.washLine.cgColor
-        arrow.contentTintColor = Theme.text.withAlphaComponent(0.8)
-        dot.layer?.backgroundColor = Theme.accent.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = (hovering ? Theme.panel.blended(withFraction: 0.06, of: Theme.text) ?? Theme.panel : Theme.panel).cgColor
+            layer?.borderColor = Theme.washLine.cgColor
+            arrow.contentTintColor = Theme.text.withAlphaComponent(0.8)
+            dot.layer?.backgroundColor = Theme.accent.cgColor
+        }
     }
 
     override func layout() {
