@@ -71,6 +71,8 @@ public enum AgentEvent: Codable, Equatable, Sendable {
             return (s("query") ?? s("Query")).map { "Searching the web for " + cap($0).prefix(60) } ?? "Searching the web"
         case "Bash", "run_command":
             return (s("command") ?? s("CommandLine")).map { "Running " + cap($0).prefix(60) }
+        case "BashOutput", "manage_task":
+            return "Watching a command"
         case "Task", "Agent", "invoke_subagent":
             return s("Role").map { "Asking " + cap($0) } ?? "Asking a subagent"
         case "run_workflow":

@@ -37,14 +37,7 @@ public enum TurnTranscript {
     /// A turn's parts, from its transcript's entries: from its prompt (the
     /// last of the user's own messages that is it) to the next.
     public static func parts(_ entries: [[String: Any]], prompt: String, limit: Int = 60_000) -> [Part]? {
-        guard !entries.isEmpty else { return nil }
-        let wanted = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = String(wanted.prefix(200))
-        guard let start = entries.lastIndex(where: { e in
-            guard let said = userText(e) else { return false }
-            let trimmed = said.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.hasPrefix(key) || (!key.isEmpty && trimmed.contains(key))
-        }) else { return nil }
+        guard let start = turnStart(entries, prompt: prompt) else { return nil }
         var out: [Part] = []
         var size = 0
         func append(_ part: Part) -> Bool {
@@ -87,6 +80,55 @@ public enum TurnTranscript {
             }
         }
         return out
+    }
+
+    /// What a running turn is doing now, from its latest tool call in the
+    /// transcript (as `AgentEvent.doing` describes it): used by hosts for
+    /// agents whose hooks don't fire `PreToolUse` (`agy`), so minimized tile
+    /// bars, sidebar rows, hover cards and threads show it too.
+    public static func doing(_ entries: [[String: Any]], prompt: String) -> String? {
+        guard let start = turnStart(entries, prompt: prompt) else { return nil }
+        var latest: String?
+        for e in entries[(start + 1)...] {
+            if userText(e) != nil { break }
+            let kind = e["type"] as? String
+            if kind == "PLANNER_RESPONSE", let calls = e["tool_calls"] as? [[String: Any]] {
+                for call in calls {
+                    guard let name = call["name"] as? String, !name.isEmpty else { continue }
+                    let args = decodedArgs(call["args"] as? [String: Any] ?? [:])
+                    if let what = AgentEvent.doing(tool: name, input: args) { latest = what }
+                }
+            } else if kind == "assistant", let message = e["message"] as? [String: Any],
+                      let content = message["content"] as? [[String: Any]] {
+                for piece in content where piece["type"] as? String == "tool_use" {
+                    guard let name = piece["name"] as? String, !name.isEmpty else { continue }
+                    let input = piece["input"] as? [String: Any] ?? [:]
+                    if let what = AgentEvent.doing(tool: name, input: input) { latest = what }
+                }
+            }
+        }
+        return latest
+    }
+
+    /// The `step_index` of the last user entry matching `prompt` (or its
+    /// array index if `step_index` is absent): lets the host tell a
+    /// background-task wakeup (same `USER_INPUT`) from a new prompt that
+    /// happens to repeat the same words.
+    public static func lastUserStep(_ entries: [[String: Any]], prompt: String) -> Int? {
+        guard let idx = turnStart(entries, prompt: prompt) else { return nil }
+        return (entries[idx]["step_index"] as? Int) ?? idx
+    }
+
+    /// The index of the user entry that began `prompt` (the last matching one).
+    private static func turnStart(_ entries: [[String: Any]], prompt: String) -> Int? {
+        guard !entries.isEmpty else { return nil }
+        let wanted = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = String(wanted.prefix(200))
+        return entries.lastIndex(where: { e in
+            guard let said = userText(e) else { return false }
+            let trimmed = said.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.hasPrefix(key) || (!key.isEmpty && trimmed.contains(key))
+        })
     }
 
     /// A transcript's entries, each a JSON line — read once and then, as
@@ -171,6 +213,14 @@ public enum TurnTranscript {
             return decoded.isEmpty ? nil : decoded
         }
         return s
+    }
+
+    /// Unwraps JSON-encoded string values in an Antigravity `tool_calls` args dict.
+    private static func decodedArgs(_ raw: [String: Any]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        out.reserveCapacity(raw.count)
+        for (k, v) in raw { out[k] = argString(v) ?? v }
+        return out
     }
 
     /// What a tool worked on, in a few words.

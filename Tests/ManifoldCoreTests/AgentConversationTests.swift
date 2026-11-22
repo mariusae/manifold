@@ -174,4 +174,40 @@ import Testing
     // Second turn stops cleanly and reads `response` too.
     let second = try #require(TurnTranscript.parts(entries, prompt: "next question"))
     #expect(second == [.text("Here is the answer.")])
+    // Live doing status from the latest tool call in a turn: prefers toolSummary,
+    // unwraps JSON-encoded args, and stays scoped to the requested turn.
+    #expect(TurnTranscript.doing(entries, prompt: "fix the parser") == "Editing Parser.swift")
+    #expect(TurnTranscript.doing(entries, prompt: "next question") == nil)
+    #expect(TurnTranscript.doing(Array(entries.prefix(2)), prompt: "fix the parser") == "Run tests")
+}
+
+// Antigravity's live doing status updates as transcript.jsonl grows,
+// feeding Block.agentDoing for minimized bars, sidebar rows, and threads.
+@Test func antigravityDoingUpdatesAsTranscriptGrows() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("agy-doing-\(UUID().uuidString).jsonl")
+    defer { try? FileManager.default.removeItem(at: url) }
+    func line(_ o: [String: Any]) -> String { String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)! + "\n" }
+    let ask = line(["step_index": 0, "type": "USER_INPUT", "source": "USER_EXPLICIT",
+                    "content": "<USER_REQUEST>\ninvestigate the crash\n</USER_REQUEST>"])
+    try ask.write(to: url, atomically: false, encoding: .utf8)
+    #expect(TurnTranscript.doing(try #require(TurnTranscript.entries(path: url.path)), prompt: "investigate the crash") == nil)
+
+    func appendLine(_ o: [String: Any]) throws {
+        let h = try FileHandle(forWritingTo: url)
+        defer { try? h.close() }
+        try h.seekToEnd()
+        try h.write(contentsOf: Data(line(o).utf8))
+    }
+
+    try appendLine(["step_index": 1, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                    "tool_calls": [["name": "read_file", "args": ["Path": "\"/repo/Sources/App.swift\""]]]])
+    #expect(TurnTranscript.doing(try #require(TurnTranscript.entries(path: url.path)), prompt: "investigate the crash") == "Reading App.swift")
+
+    try appendLine(["step_index": 2, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                    "tool_calls": [["name": "run_command", "args": ["CommandLine": "\"swift test\"", "toolSummary": "\"Unit test execution\""]]]])
+    #expect(TurnTranscript.doing(try #require(TurnTranscript.entries(path: url.path)), prompt: "investigate the crash") == "Unit test execution")
+
+    try appendLine(["step_index": 3, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                    "tool_calls": [["name": "manage_task", "args": ["Action": "\"status\""]]]])
+    #expect(TurnTranscript.doing(try #require(TurnTranscript.entries(path: url.path)), prompt: "investigate the crash") == "Watching a command")
 }

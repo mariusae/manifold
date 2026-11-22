@@ -123,6 +123,9 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         guard let b = source() else { return }
         let turns = b.terminal?.turns ?? []
         let shown = turns.suffix(40)
+        // A reopened turn (e.g. agy waking on a background task) needs a fresh
+        // final read once it ends again.
+        for t in shown where t.isRunning { settled.remove(t.id) }
         // Read: what hasn't been, what's running, what ended since it was read.
         let wanted = shown.filter { t in contents[t.id] == nil || t.isRunning || (t.ended != nil && !settled.contains(t.id)) }.map(\.id)
         if !wanted.isEmpty, !asking, window != nil {

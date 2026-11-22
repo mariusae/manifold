@@ -257,6 +257,10 @@ final class Server {
         }
     }
 
+    deinit {
+        if lock >= 0 { sysClose(lock) }
+    }
+
     func run() throws {
         load()
         SpawnEnvironment.set(node.desk(host).preferences.environment ?? [])
@@ -897,6 +901,8 @@ final class Server {
         expectedFingerprints.removeValue(forKey: block)
         lastSizes.removeValue(forKey: block)
         agentTurns.removeValue(forKey: block)
+        agentTranscriptWatchers.removeValue(forKey: block)
+        agentTurnUserStep.removeValue(forKey: block)
     }
 
     /// The workspaces are the only roots (§4), kept until removed by
@@ -2495,11 +2501,19 @@ final class Server {
     /// The marks each block's agent made for its turns, as opposed to the
     /// shell's commands they run within (an agent run by hand at a prompt).
     private var agentTurns: [BlockID: Set<Int>] = [:]
+    /// Live transcript watchers for agents whose hooks omit `PreToolUse`
+    /// (`agy`): as `transcript.jsonl` grows during a running turn, its latest
+    /// tool call updates the block's working status (`Block.agentDoing`).
+    private var agentTranscriptWatchers: [BlockID: (path: String, watcher: FileWatcher)] = [:]
+    /// For `agy`, the `USER_INPUT` `step_index` that began each block's latest
+    /// turn: distinguishes a background-task wakeup (same `USER_INPUT`, no new
+    /// prompt) from the user sending the same prompt text twice.
+    private var agentTurnUserStep: [BlockID: (turnID: Int, step: Int)] = [:]
 
     /// What an agent's hook said (`mani agent`): each prompt a mark on
     /// the terminal's scrubber and outline, as a shell's command is, open
     /// until the turn ends; and the agent's status the block's, by name.
-    private func agentEvent(_ block: BlockID, _ event: AgentEvent) {
+    func agentEvent(_ block: BlockID, _ event: AgentEvent) {
         guard let b = node.block(block), reportsStatus(block) else { return }
         nameAgent(b)
         func line(_ text: String?) -> String? {
@@ -2522,12 +2536,39 @@ final class Server {
         case let .prompt(agent, text, transcript):
             followSession(block, transcript: transcript)
             // Antigravity's PreInvocation fires before every model step in a
-            // turn with the same lastUserInput: don't split one turn into many.
-            if agent == "agy", let open = node.block(block)?.terminal?.turns?.last, open.isRunning,
-               open.prompt == String(text.prefix(20_000)) {
-                let current = b.status?[rootStatusID]
-                if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg ?? line(text)) }
-                break
+            // turn with the same lastUserInput — and also after Stop when a
+            // background task wakes the agent up with no new USER_INPUT.
+            if agent == "agy", let last = node.block(block)?.terminal?.turns?.last,
+               last.prompt == String(text.prefix(20_000)) {
+                let path = last.transcript ?? transcript
+                let currentStep = path.flatMap { TurnTranscript.entries(path: $0) }.flatMap { TurnTranscript.lastUserStep($0, prompt: text) }
+                let samePromptWakeup: Bool = {
+                    if last.isRunning { return true }
+                    guard let currentStep, let prev = agentTurnUserStep[block], prev.turnID == last.id else { return false }
+                    return prev.step == currentStep
+                }()
+                if samePromptWakeup {
+                    var updated = last
+                    var changed = false
+                    if !updated.isRunning {
+                        updated.ended = nil
+                        updated.message = nil
+                        changed = true
+                    }
+                    if updated.transcript == nil, let transcript {
+                        updated.transcript = transcript
+                        changed = true
+                    }
+                    if changed { append(.turn(updated), to: .block(block)) }
+                    if let currentStep { agentTurnUserStep[block] = (last.id, currentStep) }
+                    let current = b.status?[rootStatusID]
+                    if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg ?? line(text)) }
+                    if let path {
+                        watchAgentTranscript(block, path: path)
+                        pollAgentDoing(block)
+                    }
+                    break
+                }
             }
             endTurn()
             finishTurns(block, message: nil, transcript: nil)
@@ -2536,13 +2577,23 @@ final class Server {
                 append(.ran(id: id, mark, at: clock.now()), to: .block(block))
                 agentTurns[block, default: []].insert(id)
                 beginTurn(block, id: id, agent: agent, prompt: text, transcript: transcript)
+                if agent == "agy", let transcript,
+                   let entries = TurnTranscript.entries(path: transcript),
+                   let step = TurnTranscript.lastUserStep(entries, prompt: text) {
+                    agentTurnUserStep[block] = (id, step)
+                }
             }
             status(.working, msg: line(text))
+            if agent == "agy", let transcript {
+                watchAgentTranscript(block, path: transcript)
+                pollAgentDoing(block)
+            }
         case .working, .wrote:
             // After a permission or a tool: working on what it was.
             let current = b.status?[rootStatusID]
             if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg) }
             if case let .wrote(agent, path) = event { agentWrote(path, by: block, agent: agent) }
+            if event.agent == "agy" { pollAgentDoing(block) }
         case let .finished(_, message, transcript):
             followSession(block, transcript: transcript)
             endTurn()
@@ -2564,6 +2615,7 @@ final class Server {
             endTurn()
             finishTurns(block, message: nil, transcript: nil)
             agentTurns[block] = nil
+            agentTurnUserStep[block] = nil
             append(.status(id: rootStatusID, nil), to: .block(block))
         }
     }
@@ -2620,13 +2672,51 @@ final class Server {
         }
     }
 
+    /// Watches an active turn's transcript file so agents without `PreToolUse`
+    /// (`agy`) still update `Block.agentDoing` as each tool call is written.
+    private func watchAgentTranscript(_ block: BlockID, path: String) {
+        guard agentTranscriptWatchers[block]?.path != path else { return }
+        agentTranscriptWatchers[block] = (path, FileWatcher(path: path, queue: queue) { [weak self] in
+            self?.pollAgentDoing(block)
+        })
+    }
+
+    /// Reads the latest tool action from a running turn's transcript and
+    /// updates the block's `.working` status message if it changed.
+    private func pollAgentDoing(_ block: BlockID) {
+        guard let b = node.block(block), reportsStatus(block),
+              let st = b.status?[rootStatusID], st.state == .working,
+              let turn = b.terminal?.turns?.last, turn.isRunning,
+              let path = turn.transcript else { return }
+        let turnID = turn.id
+        let prompt = turn.prompt
+        offQueue(qos: .utility, { () -> String? in
+            guard let entries = TurnTranscript.entries(path: path) else { return nil }
+            return TurnTranscript.doing(entries, prompt: prompt)
+        }) { [weak self] what in
+            guard let self, let what, !what.isEmpty,
+                  let cur = self.node.block(block), self.reportsStatus(block),
+                  let st = cur.status?[rootStatusID], st.state == .working,
+                  let open = cur.terminal?.turns?.last, open.id == turnID, open.isRunning,
+                  st.msg != what else { return }
+            self.append(.status(id: rootStatusID, StatusRecord(state: .working, app: st.app, msg: what, at: self.clock.now())), to: .block(block))
+        }
+    }
+
     /// The turns still open, ended: the working tree as each ends, what it
     /// changed, the agent's last words.
     private func finishTurns(_ block: BlockID, message: String?, transcript: String?) {
+        agentTranscriptWatchers.removeValue(forKey: block)
         for var t in node.block(block)?.terminal?.turns ?? [] where t.ended == nil {
             t.ended = clock.now()
             if let message, !message.isEmpty { t.message = String(message.prefix(20_000)) }
             if let transcript { t.transcript = transcript }
+            if t.agent == "agy", agentTurnUserStep[block]?.turnID != t.id,
+               let path = t.transcript,
+               let entries = TurnTranscript.entries(path: path),
+               let step = TurnTranscript.lastUserStep(entries, prompt: t.prompt) {
+                agentTurnUserStep[block] = (t.id, step)
+            }
             append(.turn(t), to: .block(block))
             let id = t.id
             // Agents whose Stop hook supplies a transcript path without the
@@ -2789,6 +2879,7 @@ final class Server {
 
     private func sessionExited(_ id: BlockID, status: Int32) {
         guard let s = sessions.removeValue(forKey: id) else { return }
+        agentTranscriptWatchers.removeValue(forKey: id)
         lastSizes[id] = s.size
         // Its transcript whole (one that exited of itself, the line saying
         // so at its end), to show as it was until a shell starts again.
