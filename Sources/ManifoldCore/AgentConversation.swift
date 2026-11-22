@@ -154,14 +154,22 @@ public enum AgentConversation {
         let what = summary.replacingOccurrences(of: "`", with: "")
         let file = what.split(separator: "/").last.map(String.init) ?? what
         switch name {
-        case "Read", "NotebookRead": return what.isEmpty ? "Reading" : "Reading \(file)"
-        case "Edit", "MultiEdit", "Write", "NotebookEdit": return what.isEmpty ? "Editing" : "Editing \(file)"
-        case "Bash": return what.isEmpty ? "Running a command" : "Running \(what.prefix(80))"
-        case "BashOutput": return "Watching a command"
-        case "Grep", "Glob", "LS": return what.isEmpty ? "Searching" : "Searching for \(what.prefix(60))"
-        case "WebFetch", "WebSearch": return "Looking on the web"
-        case "Task", "Agent": return what.isEmpty ? "Asking a subagent" : "Asking a subagent: \(what.prefix(60))"
-        case "TodoWrite": return "Updating its to-do list"
+        case "Read", "NotebookRead", "read_file", "view_file", "view_file_outline", "view_code_item":
+            return what.isEmpty ? "Reading" : "Reading \(file)"
+        case "Edit", "MultiEdit", "Write", "NotebookEdit", "edit_file", "write_file", "write_to_file", "replace_file_content", "multi_replace_file_content":
+            return what.isEmpty ? "Editing" : "Editing \(file)"
+        case "Bash", "run_command":
+            return what.isEmpty ? "Running a command" : "Running \(what.prefix(80))"
+        case "BashOutput", "manage_task":
+            return "Watching a command"
+        case "Grep", "Glob", "LS", "grep_search", "find_by_name", "list_dir":
+            return what.isEmpty ? "Searching" : "Searching for \(what.prefix(60))"
+        case "WebFetch", "WebSearch", "search_web", "read_url_content":
+            return "Looking on the web"
+        case "Task", "Agent", "invoke_subagent", "run_workflow":
+            return what.isEmpty ? "Asking a subagent" : "Asking a subagent: \(what.prefix(60))"
+        case "TodoWrite":
+            return "Updating its to-do list"
         default: return "Using \(name)"
         }
     }
@@ -192,12 +200,12 @@ public enum AgentConversation {
         }
         for case let .tool(name, _) in steps {
             switch name {
-            case "Read", "NotebookRead": count("read")
-            case "Edit", "MultiEdit", "Write", "NotebookEdit": count("edit")
-            case "Bash", "BashOutput", "KillShell", "KillBash": count("run")
-            case "Grep", "Glob", "LS": count("search")
-            case "WebFetch", "WebSearch": count("web")
-            case "Task", "Agent": count("agent")
+            case "Read", "NotebookRead", "read_file", "view_file", "view_file_outline", "view_code_item": count("read")
+            case "Edit", "MultiEdit", "Write", "NotebookEdit", "edit_file", "write_file", "write_to_file", "replace_file_content", "multi_replace_file_content": count("edit")
+            case "Bash", "BashOutput", "KillShell", "KillBash", "run_command", "manage_task": count("run")
+            case "Grep", "Glob", "LS", "grep_search", "find_by_name", "list_dir": count("search")
+            case "WebFetch", "WebSearch", "search_web", "read_url_content": count("web")
+            case "Task", "Agent", "invoke_subagent", "run_workflow": count("agent")
             case "TodoWrite": count("todo")
             default: count("other")
             }

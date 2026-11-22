@@ -52,18 +52,31 @@ public enum AgentEvent: Codable, Equatable, Sendable {
            let now = items.first(where: { $0["status"] as? String == "in_progress" }) {
             return ((now["activeForm"] as? String) ?? (now["content"] as? String)).map(cap)
         }
-        if let d = s("description") { return cap(d) }
-        let path = s("file_path") ?? s("notebook_path") ?? s("path")
+        if let d = s("description") ?? s("toolSummary") ?? s("Description") { return cap(d) }
+        let path = s("file_path") ?? s("notebook_path") ?? s("path") ?? s("Path") ?? s("TargetFile") ?? s("AbsolutePath") ?? s("File") ?? s("DirectoryPath")
         switch tool {
-        case "Read", "NotebookRead": return path.map { "Reading " + file($0) } ?? "Reading"
-        case "Edit", "MultiEdit", "NotebookEdit": return path.map { "Editing " + file($0) } ?? "Editing"
-        case "Write": return path.map { "Writing " + file($0) } ?? "Writing"
-        case "Grep", "Glob": return s("pattern").map { "Searching for " + cap($0).prefix(60) } ?? "Searching"
-        case "LS": return path.map { "Looking in " + file($0) } ?? "Looking around"
-        case "WebFetch": return s("url").flatMap { URL(string: $0)?.host }.map { "Reading " + $0 } ?? "Reading the web"
-        case "WebSearch": return s("query").map { "Searching the web for " + cap($0).prefix(60) } ?? "Searching the web"
-        case "Bash": return s("command").map { "Running " + cap($0).prefix(60) }
-        case "Task", "Agent": return "Asking a subagent"
+        case "Read", "NotebookRead", "read_file", "view_file", "view_file_outline", "view_code_item":
+            return path.map { "Reading " + file($0) } ?? "Reading"
+        case "Edit", "MultiEdit", "NotebookEdit", "edit_file", "replace_file_content", "multi_replace_file_content":
+            return path.map { "Editing " + file($0) } ?? "Editing"
+        case "Write", "write_file", "write_to_file":
+            return path.map { "Writing " + file($0) } ?? "Writing"
+        case "Grep", "Glob", "grep_search", "find_by_name":
+            return (s("pattern") ?? s("Pattern") ?? s("Query")).map { "Searching for " + cap($0).prefix(60) } ?? "Searching"
+        case "LS", "list_dir":
+            return path.map { "Looking in " + file($0) } ?? "Looking around"
+        case "WebFetch", "read_url_content":
+            return (s("url") ?? s("Url")).flatMap { URL(string: $0)?.host }.map { "Reading " + $0 } ?? "Reading the web"
+        case "WebSearch", "search_web":
+            return (s("query") ?? s("Query")).map { "Searching the web for " + cap($0).prefix(60) } ?? "Searching the web"
+        case "Bash", "run_command":
+            return (s("command") ?? s("CommandLine")).map { "Running " + cap($0).prefix(60) }
+        case "Task", "Agent", "invoke_subagent":
+            return s("Role").map { "Asking " + cap($0) } ?? "Asking a subagent"
+        case "run_workflow":
+            return "Running a workflow"
+        case "ask_question":
+            return "Asking a question"
         default: return nil
         }
     }
@@ -97,22 +110,40 @@ public enum AgentHookCommand {
         var agent = agent
         // MetaCode runs Claude Code's hooks as its own.
         if agent == "claude", ProcessInfo.processInfo.environment["METACODE_SESSION_ID"] != nil { agent = "metacode" }
+        let isAgy = agent == "agy"
+        func finish(output: String? = nil) -> Never {
+            if let output { print(output) } else if isAgy { print("{}") }
+            exit(0)
+        }
         // Outside Manifold's terminals there is no one to tell.
-        guard let block = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:)) else { exit(0) }
+        guard let block = ProcessInfo.processInfo.environment["MANIFOLD_BLOCK"].flatMap(BlockID.init(string:)) else { finish() }
         var input = readsInput ? readInput() : [:]
         if let payload, payload.hasPrefix("{"), let data = payload.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             input.merge(json) { _, new in new }
         }
-        guard let event = event(name, agent: agent, input: input) else { exit(0) }
+        guard let event = event(name, agent: agent, input: input) else { finish() }
         // A prompt, in an agent whose hook's output is read into its turn
-        // (Claude Code's): what's happened in its threads, printed for it.
-        if case .prompt = event, ["claude", "metacode"].contains(agent) {
-            if let news = sendForNews(event, about: block), !news.isEmpty { print(news) }
+        // (Claude Code's plain text; Antigravity's JSON injectSteps): what's
+        // happened in its threads, printed for it.
+        if case .prompt = event, ["claude", "metacode", "agy"].contains(agent) {
+            let news = sendForNews(event, about: block)
+            if isAgy { finish(output: agyOutput(news: news)) }
+            if let news, !news.isEmpty { print(news) }
             exit(0)
         }
         send(event, about: block)
-        exit(0)
+        finish()
+    }
+
+    /// Antigravity's hook JSON output: `{}` when there is nothing to inject,
+    /// else a `PreInvocation` `injectSteps` systemMessage carrying `news`.
+    public static func agyOutput(news: String?) -> String {
+        guard let news, !news.isEmpty else { return "{}" }
+        let obj: [String: Any] = ["injectSteps": [["systemMessage": ["systemMessage": news]]]]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
     }
 
     /// The event sent, and the agent's news waited for — a moment at most,
@@ -139,32 +170,41 @@ public enum AgentHookCommand {
             for k in keys { if let s = input[k] as? String, !s.isEmpty { return s } }
             return nil
         }
+        // Claude/Codex pass tool_name + tool_input; Antigravity passes toolCall: { name, args }.
+        let toolCall = input["toolCall"] as? [String: Any]
+        let toolName = string("tool_name") ?? (toolCall?["name"] as? String)
+        let toolInput = (input["tool_input"] as? [String: Any]) ?? (toolCall?["args"] as? [String: Any]) ?? [:]
         switch name {
         case "start": return .started(agent: agent)
         case "prompt":
-            // Codex's notify names the turn's input messages; hooks, the prompt.
-            let text = string("prompt", "user_prompt", "input")
+            // Codex's notify names the turn's input messages; Antigravity's
+            // PreInvocation gives lastUserInput; Claude hooks give prompt.
+            let text = string("prompt", "user_prompt", "input", "lastUserInput")
                 ?? (input["input-messages"] as? [String])?.last ?? (input["input_messages"] as? [String])?.last
-            return .prompt(agent: agent, text: text ?? "", transcript: string("transcript_path"))
+            return .prompt(agent: agent, text: text ?? "", transcript: string("transcript_path", "transcriptPath"))
         case "doing":
             // A tool about to run: what it's for.
-            guard let tool = string("tool_name"), let what = AgentEvent.doing(tool: tool, input: input["tool_input"] as? [String: Any] ?? [:]) else { return nil }
+            guard let tool = toolName, !tool.isEmpty, let what = AgentEvent.doing(tool: tool, input: toolInput) else { return nil }
             return .doing(agent: agent, what: what)
         case "working":
             // A tool ran; the to-do list one (TodoWrite), with the list.
-            if string("tool_name") == "TodoWrite", let tool = input["tool_input"] as? [String: Any], let items = tool["todos"] as? [[String: Any]] {
+            if toolName == "TodoWrite", let items = toolInput["todos"] as? [[String: Any]] {
                 return .todos(agent: agent, items.compactMap { i in
                     (i["content"] as? String).map { AgentTodo(text: $0, status: i["status"] as? String ?? "pending") }
                 })
             }
             // A file written: which.
-            if let tool = input["tool_input"] as? [String: Any], let path = (tool["file_path"] ?? tool["notebook_path"] ?? tool["path"]) as? String, !path.isEmpty,
-               ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit", "write"].contains(string("tool_name") ?? "") {
+            let path = (toolInput["file_path"] ?? toolInput["notebook_path"] ?? toolInput["path"]
+                        ?? toolInput["Path"] ?? toolInput["TargetFile"] ?? toolInput["AbsolutePath"] ?? toolInput["File"]) as? String
+            if let path, !path.isEmpty,
+               ["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "edit", "write",
+                "edit_file", "write_file", "write_to_file", "replace_file_content", "multi_replace_file_content"].contains(toolName ?? "") {
                 return .wrote(agent: agent, path: path)
             }
             return .working(agent: agent)
         case "stop":
-            return .finished(agent: agent, message: string("last_assistant_message", "last-assistant-message", "message", "response"), transcript: string("transcript_path"))
+            return .finished(agent: agent, message: string("last_assistant_message", "last-assistant-message", "message", "response"),
+                             transcript: string("transcript_path", "transcriptPath"))
         case "waiting":
             // A reminder that the agent is idle isn't waiting on anything.
             let kind = string("notification_type", "type") ?? ""

@@ -1558,7 +1558,7 @@ around it, and comes back with its history.
   own, linked from it and kept by it, rewritten as the list changes:
   done ticked, the item at work in bold. Launch
   Agent Here (in the File menu or a tile's menu) offers each
-  agent Manifold knows (Claude Code, Codex, Pi, Muse, Gemini CLI,
+  agent Manifold knows (Claude Code, Codex, Antigravity, Pi, Muse, Gemini CLI,
   opencode, Amp, Cursor Agent, Goose, Aider) that the focused block's
   host has: the host looks for them through your login shell (the
   shell its preferences name, if any) when a Mac attaches, when its
@@ -1579,8 +1579,9 @@ around it, and comes back with its history.
   one, as the app and each host's server start. Installed for whichever of
   these are found (or those named): Claude Code (`~/.claude/settings.json`;
   MetaCode reads these too, and is told apart), Codex
-  (`~/.codex/hooks.json`; Codex asks to review new hooks once), Muse
-  (`~/.config/muse/settings.json`), and Pi (an extension,
+  (`~/.codex/hooks.json`; Codex asks to review new hooks once), Antigravity
+  (`~/.gemini/config/hooks.json`, plus skills in `~/.gemini/config/skills/`),
+  Muse (`~/.config/muse/settings.json`), and Pi (an extension,
   `~/.pi/agent/extensions/manifold.ts`, as Pi has no command hooks).
   Installing again replaces Manifold's hooks and keeps the rest of each
   file (a copy of it as it was is left beside it, `.before-manifold`);

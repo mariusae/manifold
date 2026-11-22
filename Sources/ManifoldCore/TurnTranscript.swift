@@ -1,9 +1,9 @@
 import Foundation
 
 /// What an agent did in one turn, from its transcript (§3.8): Claude Code's
-/// JSON lines — what it said along the way, and each tool it used, by
-/// what it worked on — from the turn's prompt to the next. Nil for a
-/// transcript it can't read (another agent's format).
+/// and Antigravity's JSON lines — what it said along the way, and each tool
+/// it used, by what it worked on — from the turn's prompt to the next. Nil
+/// for a transcript it can't read (another agent's format).
 public enum TurnTranscript {
     /// One thing in a turn, in order: words it said, or a tool it used
     /// (its name, and what it worked on in a few words).
@@ -41,31 +41,49 @@ public enum TurnTranscript {
         let wanted = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = String(wanted.prefix(200))
         guard let start = entries.lastIndex(where: { e in
-            guard e["type"] as? String == "user", let said = userText(e) else { return false }
-            return said.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(key) || (!key.isEmpty && said.contains(key))
+            guard let said = userText(e) else { return false }
+            let trimmed = said.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.hasPrefix(key) || (!key.isEmpty && trimmed.contains(key))
         }) else { return nil }
         var out: [Part] = []
         var size = 0
+        func append(_ part: Part) -> Bool {
+            if case .text(let t) = part { size += t.count } else { size += 80 }
+            if size > limit { out.append(.text("…")); return false }
+            out.append(part)
+            return true
+        }
         for e in entries[(start + 1)...] {
             // The next prompt ends it.
-            if e["type"] as? String == "user", userText(e) != nil { break }
-            guard e["type"] as? String == "assistant", let message = e["message"] as? [String: Any],
-                  let content = message["content"] as? [[String: Any]] else { continue }
-            for piece in content {
-                var part: Part?
-                switch piece["type"] as? String {
-                case "text":
-                    if let t = (piece["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { part = .text(t) }
-                case "tool_use":
-                    let name = piece["name"] as? String ?? "tool"
-                    part = .tool(name: name, summary: summary(name, piece["input"] as? [String: Any] ?? [:]))
-                default:
-                    break
+            if userText(e) != nil { break }
+            let kind = e["type"] as? String
+            if kind == "assistant", let message = e["message"] as? [String: Any],
+               let content = message["content"] as? [[String: Any]] {
+                for piece in content {
+                    var part: Part?
+                    switch piece["type"] as? String {
+                    case "text":
+                        if let t = (piece["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { part = .text(t) }
+                    case "tool_use":
+                        let name = piece["name"] as? String ?? "tool"
+                        part = .tool(name: name, summary: summary(name, piece["input"] as? [String: Any] ?? [:]))
+                    default:
+                        break
+                    }
+                    guard let part else { continue }
+                    if !append(part) { return out }
                 }
-                guard let part else { continue }
-                if case .text(let t) = part { size += t.count } else { size += 80 }
-                if size > limit { out.append(.text("…")); return out }
-                out.append(part)
+            } else if kind == "PLANNER_RESPONSE" {
+                let text = ((e["content"] as? String) ?? (e["response"] as? String) ?? (e["text"] as? String))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if let text, !text.isEmpty, !append(.text(text)) { return out }
+                if let calls = e["tool_calls"] as? [[String: Any]] {
+                    for call in calls {
+                        let name = call["name"] as? String ?? "tool"
+                        let args = call["args"] as? [String: Any] ?? [:]
+                        if !append(.tool(name: name, summary: summary(name, args))) { return out }
+                    }
+                }
             }
         }
         return out
@@ -126,23 +144,49 @@ public enum TurnTranscript {
 
     /// A user entry's own words (not a tool's result handed back).
     private static func userText(_ e: [String: Any]) -> String? {
-        guard let message = e["message"] as? [String: Any] else { return nil }
+        let kind = e["type"] as? String
+        if kind == "USER_INPUT", let content = e["content"] as? String {
+            if let a = content.range(of: "<USER_REQUEST>"), let b = content.range(of: "</USER_REQUEST>", range: a.upperBound..<content.endIndex) {
+                let inner = content[a.upperBound..<b.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+                return inner.isEmpty ? nil : inner
+            }
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard kind == "user", let message = e["message"] as? [String: Any] else { return nil }
         if let s = message["content"] as? String { return s }
         guard let parts = message["content"] as? [[String: Any]] else { return nil }
         let texts = parts.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }
         return texts.isEmpty ? nil : texts.joined(separator: "\n")
     }
 
+    /// A tool arg value as a plain string: Antigravity's `transcript.jsonl`
+    /// stores each arg value as a JSON-encoded string (e.g. `"\"/a/b\""`),
+    /// while Claude Code stores raw strings.
+    private static func argString(_ raw: Any?) -> String? {
+        guard let s = raw as? String, !s.isEmpty else { return nil }
+        if s.hasPrefix("\""), s.hasSuffix("\""), s.count >= 2,
+           let data = s.data(using: .utf8),
+           let decoded = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) as? String {
+            return decoded.isEmpty ? nil : decoded
+        }
+        return s
+    }
+
     /// What a tool worked on, in a few words.
     private static func summary(_ name: String, _ input: [String: Any]) -> String {
-        for key in ["file_path", "path", "notebook_path"] {
-            if let p = input[key] as? String { return "`\(p)`" }
+        for key in ["file_path", "path", "notebook_path", "Path", "TargetFile", "AbsolutePath", "File", "DirectoryPath", "SearchPath", "SearchDirectory"] {
+            if let p = argString(input[key]) { return "`\(p)`" }
         }
-        if let c = input["command"] as? String { return "`" + String(c.split(separator: "\n").first ?? "").prefix(160) + "`" }
-        if let p = input["pattern"] as? String { return "`\(p.prefix(120))`" }
-        if let u = input["url"] as? String { return u }
-        if let q = input["query"] as? String { return "“\(q.prefix(120))”" }
-        if let d = input["description"] as? String { return String(d.prefix(160)) }
+        if let c = argString(input["command"]) ?? argString(input["CommandLine"]) {
+            return "`" + String(c.split(separator: "\n").first ?? "").prefix(160) + "`"
+        }
+        if let p = argString(input["pattern"]) ?? argString(input["Pattern"]) { return "`\(p.prefix(120))`" }
+        if let u = argString(input["url"]) ?? argString(input["Url"]) { return u }
+        if let q = argString(input["query"]) ?? argString(input["Query"]) { return "“\(q.prefix(120))”" }
+        if let d = argString(input["description"]) ?? argString(input["toolSummary"]) ?? argString(input["Description"]) ?? argString(input["Role"]) {
+            return String(d.prefix(160))
+        }
         if let todos = input["todos"] as? [Any] { return "\(todos.count) items" }
         return ""
     }

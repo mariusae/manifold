@@ -95,6 +95,11 @@ public enum AgentSkill {
         let muse = museDir.appendingPathComponent("settings.json")
         let piDir = env["PI_CODING_AGENT_DIR"].map { URL(fileURLWithPath: $0) } ?? home.appendingPathComponent(".pi/agent")
         let pi = piDir.appendingPathComponent("extensions/manifold.ts")
+        let agyConfigDir = home.appendingPathComponent(".gemini/config")
+        let agyCliDir = home.appendingPathComponent(".gemini/antigravity-cli")
+        let agyHooks = agyConfigDir.appendingPathComponent("hooks.json")
+        let agySkill = agyConfigDir.appendingPathComponent("skills/manifold/SKILL.md")
+        let agyBlockSkill = agyConfigDir.appendingPathComponent("skills/block/SKILL.md")
         func here(_ command: String, _ dir: URL) -> () -> Bool {
             { onPath(command) || FileManager.default.fileExists(atPath: dir.path) }
         }
@@ -110,6 +115,10 @@ public enum AgentSkill {
                    uninstall: { try uninstallClaudeStyle(at: codex); try uninstallAgentsNote(at: codexAgents) },
                    refresh: { try refreshClaudeStyle(at: codex, events: codexEvents); try refreshAgentsNote(at: codexAgents) },
                    note: "Codex asks to review new hooks once: choose Review hooks (or /hooks) and trust Manifold's."),
+            Target(name: "agy", file: agyHooks, present: here("agy", agyCliDir),
+                   install: { try installAgyStyle(at: agyHooks); try installSkillFile(at: agySkill); try installBlockSkill(at: agyBlockSkill) },
+                   uninstall: { try uninstallAgyStyle(at: agyHooks); try uninstallSkillFile(at: agySkill); try uninstallBlockSkill(at: agyBlockSkill) },
+                   refresh: { try refreshAgyStyle(at: agyHooks); try refreshSkillFile(at: agySkill); try refreshBlockSkill(at: agyBlockSkill) }),
             Target(name: "muse", file: muse, present: here("muse", museDir),
                    install: { try installClaudeStyle(at: muse, agent: "muse", events: museEvents) },
                    uninstall: { try uninstallClaudeStyle(at: muse) },
@@ -139,6 +148,26 @@ public enum AgentSkill {
 
     /// Muse's: Claude Code's.
     static let museEvents = claudeEvents
+
+    /// Antigravity's (`agy`): flat arrays for lifecycle events (`SessionStart`,
+    /// `PreInvocation`, `Stop`), grouped matcher array for `PostToolUse`.
+    /// `PreToolUse` is left out because Antigravity requires an explicit
+    /// permission decision (`allow`/`deny`/`ask`/`force_ask`) there.
+    static let agyEvents: [(hook: String, event: String, grouped: Bool)] = [
+        ("SessionStart", "start", false),
+        ("PreInvocation", "prompt", false),
+        ("PostToolUse", "working", true),
+        ("Stop", "stop", false),
+    ]
+
+    /// The named hook key Manifold installs in `~/.gemini/config/hooks.json`.
+    static let agyHookName = "manifold"
+
+    /// The command an Antigravity hook runs: prints `{}` outside Manifold's
+    /// terminals (Antigravity hooks expect JSON on stdout), else runs `mani`.
+    static func agyCommand(_ event: String, tool: String = maniTool) -> String {
+        "[ -z \"$MANIFOLD_BLOCK\" ] && printf '{}' || \(tool.shellQuoted) agent \(event) --agent agy"
+    }
 
     /// Installs (or takes out) the hooks of the agents named (known ones),
     /// or of those found here, saying what it did; then exits.
@@ -224,6 +253,109 @@ public enum AgentSkill {
         let copy = url.appendingPathExtension("before-manifold")
         guard FileManager.default.fileExists(atPath: url.path), !FileManager.default.fileExists(atPath: copy.path) else { return }
         try? FileManager.default.copyItem(at: url, to: copy)
+    }
+
+    // MARK: Antigravity (`~/.gemini/config/hooks.json`)
+
+    /// Antigravity's `hooks.json` maps named hook groups (`"manifold"`) to
+    /// event arrays: flat handler lists for lifecycle events (`SessionStart`,
+    /// `PreInvocation`, `Stop`), and `{matcher, hooks}` groups for tool events
+    /// (`PostToolUse`). Other named hooks in the file are kept untouched.
+    static func installAgyStyle(at url: URL, tool: String = maniTool) throws {
+        var config = try readJSON(url)
+        var group = withoutOursAgy(config[agyHookName] as? [String: Any] ?? [:])
+        for (hook, event, grouped) in agyEvents {
+            let handler: [String: Any] = ["type": "command", "command": agyCommand(event, tool: tool), "timeout": 10]
+            var list = group[hook] as? [[String: Any]] ?? []
+            list.append(grouped ? ["matcher": "*", "hooks": [handler]] : handler)
+            group[hook] = list
+        }
+        config[agyHookName] = group
+        try writeJSON(config, to: url)
+    }
+
+    static func uninstallAgyStyle(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        var config = try readJSON(url)
+        guard let group = config[agyHookName] as? [String: Any] else { return }
+        let rest = withoutOursAgy(group)
+        if rest.isEmpty { config.removeValue(forKey: agyHookName) } else { config[agyHookName] = rest }
+        try writeJSON(config, to: url)
+    }
+
+    /// Refreshes Antigravity hooks if Manifold's are installed: moves old
+    /// `manifold` paths over to `mani` and adds any event added since.
+    static func refreshAgyStyle(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        var config = try readJSON(url)
+        guard var group = config[agyHookName] as? [String: Any] else { return }
+        func commands(in value: Any?) -> [String] {
+            var out: [String] = []
+            for item in (value as? [[String: Any]]) ?? [] {
+                if let c = item["command"] as? String { out.append(c) }
+                for h in (item["hooks"] as? [[String: Any]]) ?? [] {
+                    if let c = h["command"] as? String { out.append(c) }
+                }
+            }
+            return out
+        }
+        let sample = group.keys.sorted().flatMap { commands(in: group[$0]) }.first { isOurs($0) && $0.contains(" --agent ") }
+        guard let sample else { return }
+        var changed = false
+        for (hook, event, grouped) in agyEvents where !commands(in: group[hook]).contains(where: isOurs) {
+            guard let r = sample.range(of: #" agent \S+ --agent"#, options: .regularExpression) else { break }
+            let cmd = sample.replacingCharacters(in: r, with: " agent \(event) --agent")
+            let handler: [String: Any] = ["type": "command", "command": cmd, "timeout": 10]
+            var list = group[hook] as? [[String: Any]] ?? []
+            list.append(grouped ? ["matcher": "*", "hooks": [handler]] : handler)
+            group[hook] = list
+            changed = true
+        }
+        var out: [String: Any] = [:]
+        for (event, value) in group {
+            guard let items = value as? [[String: Any]] else { out[event] = value; continue }
+            out[event] = items.map { item -> [String: Any] in
+                if let list = item["hooks"] as? [[String: Any]] {
+                    var g = item
+                    g["hooks"] = list.map { hook -> [String: Any] in
+                        guard let c = hook["command"] as? String, isOurs(c), let moved = movedOver(c) else { return hook }
+                        changed = true
+                        var h = hook
+                        h["command"] = moved
+                        return h
+                    }
+                    return g
+                }
+                guard let c = item["command"] as? String, isOurs(c), let moved = movedOver(c) else { return item }
+                changed = true
+                var h = item
+                h["command"] = moved
+                return h
+            }
+        }
+        guard changed else { return }
+        config[agyHookName] = out
+        try writeJSON(config, to: url)
+    }
+
+    /// An Antigravity named hook group with Manifold's handlers removed.
+    static func withoutOursAgy(_ group: [String: Any]) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (event, value) in group {
+            guard let items = value as? [[String: Any]] else { out[event] = value; continue }
+            let kept: [[String: Any]] = items.compactMap { item in
+                if let list = item["hooks"] as? [[String: Any]] {
+                    let others = list.filter { !isOurs(($0["command"] as? String) ?? "") }
+                    if others.isEmpty { return nil }
+                    var g = item
+                    g["hooks"] = others
+                    return g
+                }
+                return isOurs((item["command"] as? String) ?? "") ? nil : item
+            }
+            if !kept.isEmpty { out[event] = kept }
+        }
+        return out
     }
 
     // MARK: Pi

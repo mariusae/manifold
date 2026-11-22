@@ -1043,9 +1043,9 @@ final class Server {
         case let .newAgent(block, cwd, command):
             if ensure(block, kind: .agent, cwd: cwd) {
                 // What it's started again with: its command less the first
-                // prompt it was given (a quoted word at its end); its
-                // conversation named by us, if it takes a name.
-                let base = command.replacingOccurrences(of: #" '(?:[^']|'\\'')*'$"#, with: "", options: .regularExpression)
+                // prompt it was given (a quoted word at its end, and agy's
+                // `-i` if given); its conversation named by us, if it takes one.
+                let base = AgentCatalog.baseCommand(from: command)
                 var marks = [Self.agentCommandKey: base]
                 var run = command
                 if AgentSessions.names(base) {
@@ -2208,7 +2208,8 @@ final class Server {
         heldInput[block] = []
         queue.asyncAfter(deadline: .now() + 15) { [weak self] in
             guard let self, self.heldInput[block] != nil, self.sessions[block] != nil else { return }
-            self.append(.status(id: rootStatusID, StatusRecord(state: .blocked, kind: .question, app: "claude",
+            let app = self.node.block(block)?.agent?.command ?? "claude"
+            self.append(.status(id: rootStatusID, StatusRecord(state: .blocked, kind: .question, app: app,
                                                                      msg: "Hasn't started: it may be asking something — show it to answer", at: self.clock.now())),
                         to: .block(block))
         }
@@ -2235,7 +2236,7 @@ final class Server {
     private func resumeCommand(_ b: Block) -> String? {
         guard b.kind == .agent, let t = b.terminal else { return nil }
         let base = b.annotations?[Self.agentCommandKey] ?? AgentCatalog.agent(inCommand: t.command ?? "")?.command
-        guard let base, AgentSessions.names(base) else { return nil }
+        guard let base, AgentSessions.resumes(base) else { return nil }
         let turns = (t.turns ?? []).compactMap { AgentSessions.id(fromTranscript: $0.transcript) }
         guard let id = b.annotations?[AgentSessions.key] ?? turns.last, turns.contains(id) else { return nil }
         return AgentSessions.resume(base, id: id)
@@ -2520,6 +2521,14 @@ final class Server {
             releaseInput(for: block)
         case let .prompt(agent, text, transcript):
             followSession(block, transcript: transcript)
+            // Antigravity's PreInvocation fires before every model step in a
+            // turn with the same lastUserInput: don't split one turn into many.
+            if agent == "agy", let open = node.block(block)?.terminal?.turns?.last, open.isRunning,
+               open.prompt == String(text.prefix(20_000)) {
+                let current = b.status?[rootStatusID]
+                if current?.state != .working { status(.working, msg: current?.state == .blocked ? nil : current?.msg ?? line(text)) }
+                break
+            }
             endTurn()
             finishTurns(block, message: nil, transcript: nil)
             if let mark = line(text) {
@@ -2619,8 +2628,29 @@ final class Server {
             if let message, !message.isEmpty { t.message = String(message.prefix(20_000)) }
             if let transcript { t.transcript = transcript }
             append(.turn(t), to: .block(block))
-            guard let repo = t.repo, let before = t.before else { continue }
             let id = t.id
+            // Agents whose Stop hook supplies a transcript path without the
+            // last assistant message (Antigravity): read its final words from it.
+            if t.message == nil, let path = t.transcript {
+                let prompt = t.prompt
+                offQueue({ () -> String? in
+                    guard let entries = TurnTranscript.entries(path: path),
+                          let parts = TurnTranscript.parts(entries, prompt: prompt) else { return nil }
+                    let said = AgentConversation.split(parts).said.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    return said.isEmpty ? nil : String(said.prefix(20_000))
+                }) { [weak self] reply in
+                    guard let self, let reply, var cur = self.node.block(block)?.terminal?.turns?.first(where: { $0.id == id }), cur.message == nil else { return }
+                    cur.message = reply
+                    self.append(.turn(cur), to: .block(block))
+                    if let st = self.node.block(block)?.status?[rootStatusID], st.state == .done, st.msg == nil {
+                        let first = reply.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+                        if !first.isEmpty {
+                            self.append(.status(id: rootStatusID, StatusRecord(state: .done, app: st.app, msg: String(first.prefix(200)), at: self.clock.now(), read: st.read)), to: .block(block))
+                        }
+                    }
+                }
+            }
+            guard let repo = t.repo, let before = t.before else { continue }
             git.snapshotTree(repo) { [weak self] after in
                 guard let self, let after else { return }
                 self.git.run(.git, ["diff", "--name-only", before, after], in: repo) { [weak self] result in

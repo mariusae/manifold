@@ -1416,7 +1416,7 @@ final class ManiDesk {
         switch kind.name {
         case "note": what = what ?? r.flags["text"] ?? r.input ?? ""
         case "terminal": what = r.flags["run"] ?? what
-        case "agent": if let prompt = r.flags["run"] { what = (what ?? wc.host.desk.settings.agentCommand) + " " + prompt.shellQuoted }
+        case "agent": if let prompt = r.flags["run"] { what = AgentCatalog.command(what ?? wc.host.desk.settings.agentCommand, prompt: prompt) }
         default: break
         }
         let made: (block: BlockID, lens: Lens, later: Bool)

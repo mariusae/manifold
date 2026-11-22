@@ -1,6 +1,6 @@
 import AppKit
 
-/// Coding agents' own marks (Claude Code's, Codex's, Gemini CLI's…), from
+/// Coding agents' own marks (Claude Code's, Codex's, Antigravity's, Gemini CLI's…), from
 /// Resources/AgentIcons, by the command that starts each: shown wherever
 /// the block an agent works in shows its symbol, as `agent:<command>`
 /// (`Theme.symbol`). Each is in one color (`currentColor`), a template

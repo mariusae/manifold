@@ -192,7 +192,7 @@ extension MainWindowController {
         }
         guard let client = hosts.client(focusedHost) else { return NSSound.beep() }
         let prompt = "Have a look at \(s.forAgent). I'll ask you about it next; for now, just say in a line what it is."
-        let agent = client.newAgent(cwd: s.cwd, command: desk.settings.agentCommand + " " + prompt.shellQuoted)
+        let agent = client.newAgent(cwd: s.cwd, command: AgentCatalog.command(desk.settings.agentCommand, prompt: prompt))
         show(agent, lens: .agent, .here, context: "asked about \(s.label)")
     }
 

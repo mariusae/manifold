@@ -443,14 +443,14 @@ public enum Mani {
                  \(AgentSkill.known.joined(separator: ", "))), so a Manifold terminal running one shows
                  its status, and each of its turns in the tile's outline. The hooks run `mani agent`, and do nothing outside
                  Manifold's terminals. And the guide (`mani skill show`), so they
-                 know mani: Claude Code's as a skill, Codex's from AGENTS.md.
-                 And Claude Code's /block: its last response (or what's named
+                 know mani: Claude Code's and Antigravity's as a skill, Codex's from AGENTS.md.
+                 And Claude Code's and Antigravity's /block: its last response (or what's named
                  after it) shown beside its terminal, rendered. Installing again
                  replaces them.
                  """),
         Verb(words: ["skill", "show"], args: "", minArgs: 0, maxArgs: 0, flags: [],
              summary: "Print the guide for agents: seeing and driving Manifold",
-             details: "The guide `skill install` gives Claude Code (as a skill) and Codex (pointed to from AGENTS.md): names, what users say and what to run, the commands."),
+             details: "The guide `skill install` gives Claude Code and Antigravity (as a skill) and Codex (pointed to from AGENTS.md): names, what users say and what to run, the commands."),
         Verb(words: ["skill", "uninstall"], args: "[agent ...]", minArgs: 0, maxArgs: nil, flags: [],
              summary: "Take Manifold's hooks out of coding agents",
              details: "Takes out what `mani skill install` put in: of the agents found here, or those named."),

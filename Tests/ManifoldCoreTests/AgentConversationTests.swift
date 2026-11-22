@@ -129,3 +129,49 @@ import Testing
     let md = AgentConversation.markdown(turns: [t], contents: [:], standing: .idle)
     #expect(md.contains("<pre class=\"mf-prompt\"><a href=\"manifold:hw698j2smp0/01M7V7FG1MTQ8VTY2W8MD003ZX\">mc2art</a> they are here &amp; there</pre>"))
 }
+
+// Antigravity's transcript.jsonl: USER_INPUT (<USER_REQUEST> wrapper) and
+// PLANNER_RESPONSE (thinking ignored, JSON-encoded tool args unwrapped, text kept).
+@Test func antigravityTranscriptIsParsedAndSummarized() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("agy-turn-\(UUID().uuidString).jsonl")
+    defer { try? FileManager.default.removeItem(at: url) }
+    func line(_ o: [String: Any]) -> String { String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)! + "\n" }
+    let u1 = line(["step_index": 0, "type": "USER_INPUT", "source": "USER_EXPLICIT",
+                   "content": "<USER_REQUEST>\nfix the parser\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nnow\n</ADDITIONAL_METADATA>"])
+    let p1 = line(["step_index": 1, "type": "PLANNER_RESPONSE", "source": "MODEL", "thinking": "internal thoughts",
+                   "tool_calls": [
+                       ["name": "read_file", "args": ["Path": "\"/repo/Sources/Parser.swift\""]],
+                       ["name": "run_command", "args": ["CommandLine": "\"swift test\"", "toolSummary": "\"Run tests\""]],
+                   ]])
+    let g1 = line(["step_index": 2, "type": "GENERIC", "content": "file contents"])
+    let p2 = line(["step_index": 3, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                   "tool_calls": [["name": "edit_file", "args": ["Path": "\"/repo/Sources/Parser.swift\""]]],
+                   "content": "Updating the parser now."])
+    let p3 = line(["step_index": 4, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                   "content": "Fixed the parser and tests pass."])
+    let u2 = line(["step_index": 5, "type": "USER_INPUT", "source": "USER_EXPLICIT",
+                   "content": "<USER_REQUEST>\nnext question\n</USER_REQUEST>"])
+    let p4 = line(["step_index": 6, "type": "PLANNER_RESPONSE", "source": "MODEL",
+                   "response": "Here is the answer."])
+    try (u1 + p1 + g1 + p2 + p3 + u2 + p4).write(to: url, atomically: true, encoding: .utf8)
+    let entries = try #require(TurnTranscript.entries(path: url.path))
+    let first = try #require(TurnTranscript.parts(entries, prompt: "fix the parser"))
+    #expect(first == [
+        .tool(name: "read_file", summary: "`/repo/Sources/Parser.swift`"),
+        .tool(name: "run_command", summary: "`swift test`"),
+        .text("Updating the parser now."),
+        .tool(name: "edit_file", summary: "`/repo/Sources/Parser.swift`"),
+        .text("Fixed the parser and tests pass."),
+    ])
+    let (steps, said) = AgentConversation.split(first)
+    #expect(said == ["Fixed the parser and tests pass."])
+    #expect(AgentConversation.summary(steps) == "Read a file · ran a command · made an edit")
+    #expect(AgentConversation.activity([.tool(name: "read_file", summary: "`/repo/Sources/Parser.swift`")]) == "Reading Parser.swift")
+    #expect(AgentConversation.activity([.tool(name: "run_command", summary: "`swift test`")]) == "Running swift test")
+    #expect(AgentConversation.activity([.tool(name: "edit_file", summary: "`/repo/Sources/Parser.swift`")]) == "Editing Parser.swift")
+    #expect(AgentConversation.activity([.tool(name: "search_web", summary: "“swift”")]) == "Looking on the web")
+    #expect(AgentConversation.activity([.tool(name: "invoke_subagent", summary: "Researcher")]) == "Asking a subagent: Researcher")
+    // Second turn stops cleanly and reads `response` too.
+    let second = try #require(TurnTranscript.parts(entries, prompt: "next question"))
+    #expect(second == [.text("Here is the answer.")])
+}

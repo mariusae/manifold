@@ -33,6 +33,11 @@ import ManifoldCore
     #expect(!MainWindowController.agentRuns(other))
     // No shell at all.
     #expect(!MainWindowController.agentRuns(terminal { $0.pid = nil; $0.command = "claude" }))
+    // Antigravity (`agy`) works the same way, in place of a shell or typed at a prompt.
+    #expect(MainWindowController.agentRuns(terminal { $0.command = "agy" }))
+    #expect(MainWindowController.agentRuns(terminal { $0.commands = [ShellCommand(id: 1, text: "agy --conversation abc", at: t0)] }))
+    #expect(MainWindowController.agentKind("agy")?.name == "Antigravity")
+    #expect(MainWindowController.agentKind("antigravity")?.command == "agy")
 }
 
 // A Claude started at a shell prompt keeps running between conversation

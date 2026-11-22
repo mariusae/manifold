@@ -447,7 +447,7 @@ extension MainWindowController {
             return b.place
         }
         let base = kind.command == AgentCatalog.agent(inCommand: desk.settings.agentCommand)?.command ? desk.settings.agentCommand : kind.command
-        let command = base + " " + prompt.shellQuoted
+        let command = AgentCatalog.command(base, prompt: prompt)
         let agent = client.newAgent(cwd: cwd, command: command)
         // In the thread from now on: its lead, if it had none at work.
         var parts = participants(of: t)

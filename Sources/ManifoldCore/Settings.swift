@@ -184,6 +184,7 @@ public enum AgentCatalog {
     public static let known: [Agent] = [
         Agent(command: "claude", name: "Claude Code"),
         Agent(command: "codex", name: "Codex"),
+        Agent(command: "agy", name: "Antigravity"),
         Agent(command: "pi", name: "Pi"),
         Agent(command: "muse", name: "Muse"),
         Agent(command: "gemini", name: "Gemini CLI"),
@@ -198,6 +199,21 @@ public enum AgentCatalog {
     public static func agents(among commands: [String]) -> [Agent] {
         known.filter { commands.contains($0.command) }
     }
+
+    /// An agent command starting interactively with an initial prompt:
+    /// `agy` takes `-i <prompt>`, others the prompt as a positional word.
+    public static func command(_ base: String, prompt: String) -> String {
+        if agent(inCommand: base)?.command == "agy" {
+            return base + " -i " + prompt.shellQuoted
+        }
+        return base + " " + prompt.shellQuoted
+    }
+
+    /// An agent's base command, with a trailing initial prompt (quoted, and
+    /// `agy`'s `-i` / `--prompt-interactive` if given) stripped off.
+    public static func baseCommand(from command: String) -> String {
+        command.replacingOccurrences(of: #"(?: (?:-i|--prompt-interactive))? '(?:[^']|'\\'')*'$"#, with: "", options: .regularExpression)
+    }
 }
 
 /// An agent's conversation, named by Manifold (§3.12): the id it's
@@ -205,8 +221,10 @@ public enum AgentCatalog {
 /// block to the conversation — and resumed by. Claude Code takes one
 /// (`--session-id <uuid>`, then `--resume <uuid>`, which keeps it); it
 /// moves to another on `/clear`, which its hooks say (each turn's
-/// transcript is named by its session), and the block follows. Agents
-/// that can't be told an id start fresh, as before.
+/// transcript is named by its session), and the block follows. Antigravity
+/// (`agy`) assigns its own conversation id (named by its transcript path)
+/// and resumes it with `--conversation <uuid>`. Agents that can't be
+/// resumed start fresh, as before.
 public enum AgentSessions {
     /// The annotation holding the session's id.
     public static let key = "agent.session"
@@ -214,6 +232,12 @@ public enum AgentSessions {
     /// Whether an agent's command can be started under an id of ours.
     public static func names(_ command: String) -> Bool {
         AgentCatalog.agent(inCommand: command)?.command == "claude"
+    }
+
+    /// Whether an agent's conversation can be resumed by session id.
+    public static func resumes(_ command: String) -> Bool {
+        guard let a = AgentCatalog.agent(inCommand: command)?.command else { return false }
+        return a == "claude" || a == "agy"
     }
 
     /// A new id for a conversation.
@@ -227,14 +251,26 @@ public enum AgentSessions {
 
     /// Its command, taking `id` up again.
     public static func resume(_ base: String, id: String) -> String {
-        base + " --resume " + id
+        if AgentCatalog.agent(inCommand: base)?.command == "agy" {
+            return base + " --conversation " + id
+        }
+        return base + " --resume " + id
     }
 
-    /// The session a turn's transcript is of (Claude Code's are named by it).
+    /// The session a turn's transcript is of: Claude Code's is the file's
+    /// name (`<uuid>.jsonl`); Antigravity's is the conversation directory
+    /// (`…/<uuid>/.system_generated/logs/transcript.jsonl`).
     public static func id(fromTranscript path: String?) -> String? {
         guard let path else { return nil }
-        let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-        return UUID(uuidString: name) != nil ? name.lowercased() : nil
+        let url = URL(fileURLWithPath: path)
+        let name = url.deletingPathExtension().lastPathComponent
+        if UUID(uuidString: name) != nil { return name.lowercased() }
+        if name == "transcript" || name == "transcript_full" {
+            for component in url.pathComponents.reversed().dropFirst() {
+                if UUID(uuidString: component) != nil { return component.lowercased() }
+            }
+        }
+        return nil
     }
 }
 

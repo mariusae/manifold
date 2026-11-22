@@ -2166,3 +2166,91 @@ private final class Seen: @unchecked Sendable {
     try AgentSkill.refreshClaudeStyle(at: theirs, events: AgentSkill.claudeEvents)
     #expect((try AgentSkill.readJSON(theirs)["hooks"] as! [String: Any]).keys.sorted() == ["Stop"])
 }
+
+@Test func antigravityCatalogSessionsHooksAndEvents() throws {
+    // Catalog recognition, initial prompt (-i), and base command stripping.
+    #expect(AgentCatalog.agent(inCommand: "agy")?.name == "Antigravity")
+    #expect(AgentCatalog.agent(inCommand: "/Users/me/.local/bin/agy --model gemini")?.command == "agy")
+    #expect(AgentCatalog.agent(namedByApp: "agy")?.name == "Antigravity")
+    #expect(AgentCatalog.agent(namedByApp: "Antigravity")?.command == "agy")
+    let launched = AgentCatalog.command("agy --model fast", prompt: "fix it's bug")
+    #expect(launched == #"agy --model fast -i 'fix it'\''s bug'"#)
+    #expect(AgentCatalog.baseCommand(from: launched) == "agy --model fast")
+    #expect(AgentCatalog.baseCommand(from: AgentCatalog.command("claude", prompt: "hello")) == "claude")
+
+    // Sessions: agy does not pre-name sessions, but resumes by --conversation from transcriptPath.
+    let uuid = "a07cd078-4fdc-4299-84f5-91b72cc9e372"
+    #expect(!AgentSessions.names("agy"))
+    #expect(AgentSessions.resumes("agy"))
+    #expect(AgentSessions.resumes("claude"))
+    #expect(AgentSessions.resume("agy", id: uuid) == "agy --conversation \(uuid)")
+    #expect(AgentSessions.resume("claude", id: uuid) == "claude --resume \(uuid)")
+    let agyTranscript = "/Users/me/.gemini/antigravity-cli/brain/\(uuid)/.system_generated/logs/transcript.jsonl"
+    #expect(AgentSessions.id(fromTranscript: agyTranscript) == uuid)
+    #expect(AgentSessions.id(fromTranscript: "/Users/me/.claude/projects/x/\(uuid).jsonl") == uuid)
+
+    // Hook events: camelCase protojson inputs and toolCall structure.
+    #expect(AgentHookCommand.event("prompt", agent: "agy", input: ["lastUserInput": "fix tests", "transcriptPath": agyTranscript])
+            == .prompt(agent: "agy", text: "fix tests", transcript: agyTranscript))
+    #expect(AgentHookCommand.event("working", agent: "agy", input: ["toolCall": ["name": "edit_file", "args": ["Path": "/a/b.swift"]]])
+            == .wrote(agent: "agy", path: "/a/b.swift"))
+    #expect(AgentHookCommand.event("working", agent: "agy", input: ["toolCall": ["name": "read_file", "args": ["Path": "/a/b.swift"]]])
+            == .working(agent: "agy"))
+    #expect(AgentHookCommand.event("doing", agent: "agy", input: ["toolCall": ["name": "run_command", "args": ["CommandLine": "swift test", "toolSummary": "Run unit tests"]]])
+            == .doing(agent: "agy", what: "Run unit tests"))
+    #expect(AgentHookCommand.event("doing", agent: "agy", input: ["toolCall": ["name": "read_file", "args": ["Path": "/a/b/main.swift"]]])
+            == .doing(agent: "agy", what: "Reading main.swift"))
+    #expect(AgentHookCommand.event("stop", agent: "agy", input: ["transcriptPath": agyTranscript, "terminationReason": "NO_TOOL_CALL"])
+            == .finished(agent: "agy", message: nil, transcript: agyTranscript))
+    #expect(AgentHookCommand.agyOutput(news: nil) == "{}")
+    #expect(AgentHookCommand.agyOutput(news: "") == "{}")
+    let newsOut = AgentHookCommand.agyOutput(news: "thread update")
+    let parsedNews = try JSONSerialization.jsonObject(with: Data(newsOut.utf8)) as! [String: Any]
+    let steps = parsedNews["injectSteps"] as! [[String: Any]]
+    let sys = steps[0]["systemMessage"] as! [String: Any]
+    #expect(sys["systemMessage"] as? String == "thread update")
+
+    // hooks.json installation, preservation of other named hooks, refresh, and uninstall.
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("agy-hooks-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("hooks.json")
+    let existing = #"{"lint":{"Stop":[{"type":"command","command":"./lint.sh"}]}}"#
+    try Data(existing.utf8).write(to: url)
+    let tool = "/Applications/Manifold.app/Contents/Helpers/mani"
+    for _ in 0..<2 { try AgentSkill.installAgyStyle(at: url, tool: tool) }
+    let installed = try AgentSkill.readJSON(url)
+    #expect(installed["lint"] != nil)
+    let mine = installed[AgentSkill.agyHookName] as! [String: Any]
+    #expect(Set(mine.keys) == Set(["SessionStart", "PreInvocation", "PostToolUse", "Stop"]))
+    let startHandlers = mine["SessionStart"] as! [[String: Any]]
+    #expect(startHandlers.count == 1)
+    #expect((startHandlers[0]["command"] as? String) == AgentSkill.agyCommand("start", tool: tool))
+    let postGroups = mine["PostToolUse"] as! [[String: Any]]
+    #expect(postGroups.count == 1 && (postGroups[0]["matcher"] as? String) == "*")
+    let postHandlers = postGroups[0]["hooks"] as! [[String: Any]]
+    #expect(postHandlers.count == 1 && (postHandlers[0]["command"] as? String) == AgentSkill.agyCommand("working", tool: tool))
+    #expect(FileManager.default.fileExists(atPath: url.appendingPathExtension("before-manifold").path))
+    // Refresh adds missing events and migrates manifold -> mani.
+    let helpers = dir.appendingPathComponent("App/Contents/Helpers")
+    try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+    let oldTool = helpers.appendingPathComponent("manifold").path
+    let newTool = helpers.appendingPathComponent("mani").path
+    FileManager.default.createFile(atPath: newTool, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+    let partial: [String: Any] = ["manifold": ["Stop": [["type": "command", "command": AgentSkill.agyCommand("stop", tool: oldTool), "timeout": 10]]]]
+    try AgentSkill.writeJSON(partial, to: url)
+    try AgentSkill.refreshAgyStyle(at: url)
+    let refreshed = (try AgentSkill.readJSON(url))[AgentSkill.agyHookName] as! [String: Any]
+    #expect(Set(refreshed.keys) == Set(["SessionStart", "PreInvocation", "PostToolUse", "Stop"]))
+    let refreshedStop = (refreshed["Stop"] as! [[String: Any]])[0]["command"] as? String
+    #expect(refreshedStop == AgentSkill.agyCommand("stop", tool: newTool))
+    // Uninstall removes only Manifold's group and keeps user hooks.
+    try AgentSkill.installAgyStyle(at: url, tool: tool)
+    var withLint = try AgentSkill.readJSON(url)
+    withLint["lint"] = ["Stop": [["type": "command", "command": "./lint.sh"]]]
+    try AgentSkill.writeJSON(withLint, to: url)
+    try AgentSkill.uninstallAgyStyle(at: url)
+    let after = try AgentSkill.readJSON(url)
+    #expect(after[AgentSkill.agyHookName] == nil && after["lint"] != nil)
+    #expect(AgentSkill.known.contains("agy"))
+}

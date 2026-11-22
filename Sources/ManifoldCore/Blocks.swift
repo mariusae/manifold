@@ -1261,7 +1261,10 @@ public struct Block: Codable, Equatable, Sendable, Identifiable {
         if let title, !title.isEmpty { return terminal == nil ? title : Self.withoutStatusMark(title).isEmpty ? title : Self.withoutStatusMark(title) }
         if let t = thread?.title { return t }
         if let raw = terminal?.title, case let t = Self.withoutStatusMark(raw), !t.isEmpty {
-            return kind == .agent && !t.lowercased().contains("agent") && !t.lowercased().contains("claude") ? "Agent: \(t)" : t
+            let low = t.lowercased()
+            let named = low.contains("agent") || low.contains("claude")
+                || (agent.map { low.contains($0.name.lowercased()) || low.contains($0.command) } ?? false)
+            return kind == .agent && !named ? "Agent: \(t)" : t
         }
         if let t = web?.title, !t.isEmpty { return t }
         if let q = search?.query { return "“\(q.text)” in \(q.root.lastPathComponent.isEmpty ? q.root : q.root.lastPathComponent)" }
