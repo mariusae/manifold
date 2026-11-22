@@ -172,6 +172,8 @@ enum PierreIcons {
         "tray": Use("Inbox"),
         "tray.full": Use("InboxFull"),
         "tray.and.arrow.down": Use("ArrowTrayIn"),
+        // Dock: into the sidebar, at the left, where a docked tile's listed.
+        "dock.arrow.down.rectangle": Use("ArrowTrayIn", turn: 180),
         "square.and.arrow.down": Use("ArrowTrayDown"),
         "bell": Use("Bell"),
         "bell.slash": Use("BellSlash"),

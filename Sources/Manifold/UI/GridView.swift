@@ -61,6 +61,8 @@ protocol GridDelegate: AnyObject {
     /// The pill's corner button: the tile maximized over the arrangement,
     /// or restored.
     func gridToggleFull(_ placement: PlacementID)
+    /// The bar's dock button: the tile docked (⌘M).
+    func gridDock(_ placement: PlacementID)
     /// The project's name in a bar's place clicked: the project's tile.
     func gridOpenProject(_ placement: PlacementID)
     /// The project's name in a tile's place, right-clicked: the project's menu.
@@ -285,6 +287,7 @@ final class GridView: NSView, NSDraggingSource {
                 pill.restores = self.delegate?.gridClickRestores(tile.shown.id) ?? false
                 pill.editsPlace = tile.view.pillEdit != nil
                 pill.onToggleFull = { [weak self] in self?.delegate?.gridToggleFull(id) }
+                pill.onDock = { [weak self] in self?.delegate?.gridDock(id) }
                 pill.sidebar = tile.view.hasSidebar ? tile.view.sidebarShown : nil
                 pill.viewButtons = tile.view.barButtons
                 pill.viewDetail = tile.view.barDetail
@@ -1812,7 +1815,7 @@ final class GridView: NSView, NSDraggingSource {
         // From after the tile's symbol to the buttons: the faces fan out
         // over the title, and a stack of more is scrubbed across it.
         let left = r.minX + 32
-        let w = max(r.maxX - (pills[id]?.rightTaken ?? TilePill.rightChrome) - 8 - left, min(size.width, 60))
+        let w = max(r.maxX - (pills[id]?.rightTaken ?? TilePill.rightChrome) - left, min(size.width, 60))
         let h = min(size.height, r.height - 12)
         // Its faces in the bar, before the bar's buttons; its frame as wide
         // as they fan out, leftward over the title.
@@ -1821,7 +1824,8 @@ final class GridView: NSView, NSDraggingSource {
         let given = pills[id]?.linkGiven ?? .infinity
         badge.capsuleLimit = given
         badge.isHidden = given < badge.foldedWidth
-        badge.frame = NSRect(x: r.maxX - taken - 8 - w, y: capsuleTop - h, width: w, height: h)
+        // Its button a button's gap from the bar's.
+        badge.frame = NSRect(x: r.maxX - taken - w, y: capsuleTop - h, width: w, height: h)
     }
 
     /// Whether the drag under way is a tile's ⇧-drag: the block as a thing (§3.11).
@@ -2261,6 +2265,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         return v
     }()
     private let corner = IconButton("arrow.up.left.and.arrow.down.right", size: 9, tip: "Maximize")
+    /// Beside maximize: the tile docked (⌘M), out of the grid to its space's list.
+    private let dockButton = IconButton("dock.arrow.down.rectangle", size: 10, weight: .medium, tip: "Dock (⌘M)")
     /// A field over the place while the pill edits it (a page's
     /// address), the name left as it is; over the name too when there's
     /// no room after it.
@@ -2277,6 +2283,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var chosen = 0
     var isEditing: Bool { edit != nil }
     var onToggleFull: (() -> Void)?
+    var onDock: (() -> Void)?
     var onClose: (() -> Void)?
     /// Right-clicked: the tile's menu.
     var onRightClick: ((NSEvent) -> Void)?
@@ -2374,13 +2381,14 @@ final class TilePill: NSView, NSTextFieldDelegate {
 
     static let height: CGFloat = GridView.barHeight
     /// What the bar's right end takes: close, maximize, and room.
-    static let rightChrome: CGFloat = 54
+    static let rightChrome: CGFloat = 76
     /// What the bar's right end takes now: its buttons (the links' pill
     /// is left of them, the status left of that).
     var rightTaken: CGFloat {
         var w: CGFloat = 10
         if !close.isHidden { w += 22 }
         if !corner.isHidden { w += 22 }
+        if !dockButton.isHidden { w += 22 }
         if !sidebarButton.isHidden { w += 22 }
         let own = ownButtons.filter { !$0.isHidden }.count
         if own > 0 { w += CGFloat(own) * 22 + 4 }
@@ -2414,6 +2422,8 @@ final class TilePill: NSView, NSTextFieldDelegate {
         close.action = #selector(closeClicked)
         corner.target = self
         corner.action = #selector(cornerClicked)
+        dockButton.target = self
+        dockButton.action = #selector(dockClicked)
         sidebarButton.target = self
         sidebarButton.action = #selector(sidebarClicked)
         sidebarButton.isHidden = true
@@ -2429,7 +2439,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             guard let self else { return }
             self.icon.isHidden = self.pillHandles
         }
-        for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
+        for v in [handle, icon, name, subtitle, glyph, statusPill, sidebarButton, dockButton, corner, close, editor, hostPill, stackBadge] { addSubview(v) }
         // An agent's pill over the title and its place: opened, it lifts over them.
         addSubview(agentPill, positioned: .below, relativeTo: editor)
         // The highlight behind the icon: the icon over it.
@@ -2665,6 +2675,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     @objc private func cornerClicked() { onToggleFull?() }
+    @objc private func dockClicked() { onDock?() }
     @objc private func sidebarClicked() { onToggleSidebar?() }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -2913,7 +2924,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     }
 
     private func inkButtons() {
-        for b in [close, corner] { b.contentTintColor = buttonInk }
+        for b in [close, corner, dockButton] { b.contentTintColor = buttonInk }
         if sidebar != true { sidebarButton.contentTintColor = buttonInk }
         for (i, b) in ownButtons.enumerated() where i < viewButtons.count {
             b.contentTintColor = viewButtons[i].enabled ? buttonInk : buttonInk.withAlphaComponent(0.35)
@@ -2979,7 +2990,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         var showSidebar = showCorner && sidebar != nil
         var showOwn = showCorner && !viewButtons.isEmpty
         let ownWidth = CGFloat(viewButtons.count) * 22 + 4
-        var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 14 : 0
+        var linkRoom: CGFloat = linkWanted > 0 ? linkWanted + 6 : 0
         // No name (an agent's pill says it): no room for one.
         let nameWanted = name.stringValue.isEmpty ? 0 : ceil(name.intrinsicContentSize.width) + 4
         let nameNeed = min(nameWanted, Self.nameMinimum)
@@ -2988,7 +2999,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         func spare() -> CGFloat {
             var used = x + 10 + linkRoom + (showHost ? hostWidth + 8 : 0)
             if showClose { used += 22 }
-            if showCorner { used += 22 }
+            if showCorner { used += 44 }
             if showSidebar { used += 22 }
             if showOwn { used += ownWidth }
             if !glyph.isHidden { used += StatusGlyph.size + 8 }
@@ -3017,7 +3028,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
             agentPill.frame.size.width = agentPill.frameWidth
             stackBadge.frame.origin.x = agentPill.frame.minX + agentPill.wantedWidth - 6
         }
-        linkGiven = linkRoom > 0 ? linkRoom - 14 : 0
+        linkGiven = linkRoom > 0 ? linkRoom - 6 : 0
         var right = bounds.width - 10
         close.isHidden = !showClose
         if !close.isHidden {
@@ -3027,6 +3038,12 @@ final class TilePill: NSView, NSTextFieldDelegate {
         corner.isHidden = !showCorner
         if !corner.isHidden {
             corner.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
+            right -= 22
+        }
+        // Dock with maximize: both what becomes of the tile.
+        dockButton.isHidden = !showCorner
+        if !dockButton.isHidden {
+            dockButton.frame = NSRect(x: right - 16, y: (h - 16) / 2, width: 16, height: 16)
             right -= 22
         }
         sidebarButton.isHidden = !showSidebar
@@ -3249,7 +3266,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
         // The place too, but a page's address (what's clicked to type
         // another) and a bar standing for its tile (its summary).
         let place: CGFloat = shown || collapsed || placeIsName || lastShown?.block?.web != nil ? 1 : 0
-        let all = [close, corner, sidebarButton] + ownButtons
+        let all = [close, corner, dockButton, sidebarButton] + ownButtons
         let animate = animated && !Motion.reduced
         onChromeShown?(shown, animate)
         guard animate else { for b in all { b.alphaValue = a }; subtitle.alphaValue = place; return }
@@ -3339,7 +3356,7 @@ final class TilePill: NSView, NSTextFieldDelegate {
     private var cursorSpots: [(NSRect, NSCursor)] {
         // The icon: clicked, the tile's menu (dragged, what it stands for).
         var spots: [(NSRect, NSCursor)] = [(iconSpot, .pointingHand)]
-        for b in [corner, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
+        for b in [corner, dockButton, close] where !b.isHidden { spots.append((b.frame, .pointingHand)) }
         let project = projectRect
         if let r = project { spots.append((r, .pointingHand)) }
         if var r = placeRect {

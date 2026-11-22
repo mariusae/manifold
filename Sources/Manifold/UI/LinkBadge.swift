@@ -15,15 +15,14 @@ struct LinkCard: Equatable {
     var breakable = true
 }
 
-/// A block's links by hand (§3.5), in its tile's bar: each linked block's
-/// own face, a small rounded square with a chevron in it for the
-/// direction (right, links to; left, linked from) — the most recent in
-/// front, two more peeking out behind it, folded always. Clicked, its
-/// links in a menu, each followed by the one rule (⌘ beside, ⌥ over, as
-/// held when it's chosen), and the map; right-clicked, the face's own
-/// menu; dragged, the block. (It fanned out under the pointer, a card
-/// rising on each, the rest a stack scrubbed through over the title:
-/// five ways of showing, every one hidden till hovered.)
+/// A block's links by hand (§3.5), in its tile's bar: a button among
+/// the bar's, a link — with a small count at its corner when there's more
+/// than one. Clicked, its links in a menu of cards, each followed by the
+/// one rule (⌘ beside, ⌥ over, as held when it's chosen), and the map;
+/// right-clicked, the one link's own menu (several: the same cards);
+/// dragged, the one link's block. (It was a stack of the linked blocks'
+/// faces, folded, a chevron in each for the direction: a picture of the
+/// links, where a button that says there are some was all the bar needed.)
 final class LinkBadge: NSView {
     /// A link chosen: the block, and the keys held (⌘ beside, ⌥ over,
     /// ⇧⌘ the system's app).
@@ -38,10 +37,7 @@ final class LinkBadge: NSView {
             guard cards != oldValue else { return }
             // The same links, only what they say changed (a note's title as
             // it's typed): the faces dressed again, not made again.
-            if cards.map(\.link) == oldValue.map(\.link), cards.map(\.block) == oldValue.map(\.block), chips.count == min(cards.count, 3) {
-                for (c, card) in zip(chips, cards) { dress(c, card) }
-                return
-            }
+            if !cards.isEmpty, chips.count == 1 { dress(chips[0]); return }
             rebuild()
         }
     }
@@ -49,13 +45,12 @@ final class LinkBadge: NSView {
     static let capsuleHeight: CGFloat = 22
     /// The links' menu's cards: one width, whatever they say.
     static let menuCardWidth: CGFloat = 360
-    static let chip: CGFloat = 22
-    /// How far each one behind peeks out past the one before.
-    static let peek: CGFloat = 4
+    /// As wide as the bar's other buttons.
+    static let chip: CGFloat = 16
 
     /// At a tile's upper right: kept for the grid, which places it in the bar.
     var fansDown = false
-    /// A face for each of the first three links: the front, two edges behind it.
+    /// Its one face (none, no links).
     private var chips: [Chip] = []
 
     override init(frame: NSRect) {
@@ -72,45 +67,47 @@ final class LinkBadge: NSView {
 
     /// What the bar gives the stack; under its own width, it hides.
     var capsuleLimit: CGFloat = .infinity { didSet { if capsuleLimit != oldValue { isHidden = capsuleLimit < foldedWidth; needsLayout = true } } }
-    /// The stack's width: one face, and the edges of two more.
-    var foldedWidth: CGFloat { cards.isEmpty ? 0 : Self.chip + CGFloat(min(cards.count, 3) - 1) * Self.peek }
+    /// Its width: a button's.
+    var foldedWidth: CGFloat { cards.isEmpty ? 0 : Self.chip }
     var capsuleWantedWidth: CGFloat { foldedWidth }
     var wantedSize: NSSize { NSSize(width: foldedWidth, height: Self.capsuleHeight) }
 
-    // MARK: Faces
-
-    /// Its faces in the bar's ground (every bar's the same, focused or not).
-    private var barGround: NSColor { Theme.tileBar }
+    // MARK: Its face
 
     private func rebuild() {
         for c in chips { c.removeFromSuperview() }
-        chips = cards.prefix(3).map { card in
-            let c = Chip()
-            c.ground = barGround
-            dress(c, card)
-            c.onClick = { [weak self, weak c] _ in if let self, let c { self.showLinks(from: c) } }
-            c.onMenu = { [weak self, weak c] in if let c { self?.showMenu(for: card, from: c) } }
-            c.onDragStart = { [weak self, weak c] event in if let self, let c { self.drag(card.block, from: c, event) } }
-            return c
+        chips = []
+        guard !cards.isEmpty else { return }
+        let c = Chip()
+        dress(c)
+        c.onClick = { [weak self, weak c] _ in if let self, let c { self.showLinks(from: c) } }
+        c.onMenu = { [weak self, weak c] in
+            guard let self, let c else { return }
+            if self.cards.count == 1 { self.showMenu(for: self.cards[0], from: c) } else { self.showLinks(from: c) }
         }
-        // The most recent on top of the ones behind it: added last.
-        for c in chips.reversed() { addSubview(c) }
+        c.onDragStart = { [weak self, weak c] event in
+            guard let self, let c, self.cards.count == 1 else { return }
+            self.drag(self.cards[0].block, from: c, event)
+        }
+        chips = [c]
+        addSubview(c)
         needsLayout = true
     }
 
-    private func dress(_ c: Chip, _ card: LinkCard) {
-        c.symbol = card.symbol
-        c.outbound = card.outbound
-        c.toolTip = (card.breakable ? (card.outbound ? "Links to " : "Linked from ") : (card.outbound ? "Shows " : "Shown in ")) + card.title
+    private func dress(_ c: Chip) {
+        c.count = cards.count
+        if cards.count == 1, let card = cards.first {
+            c.toolTip = (card.breakable ? (card.outbound ? "Links to " : "Linked from ") : (card.outbound ? "Shows " : "Shown in ")) + card.title
+        } else {
+            c.toolTip = "\(cards.count) links — click for them"
+        }
     }
 
     override func layout() {
         super.layout()
-        let y = (bounds.height - Self.chip) / 2
-        let left = bounds.maxX - foldedWidth
-        for (i, c) in chips.enumerated() {
-            c.depth = i
-            c.frame = NSRect(x: left + CGFloat(i) * Self.peek, y: y, width: Self.chip, height: Self.chip)
+        let y = ((bounds.height - Self.chip) / 2).rounded()
+        for c in chips {
+            c.frame = NSRect(x: bounds.maxX - Self.chip, y: y, width: Self.chip, height: Self.chip)
             window?.invalidateCursorRects(for: c)
         }
     }
@@ -213,8 +210,8 @@ final class LinkBadge: NSView {
         return NSPoint(x: f.midX, y: f.midY)
     }
     var debugTitles: [String] { cards.map { ($0.outbound ? "→ " : "← ") + $0.title } }
-    /// How many faces peek out behind the front one.
-    var debugSheets: Int { max(0, min(cards.count, 3) - 1) }
+    /// The count at its corner (0, one link: none).
+    var debugSheets: Int { cards.count > 1 ? cards.count : 0 }
     var debugGeometry: String { chips.filter { !$0.isHidden }.map { NSStringFromRect($0.frame) }.joined(separator: " ") }
     /// Debugging: the front face's middle, in the window from its top left.
     var debugCapsuleCenter: NSPoint? {
@@ -231,102 +228,73 @@ final class LinkBadge: NSView {
 
     // MARK: A face
 
-    /// One linked block: its symbol on a small rounded square, a chevron
-    /// in it on the side it points — right, links to; left, linked from.
+    /// The links' button: a link, drawn as the bar's buttons are (the
+    /// hover's rounded ground, the bar's ink), and with several, how many
+    /// at its lower corner, small, on the bar's ground.
     final class Chip: NSView {
         var onClick: ((NSEvent.ModifierFlags) -> Void)?
         var onMenu: (() -> Void)?
         var onDragStart: ((NSEvent) -> Void)?
-        var symbol = "link" { didSet { icon.image = Theme.symbol(symbol, size: 13) } }
-        var outbound = true { didSet { chevron.image = Self.chevron(outbound); needsLayout = true } }
-        /// The ground of the bar it's on.
-        var ground: NSColor = Theme.tileBar { didSet { colour() } }
-        private static func chevron(_ outbound: Bool) -> NSImage? { Theme.symbol(outbound ? "chevron.right" : "chevron.left", size: 9, weight: .bold) }
-        /// Folded behind the front one (1, 2), only its edge showing: nothing
-        /// on it, a step darker than the front for each one back, so the
-        /// front leads.
-        var depth = 0 {
-            didSet {
-                guard depth != oldValue else { return }
-                icon.isHidden = depth > 0
-                chevron.isHidden = depth > 0
-                colour()
-            }
-        }
-        private func colour() {
-            effectiveAppearance.performAsCurrentDrawingAppearance {
-                // The bar's own ground (a warm theme's bar isn't its panel's
-                // white); those behind, a step darker for each.
-                layer?.backgroundColor = (depth > 0 ? (ground.blended(withFraction: 0.05 * CGFloat(depth), of: Theme.text) ?? Self.behind(depth)) : ground).cgColor
-                layer?.borderColor = (hovered ? Theme.text.withAlphaComponent(0.3) : LinkCapsule.edge).cgColor
-            }
-        }
-        /// The greys behind the front face: darker than its fill, light or dark.
-        private static func behind(_ depth: Int) -> NSColor {
-            .themed { $0.chrome.linkBehind(depth) }
-        }
-        var hovered = false {
-            didSet {
-                guard hovered != oldValue else { return }
-                colour()
-                layer?.borderWidth = hovered ? 1.5 : LinkCapsule.edgeWidth
-            }
-        }
-        private let icon = NSImageView()
-        private let chevron = NSImageView()
+        var count = 1 { didSet { if count != oldValue { needsDisplay = true } } }
+        private var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
         private var downAt: NSPoint?
 
         override init(frame: NSRect) {
             super.init(frame: frame)
-            wantsLayer = true
-            layer?.cornerRadius = Radius.control
-            layer?.cornerCurve = .continuous
-            layer?.borderWidth = LinkCapsule.edgeWidth
-            layer?.masksToBounds = false
-            icon.contentTintColor = Theme.secondaryText
-            icon.image = Theme.symbol(symbol, size: 13)
-            // The direction in the text's own colour, stronger than the symbol.
-            chevron.contentTintColor = Theme.text
-            chevron.image = Self.chevron(outbound)
-            themed { $0.colour() }
-            addSubview(icon)
-            addSubview(chevron)
+            themed { $0.needsDisplay = true }
         }
 
         required init?(coder: NSCoder) { fatalError() }
 
-        override func layout() {
-            super.layout()
-            let s: CGFloat = 12, c: CGFloat = 5
-            // The symbol and the chevron side by side, the chevron on the
-            // side it points, the two together centred.
-            let left = (bounds.width - s - c - 1) / 2
-            let iy = (bounds.height - s) / 2, cy = (bounds.height - 8) / 2
-            if outbound {
-                icon.frame = NSRect(x: left, y: iy, width: s, height: s)
-                chevron.frame = NSRect(x: left + s + 1, y: cy, width: c, height: 8)
-            } else {
-                chevron.frame = NSRect(x: left, y: cy, width: c, height: 8)
-                icon.frame = NSRect(x: left + c + 1, y: iy, width: s, height: s)
+        override func draw(_ dirtyRect: NSRect) {
+            if hovered {
+                (downAt != nil ? Flat.pressed : Flat.hovered).setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: Radius.control, yRadius: Radius.control).fill()
             }
+            let several = count > 1
+            if let image = Theme.symbol("link", size: 10, weight: .medium, color: Theme.secondaryText) {
+                let s = image.size
+                // With a count, up and to the left a little, for it.
+                let r = NSRect(x: ((bounds.width - s.width) / 2 - (several ? 1.5 : 0)).rounded(),
+                               y: ((bounds.height - s.height) / 2 + (several ? 1.5 : 0)).rounded(), width: s.width, height: s.height)
+                image.draw(in: r)
+            }
+            guard several else { return }
+            let words = NSAttributedString(string: count > 9 ? "9+" : "\(count)", attributes: [
+                .font: NSFont.systemFont(ofSize: 7.5, weight: .bold), .foregroundColor: Theme.secondaryText])
+            let size = words.size()
+            let at = NSPoint(x: bounds.maxX - size.width + 1, y: -2)
+            // A ground of the bar's own behind it, where it crosses the link.
+            Theme.tileBar.setFill()
+            NSBezierPath(roundedRect: NSRect(x: at.x - 1, y: at.y + 2, width: size.width + 2, height: size.height - 3), xRadius: 2, yRadius: 2).fill()
+            words.draw(at: at)
         }
+
+        override func updateTrackingAreas() {
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+            super.updateTrackingAreas()
+        }
+        override func mouseEntered(with event: NSEvent) { hovered = true }
+        override func mouseExited(with event: NSEvent) { hovered = false }
 
         override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
         // Set here, not passed on (see SidebarView's).
         override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
         /// A click in a window not yet active goes to the link too.
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow }
+        override func mouseDown(with event: NSEvent) { downAt = event.locationInWindow; needsDisplay = true }
         override func rightMouseDown(with event: NSEvent) { onMenu?() }
         override func mouseDragged(with event: NSEvent) {
             guard let start = downAt, onDragStart != nil else { return }
             let p = event.locationInWindow
             guard hypot(p.x - start.x, p.y - start.y) > 4 else { return }
             downAt = nil
+            needsDisplay = true
             onDragStart?(event)
         }
         override func mouseUp(with event: NSEvent) {
-            defer { downAt = nil }
+            defer { downAt = nil; needsDisplay = true }
             guard downAt != nil, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
             // ⌃-click is a right-click, on the Mac: the menu.
             if event.modifierFlags.contains(.control) { return onMenu?() ?? () }

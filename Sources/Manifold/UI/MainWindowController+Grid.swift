@@ -367,6 +367,8 @@ extension MainWindowController: GridDelegate {
     /// bars, which stay in the grid.
     func gridSqueeze(_ placement: PlacementID) { fill(placement, keepingBars: true) }
 
+    func gridDock(_ placement: PlacementID) { dock(placement) }
+
     func gridToggleFull(_ placement: PlacementID) {
         guard let a = arrangement else { return }
         appendToSelected([.full(a.full == placement ? nil : placement)])
