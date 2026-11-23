@@ -262,12 +262,38 @@ extension MainWindowController: TerminalViewDelegate {
     /// Tile ▸ Restart Process…: the focused terminal's shell (an agent's
     /// program) ended — hung up on, killed if it won't go — and a new one
     /// started under what it showed, in its folder; one that's ended
-    /// already, started again at once.
+    /// already, started again at once. From a tile's menu, or a
+    /// terminal's: that tile's (the menu item's).
     @objc func restartProcess(_ sender: Any?) {
-        guard let f = focusedShown, let t = views[f.placement.id] as? TerminalView, let b = hosts.block(t.block) else { return NSSound.beep() }
+        guard let id = ((sender as? NSMenuItem)?.representedObject as? PlacementID) ?? focusedShown?.placement.id else { return NSSound.beep() }
+        restart(id)
+    }
+
+    /// What a tile's restart is called, for what it'll restart: nil, a
+    /// tile with nothing to restart.
+    func restartTitle(_ id: PlacementID) -> String? {
+        guard let p = arrangement?.placement(id), let b = hosts.block(p.block), b.terminal != nil else { return nil }
+        if let t = views[id] as? TerminalView, t.exited { return "Start Again" }
+        return "Restart " + (b.agent != nil ? AgentLook.name(of: b) : "Shell") + "…"
+    }
+
+    /// A tile's shell (its agent's program) restarted; an agent's shown
+    /// as its conversation, turned to its terminal first, where it's done.
+    func restart(_ id: PlacementID) {
+        guard let p = arrangement?.placement(id), let b = hosts.block(p.block) else { return NSSound.beep() }
+        guard let t = views[id] as? TerminalView else {
+            guard b.agent != nil, b.terminal != nil else { return NSSound.beep() }
+            toggleConversation(id)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let a = self.arrangement,
+                      let q = a.placements(of: b.id).first(where: { self.views[$0.id] is TerminalView }) else { return }
+                self.restart(q.id)
+            }
+            return
+        }
         if t.exited { return t.restartShell() }
         guard let pid = b.terminal?.pid else { return NSSound.beep() }
-        let what = b.agent.map { "\($0.name)" } ?? "the shell"
+        let what = b.agent != nil ? AgentLook.name(of: b) : "the shell"
         confirm("Restart \(what)?", "It's ended, and a new one started in the same folder, under what this terminal showed. Whatever runs in it now ends.",
                 button: "Restart", destructive: true) { [weak self] in
             self?.endThenRestart(t, pid: pid, tries: 0)

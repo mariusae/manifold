@@ -186,8 +186,8 @@ extension MainWindowController {
             return PopMenu.Item(symbol: th?.resolved == true ? "checkmark.bubble" : "text.bubble",
                                 image: about?.web.flatMap { Favicons.image(forPage: $0.url) },
                                 title: th?.title ?? "Thread", subtitle: sub.filter { !$0.isEmpty }.joined(separator: " · "),
-                                status: hosts.look(ofThread: t), dimmed: th?.resolved == true,
-                                run: { [weak self] in self?.showThreadOverlay(nil, thread: t.id) },
+                                status: StatusGlyph.look(of: t), dimmed: th?.resolved == true,
+                                run: { [weak self] in self?.showThread(t.id) },
                                 // ↖↘ on its row (⌘↩): a tile of its own, not the overlay.
                                 accessory: PopMenu.Accessory(symbol: "arrow.up.left.and.arrow.down.right", tip: "Open as a Tile") { [weak self] in
                                     self?.popOutThread(t.id)

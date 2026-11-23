@@ -34,6 +34,9 @@ final class StatusGlyph: NSView {
         /// A host another Manifold took over (§8.2): this one watches,
         /// what's done here not taking until Take Over. An eye.
         case watching
+        /// Asked, and waiting its turn: the agent asked is at something
+        /// else, and takes it up when that's done. A clock's face.
+        case queued
 
         var isFinished: Bool { switch self { case .done, .failed: true; default: false } }
     }
@@ -106,11 +109,50 @@ final class StatusGlyph: NSView {
     /// and one made afresh (a row reloaded, a cell reused) doesn't jump.
     private var phase: Double { Date.timeIntervalSinceReferenceDate }
 
-    /// What a block shows: its status; else, for a terminal whose shell
-    /// ended for idleness, inactive; else nothing.
+    /// What a block shows — the one rule, wherever it's shown: its
+    /// status; else, for a terminal whose shell ended for idleness,
+    /// inactive; else nothing. A thread's and a space's are made of
+    /// others' (`composite`): a thread's, its agents' at work on it and
+    /// what's new in it; a space's, the most pressing of its tiles' and
+    /// threads'.
     static func look(of block: Block?) -> Look? {
         guard let block else { return nil }
+        if block.kind == .thread || block.kind == .arrangement, let composite {
+            guard depth < 3 else { return nil }
+            depth += 1
+            defer { depth -= 1 }
+            return seen(composite(block), of: block.id)
+        }
         return seen(plainLook(of: block), of: block.id)
+    }
+
+    /// A thread's and a space's look, from what's in them: the window's
+    /// to say (it knows the asks waiting, the threads' agents).
+    static var composite: ((Block) -> Look?)?
+    /// How deep in composites (a space holding a thread's tile): not round and round.
+    private static var depth = 0
+
+    /// How pressing a look is, the most first: what needs you, what
+    /// failed, what's done or new, what's at work, what waits its turn,
+    /// a host's, what sleeps, what's read.
+    static func urgency(_ look: Look) -> Int {
+        switch look {
+        case .needsYou: 0
+        case .failed(read: false): 1
+        case .done(read: false), .unseen: 2
+        case .working: 3
+        case .queued: 4
+        case .offline, .quiet, .connecting, .watching: 5
+        case .inactive: 6
+        case .done, .failed: 7
+        }
+    }
+
+    /// The one most pressing of several (a space's tiles, a thread's
+    /// agents) — what wants you, else what's at work, else what waits:
+    /// one look, the strongest; what sleeps or is read, nothing.
+    static func strongest(_ looks: [Look?]) -> Look? {
+        looks.compactMap { $0 }.filter { urgency($0) <= 4 }.min { urgency($0) < urgency($1) }
     }
     private static func plainLook(of block: Block) -> Look? {
         if let r = block.statusRecord {
@@ -154,6 +196,7 @@ final class StatusGlyph: NSView {
         case .offline: "Its host can't be reached: what's shown is as last seen"
         case .quiet: "Its host hasn't answered for a while"
         case .watching: "Another Manifold took over its host: this one only watches"
+        case .queued: "Waiting its turn: the agent asked takes it up once it's done with what it's at"
         }
     }
 
@@ -535,6 +578,21 @@ final class StatusGlyph: NSView {
             ring.setLineDash([dash * 0.55, dash * 0.45], count: 2, phase: 0)
             amber.setStroke()
             ring.stroke()
+        case .queued:
+            // Waiting its turn: a clock's face — a thin ring, its hands.
+            let r = radius * 0.86
+            let ring = NSBezierPath(ovalIn: NSRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r))
+            ring.lineWidth = 1.2
+            Theme.secondaryText.setStroke()
+            ring.stroke()
+            let hands = NSBezierPath()
+            hands.lineWidth = 1.2
+            hands.lineCapStyle = .round
+            hands.lineJoinStyle = .round
+            hands.move(to: NSPoint(x: center.x, y: center.y + r * 0.58))
+            hands.line(to: center)
+            hands.line(to: NSPoint(x: center.x + r * 0.45, y: center.y))
+            hands.stroke()
         case .inactive:
             // A crescent, lit at the left (☾): the disc less a disc shifted
             // right and a little up, only the disc's part filled (filled

@@ -66,6 +66,10 @@ struct ThreadChatModel {
     var seenMark: Stamp?
     /// Agents in it at work right now.
     var working: Set<BlockID> = []
+    /// The agents asked here that haven't begun on it: at something else
+    /// first, the ask waiting its turn.
+    var queued: [BlockID] = []
+    var name: (BlockID) -> String? = { _ in nil }
     /// An agent's face, by its block: the same wherever one agent is meant.
     var icon: (BlockID) -> NSImage? = { _ in nil }
     /// What an agent at work says it's doing (`Block.agentDoing`).
@@ -335,7 +339,10 @@ final class ThreadChatView: NSView {
         newBelow.onClick = { [weak self] in self?.scrollToEnd() }
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
-            MainActor.unchecked { self?.placeNewBelow() }
+            MainActor.unchecked {
+                self?.placeNewBelow()
+                self?.fadeTop()
+            }
         }
         themed { v in
             v.contextView.layer?.backgroundColor = Theme.washFaint.cgColor
@@ -458,7 +465,13 @@ final class ThreadChatView: NSView {
             let name = t?.agents.first { $0.block == agent }?.name ?? "The agent"
             // What it says it's doing, the same words as everywhere (its
             // dots say it's at it; no "…" after them as well).
-            list.addArrangedSubview(event(name, m.doing(agent) ?? "is working on it", symbol: "ellipsis", icon: m.icon(agent), working: true))
+            list.addArrangedSubview(event(name, m.doing(agent) ?? "is working on it", symbol: "ellipsis", icon: m.icon(agent), glyph: .working(progress: nil)))
+        }
+        // Asked, and waiting its turn: it takes this up once it's done
+        // with what it's at (more written meanwhile goes with it).
+        for agent in m.queued where !m.working.contains(agent) {
+            let name = t?.agents.first { $0.block == agent }?.name ?? m.name(agent) ?? "The agent"
+            list.addArrangedSubview(event(name, "will take this up when it's done with what it's at", symbol: "clock", glyph: .queued))
         }
         // Each as wide as the list now, laid out once at its width.
         list.arrangedSubviews.forEach(pinWidth)
@@ -598,8 +611,8 @@ final class ThreadChatView: NSView {
     private func who(_ e: ThreadEntry) -> String { e.author.shownName }
 
     /// Something that happened, on the conversation's line.
-    private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil, working: Bool = false) -> NSView {
-        fill(IssueEventView(who: who, words: words, at: at, symbol: symbol, icon: icon, tone: tone, inTile: model.inTile, working: working))
+    private func event(_ who: String?, _ words: String, at: Stamp? = nil, symbol: String, icon: NSImage? = nil, tone: NSColor? = nil, glyph: StatusGlyph.Look? = nil) -> NSView {
+        fill(IssueEventView(who: who, words: words, at: at, symbol: symbol, icon: icon, tone: tone, inTile: model.inTile, glyph: glyph))
     }
 
     /// A comment, as an issue's: its author's picture, and a card — who
@@ -994,6 +1007,37 @@ final class ThreadChatView: NSView {
         finder.layout(in: bounds)
         strip.place(scroll.frame)
         placeNewBelow()
+        fadeTop()
+    }
+
+    /// The list's top edge, under the head, while it's scrolled from its
+    /// top: what goes up under the head fades out there, not cut off at a
+    /// hard line.
+    private let topFade = CAGradientLayer()
+    private static let fadeHeight: CGFloat = 18
+
+    private func fadeTop() {
+        guard let doc = scroll.documentView else { return }
+        let visible = scroll.documentVisibleRect
+        let scrolled = doc.isFlipped ? visible.minY > 1 : visible.maxY < doc.bounds.height - 1
+        scroll.wantsLayer = true
+        guard let layer = scroll.layer else { return }
+        guard scrolled, scroll.bounds.height > Self.fadeHeight * 2 else {
+            if layer.mask != nil { layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        topFade.frame = layer.bounds
+        topFade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor]
+        let f = Double(Self.fadeHeight / scroll.bounds.height)
+        topFade.locations = [0, NSNumber(value: f), 1]
+        // From the top down, in the layer's terms (flipped or not).
+        let down = layer.contentsAreFlipped()
+        topFade.startPoint = CGPoint(x: 0.5, y: down ? 0 : 1)
+        topFade.endPoint = CGPoint(x: 0.5, y: down ? 1 : 0)
+        if layer.mask !== topFade { layer.mask = topFade }
+        CATransaction.commit()
     }
 
     // MARK: Its outline: a tick for each comment, down its right (as a page's headings)

@@ -19,7 +19,14 @@ final class ThreadUI {
     /// The overlay, while it's up.
     var overlay: ThreadOverlayView?
     /// Agents asked, waiting for their turn to end.
-    var asks: [MainWindowController.PendingAsk] = []
+    var asks: [MainWindowController.PendingAsk] = [] {
+        didSet {
+            // Who waits on whom changed: what shows it, again.
+            let key = { (a: [MainWindowController.PendingAsk]) in a.map { "\($0.agent)>\($0.threads)" } }
+            if key(asks) != key(oldValue) { onAsks?() }
+        }
+    }
+    var onAsks: (() -> Void)?
     /// What each thread looked like when last shown, to show again only
     /// what changed.
     var shown: [ObjectIdentifier: String] = [:]
@@ -158,16 +165,17 @@ extension MainWindowController: ThreadChatDelegate {
         }
         if let t = thread {
             m.seenMark = hosts.seenMark(t.id)
-            for a in t.thread?.agents ?? [] where hosts.block(a.block)?.statusState == .working {
-                // At work since it was last asked here.
-                if case .asked? = t.thread?.entries.last?.kind { m.working.insert(a.block) }
-            }
+            // At work on what it was asked here, till that turn's done; or
+            // asked, and waiting its turn.
+            m.working = Set(hosts.agentsAtWork(on: t))
+            m.queued = queuedAgents(on: t.id)
         }
         m.icon = { [weak self] id in
             guard let b = self?.hosts.block(id), let a = b.agent else { return nil }
             return AgentLook.face(of: b, size: 12) ?? AgentIcons.image(a.command, size: 12)
         }
         m.doing = { [weak self] in self?.hosts.block($0)?.agentDoing }
+        m.name = { [weak self] in self?.hosts.block($0).map(AgentLook.name(of:)) }
         // The agent's thread, and who Ask would make it.
         m.askName = askingAgent?.name ?? "Claude"
         if let kind = thread.flatMap({ asksAgent(of: $0) }) {
@@ -428,7 +436,7 @@ extension MainWindowController: ThreadChatDelegate {
         var sig = ""
         for t in all {
             let th = t.thread
-            sig += "\(t.id)/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(hosts.seenMark(t.id)?.wall ?? 0);"
+            sig += "\(t.id)/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(hosts.seenMark(t.id)?.wall ?? 0)/\(StatusGlyph.look(of: t).map { "\($0)" } ?? "");"
         }
         for case let w in threadUI.chats {
             guard let chat = w.value else { continue }
@@ -461,7 +469,7 @@ extension MainWindowController: ThreadChatDelegate {
         let m = chatModel(thread: thread, place: chat.newPlace, inTile: chat.model.inTile)
         let th = thread?.thread
         // Who's in it and who it asks too: a draft's lead comes after it, as an annotation.
-        let key = "\(thread?.id.description ?? "new")/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(m.drift ?? "")/\(m.placeTitle)/\(m.working.count)"
+        let key = "\(thread?.id.description ?? "new")/\(th?.entries.count ?? 0)/\(th?.resolved == true)/\(m.drift ?? "")/\(m.placeTitle)/\(m.working.sorted { $0.description < $1.description })/\(m.queued)"
             + "/\(m.participants.map(\.title).joined(separator: ","))/\(m.asks ?? "")/\(m.asksAll)/\(m.askAgents.map(\.title).joined(separator: ","))"
             + "/\(m.context.map { ($0.isLead ? "*" : "") + $0.title + $0.detail }.joined(separator: ","))"
         guard threadUI.shown[ObjectIdentifier(chat)] != key else { return }
@@ -1055,8 +1063,7 @@ extension MainWindowController: ThreadTimelineDelegate {
             for t in sorted {
                 if t.thread?.resolved == true { resolved.append(t); continue }
                 if !hosts.unseen(t).isEmpty { unread.append(t); continue }
-                let busy = participants(of: t).contains { hosts.block($0)?.statusState == .working }
-                if busy, case .asked? = t.thread?.entries.last?.kind { working.append(t) } else { open.append(t) }
+                if !hosts.agentsAtWork(on: t).isEmpty || !queuedAgents(on: t.id).isEmpty { working.append(t) } else { open.append(t) }
             }
             return [("Not read", unread), ("At work", working), ("Open", open), ("Resolved", resolved)]
                 .map { ThreadGroup(title: $0.0, rows: $0.1.compactMap(row)) }

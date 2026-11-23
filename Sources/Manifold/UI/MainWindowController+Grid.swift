@@ -642,6 +642,10 @@ extension MainWindowController: GridDelegate {
             menu.addItem(.separator())
         }
         if let clear = clearStatusItem(block) { menu.addItem(clear) }
+        // A terminal's, an agent's: its shell (its program) restarted.
+        if let title = restartTitle(placement) {
+            menu.addItem(ClosureMenuItem(title, symbol: "arrow.clockwise") { [weak self] in self?.restart(placement) })
+        }
         if let last = hosts.block(block)?.terminal?.turns?.last {
             let sub = NSMenu()
             for item in turnItems(last, of: block, beside: placement) { sub.addItem(item) }

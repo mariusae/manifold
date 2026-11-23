@@ -89,9 +89,8 @@ final class SpaceSwitcherView: PopoverView {
             SpaceSquare.fill(sq, color: c.color, alpha: 0.3)
             SpaceSquare.drawGlyph(in: sq, color: c.color, mark: c.mark, badge: c.badge)
             var right = r.maxX - 10
-            if let tone = SpaceStripView.tone(c.status) {
-                tone.setFill()
-                NSBezierPath(ovalIn: NSRect(x: right - 8, y: sq.midY - 4, width: 8, height: 8)).fill()
+            if SpaceStripView.shows(c.status) {
+                SpaceStripView.drawMark(c.status, in: NSRect(x: right - 8, y: sq.midY - 4, width: 8, height: 8))
                 right -= 14
             }
             let name = NSAttributedString(string: c.name, attributes: [.font: UIType.title, .foregroundColor: Theme.text])
@@ -258,7 +257,7 @@ extension MainWindowController {
         }
         return .init(id: id, name: name, host: hosts.ordered.count > 1 ? hosts.label(of: id.host) : nil,
                      mark: spaceMarks()[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b), color: SpaceLook.color(of: b),
-                     status: spaceStatus(a), tiles: tiles, docked: a.docked.count,
+                     status: spaceStatus(a, space: id), tiles: tiles, docked: a.docked.count,
                      wants: wants.sorted { $0.rank < $1.rank }.map(\.want))
     }
 

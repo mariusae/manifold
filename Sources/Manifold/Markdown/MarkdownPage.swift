@@ -484,7 +484,7 @@ enum MarkdownPage {
           color: var(--page-quote); margin: 0 0 1em; }
         .mf-aside { color: var(--page-quote); }
         .mf-aside > :first-child { margin-top: 0; }
-        .mf-dots { display: inline-flex; gap: 3px; margin-right: 0.55em; vertical-align: 0.12em; }
+        .mf-dots { display: inline-flex; gap: 3px; margin-right: 0.55em; vertical-align: calc(0.34em - 2px); }
         .mf-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.35;
           animation: mf-dot 1.2s infinite linear; }
         .mf-dots i:nth-child(2) { animation-delay: 0.2s; } .mf-dots i:nth-child(3) { animation-delay: 0.4s; }

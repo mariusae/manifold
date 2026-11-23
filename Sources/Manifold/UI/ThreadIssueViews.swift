@@ -274,7 +274,7 @@ final class IssueEventView: NSView, OnTheLine {
     /// indicator, as every working thing is said (§3.7).
     private var spinner: StatusGlyph?
 
-    init(who: String?, words: String, at: Stamp?, symbol: String, icon: NSImage?, tone: NSColor?, inTile: Bool, working: Bool = false) {
+    init(who: String?, words: String, at: Stamp?, symbol: String, icon: NSImage?, tone: NSColor?, inTile: Bool, glyph: StatusGlyph.Look? = nil) {
         self.inTile = inTile
         let size: CGFloat = inTile ? 12 : 11.5
         let s = NSMutableAttributedString()
@@ -291,9 +291,9 @@ final class IssueEventView: NSView, OnTheLine {
         badge.icon = icon
         badge.tone = tone
         for v in [badge, label] as [NSView] { addSubview(v) }
-        if working {
+        if let glyph {
             let g = StatusGlyph()
-            g.look = .working(progress: nil)
+            g.look = glyph
             spinner = g
             badge.isHidden = true
             addSubview(g)

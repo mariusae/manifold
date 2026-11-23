@@ -138,6 +138,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// Terminals whose shell exited, a new one asked for: their views'
     /// next attach starts it (`terminalRestart`).
     var restartingShells: Set<BlockID> = []
+    /// Agents turned from their conversation to their terminal as they
+    /// came to need you (§3.7), to turn back once they're on again; and
+    /// the status each was turned for, not again for the same.
+    var turnedToTerminal: Set<BlockID> = []
+    var turnedFor: [BlockID: Stamp] = [:]
     private(set) var sidebarShown = false {
         // The copies' badge only while the sidebar (which shows them) is away.
         didSet { if sidebarShown != oldValue { transfersChanged() } }
@@ -197,6 +202,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         toast.inSidebar = { [weak self] in self.map { $0.sidebarShown || $0.pinned } ?? false }
         toast.reveal = { [weak self] in self?.showSidebar(animated: true) }
         watchCommandKey()
+        // One status rule (§3.7): threads' and spaces' made here; asks
+        // waiting their turn, shown as they change.
+        installStatusRule()
+        threadUI.onAsks = { [weak self] in DispatchQueue.main.async { self?.render() } }
         // Copies on their way (§8): in the sidebar, and, while it's away,
         // a badge at the lower left that brings it out.
         transfersBadge.isHidden = true
@@ -596,6 +605,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         if !madeWaits.isEmpty { DispatchQueue.main.async { [weak self] in self?.checkMadeWaits() } }
         noteTrailFocus()
         attend()
+        turnToTerminalsWhenNeeded()
         scheduleHoldReconcile()
         refreshOrganization()
 
@@ -1522,11 +1532,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     /// every turn that finished (it climbed with each; its dot says it).
     private func attend() {
         attendFocused()
-        // Threads with something not seen (§3.12) wait on you too.
-        let waiting = hosts.blocks.filter { b in
-            guard let r = b.statusRecord else { return false }
-            return r.state == .blocked || (r.state == .error && r.read != true)
-        }.count + hosts.unseenThreads.count
+        let waiting = waitingCount()
         let badge = waiting == 0 ? "" : "\(waiting)"
         if NSApp.dockTile.badgeLabel != badge { NSApp.dockTile.badgeLabel = badge }
     }
@@ -1591,7 +1597,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         }
         inboxWalk = order
         // A thread: in the overlay, where it's read and answered (§3.12).
-        if hosts.block(next)?.kind == .thread { return showThreadOverlay(nil, thread: next) }
+        if hosts.block(next)?.kind == .thread { return showThread(next) }
         goTo(next)
         hosts.propose(.attend(next))
     }

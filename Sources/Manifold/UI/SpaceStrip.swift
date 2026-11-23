@@ -511,15 +511,38 @@ final class SpaceStripView: NSView {
             NSBezierPath(roundedRect: b, xRadius: Radius.control, yRadius: Radius.control).fill()
             t.draw(at: NSPoint(x: b.midX - z.width / 2, y: b.midY - z.height / 2))
         }
-        // What most wants you there, at its top right: a filled dot, as the
-        // one status rule has it; something only at work there, nothing —
-        // work is motion, and a square isn't the place for it.
-        if let tone = Self.tone(c.status) {
-            let d = NSRect(x: r.maxX - 5, y: r.minY - 2, width: 7, height: 7)
-            Theme.panel.setFill()
-            NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
+        Self.drawCorner(c.status, on: r)
+    }
+
+    /// What most wants you in a space, at its square's top right, as the
+    /// one status rule has it: a filled dot, what's for you; else, only
+    /// at work there, a hollow ring — the dot wins, one mark at a time.
+    static func drawCorner(_ look: StatusGlyph.Look?, on r: NSRect) {
+        guard shows(look) else { return }
+        let flipped = NSGraphicsContext.current?.isFlipped ?? true
+        let d = NSRect(x: r.maxX - 5, y: flipped ? r.minY - 2 : r.maxY - 5, width: 7, height: 7)
+        Theme.panel.setFill()
+        NSBezierPath(ovalIn: d.insetBy(dx: -1.5, dy: -1.5)).fill()
+        drawMark(look, in: d)
+    }
+
+    /// Whether a space's look has a mark: a dot, or the ring.
+    static func shows(_ look: StatusGlyph.Look?) -> Bool {
+        if tone(look) != nil { return true }
+        if case .working? = look { return true }
+        return false
+    }
+
+    /// A space's mark in `d`: a filled dot in its tone; at work, a hollow ring.
+    static func drawMark(_ look: StatusGlyph.Look?, in d: NSRect) {
+        if let tone = tone(look) {
             tone.setFill()
             NSBezierPath(ovalIn: d).fill()
+        } else if case .working? = look {
+            let ring = NSBezierPath(ovalIn: d.insetBy(dx: 0.75, dy: 0.75))
+            ring.lineWidth = 1.5
+            Theme.text.withAlphaComponent(0.8).setStroke()
+            ring.stroke()
         }
     }
 
@@ -527,7 +550,7 @@ final class SpaceStripView: NSView {
         switch look {
         case .needsYou: Status.attention
         case .failed(read: false): Status.failed
-        case .done(read: false): Status.done
+        case .done(read: false), .unseen: Status.done
         default: nil
         }
     }
@@ -867,7 +890,7 @@ extension MainWindowController {
                 guard let b = hosts.block(id), let a = hosts.arrangement(id) else { continue }
                 let name = title(of: a)
                 out.append(.init(id: id, title: name, mark: marks[id] ?? .letters(SpaceLook.letter(of: name)), badge: SpaceLook.badge(of: b),
-                                 color: SpaceLook.color(of: b), current: id == selected, status: spaceStatus(a),
+                                 color: SpaceLook.color(of: b), current: id == selected, status: spaceStatus(a, space: id),
                                  hostBreak: first && before, remote: c.isRemote ? c.host : nil))
                 first = false
             }
@@ -890,22 +913,6 @@ extension MainWindowController {
             guard let b = hosts.block(w), let a = hosts.arrangement(w) else { return nil }
             return (w, title(of: a), w == id ? nil : SpaceLook.chosenMark(of: b))
         })[id]
-    }
-
-    /// What most wants you in a space: needs you, then failed, then done
-    /// (neither read), then working.
-    func spaceStatus(_ a: ArrangementState) -> StatusGlyph.Look? {
-        let looks = a.placements.compactMap { StatusGlyph.look(of: hosts.block($0.block)) }
-        func rank(_ l: StatusGlyph.Look) -> Int? {
-            switch l {
-            case .needsYou: 0
-            case .failed(read: false): 1
-            case .done(read: false): 2
-            case .working: 3
-            default: nil
-            }
-        }
-        return looks.filter { rank($0) != nil }.min { rank($0)! < rank($1)! }
     }
 
     func refreshSpaceStrip() {

@@ -153,8 +153,9 @@ extension MainWindowController {
         n.dirty = block.text?.isDirty == true
         n.stale = block.text?.stale == true
         n.image = block.web.flatMap { Favicons.image(forPage: $0.url) } ?? AgentLook.face(of: block, size: 13)
-        // A thread's: worked on, or something in it not seen.
-        n.look = block.kind == .thread ? hosts.look(ofThread: block) : StatusGlyph.look(of: block)
+        // The one rule's (a thread's: worked on, waiting its turn, or
+        // something in it not seen).
+        n.look = StatusGlyph.look(of: block)
         n.blocked = block.statusRecord?.kind
         n.tooltip = StatusGlyph.tooltip(block)
         n.trailing = StatusGlyph.at(of: block).map(Age.short)
@@ -166,7 +167,7 @@ extension MainWindowController {
     func statusGroups() -> [StatusGroup: [(Block, StatusRecord?, Stamp)]] {
         var groups: [StatusGroup: [(Block, StatusRecord?, Stamp)]] = [:]
         for c in hosts.all {
-            for b in c.node.blocks {
+            for b in c.node.blocks where b.kind != .thread && b.kind != .arrangement {
                 guard let look = StatusGlyph.look(of: b) else { continue }
                 let r = b.statusRecord
                 let at = r?.at ?? b.terminal?.dormantSince ?? b.created

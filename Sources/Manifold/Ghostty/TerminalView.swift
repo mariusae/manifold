@@ -1972,6 +1972,10 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         menu.addItem(withTitle: "Save Scrollback as Note", action: #selector(MainWindowController.saveScrollbackAsNote(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Clear", action: #selector(clearScreen(_:)), keyEquivalent: "")
+        // Its shell, or its agent's program, restarted (named as it's validated).
+        let restart = NSMenuItem(title: "Restart…", action: #selector(MainWindowController.restartProcess(_:)), keyEquivalent: "")
+        restart.representedObject = placement
+        menu.addItem(restart)
         menu.addItem(PinMenu.item(for: placement))
         // The processes under the shell, the shell first, each a submenu
         // of what to do with it and what runs under it. The host's

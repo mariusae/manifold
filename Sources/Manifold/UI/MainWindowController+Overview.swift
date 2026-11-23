@@ -324,6 +324,7 @@ enum StatusGroup: Int, CaseIterable {
         case .failed: self = .failed
         case .working: self = .working
         case .unseen: self = .done
+        case .queued: self = .working
         case .inactive, .connecting, .offline, .quiet, .watching: self = .inactive
         }
     }

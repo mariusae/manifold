@@ -1053,23 +1053,12 @@ extension MainWindowController {
         n.foldedCount = open.isEmpty ? nil : open.count
         // Folded, what's most pressing in it: its glyph (not a moon: its
         // agents asleep is nothing to tell).
-        n.look = children.compactMap(\.look).filter { Self.urgency($0) <= 3 }.min { Self.urgency($0) < Self.urgency($1) }
+        n.look = StatusGlyph.strongest(children.map(\.look))
         return n
     }
 
-    /// How pressing a status is, the most first: what needs you, what
-    /// failed, what's done or new, what's at work, what sleeps.
-    static func urgency(_ look: StatusGlyph.Look) -> Int {
-        switch look {
-        case .needsYou: 0
-        case .failed(read: false): 1
-        case .done(read: false), .unseen: 2
-        case .working: 3
-        case .offline, .quiet, .connecting, .watching: 4
-        case .inactive: 6
-        case .done, .failed: 7
-        }
-    }
+    /// How pressing a status is, the most first: the one rule's.
+    static func urgency(_ look: StatusGlyph.Look) -> Int { StatusGlyph.urgency(look) }
 
     /// Files: each host's sparse tree, roots open.
     func filesTree() -> ([OrgNode], Set<String>) {

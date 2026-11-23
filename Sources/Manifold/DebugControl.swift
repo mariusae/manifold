@@ -934,6 +934,8 @@ enum DebugControl {
             return wc?.debugPillMenu(arg) ?? "no window"
         case "workspaces":
             return wc?.debugWorkspaces() ?? "no window"
+        case "status":
+            return wc?.debugStatus() ?? "no window"
         case "print":
             // "print <out.pdf>": the focused tile printed to a PDF, no panel.
             guard let wc, let op = wc.debugPrintOperation else { return "not printable" }

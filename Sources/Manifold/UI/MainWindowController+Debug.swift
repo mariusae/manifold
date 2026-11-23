@@ -60,11 +60,19 @@ extension MainWindowController {
     }
 
     /// A notification clicked: to the block, and the command if one.
+    /// A thread gone to (a notification, ⌘J): to its tile, warped there,
+    /// where it's a tile in some space; else in the overlay.
+    func showThread(_ id: BlockID) {
+        if isPlaced(id) { return goTo(id) }
+        showThreadOverlay(nil, thread: id)
+    }
+
     func openFromNotification(_ block: BlockID, command: Int?) {
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
-        // A thread's news: the thread, in the overlay, as ⌘J shows one.
-        if hosts.block(block)?.kind == .thread { return showThreadOverlay(nil, thread: block) }
+        // A thread's news: its tile, if it has one; else the thread in the
+        // overlay, as ⌘J shows one.
+        if hosts.block(block)?.kind == .thread { return showThread(block) }
         goTo(block)
         if let command { goToCommand(command, in: block) }
     }
@@ -145,10 +153,25 @@ extension MainWindowController {
     }
 
     /// Debugging: every workspace on the desk, its tiles' placements and titles.
+    /// Debugging: status by the one rule — each space's, each thread's
+    /// that has one, and what the Dock counts.
+    func debugStatus() -> String {
+        var out = allWorkspaces.compactMap { id -> String? in
+            guard let a = hosts.arrangement(id) else { return nil }
+            return "space \(title(of: a)): \(StatusGlyph.look(of: hosts.block(id)).map { "\($0)" } ?? "-")"
+        }
+        for t in hosts.threads {
+            guard let look = StatusGlyph.look(of: t) else { continue }
+            out.append("thread \(t.displayTitle): \(look) at work \(hosts.agentsAtWork(on: t).count) queued \(queuedAgents(on: t.id).count)")
+        }
+        out.append("dock \(waitingCount())")
+        return out.joined(separator: "\n")
+    }
+
     func debugWorkspaces() -> String {
         allWorkspaces.compactMap { id -> String? in
             guard let a = hosts.arrangement(id) else { return nil }
-            let tiles = a.columns.map { col in col.map { "\($0.id)=\(hosts.block($0.block)?.displayTitle ?? "?")" }.joined(separator: ", ") }
+            let tiles = a.columns.map { col in col.map { "\($0.id)=\(hosts.block($0.block)?.displayTitle ?? "?") {\($0.block)}" }.joined(separator: ", ") }
             return "\(id == selected ? "*" : " ")\(id) \(title(of: a)): " + tiles.map { "[\($0)]" }.joined(separator: " ")
         }.joined(separator: "\n")
     }

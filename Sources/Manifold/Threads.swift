@@ -80,17 +80,6 @@ extension Hosts {
         thread.thread?.unseen(after: seenMark(thread.id)) ?? []
     }
 
-    /// A thread's status (§3.7), as a block's is: worked on — an agent in
-    /// it at work on what it was last asked — a ring; something in it not
-    /// seen, a filled dot (not how many: that it wants you is enough).
-    func look(ofThread t: Block) -> StatusGlyph.Look? {
-        guard let th = t.thread else { return nil }
-        if case .asked? = th.entries.last?.kind, th.agents.contains(where: { block($0.block)?.statusState == .working }) {
-            return .working(progress: nil)
-        }
-        return unseen(t).isEmpty ? nil : .unseen
-    }
-
     /// The threads with something not seen: what the inbox holds of them.
     var unseenThreads: [Block] { threads.filter { !unseen($0).isEmpty } }
 
