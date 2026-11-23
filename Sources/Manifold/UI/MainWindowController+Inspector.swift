@@ -967,15 +967,18 @@ extension MainWindowController {
         // Docked, the latest first.
         let docked = a.docked.reversed().filter { !pinned.contains($0.placement.block) && !stacked.contains($0.placement.id) && !urgent.contains($0.placement.id) }
             .compactMap { tile($0.placement, docked: true, column: nil) }
+        var open = Set(projects.map(\.id))
         if !docked.isEmpty {
-            // Folded under how many, opened by hand (and kept so). Its label
-            // stands for the space, for a tile flown to it before its row is made.
+            // Open to begin with, its tiles listed; folded by hand (and kept
+            // so) to how many. Its label stands for the space, for a tile
+            // flown to it before its row is made.
             let l = OrgNode(id: "\(aid)/docked", title: "Docked", symbol: "", detail: "", count: docked.count, children: docked)
             l.style = .section
             l.arrangement = id
             out.append(l)
+            open.insert(l.id)
         }
-        return (out, Set(projects.map(\.id)))
+        return (out, open)
     }
 
     /// An agent's row: one line, its monogram saying who — what it says
