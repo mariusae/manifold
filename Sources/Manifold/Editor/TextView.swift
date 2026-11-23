@@ -1382,6 +1382,7 @@ final class TextView: NSView, NSTextInputClient {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ContentText.unsmoothed()
         let text = self.text
         guard text.lineCount > 0 else { return }
         let first = line(atY: dirtyRect.minY)

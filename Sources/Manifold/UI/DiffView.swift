@@ -1101,6 +1101,7 @@ final class DiffRowsView: NSView, NSDraggingSource {
 
     override func draw(_ dirtyRect: NSRect) {
         guard !rows.isEmpty else { return }
+        ContentText.unsmoothed()
         let numberFont = NSFont.systemDigits(ofSize: font.pointSize * 0.85, weight: .regular)
         let textAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text]
         let dimAttrs: [NSAttributedString.Key: Any] = [.font: numberFont, .foregroundColor: TextView.gutterText]
@@ -1346,12 +1347,11 @@ extension DiffView: FollowsFontTheme {
 /// A commit's heading over its diff, as a mail reader shows a message's:
 /// who and when, small, then the message rendered as Markdown — scrolling
 /// on its own past a share of the tile.
-/// Text drawn as a web page draws its (`-webkit-font-smoothing:
-/// antialiased`, the preview's): without the system's font smoothing,
-/// which thickens strokes, so it reads as light as the preview beside it.
+/// Text drawn as a web page draws its (`ContentText`), so it reads as
+/// light as the preview beside it.
 final class ReadingTextView: NSTextView {
     override func draw(_ dirtyRect: NSRect) {
-        NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false)
+        ContentText.unsmoothed()
         super.draw(dirtyRect)
     }
 }

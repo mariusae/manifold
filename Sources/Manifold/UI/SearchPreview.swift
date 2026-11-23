@@ -355,6 +355,7 @@ final class PreviewTextView: NSTextView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
         super.draw(dirtyRect)
         guard let current, let lm = layoutManager, let tc = textContainer else { return }
         let g = lm.glyphRange(forCharacterRange: current, actualCharacterRange: nil)

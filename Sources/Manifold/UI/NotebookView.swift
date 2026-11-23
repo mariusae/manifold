@@ -948,6 +948,7 @@ final class CellEditor: NSTextView {
 
     /// Empty: what to do, in the placeholder's grey.
     override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
         super.draw(dirtyRect)
         guard string.isEmpty, let font else { return }
         let hint = NSAttributedString(string: "Command — ⌘↩ runs it", attributes: [.font: font, .foregroundColor: NSColor.placeholderTextColor])
@@ -1009,6 +1010,11 @@ final class CellEditor: NSTextView {
 /// underlined under the pointer and opened when clicked — as in a
 /// terminal; a file's `:line:column` kept for where to open it.
 final class OutputTextView: NSTextView {
+    override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
+        super.draw(dirtyRect)
+    }
+
     var opened: (String) -> Void = { _ in }
     private var hoverRange: NSRange?
 

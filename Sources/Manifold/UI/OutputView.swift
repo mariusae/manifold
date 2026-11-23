@@ -538,6 +538,11 @@ enum ANSIText {
 /// tile's find pill, as an editor's do; a plain text view without a find
 /// bar would only beep.
 final class OutputFindTextView: NSTextView {
+    override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
+        super.draw(dirtyRect)
+    }
+
     override func performTextFinderAction(_ sender: Any?) {
         guard let host = enclosingOutput else { return super.performTextFinderAction(sender) }
         host.performTextFinderAction(sender)

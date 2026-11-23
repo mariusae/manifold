@@ -53,6 +53,7 @@ final class PinnedDefinitions: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let tv = textView, let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ContentText.unsmoothed()
         background.setFill()
         bounds.fill()
         let h = tv.rowHeight

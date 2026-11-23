@@ -54,6 +54,17 @@ extension NSTextField {
     }
 }
 
+/// Content's text — a file's, a note's, a comment's, a command's output —
+/// drawn as the pages' and the terminal's is beside it: without the
+/// system's font smoothing, which thickens strokes (the pages are set
+/// `-webkit-font-smoothing: antialiased`, Ghostty `font-thicken = false`).
+/// One weight for words, whatever draws them; the chrome round them
+/// (labels, lists, menus) keeps the system's.
+enum ContentText {
+    /// Called as a content view draws, before its text.
+    static func unsmoothed() { NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false) }
+}
+
 extension NSView {
     /// Its window's backing scale (the main screen's, out of one).
     var backingScale: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }

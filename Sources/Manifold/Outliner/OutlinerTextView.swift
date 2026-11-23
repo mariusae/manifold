@@ -205,6 +205,7 @@ final class OutlinerTextView: NSTextView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
         super.draw(dirtyRect)
         outlinerLayout?.drawEmptyRow(at: textContainerOrigin)
         if let tail, showsCaret {

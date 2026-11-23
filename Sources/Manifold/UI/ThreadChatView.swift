@@ -1437,6 +1437,11 @@ final class CommentText: NSView, NSTextViewDelegate {
 /// The composer: ↩ sends, ⇧↩ (or ⌥↩) a new line; things dropped on it put
 /// in as their links.
 final class ComposerTextView: NSTextView {
+    override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
+        super.draw(dirtyRect)
+    }
+
     /// What it's written to, for what's dropped in it: a thread's comment
     /// (as a note takes things), or an agent's prompt (as an agent does).
     var dropsFor: Dropping.Target = .note
@@ -1666,6 +1671,11 @@ extension ComposerTextView: DropTaking {
 /// goes where its link does — NSTextView takes a click on an attachment
 /// for itself, not its link's.
 final class PillTextView: NSTextView {
+    override func draw(_ dirtyRect: NSRect) {
+        ContentText.unsmoothed()
+        super.draw(dirtyRect)
+    }
+
     /// ⌘-clicked on a path or an address in it: `over`, ⌥ held too.
     var onCommandLink: ((_ target: String, _ over: Bool) -> Void)?
     /// The link ⌘ marks: underlined, in the accent.
