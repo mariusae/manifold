@@ -74,5 +74,5 @@ private func terminal(running command: String = "make") -> Block {
     #expect(running.run == .running(since: at(9000)) && running.outcome == "running")
     let failed = OutputState(line: "make", status: 2, ran: at(9000), ended: at(9002))
     #expect(failed.outcome == "exit 2")
-    #expect(output(failed).summary(now: now).lines.contains { $0.hasPrefix("exit 2") })
+    #expect(output(failed).summary(now: now).lines.contains { $0.hasPrefix("failed after") && $0.hasSuffix("(exit 2)") })
 }

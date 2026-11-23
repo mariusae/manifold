@@ -136,12 +136,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    static func duration(_ ms: Int64) -> String {
-        let s = Int(ms / 1000)
-        if s < 60 { return "\(s) s" }
-        if s < 3600 { return "\(s / 60) min \(s % 60) s" }
-        return "\(s / 3600) h \(s % 3600 / 60) min"
-    }
+    static func duration(_ ms: Int64) -> String { BlockSummary.duration(Double(ms) / 1000) }
 
     private func post(id: String, title: String, body: String, sound: Sound, block: BlockID, command: Int?) {
         let center = UNUserNotificationCenter.current()

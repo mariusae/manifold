@@ -1,4 +1,5 @@
 import AppKit
+import ManifoldCore
 
 /// Small things AppKit asks for over and over, said once.
 
@@ -33,6 +34,23 @@ extension NSTextField {
         l.lineBreakMode = cut
         l.alignment = align
         return l
+    }
+
+    /// Words that may say a run as `BlockSummary.ran` does — "18m ago ›
+    /// took 2m 52s" — its › quieter than the words, in the tertiary colour.
+    /// Set its colour first: the words take it.
+    func setTimed(_ text: String) {
+        guard text.contains(BlockSummary.then) else { return stringValue = text }
+        let style = NSMutableParagraphStyle()
+        style.alignment = alignment
+        style.lineBreakMode = lineBreakMode
+        let a = NSMutableAttributedString(string: text, attributes: [.font: font ?? UIType.detail, .foregroundColor: textColor ?? Theme.secondaryText, .paragraphStyle: style])
+        var from = text.startIndex
+        while let r = text.range(of: "›", range: from..<text.endIndex) {
+            a.addAttribute(.foregroundColor, value: Theme.tertiaryText, range: NSRange(r, in: text))
+            from = r.upperBound
+        }
+        attributedStringValue = a
     }
 }
 

@@ -100,13 +100,8 @@ final class HostDashboard: NSView {
 
     static func bytes(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }
 
-    static func duration(_ t: TimeInterval) -> String {
-        let s = Int(t)
-        if s < 60 { return "\(s) s" }
-        if s < 3600 { return "\(s / 60) min" }
-        if s < 86400 { return "\(s / 3600) h \(s % 3600 / 60) min" }
-        return "\(s / 86400) d \(s % 86400 / 3600) h"
-    }
+    /// How long it's been up, open, connected: as every while is said, to the minute.
+    static func duration(_ t: TimeInterval) -> String { BlockSummary.duration(t.rounded(.down), coarse: true) }
 
     /// When, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
     private static func clock(_ d: Date) -> String { BlockSummary.since(d, now: Date()) }

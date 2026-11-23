@@ -114,13 +114,14 @@ final class OutputView: NSView, PaneContent, KeepsViewState {
         let ran = o.source != nil
         prompt.attributedStringValue = NSAttributedString(string: (ran ? "$ " : "") + o.line, attributes: [
             .font: font.emphasized(bold: true), .foregroundColor: Theme.text])
+        // When it ran, then how it went: "18m ago › failed after 5.0s (exit 2)".
         var words: [String] = []
-        if let outcome = o.outcome { words.append(outcome) }
-        if let took = BlockSummary.took(from: o.ran, to: o.ended) { words.append("took " + took) }
-        if let at = o.ended ?? o.ran { words.append(Age.ago(at)) }
+        if o.ran != nil, o.ended != nil { words.append(BlockSummary.ran(from: o.ran, to: o.ended, status: o.status, now: Date(), showsStatus: true)) }
+        else if o.ran != nil { words.append("running") }
+        else if let at = o.ended { words.append(Age.ago(at)) }
         if o.plain, ran { words.append("from the screen") }
-        outcome.stringValue = words.joined(separator: " · ")
         outcome.textColor = (o.status ?? 0) == 0 ? Theme.secondaryText : Theme.statusError
+        outcome.setTimed(words.joined(separator: " · "))
         // A notebook's cell has no terminal to go back to.
         back.isHidden = o.source == nil || o.command == nil
         let palette = TerminalPalette.current(for: self)

@@ -25,6 +25,8 @@ final class OutlineRow: NSTableCellView {
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField.label(font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular), color: Theme.secondaryText, align: .right)
     private var level = 0
+    /// The detail in full: shown whole if it fits, else its when alone.
+    private var fullDetail = ""
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -63,7 +65,7 @@ final class OutlineRow: NSTableCellView {
         } else {
             title.font = FontTheme.code(11.5)
         }
-        detail.stringValue = e.detail
+        fullDetail = e.detail
         detail.isHidden = e.detail.isEmpty
         markColor = e.failed ? Theme.statusError : e.running ? Theme.accent : Theme.secondaryText.withAlphaComponent(0.6)
         effectiveAppearance.performAsCurrentDrawingAppearance { mark.layer?.backgroundColor = markColor.cgColor }
@@ -78,7 +80,19 @@ final class OutlineRow: NSTableCellView {
         mark.frame = NSRect(x: x, y: (h - 3) / 2, width: 3, height: 3)
         var right = bounds.width - 10
         if !detail.isHidden {
-            let w = min(140, ceil((detail.stringValue as NSString).size(withAttributes: [.font: detail.font!]).width) + 2)
+            // The title first: the detail has what it leaves, up to 160 —
+            // "18m ago › took 2m 52s" if it fits there, else its when alone
+            // ("18m ago"), the rest in its tooltip.
+            let titled = ceil(title.attributedStringValue.size().width) + 4
+            let room = min(160, max(64, right - (x + 10) - 8 - titled))
+            detail.setTimed(fullDetail)
+            var wanted = ceil(detail.attributedStringValue.size().width) + 5
+            if wanted > room, let cut = fullDetail.range(of: BlockSummary.then) {
+                detail.setTimed(String(fullDetail[..<cut.lowerBound]))
+                wanted = ceil(detail.attributedStringValue.size().width) + 5
+            }
+            detail.toolTip = detail.stringValue == fullDetail ? nil : fullDetail
+            let w = min(wanted, room)
             detail.frame = NSRect(x: right - w, y: (h - 14) / 2, width: w, height: 14)
             right -= w + 8
         }

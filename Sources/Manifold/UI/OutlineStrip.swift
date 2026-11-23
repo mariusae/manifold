@@ -745,8 +745,8 @@ private final class StripCard {
         }
         title.stringValue = t
         title.textColor = Theme.text
-        detail.stringValue = d
         detail.textColor = Theme.secondaryText
+        detail.setTimed(d)
         detail.isHidden = d.isEmpty
         // Prose wraps, as a paragraph does; output keeps its lines.
         body.stringValue = code ? lines.joined(separator: "\n") : lines.joined(separator: " ")

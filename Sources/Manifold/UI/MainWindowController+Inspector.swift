@@ -479,9 +479,8 @@ extension MainWindowController {
                 if let agent = b.agent { own.append(row(agent.name, "agent", "sparkle")) }
                 if let c = t.commands?.last(where: { $0.isRunning }) { own.append(row(c.text, "running", "play")) }
                 if let c = t.commands?.last(where: { !$0.isRunning }) {
-                    let how = c.status.map { $0 == 0 ? "ok" : "exit \($0)" } ?? "?"
-                    let took = BlockSummary.took(from: c.at, to: c.ended).map { " · " + $0 } ?? ""
-                    own.append(row("\(c.text) · \(how)\(took) · \(Age.ago(c.ended ?? c.at))", "last command", c.status == 0 ? "checkmark" : "xmark"))
+                    // The command, then when it began and how it went: "make — 18m ago › took 2m 52s".
+                    own.append(row(c.text + " — " + BlockSummary.ran(from: c.at, to: c.ended ?? c.at, status: c.status, now: Date(), showsStatus: true), "last command", c.status == 0 ? "checkmark" : "xmark"))
                 }
                 if let after = t.dormantAfter { more.append(row("\(after) h", "asleep after", "moon.zzz")) }
                 if t.snapshot != nil { more.append(row("Kept, for its changes", "start's tree", "camera")) }

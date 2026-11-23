@@ -68,8 +68,7 @@ extension MainWindowController {
         var parts = [b.displayTitle]
         if let t = b.terminal?.turns?.last {
             parts.append("“" + String(AgentConversation.promptTitle(t.prompt).prefix(60)) + "”")
-            let secs = Double((t.ended?.wall ?? Int64(Date().timeIntervalSince1970 * 1000)) - t.began.wall) / 1000
-            parts.append((t.ended == nil ? "for " : "took ") + Notifier.duration(Int64(secs * 1000)))
+            if let how = BlockSummary.how(from: t.began, to: t.ended, status: t.ended == nil ? nil : 0, now: Date()) { parts.append(how) }
             if let n = t.files?.count, n > 0 { parts.append("\(n) file\(n == 1 ? "" : "s")") }
         } else if let m = b.statusRecord?.msg {
             parts.append(m)

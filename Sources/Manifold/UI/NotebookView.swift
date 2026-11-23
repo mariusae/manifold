@@ -736,14 +736,14 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
     }
 
     /// The footer: the status's glyph, as the sidebar draws it (turning,
-    /// a check, a red one), then how it ended, how long it took, when.
+    /// a check, a red one), then when it ran and how it went — "Done ·
+    /// 4m ago › took 3.2s", "Exit 2 · 4m ago › failed after 1.0s".
     func tick() {
         var words: [String] = []
         footer.textColor = Theme.secondaryText
         if running {
             glyph.look = .working(progress: nil)
-            words.append("Running")
-            if let ran = cell.ran { words.append(Self.duration(Date().timeIntervalSince(ran.date))) }
+            words.append("Running" + (cell.ran.map { " " + BlockSummary.duration(Date().timeIntervalSince($0.date)) } ?? ""))
         } else if queued {
             glyph.look = nil
             words.append("Waiting to run")
@@ -751,22 +751,15 @@ final class NotebookCellView: NSView, NSTextViewDelegate, NSDraggingSource {
             let ok = cell.status == 0
             glyph.look = ok ? .done(read: true) : .failed(read: true)
             if let s = cell.status { words.append(ok ? "Done" : s == 130 ? "Interrupted" : "Exit \(s)") } else { words.append("The shell ended") }
-            if let ran = cell.ran { words.append(Self.duration(ended.date.timeIntervalSince(ran.date))) }
-            words.append(Age.ago(ended))
+            words.append(BlockSummary.ran(from: cell.ran ?? ended, to: ended, status: cell.status, now: Date()))
             if cell.truncated == true { words.append("the last megabyte kept") }
             // Failed in red; stopped by hand, quietly.
             if !ok, cell.status != 130 { footer.textColor = Theme.statusError.withAlphaComponent(0.85) }
         } else {
             glyph.look = nil
         }
-        footer.stringValue = words.joined(separator: " · ")
+        footer.setTimed(words.joined(separator: " · "))
         glyph.isHidden = glyph.look == nil
-    }
-
-    static func duration(_ t: TimeInterval) -> String {
-        if t < 1 { return String(format: "%.0f ms", t * 1000) }
-        if t < 60 { return String(format: "%.1f s", t) }
-        return "\(Int(t) / 60) min \(Int(t) % 60) s"
     }
 
     private func render() {

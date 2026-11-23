@@ -483,7 +483,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         } else {
             label.stringValue = r.title
         }
-        detail.stringValue = r.detail
+        detail.setTimed(r.detail)
         detail.isHidden = r.detail.isEmpty
         icon.isHidden = r.symbol == nil
         icon.image = r.symbol.flatMap { Theme.symbol($0, size: 13, weight: .regular) }
@@ -501,7 +501,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
 
     /// As wide as its title and detail want.
     var wantedWidth: CGFloat {
-        textLeft + Self.width(label) + (row.detail.isEmpty ? 0 : 12 + min(Self.width(detail), 140)) + 34
+        textLeft + Self.width(label) + (row.detail.isEmpty ? 0 : 12 + min(Self.width(detail), 160)) + 34
     }
 
     override func layout() {
@@ -509,7 +509,7 @@ final class FloatingListRow: NSView, NSDraggingSource {
         let h = bounds.height
         let lh = label.intrinsicContentSize.height
         let right = bounds.width - (row.menu == nil ? 10 : 30)
-        let dw = row.detail.isEmpty ? 0 : min(Self.width(detail), 140)
+        let dw = row.detail.isEmpty ? 0 : min(Self.width(detail), 160)
         detail.frame = NSRect(x: right - dw, y: ((h - lh) / 2).rounded(), width: dw, height: lh)
         label.frame = NSRect(x: textLeft, y: ((h - lh) / 2).rounded(), width: max(0, right - (dw > 0 ? dw + 12 : 0) - textLeft), height: lh)
         icon.frame = NSRect(x: 10 + indent, y: (h - 14) / 2, width: 14, height: 14)

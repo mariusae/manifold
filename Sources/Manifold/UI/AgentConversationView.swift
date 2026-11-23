@@ -207,8 +207,8 @@ final class AgentConversationView: NSView, PaneContent, KeepsViewState {
         let turns = shownTurns
         return turns.map { t in
             let title = AgentConversation.promptTitle(t.prompt)
-            let when = Age.short(t.began) == "now" ? "just now" : Age.short(t.began)
-            let detail = t.isRunning ? "running" : [BlockSummary.took(from: t.began, to: t.ended, least: 1), when].compactMap { $0 }.joined(separator: " · ")
+            // When it began, then how long it took: "18m ago › took 2m 52s".
+            let detail = t.isRunning ? "running" : BlockSummary.ran(from: t.began, to: t.ended, status: 0, now: Date(), least: 1)
             return (Outline.Item(title: String(title.prefix(200)), detail: detail, running: t.isRunning), "turn-\(t.id)")
         }
     }

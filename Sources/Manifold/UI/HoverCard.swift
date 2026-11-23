@@ -185,7 +185,7 @@ final class HoverCard: NSObject {
         let summarized = summaryCard != nil
         title.isHidden = summarized
         title.stringValue = c.title
-        detail.stringValue = c.detail
+        detail.setTimed(c.detail)
         body.stringValue = c.body
         body.font = c.font ?? UIType.body
         body.isHidden = c.body.isEmpty || image != nil || loan != nil

@@ -572,13 +572,13 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
         }
     }
 
-    /// A command's word in a list: how it ended, how long it took (a
-    /// second or more), when — "exit 1 · 2m 13s · 4h"; or "running".
+    /// A command's words in a list: when it began, then how it went (how
+    /// long, a second or more) — "18m ago › took 2m 13s", "3:04PM › failed
+    /// after 5.0s"; or "running".
     private func detail(of c: ShellCommand, last: Int?) -> String {
         guard !(c.isRunning && c.id == last) else { return "running" }
-        let when = Age.short(c.at) == "now" ? "just now" : Age.short(c.at)  // 4m; past the hour, when: 3:04PM
-        return [c.status == 0 ? nil : c.outcome, BlockSummary.took(from: c.at, to: c.ended, least: 1), when]
-            .compactMap { $0 }.joined(separator: " · ")
+        guard c.ended != nil else { return Age.since(c.at) }
+        return BlockSummary.ran(from: c.at, to: c.ended, status: c.status, now: Date(), least: 1)
     }
 
     private func fillOutline() {

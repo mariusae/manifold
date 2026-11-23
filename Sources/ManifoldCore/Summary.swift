@@ -46,22 +46,66 @@ public struct BlockSummary: Codable, Equatable, Sendable {
         self.wantsThumbnail = wantsThumbnail
     }
 
-    /// How long a thing ran, from its start to its end, as briefly:
-    /// "40 ms", "3.2 s", "12 s", "2m 13s", "1h 4m". Nil without both, or
-    /// for less than `least` seconds (a list's quick commands, not worth
-    /// a word).
+    /// How long, as briefly, and the same everywhere: "40ms", "3.2s",
+    /// "12s", "2m 13s", "1h 4m", "2d 3h". `coarse`, a while that's
+    /// still going and isn't redrawn by the second (a server's uptime):
+    /// past the minute, no seconds — "5m".
+    public static func duration(_ seconds: Double, coarse: Bool = false) -> String {
+        let s = max(0, seconds)
+        let t = Int(s.rounded(.down))
+        switch s {
+        case ..<1: return "\(Int((s * 1000).rounded()))ms"
+        case ..<10: return String(format: "%.1fs", s)
+        case ..<60: return "\(t)s"
+        case ..<3600: return coarse ? "\(t / 60)m" : "\(t / 60)m \(t % 60)s"
+        case ..<86400: return "\(t / 3600)h \(t % 3600 / 60)m"
+        default: return "\(t / 86400)d \(t % 86400 / 3600)h"
+        }
+    }
+
+    /// How long a thing ran, from its start to its end, as `duration`
+    /// says it. Nil without both, or for less than `least` seconds (a
+    /// list's quick commands, not worth a word).
     public static func took(from start: Stamp?, to end: Stamp?, least: Double = 0) -> String? {
         guard let start, let end else { return nil }
         let s = max(0, Double(end.wall - start.wall) / 1000)
         guard s >= least else { return nil }
-        let t = Int(s.rounded(.down))
-        switch s {
-        case ..<1: return "\(Int((s * 1000).rounded())) ms"
-        case ..<10: return String(format: "%.1f s", s)
-        case ..<60: return "\(t) s"
-        case ..<3600: return "\(t / 60)m \(t % 60)s"
-        default: return "\(t / 3600)h \(t % 3600 / 60)m"
-        }
+        return duration(s)
+    }
+
+    /// Between when a run began and how it went, in a line that says
+    /// both (`ran`): read as "and then". Drawn quieter than the words.
+    public static let then = " › "
+
+    /// How a run went, in words that say it's a while: "took 2m 52s",
+    /// "failed after 5.0s", "stopped after 3s" (interrupted), "running
+    /// 12s"; `status` too, if asked, when it failed — "failed after 5.0s
+    /// (exit 2)". Under `least` seconds, the while left out: "failed",
+    /// "running"; nothing at all for a quick one that went well.
+    /// `status` nil, ended: "its shell ended after 2m".
+    public static func how(from start: Stamp?, to end: Stamp?, status: Int32?, now: Date, least: Double = 0, showsStatus: Bool = false) -> String? {
+        let running = end == nil
+        let stop = end ?? Stamp(wall: Int64(now.timeIntervalSince1970 * 1000))
+        let d = took(from: start, to: stop, least: least)
+        let word: String
+        if running { word = "running" }
+        else if status == 0 { word = "took" }
+        else if status == 130 { word = "stopped" }
+        else if status == nil { word = "its shell ended" }
+        else { word = "failed" }
+        let code = showsStatus && !running && status != 0 && status != 130 ? status.map { " (exit \($0))" } ?? "" : ""
+        guard let d else { return word == "took" ? nil : word + code }
+        return (running || word == "took" ? word + " " : word + " after ") + d + code
+    }
+
+    /// A run in a line: when it began, then how it went — "18m ago ›
+    /// took 2m 52s", "Sat4:02PM › failed after 4m 50s"; running, how
+    /// long only — "running 12s". The when is `since`'s: "ago" within
+    /// the hour, a time past it, so the two never read alike.
+    public static func ran(from start: Stamp?, to end: Stamp?, status: Int32?, now: Date, least: Double = 0, showsStatus: Bool = false) -> String {
+        let how = how(from: start, to: end, status: status, now: now, least: least, showsStatus: showsStatus)
+        guard end != nil, let when = since(start ?? end, now: now) else { return how ?? "" }
+        return how.map { when + then + $0 } ?? when
     }
 
     /// How long ago, as a note says it: "now", "4m"; past the hour, when
@@ -158,10 +202,10 @@ extension Block {
                 if c.isRunning {
                     s.note = "running"
                     s.tone = .running
-                    s.lines.append("running for \(BlockSummary.took(from: c.at, to: Stamp(wall: Int64(now.timeIntervalSince1970 * 1000)), least: 1) ?? "a moment")")
+                    s.lines.append(BlockSummary.how(from: c.at, to: nil, status: nil, now: now, least: 1) ?? "running")
                 } else {
                     s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                    s.lines.append((c.outcome ?? "") + (BlockSummary.took(from: c.at, to: c.ended, least: 1).map { " · took " + $0 } ?? ""))
+                    if let how = BlockSummary.how(from: c.at, to: c.ended, status: c.status, now: now, least: 1, showsStatus: true) { s.lines.append(how) }
                     if c.failed, s.tone == .plain { s.tone = .failed }
                 }
                 if let earlier = term.commands?.dropLast().last { s.lines.append("$ " + Self.oneLine(earlier.text)) }
@@ -209,8 +253,7 @@ extension Block {
             s.code = true
             // A file's old version is no command: no prompt, no outcome.
             s.lines = [(o.ran == nil ? "" : "$ ") + Self.oneLine(o.line)]
-            let words = [o.outcome, BlockSummary.took(from: o.ran, to: o.ended).map { "took " + $0 }].compactMap { $0 }.joined(separator: " · ")
-            if !words.isEmpty { s.lines.append(words) }
+            if o.ran != nil, o.ended != nil, let how = BlockSummary.how(from: o.ran, to: o.ended, status: o.status, now: now, showsStatus: true) { s.lines.append(how) }
             if let first = o.output.split(separator: "\n").first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
                 s.lines.append(Self.oneLine(String(first)))
             }
@@ -297,7 +340,7 @@ extension Block {
                 s.tone = .running
             } else {
                 s.note = BlockSummary.ago(c.ended ?? c.at, now: now)
-                s.lines = [(c.outcome ?? "") + (BlockSummary.took(from: c.at, to: c.ended).map { " · took " + $0 } ?? "")]
+                s.lines = BlockSummary.how(from: c.at, to: c.ended, status: c.status, now: now, showsStatus: true).map { [$0] } ?? []
                 if c.failed { s.tone = .failed }
             }
             return s

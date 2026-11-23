@@ -20,7 +20,7 @@ import Testing
     term.apply(.ran(id: 2, "make test", at: at(9990)), at: at(9990))
     term.apply(.exited(id: 2, status: 2, at: at(9995)), at: at(9995))
     let ts = term.summary(now: now)
-    #expect(ts.lines == ["$ make test", "exit 2 · took 5.0 s", "$ make"])
+    #expect(ts.lines == ["$ make test", "failed after 5.0s (exit 2)", "$ make"])
     #expect(ts.note == "now" && ts.tone == .failed && ts.code)
     // A diff: files and lines changed.
     var diff = Block(id: BlockID(host: h), kind: .diff, created: at(0))
@@ -46,12 +46,24 @@ import Testing
     #expect(BlockSummary.ago(day.addingTimeInterval(-7200), now: day).range(of: #"^\d{1,2}:\d\d[AP]M$"#, options: .regularExpression) != nil)
     #expect(BlockSummary.ago(day.addingTimeInterval(-30 * 86400), now: day).range(of: #"^\d{1,2}[A-Z][a-z]{2}\d\d$"#, options: .regularExpression) != nil)
     // How long, as briefly; a list's quick ones not at all.
-    #expect(BlockSummary.took(from: at(0), to: at(0.04)) == "40 ms")
-    #expect(BlockSummary.took(from: at(0), to: at(3.24)) == "3.2 s")
+    #expect(BlockSummary.took(from: at(0), to: at(0.04)) == "40ms")
+    #expect(BlockSummary.took(from: at(0), to: at(3.24)) == "3.2s")
     #expect(BlockSummary.took(from: at(0), to: at(133)) == "2m 13s")
     #expect(BlockSummary.took(from: at(0), to: at(3840)) == "1h 4m")
     #expect(BlockSummary.took(from: at(0), to: at(0.5), least: 1) == nil)
     #expect(BlockSummary.took(from: at(0), to: nil) == nil)
+    #expect(BlockSummary.duration(12.7) == "12s" && BlockSummary.duration(2 * 86400 + 3 * 3600 + 5) == "2d 3h")
+    #expect(BlockSummary.duration(312, coarse: true) == "5m")
+    // A run in a line: when it began, then how it went — words that
+    // say which is which ("ago"; "took", "failed after").
+    #expect(BlockSummary.ran(from: at(10_000 - 1080), to: at(10_000 - 1080 + 172), status: 0, now: now) == "18m ago › took 2m 52s")
+    #expect(BlockSummary.ran(from: at(10_000 - 600), to: at(10_000 - 595), status: 2, now: now) == "10m ago › failed after 5.0s")
+    #expect(BlockSummary.ran(from: at(10_000 - 600), to: at(10_000 - 595), status: 2, now: now, showsStatus: true) == "10m ago › failed after 5.0s (exit 2)")
+    #expect(BlockSummary.ran(from: at(10_000 - 600), to: at(10_000 - 597), status: 130, now: now) == "10m ago › stopped after 3.0s")
+    #expect(BlockSummary.ran(from: at(10_000 - 600), to: at(10_000 - 599.5), status: 0, now: now, least: 1) == "10m ago")
+    #expect(BlockSummary.ran(from: at(10_000 - 600), to: at(10_000 - 599.5), status: 1, now: now, least: 1) == "10m ago › failed")
+    #expect(BlockSummary.ran(from: at(10_000 - 12), to: nil, status: nil, now: now) == "running 12s")
+    #expect(BlockSummary.ran(from: at(10_000 - 7200), to: at(10_000 - 7000), status: 0, now: now).hasSuffix(" › took 3m 20s"))
 }
 
 @Test func summaryLinesLeaveATerminalsEscapesOut() {
@@ -87,7 +99,7 @@ import Testing
     term.apply(.ran(id: 7, "make test", at: at(9990)), at: at(9990))
     term.apply(.exited(id: 7, status: 2, at: at(9995)), at: at(9995))
     let made = term.summary(at: "command=7", now: now)
-    #expect(made?.title == "make test" && made?.lines == ["exit 2 · took 5.0 s"] && made?.tone == .failed && made?.code == true)
+    #expect(made?.title == "make test" && made?.lines == ["failed after 5.0s (exit 2)"] && made?.tone == .failed && made?.code == true)
     #expect(term.summary(at: "command=8", now: now) == nil)
     #expect(note.summary(at: "page=2", now: now) == nil)
 }

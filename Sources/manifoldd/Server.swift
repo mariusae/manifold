@@ -2845,11 +2845,7 @@ final class Server {
         return id
     }
 
-    static func duration(_ s: Double) -> String {
-        if s < 60 { return "\(Int(s)) s" }
-        if s < 3600 { return "\(Int(s) / 60) min \(Int(s) % 60) s" }
-        return "\(Int(s) / 3600) h \(Int(s) % 3600 / 60) min"
-    }
+    static func duration(_ s: Double) -> String { BlockSummary.duration(s) }
 
     /// A turn's changes, taken back: the patch from its end to its start
     /// applied to the working tree as it is.

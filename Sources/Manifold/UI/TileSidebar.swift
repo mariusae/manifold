@@ -362,7 +362,7 @@ final class TileSidebar: NSView, NSTableViewDataSource, NSTableViewDelegate, NSM
     var debugEntries: String {
         "page \(page.rawValue)" + (filtering ? " filter \"\(search.stringValue)\"" : "") + "\n"
             + rows.enumerated().map { row, i in
-                "\(i == current ? "*" : " ")\(row == table.selectedRow ? ">" : " ")\(String(repeating: "  ", count: filtering ? 0 : entries[i].level))\(entries[i].title)"
+                "\(i == current ? "*" : " ")\(row == table.selectedRow ? ">" : " ")\(String(repeating: "  ", count: filtering ? 0 : entries[i].level))\(entries[i].title)\(entries[i].detail.isEmpty ? "" : "  [" + entries[i].detail + "]")"
             }.joined(separator: "\n")
     }
 
