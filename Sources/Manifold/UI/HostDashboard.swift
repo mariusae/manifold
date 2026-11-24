@@ -103,7 +103,7 @@ final class HostDashboard: NSView {
     /// How long it's been up, open, connected: as every while is said, to the minute.
     static func duration(_ t: TimeInterval) -> String { BlockSummary.duration(t.rounded(.down), coarse: true) }
 
-    /// When, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+    /// When, as times are said (just now, 4m ago; 3:04pm, Mon 3:04pm, 2 Jan 2006).
     private static func clock(_ d: Date) -> String { BlockSummary.since(d, now: Date()) }
 
     /// How it stands, in a line: for the card's detail too.

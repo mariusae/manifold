@@ -99,7 +99,7 @@ public struct BlockSummary: Codable, Equatable, Sendable {
     }
 
     /// A run in a line: when it began, then how it went — "18m ago ›
-    /// took 2m 52s", "Sat4:02PM › failed after 4m 50s"; running, how
+    /// took 2m 52s", "Sat 4:02pm › failed after 4m 50s"; running, how
     /// long only — "running 12s". The when is `since`'s: "ago" within
     /// the hour, a time past it, so the two never read alike.
     public static func ran(from start: Stamp?, to end: Stamp?, status: Int32?, now: Date, least: Double = 0, showsStatus: Bool = false) -> String {
@@ -109,7 +109,7 @@ public struct BlockSummary: Codable, Equatable, Sendable {
     }
 
     /// How long ago, as a note says it: "now", "4m"; past the hour, when
-    /// — "3:04PM", past a day "Mon3:04PM", past a week "2Jan06".
+    /// — "3:04pm", past a day "Mon 3:04pm", past a week "2 Jan 2006".
     public static func ago(_ stamp: Stamp?, now: Date) -> String? {
         guard let stamp else { return nil }
         return ago(Date(timeIntervalSince1970: Double(stamp.wall) / 1000), now: now)
@@ -125,7 +125,7 @@ public struct BlockSummary: Codable, Equatable, Sendable {
     }
 
     /// As `ago`, said in a phrase: "just now", "4m ago"; past the hour,
-    /// when ("3:04PM", no "ago").
+    /// when ("3:04pm", no "ago").
     public static func since(_ stamp: Stamp?, now: Date) -> String? {
         guard let stamp else { return nil }
         return since(Date(timeIntervalSince1970: Double(stamp.wall) / 1000), now: now)
@@ -139,8 +139,8 @@ public struct BlockSummary: Codable, Equatable, Sendable {
     /// Whether `ago` says it as a while ago (within the hour), not when.
     public static func isRelative(_ date: Date, now: Date) -> Bool { now.timeIntervalSince(date) < 3600 }
 
-    /// When something was, past the hour: its time (3:04PM); past a day,
-    /// its weekday too (Mon3:04PM); past a week, its date (2Jan06).
+    /// When something was, past the hour: its time (3:04pm); past a day,
+    /// its weekday too (Mon 3:04pm); past a week, its date (2 Jan 2006).
     public static func when(_ date: Date, now: Date) -> String {
         let s = now.timeIntervalSince(date)
         let f = s > 7 * 86400 ? dateOnly : s > 86400 ? dayAndTime : timeOnly
@@ -152,11 +152,13 @@ public struct BlockSummary: Codable, Equatable, Sendable {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = format
+        f.amSymbol = "am"
+        f.pmSymbol = "pm"
         return f
     }
     nonisolated(unsafe) private static let timeOnly = formatter("h:mma")
-    nonisolated(unsafe) private static let dayAndTime = formatter("EEEh:mma")
-    nonisolated(unsafe) private static let dateOnly = formatter("dMMMyy")
+    nonisolated(unsafe) private static let dayAndTime = formatter("EEE h:mma")
+    nonisolated(unsafe) private static let dateOnly = formatter("d MMM yyyy")
 }
 
 extension Block {

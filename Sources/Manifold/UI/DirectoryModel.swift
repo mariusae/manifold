@@ -24,7 +24,7 @@ final class BrowserNode {
 
     var sizeText: String { isDirectory ? "--" : ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file) }
 
-    /// When it was changed, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+    /// When it was changed, as times are said (just now, 4m ago; 3:04pm, Mon 3:04pm, 2 Jan 2006).
     var modifiedText: String { BlockSummary.since(Date(timeIntervalSince1970: entry.modified), now: Date()) }
 
     private static var icons: [String: NSImage] = [:]
