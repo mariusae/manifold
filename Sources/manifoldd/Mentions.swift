@@ -5,40 +5,77 @@ import ManifoldCore
 /// changes: `[[titles]]` and paths found in it are resolved to blocks —
 /// made for files that have none yet — and the block's `mention` links
 /// are brought to match, a moment after the last change.
+///
+/// A block named by its reference (`manifold:host/id`, as `mani ref`
+/// writes and a dropped pill lands) is kept by what names it (§4): its
+/// link means `mentions` — in a note, a thread's comment, what an agent
+/// said or was asked. What's named by a title or a path isn't: it's found
+/// again by them, where an id once collected is gone.
 extension Server {
     func mentionsChanged(_ block: BlockID) {
         mentionsDue.schedule(block, after: 1) { [weak self] in self?.refreshMentions(block) }
     }
 
+    /// Once, at the start: every text's and agent's links brought to match
+    /// what they say (references written before they kept anything).
+    func refreshAllMentions() {
+        for b in node.blocks where b.id.host == host && (b.kind == .text && b.text != nil || b.terminal?.turns?.isEmpty == false) {
+            mentionsChanged(b.id)
+        }
+    }
+
     private func refreshMentions(_ block: BlockID) {
         let all = node.blocks
-        guard let b = all.first(where: { $0.id == block }), let text = b.text?.text.string else { return }
+        guard let b = all.first(where: { $0.id == block }) else { return }
+        if let turns = b.terminal?.turns, b.kind != .text { return agentMentions(b, turns) }
+        guard let text = b.text?.text.string else { return }
         // Each block the text names: an image it shows (`![…](…)`) is
         // embedded, kept by the text; the rest mentioned.
         // By the block and the place in it (§2.5): one link to each.
-        var wanted: [LinkTarget: (context: String, kind: LinkKind)] = [:]
+        var wanted: [LinkTarget: Wanted] = [:]
         for m in Mention.find(in: text) {
             guard let to = resolve(m.target, from: b, among: all), to != block else { continue }
             let target = LinkTarget(block: to, anchor: m.anchor)
             let words = String(m.text.prefix(118))
             let embeds = m.embeds && all.first(where: { $0.id == to })?.kind == .image
-            if embeds || wanted[target] == nil { wanted[target] = embeds ? ("![" + words + "]", .embeds) : ("[[" + words + "]]", .opened) }
+            let named: String? = if case .block = m.target { ThreadText.mentions } else { nil }
+            if embeds || wanted[target] == nil {
+                wanted[target] = embeds ? ("![" + words + "]", .embeds, nil) : ("[[" + words + "]]", .opened, named)
+            }
         }
         let have = node.graph.edges(from: block, kind: .link(.opened)).filter { $0.context?.hasPrefix("[[") == true }
             + node.graph.edges(from: block, kind: .link(.embeds)).filter { $0.context?.hasPrefix("![") == true }
         reconcileLinks(from: block, wanted: wanted, existing: have)
     }
 
+    /// An agent's references: the blocks what it said, or was asked,
+    /// names — its conversation's links, kept while it is.
+    private func agentMentions(_ b: Block, _ turns: [AgentTurn]) {
+        var wanted: [LinkTarget: Wanted] = [:]
+        for t in turns {
+            for m in Mention.find(in: t.prompt) + Mention.find(in: t.message ?? "") {
+                guard case .block(let to) = m.target, to != b.id else { continue }
+                let target = LinkTarget(block: to, anchor: m.anchor)
+                if wanted[target] == nil { wanted[target] = ("[[" + String(m.text.prefix(118)) + "]]", .opened, ThreadText.mentions) }
+            }
+        }
+        let have = node.graph.edges(from: b.id, kind: .link(.opened)).filter { $0.relation == ThreadText.mentions }
+        reconcileLinks(from: b.id, wanted: wanted, existing: have)
+    }
+
+    typealias Wanted = (context: String, kind: LinkKind, relation: String?)
+
     /// A block's links brought to match what it says: each target wanted
-    /// linked, with its words and kind, and each link there that isn't
-    /// wanted (or is, said otherwise) gone.
-    func reconcileLinks(from block: BlockID, wanted: [LinkTarget: (context: String, kind: LinkKind)], existing: [Edge], relation: String? = nil) {
-        for e in existing where wanted[LinkTarget(block: e.to, anchor: e.toAnchor)].map({ $0.context != e.context || .link($0.kind) != e.kind }) ?? true {
+    /// linked, with its words, kind and meaning, and each link there that
+    /// isn't wanted (or is, said otherwise) gone.
+    func reconcileLinks(from block: BlockID, wanted: [LinkTarget: Wanted], existing: [Edge]) {
+        func same(_ e: Edge, _ w: Wanted) -> Bool { e.context == w.context && e.kind == .link(w.kind) && e.relation == w.relation }
+        for e in existing where wanted[LinkTarget(block: e.to, anchor: e.toAnchor)].map({ !same(e, $0) }) ?? true {
             append(.unlink(e.id), to: .links(host))
         }
-        for (target, w) in wanted where !existing.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor && $0.context == w.context && $0.kind == .link(w.kind) }) {
+        for (target, w) in wanted where !existing.contains(where: { $0.to == target.block && $0.toAnchor == target.anchor && same($0, w) }) {
             append(.link(Link(from: block, to: target.block, kind: w.kind, at: clock.now(), context: w.context,
-                              toAnchor: target.anchor, relation: relation)), to: .links(host))
+                              toAnchor: target.anchor, relation: w.relation)), to: .links(host))
         }
     }
 

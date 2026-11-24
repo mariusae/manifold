@@ -272,6 +272,7 @@ final class Server {
         }
         agentLink.start()
         settleFirstLineTitles()
+        refreshAllMentions()
         watchPlaces()
         pruneHistory()
         machine.start()
@@ -1014,6 +1015,8 @@ final class Server {
             // Its name emptied: called by its first line again, now.
             titleFromFirstLine(block)
         }
+        // An agent's turn, begun or said: the references in it kept (§4).
+        if block.kind != .text, entries.contains(where: { if case .turn = $0.event { true } else { false } }) { mentionsChanged(id) }
         let registry = node.registry(host)
         let current = registry.blocks[id]
         if current == nil || current!.kind != block.kind || current!.title != block.displayTitle || current!.path != block.path {

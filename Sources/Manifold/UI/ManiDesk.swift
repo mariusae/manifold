@@ -331,6 +331,15 @@ final class ManiDesk {
     /// a path, a title.
     func target(_ name: String, _ scope: Scope) async throws -> Target {
         if case .at("selection", _) = ManiName(name) { return try await selection(excluding: scope.here) }
+        // A file of this Mac's on its way to its host (dropped on an agent
+        // there): waited for a while; still coming, said so.
+        if let (id, _) = BlockID.reference(name) {
+            switch await Arriving.shared.wait(id, limit: 45) {
+            case .failed(let why)?: throw Failure(message: why)
+            case .coming(let words)?: throw Failure(message: words)
+            case .arrived?, nil: break
+            }
+        }
         return try resolve(name, scope)
     }
 
@@ -1121,9 +1130,17 @@ final class ManiDesk {
             return s
         case .pdf:
             if let view, let s = await view.maniText(ManiReadOptions(pages: pages)) { return s }
-            guard b.id.host == wc.host.host, let path = b.path, let doc = PDFDocument(url: URL(fileURLWithPath: path)) else {
-                throw Failure(message: "\(b.displayTitle) can't be read here")
+            // Not shown: its file read here, or fetched from its host.
+            guard let path = b.path else { throw Failure(message: "\(b.displayTitle) has no file") }
+            let doc: PDFDocument?
+            if b.id.host == wc.host.host {
+                doc = PDFDocument(url: URL(fileURLWithPath: path))
+            } else {
+                guard let client = hosts.client(of: b.id) else { throw Failure(message: "\(b.displayTitle)'s host isn't connected; its file is \(path) there") }
+                let data: Data? = await withCheckedContinuation { c in client.readBytes(b.id) { c.resume(returning: $0) } }
+                doc = data.flatMap(PDFDocument.init(data:))
             }
+            guard let doc else { throw Failure(message: "\(b.displayTitle) couldn't be read as a PDF; its file is \(path) on \(hosts.label(of: b.id.host))") }
             return MediaView.text(of: doc, pages: pages)
         case .web:
             guard let view, let s = await view.maniText(ManiReadOptions()) else { throw Failure(message: "\(b.displayTitle) isn't shown, so its page can't be read") }
@@ -1166,6 +1183,8 @@ final class ManiDesk {
             // Its place and every entry, as `mani thread read` prints it.
             return threadText(b)
         default:
+            // A picture, say: no text, but its file, to read as it is.
+            if let path = b.path { throw Failure(message: "\(b.displayTitle) (\(b.kind.rawValue)) has no text to read; its file is \(path) on \(hosts.label(of: b.id.host))") }
             throw Failure(message: "\(b.displayTitle) (\(b.kind.rawValue)) has no text to read")
         }
     }

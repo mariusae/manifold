@@ -136,7 +136,7 @@ extension MainWindowController {
             s.style = .section
             sections.append(s)
         }
-        // When, as times are said (just now, 4m ago; 3:04PM, Mon3:04PM, 2Jan06).
+        // When, as times are said (just now, 4m ago; 3:04pm, Mon 3:04pm, 2 Jan 2006).
         func when(_ d: Date) -> String { BlockSummary.since(d, now: Date()) }
 
         // What it is at a glance (open); its machine in detail (folded).
@@ -863,6 +863,9 @@ extension MainWindowController {
             needs.append(n)
         }
         if !needs.isEmpty { out += needs + [rule("needs")] }
+        // Shown once: risen to the top, not said again below (a project's
+        // agent there too).
+        let risen = Set(needs.compactMap(\.block))
         // Pinned: each its tile (on screen or docked), else a row to recall it.
         var top: [OrgNode] = []
         for block in pinned {
@@ -920,7 +923,7 @@ extension MainWindowController {
                 return row
             }
             // Its other tiles here stay in their columns.
-            let n = projectNode(proj, on: host, id: "\(aid)/project/\(key)", onScreen: onScreen)
+            let n = projectNode(proj, on: host, id: "\(aid)/project/\(key)", onScreen: onScreen, shownAbove: risen)
             if let header {
                 n.arrangement = id
                 n.column = columnOf(header.id)
@@ -1005,10 +1008,13 @@ extension MainWindowController {
     /// pinned in it — its agents by their names, saying what they're at —
     /// then its open threads, the latest five (and a row for the rest).
     /// Clicked, its tile (here, or made here); the rows, each its thing.
-    /// `onScreen`: a pinned thing's tile's row, if it has one here.
-    func projectNode(_ proj: Project, on host: HostID, id nid: String, onScreen: (BlockID) -> OrgNode? = { _ in nil }) -> OrgNode {
+    /// `onScreen`: a pinned thing's tile's row, if it has one here;
+    /// `shownAbove`: what the list has risen to its top (needing you) —
+    /// shown once, so not under its project too.
+    func projectNode(_ proj: Project, on host: HostID, id nid: String, onScreen: (BlockID) -> OrgNode? = { _ in nil },
+                     shownAbove: Set<BlockID> = []) -> OrgNode {
         var children: [OrgNode] = []
-        for b in pinned(in: proj).compactMap({ hosts.block($0) }) {
+        for b in pinned(in: proj).compactMap({ hosts.block($0) }) where !shownAbove.contains(b.id) {
             if let row = onScreen(b.id) {
                 if b.agent != nil { agentRow(row, b) }
                 children.append(row)

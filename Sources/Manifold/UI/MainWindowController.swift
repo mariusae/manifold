@@ -818,6 +818,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
             }
             if p.block.host != host.host {
                 t.uploadDrop = { [weak self] urls, done in self?.upload(urls, toShellOf: p.block, done: done) }
+                t.uploadReferences = { [weak self] urls, done in self?.uploadReferences(urls, toShellOf: p.block, done: done) }
                 t.lookUp = { [weak self] paths, done in
                     guard let client = self?.hosts.client(of: p.block) else { return done(nil) }
                     client.lookUp(paths, done: done)

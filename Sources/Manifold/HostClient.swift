@@ -755,6 +755,14 @@ final class HostClient {
     }
 
     /// The block for an image or PDF at a path, made if there isn't one.
+    /// A block for a file just put there, by an id named before it was
+    /// (its reference typed while it came, `Arriving`).
+    func fileBlock(_ id: BlockID, kind: BlockKind, path: String) {
+        if kind == .directory { return propose(.directory(block: id, path: path)) }
+        append(.create(kind: kind, title: nil, path: path), to: .block(id))
+        if kind == .text { ensureRead(id) }
+    }
+
     func mediaBlock(for path: String, kind: BlockKind) -> BlockID {
         if let b = block(kind: kind, path: path) { return b.id }
         let id = BlockID(host: host)

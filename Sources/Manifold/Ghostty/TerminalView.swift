@@ -573,7 +573,7 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     }
 
     /// A command's words in a list: when it began, then how it went (how
-    /// long, a second or more) — "18m ago › took 2m 13s", "3:04PM › failed
+    /// long, a second or more) — "18m ago › took 2m 13s", "3:04pm › failed
     /// after 5.0s"; or "running".
     private func detail(of c: ShellCommand, last: Int?) -> String {
         guard !(c.isRunning && c.id == last) else { return "running" }
@@ -2261,6 +2261,9 @@ final class TerminalView: NSView, PaneContent, NSTextInputClient, NSMenuItemVali
     /// folder there, and their paths there typed (what they're called
     /// there, given back when they're in).
     var uploadDrop: (([URL], @escaping ([String]) -> Void) -> Void)?
+    /// For an agent there: named at once, by references to what they'll
+    /// be there, and sent on (it reads them once they're in, `Arriving`).
+    var uploadReferences: (([URL], @escaping ([String]) -> Void) -> Void)?
 
     /// Files from this Mac, for a shell on another host: sent there first.
     private func uploads(_ d: Dragged) -> [URL]? {
@@ -2463,6 +2466,13 @@ extension TerminalView: DropTaking {
         var forms = Dropping.forms(d, for: isAgent ? .agent : .shell)
         // A path is only a path on its own host (this Mac's files are sent there).
         if uploads(d) == nil, d.things.contains(where: { $0.place.map { $0.host != block.host } ?? false }) { forms.removeAll { $0 == .path } }
+        // This Mac's files for an agent on another host: named at once, by
+        // references to them there, sent on as it goes on (their paths, the
+        // palette's, typed once they're in).
+        if isAgent, uploads(d) != nil, uploadReferences != nil {
+            forms.removeAll { $0 == .reference }
+            forms.insert(.reference, at: 0)
+        }
         return forms
     }
 
@@ -2471,6 +2481,12 @@ extension TerminalView: DropTaking {
     /// each block named.
     func dropPut(_ d: Dragged, as form: DropForm, at p: NSPoint?) {
         window?.makeFirstResponder(self)
+        if form == .reference, isAgent, let urls = uploads(d), let uploadReferences {
+            return uploadReferences(urls) { [weak self] refs in
+                guard let self, !refs.isEmpty else { return }
+                self.type(refs.joined(separator: " ") + " ")
+            }
+        }
         if form == .path, let urls = uploads(d), let uploadDrop {
             return uploadDrop(urls) { [weak self] paths in
                 guard let self, !paths.isEmpty else { return }

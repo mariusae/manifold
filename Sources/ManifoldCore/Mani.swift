@@ -545,8 +545,13 @@ public enum Mani {
             they chose which as they dropped it), in a note's text, from Copy Link. Treat one as "that block":
             - Any mani command takes one as a name, either form: `mani read manifold:…`
               (at `#command=7`, that command's output; at `#page=3`, that page),
-              `mani info manifold:…` (what and where it is, its links),
+              `mani info manifold:…` (what and where it is, its links — a file's `path`,
+              to read it as it is: a picture, a PDF with your own tools),
               `mani show manifold:…#line=12` (brought to view, at that line).
+            - A file the user dropped from their Mac on you while you run on another
+              host is sent here, into your folder, as you're given its reference: read
+              it with mani as soon as you like — mani waits for it, and says how far it
+              has got if it's still on its way.
             - To change what it holds: `mani write manifold:… < new-text` (a note's or a
               file's whole text; `--append` adds; `--save` saves a file),
               `mani rename manifold:… "Name"`, `mani pin manifold:…`,

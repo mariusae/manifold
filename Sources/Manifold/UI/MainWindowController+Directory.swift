@@ -604,6 +604,51 @@ extension MainWindowController: DirectoryViewDelegate {
         }
     }
 
+    /// This Mac's files for an agent on another host, named at once: each
+    /// a block there (its reference, given back before it's in) for where
+    /// it will be in the agent's folder, sent on; the block made once it's
+    /// in. Read meanwhile, it's waited for, or said to be on its way
+    /// (`Arriving`).
+    func uploadReferences(_ urls: [URL], toShellOf block: BlockID, done: @escaping ([String]) -> Void) {
+        guard let c = hosts.client(of: block), let folder = hosts.block(block)?.terminal?.cwd else { return NSSound.beep() }
+        let to = hosts.label(of: block.host)
+        let label = to + ":" + Self.shortPlace(folder)
+        c.listFolder(folder) { [weak self] entries in
+            guard let self else { return }
+            var taken = Set((entries ?? []).map(\.name))
+            var jobs: [Transfer.Job] = [], refs: [String] = []
+            for u in urls {
+                let name = Self.freeName(u.lastPathComponent, taken: taken)
+                taken.insert(name)
+                let dest = folder + "/" + name
+                let isDir = (try? u.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                let kind: BlockKind = isDir ? .directory : Self.mediaKind(dest) ?? .text
+                let id = BlockID(host: block.host)
+                Arriving.shared.begin(id, name: name, to: to)
+                refs.append("manifold:" + id.description)
+                jobs.append { [weak self] p, d in
+                    Transfer.upload(u, to: dest, on: c, replace: false, progress: { n, total in
+                        p(n, total)
+                        DispatchQueue.main.async { Arriving.shared.progress(id, sent: n, of: total) }
+                    }) { error in
+                        // In: its block made, as the reference named it, and the
+                        // agent linked to it (as a drop links what it names).
+                        if error == nil {
+                            c.fileBlock(id, kind: kind, path: dest)
+                            self?.link(id, to: block)
+                        }
+                        Arriving.shared.end(id, error: error)
+                        d(error)
+                    }
+                }
+            }
+            done(refs)
+            Transfers.shared.run(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) items", detail: "to \(label)", symbol: "arrow.up") { progress, finished in
+                Transfer.batch(jobs, progress: progress) { r in finished(r.compactMap { $0 }.first) }
+            }
+        }
+    }
+
     /// A folder as a row has room for it: from home, else its last two
     /// folders.
     static func shortPlace(_ folder: String) -> String {

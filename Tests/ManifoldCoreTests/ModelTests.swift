@@ -2107,7 +2107,8 @@ private final class Seen: @unchecked Sendable {
     put(.create(kind: .text, title: nil, path: "/p/a.swift"), to: .block(named), at: 8)
     put(.link(Link(from: thread, to: named, kind: .opened, at: stamp(8), relation: ThreadText.mentions)), to: .links(host), at: 8)
     #expect(node.threads(of: named) == [thread])
-    #expect(!node.reachable(on: host).contains(named))
+    // And kept by it, as any block a text names by its reference is.
+    #expect(node.reachable(on: host).contains(named))
     var r = node.reachable(on: host)
     #expect(r.contains(thread) && r.contains(agent) && r.contains(note) && r.contains(proj) && r.contains(own))
 
@@ -2253,4 +2254,28 @@ private final class Seen: @unchecked Sendable {
     let after = try AgentSkill.readJSON(url)
     #expect(after[AgentSkill.agyHookName] == nil && after["lint"] != nil)
     #expect(AgentSkill.known.contains("agy"))
+}
+
+@Test func aBlockNamedByItsReferenceIsKeptByWhatNamesIt() {
+    let node = Node()
+    let host = HostID("h")
+    func stamp(_ ms: Int64) -> Stamp { Stamp(wall: ms, logical: 0, host: host) }
+    func put(_ event: Event, to shard: ShardID, at ms: Int64) { _ = node.append(event, to: shard, at: stamp(ms)) }
+    // A walkthrough on screen; a diff it names by reference, a file by path.
+    let ws = BlockID(host: host), walk = BlockID(host: host), diff = BlockID(host: host), file = BlockID(host: host)
+    put(.create(kind: .text, title: nil, path: nil), to: .block(walk), at: 1)
+    put(.create(kind: .diff, title: nil, path: nil), to: .block(diff), at: 1)
+    put(.create(kind: .text, title: nil, path: "/x.swift"), to: .block(file), at: 1)
+    put(.create(kind: .arrangement, title: nil, path: nil), to: .block(ws), at: 2)
+    put(.order([ws]), to: .desk(host), at: 2)
+    put(.place(Placement(block: walk, lens: .editor), column: 0, at: 0), to: .block(ws), at: 3)
+    put(.link(Link(from: walk, to: diff, kind: .opened, at: stamp(4), context: "[[the change]]", relation: ThreadText.mentions)), to: .links(host), at: 4)
+    put(.link(Link(from: walk, to: file, kind: .opened, at: stamp(4), context: "[[x.swift]]")), to: .links(host), at: 4)
+    let r = node.reachable(on: host)
+    #expect(r.contains(diff))     // named by its id: kept
+    #expect(!r.contains(file))    // by its path: found again by it, not kept
+    // The walkthrough closed and let go: what it named goes with it.
+    let p = node.block(ws)!.arrangement!.placements[0]
+    put(.remove(p.id), to: .block(ws), at: 5)
+    #expect(!node.reachable(on: host).contains(diff))
 }

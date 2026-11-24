@@ -4,7 +4,9 @@ import Foundation
 /// from them over strong edges. The workspaces are the roots — every one,
 /// until it's removed by hand — and other hosts' holds; a block is kept by
 /// a workspace that shows it, pins it, or reaches it through what it
-/// shows and links. One nothing reaches is collected after a grace.
+/// shows and links — by hand, or by reference in what it says (a note's,
+/// a comment's, an agent's `manifold:…`). One nothing reaches is
+/// collected after a grace.
 extension Node {
     /// The roots on a host, as its own shards say.
     public func roots(on host: HostID) -> Set<BlockID> {
@@ -71,14 +73,20 @@ extension Node {
     /// while the thread is open: an agent in a conversation isn't let go
     /// mid-thread, nor what was put there to read; resolved, it lets go of
     /// them (what else keeps them, keeps them).
+    /// A block named by its reference in what another says (a note, a
+    /// comment, an agent's turn: `mentions`) is kept by it as a link by
+    /// hand keeps — what's written there is a link too, and an id once
+    /// collected is gone for good.
     public func keeps(_ e: Edge) -> Bool {
-        guard e.kind.isStrong, e.isLive else { return false }
+        guard e.isLive else { return false }
+        if e.kind == .link(.opened) { return e.relation == ThreadText.mentions }
+        guard e.kind.isStrong else { return false }
         if let r = e.relation, ThreadContext.whileOpen.contains(r) { return block(e.from)?.thread?.resolved != true }
         return true
     }
 
     /// The edges out of a block that keep what they lead to.
     public func strongEdges(from block: BlockID) -> [Edge] {
-        graph.strongEdges(from: block).filter(keeps)
+        (graph.strongEdges(from: block) + graph.edges(from: block, kind: .link(.opened))).filter(keeps)
     }
 }

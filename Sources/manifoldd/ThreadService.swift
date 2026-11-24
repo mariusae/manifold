@@ -153,16 +153,16 @@ extension Server {
     /// `mentions`, brought to match what the comments say.
     func threadMentions(_ block: BlockID) {
         guard let t = node.block(block)?.thread else { return }
-        var wanted: [LinkTarget: (context: String, kind: LinkKind)] = [:]
+        var wanted: [LinkTarget: Wanted] = [:]
         for c in t.comments {
             for m in Mention.find(in: c.comment ?? "") {
                 guard case .block(let to) = m.target, to != block, to != t.about?.block else { continue }
                 let target = LinkTarget(block: to, anchor: m.anchor)
-                if wanted[target] == nil { wanted[target] = ("[[" + String(m.text.prefix(118)) + "]]", .opened) }
+                if wanted[target] == nil { wanted[target] = ("[[" + String(m.text.prefix(118)) + "]]", .opened, ThreadText.mentions) }
             }
         }
         let have = node.graph.edges(from: block, kind: .link(.opened)).filter { $0.relation == ThreadText.mentions }
-        reconcileLinks(from: block, wanted: wanted, existing: have, relation: ThreadText.mentions)
+        reconcileLinks(from: block, wanted: wanted, existing: have)
     }
 }
 

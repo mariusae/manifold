@@ -657,7 +657,13 @@ any block a root. One rule replaced them (§12).
 Of the graph's edges (§3.5), three kinds are **strong**: a space's
 placement of a block, its pin of one (`pinned`), and a link made by
 hand (`linked`). A strong edge
-keeps what it points at (§4). Every other edge is **weak** — what a
+keeps what it points at (§4). So does a **reference written** in what a
+block says — `manifold:host/id`, or a `[name](manifold:…)` link, in a
+note's text, a thread's comment, an agent's turn (what it was asked and
+what it said): its `mentions` link is a link by hand too, and a block
+named by its id is gone for good once collected (a walkthrough's
+references, minted by `mani`, live as long as it does). What's named by
+a title or a path isn't kept: it's found again by them. Every other edge is **weak** — what a
 terminal opened, what a search found, what a folder contains, the trail
 of where you went — history and happenstance, which keep nothing alive
 and say nothing about what you mean to keep. Strong edges are followed
@@ -1869,8 +1875,8 @@ from a **root** to it. The roots on a host are
 | a project's block | the project (§2.6), while the folder is one |
 | a **hold** | another host's standing reference (below) |
 
-and every block a root places, pins, links by hand, or reaches through
-what it places and links, is kept — and what an open thread has on its
+and every block a root places, pins, links by hand, names by its
+reference (§3.4), or reaches through what it places and links, is kept — and what an open thread has on its
 shelf (§3.12), while it's open. The host is the collector: once a
 minute it walks its own shards from its roots, notes each block nothing
 reaches with the moment that began, and **collects** any that has been
